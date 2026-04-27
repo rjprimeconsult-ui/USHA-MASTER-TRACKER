@@ -58,6 +58,7 @@ const loadAttachmentForView = async (attachment) => {
 
 function BusinessBooksView({
   expenses, income,
+  leads = [], overrides = [], ownAdvances = [],
   onAddExpense, onUpdateExpense, onDeleteExpense, onBulkAddExpenses,
   onAddIncome,  onUpdateIncome,  onDeleteIncome,  onBulkAddIncome,
 }) {
@@ -148,8 +149,32 @@ function BusinessBooksView({
   const yrIncome   = useMemo(() => income.filter(e => (e.date || '').startsWith(yr)), [income, yr]);
 
   const ytdExpenses = yrExpenses.reduce((s, e) => s + Number(e.amount || 0), 0);
-  const ytdIncome   = yrIncome.reduce((s, e) => s + Number(e.amount || 0), 0);
-  const ytdNet      = ytdIncome - ytdExpenses;
+  const ytdBooksIncome = yrIncome.reduce((s, e) => s + Number(e.amount || 0), 0);
+
+  // Commission income for the year — sum statement-derived own advances +
+  // overrides for the year. Falls back to leads' dealValue (issued in YR) when
+  // there are no ownAdvances entries (e.g., statements not yet imported).
+  const inYear = (iso) => String(iso || '').startsWith(yr);
+  const ytdOwnFromStmts = useMemo(
+    () => ownAdvances.filter(a => inYear(a.period)).reduce((s, a) => s + Number(a.amount || 0), 0),
+    [ownAdvances, yr]
+  );
+  const ytdOwnFromLeads = useMemo(
+    () => leads.filter(l => l.stage === 'Issued' && inYear(l.closedDate)).reduce((s, l) => s + Number(l.dealValue || 0), 0),
+    [leads, yr]
+  );
+  const ytdOwnCommissions = ytdOwnFromStmts > 0 ? ytdOwnFromStmts : ytdOwnFromLeads;
+  const ytdOverrideIncome = useMemo(
+    () => overrides.filter(o => inYear(o.period)).reduce((s, o) => s + Number(o.amount || 0), 0),
+    [overrides, yr]
+  );
+  const ytdCommissions = ytdOwnCommissions + ytdOverrideIncome;
+
+  // Total YTD income shown on the dashboard card = books income + commissions.
+  const ytdIncome   = ytdBooksIncome + ytdCommissions;
+  // Books-only Net keeps its original meaning (Books in − Books out) so the
+  // \"BOOKS NET (YTD)\" card doesn't change semantics.
+  const ytdNet      = ytdBooksIncome - ytdExpenses;
 
   // Filters for the daily entries table — per-tab so switching keeps each one
   const [filterCategory, setFilterCategory] = useState('');
@@ -372,7 +397,11 @@ function BusinessBooksView({
             <div className="mt-2 text-lg font-bold text-slate-900" style={{ transform: 'translateZ(10px)' }}>
               <CountUp value={ytdIncome} format={(v) => '$' + v.toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: 2 })} />
             </div>
-            <div className="text-[11px] text-slate-500">other income (not commissions)</div>
+            <div className="text-[11px] text-slate-500">
+              {ytdCommissions > 0
+                ? `${fmt2(ytdCommissions)} commissions + ${fmt2(ytdBooksIncome)} other`
+                : 'all income for the year'}
+            </div>
           </TiltCard>
         </StaggerItem>
         <StaggerItem>

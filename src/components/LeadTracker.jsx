@@ -957,6 +957,9 @@ export default function LeadTracker() {
           <BusinessBooksView
             expenses={businessExpenses}
             income={businessIncome}
+            leads={leads}
+            overrides={overrides}
+            ownAdvances={ownAdvances}
             onAddExpense={(e) => { setBusinessExpenses(prev => [e, ...prev]); showToast('Expense added'); }}
             onUpdateExpense={(e) => setBusinessExpenses(prev => prev.map(x => x.id === e.id ? e : x))}
             onDeleteExpense={(id) => {
