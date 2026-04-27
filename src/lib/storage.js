@@ -156,7 +156,7 @@ export const storage = {
  */
 const APP_KEYS = [
   'leads_v5', 'investments_v2', 'activities_v1', 'agent_tier_v1',
-  'chargebacks_v1', 'overrides_v1', 'advance_months_history_v1',
+  'chargebacks_v1', 'overrides_v1', 'own_advances_v1', 'advance_months_history_v1',
   'platform_expenses_v1', 'business_expenses_v1', 'business_income_v1',
   'business_accounts_v1', 'platform_budget_v1',
 ];

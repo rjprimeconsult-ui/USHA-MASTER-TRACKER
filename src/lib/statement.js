@@ -776,6 +776,13 @@ export function reconcileStatement(parsed, leads) {
     e.rows.push(r);
   }
 
+  // Raw own-advance rows (writingAgent === owner). Stored to own_advances_v1
+  // so KPI math can use what was actually paid in the statement period instead
+  // of summing lead.dealValue (which gets overwritten on every re-import and
+  // doesn't represent per-week payment).
+  const ownAdvanceRows = ownSales;
+  const ownAdvancesTotal = ownSales.reduce((s, r) => s + (r.netAdvance || 0), 0);
+
   return {
     header,
     ownSalesCount: ownSales.length,
@@ -783,6 +790,8 @@ export function reconcileStatement(parsed, leads) {
     matched, unmatched,
     overridesTotal,
     overridesByAgent: Array.from(overridesByAgent.values()).sort((a, b) => b.total - a.total),
+    ownAdvanceRows,
+    ownAdvancesTotal,
 
     // Chargebacks
     chargebacksOwnCount: ownChargebacks.length,

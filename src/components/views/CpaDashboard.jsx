@@ -34,7 +34,7 @@ const Kpi = memo(({ label, value, numeric, isCurrency = true, isPercent = false,
 ));
 Kpi.displayName = 'Kpi';
 
-function CpaDashboard({ leads, investments, activities, platformExpenses = [], businessExpenses = [], businessIncome = [], chargebacks = [], overrides = [], onDeleteChargeback, onEditInvestment, onDeleteInvestment, onDeleteAutoWeek, onNewInvestment, onNewActivity, onEditActivity, onDeleteActivity }) {
+function CpaDashboard({ leads, investments, activities, platformExpenses = [], businessExpenses = [], businessIncome = [], chargebacks = [], overrides = [], ownAdvances = [], onDeleteChargeback, onEditInvestment, onDeleteInvestment, onDeleteAutoWeek, onNewInvestment, onNewActivity, onEditActivity, onDeleteActivity }) {
   const [showHowTo, setShowHowTo] = useState(false);
   const thisWeek = getWeekStart(new Date().toISOString().slice(0, 10));
 
@@ -132,8 +132,19 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
     // lead-spend from broader per-deal costs.
     const scopedInvestedLeadAcq = scopedBaseInvested + scopedPlatform;
 
-    // Own-sales commission income (sum of dealValue across issued leads scoped to period)
-    const scopedOwnEarned       = scopedIssued.reduce((s, l) => s + (l.dealValue || 0), 0);
+    // Own-sales commission income — sum of per-row personal advances from
+    // weekly statements, scoped to the statement period. This reflects what
+    // was actually paid in the period.
+    //
+    // Fallback: if there are no own_advances entries for the period (e.g.,
+    // statements not yet imported, or a lead manually marked Issued without
+    // a statement), fall back to summing dealValue across issued leads
+    // closed in the period — better to show an approximation than $0.
+    const scopedOwnAdvanceRows  = ownAdvances.filter(a => inPeriod(a.period));
+    const scopedOwnFromStmts    = scopedOwnAdvanceRows.reduce((s, a) => s + Number(a.amount || 0), 0);
+    const scopedOwnFromLeads    = scopedIssued.reduce((s, l) => s + (l.dealValue || 0), 0);
+    const scopedOwnEarned       = scopedOwnAdvanceRows.length > 0 ? scopedOwnFromStmts : scopedOwnFromLeads;
+    const scopedOwnSource       = scopedOwnAdvanceRows.length > 0 ? 'statements' : 'leads';
 
     // Override commission income — money the agent earns from sub-agents' deals.
     // Each override entry has { amount, period (statement period end date), ... }.
@@ -253,7 +264,7 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
       earnedByProduct, incomeByCategory, expensesByCategory,
       inKpiPeriod: inPeriod,
     };
-  }, [leads, investments, platformExpenses, businessExpenses, businessIncome, overrides, kpiPeriod, kpiWeekStart]);
+  }, [leads, investments, platformExpenses, businessExpenses, businessIncome, overrides, ownAdvances, kpiPeriod, kpiWeekStart]);
 
   // Destructure once so the rest of the component reads naturally
   const {

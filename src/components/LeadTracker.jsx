@@ -38,6 +38,7 @@ const ACT_KEY = 'activities_v1';
 const TIER_KEY = 'agent_tier_v1';
 const CB_KEY   = 'chargebacks_v1';
 const OVR_KEY  = 'overrides_v1';
+const OWN_ADV_KEY = 'own_advances_v1';
 const AM_KEY   = 'advance_months_history_v1';
 const PE_KEY   = 'platform_expenses_v1';
 const BE_KEY   = 'business_expenses_v1';
@@ -110,6 +111,7 @@ export default function LeadTracker() {
   const [activities, setActivities] = useState([]);
   const [chargebacks, setChargebacks] = useState([]);
   const [overrides, setOverrides] = useState([]);
+  const [ownAdvances, setOwnAdvances] = useState([]);
   const [advanceMonthsHistory, setAdvanceMonthsHistory] = useState([]);
   const [platformExpenses, setPlatformExpenses] = useState([]);
   const [businessExpenses, setBusinessExpenses] = useState([]);
@@ -178,6 +180,9 @@ export default function LeadTracker() {
       const ovrRaw = await storage.getItem(OVR_KEY);
       setOverrides(ovrRaw ? JSON.parse(ovrRaw) : []);
 
+      const oaRaw = await storage.getItem(OWN_ADV_KEY);
+      setOwnAdvances(oaRaw ? JSON.parse(oaRaw) : []);
+
       const amRaw = await storage.getItem(AM_KEY);
       setAdvanceMonthsHistory(amRaw ? JSON.parse(amRaw) : []);
 
@@ -200,6 +205,7 @@ export default function LeadTracker() {
   useEffect(() => { if (loaded) storage.setItem(TIER_KEY, tier); }, [tier, loaded]);
   useEffect(() => { if (loaded) storage.setItem(CB_KEY, JSON.stringify(chargebacks)); }, [chargebacks, loaded]);
   useEffect(() => { if (loaded) storage.setItem(OVR_KEY, JSON.stringify(overrides)); }, [overrides, loaded]);
+  useEffect(() => { if (loaded) storage.setItem(OWN_ADV_KEY, JSON.stringify(ownAdvances)); }, [ownAdvances, loaded]);
   useEffect(() => { if (loaded) storage.setItem(AM_KEY, JSON.stringify(advanceMonthsHistory)); }, [advanceMonthsHistory, loaded]);
   useEffect(() => { if (loaded) storage.setItem(PE_KEY, JSON.stringify(platformExpenses)); }, [platformExpenses, loaded]);
   useEffect(() => { if (loaded) storage.setItem(BE_KEY, JSON.stringify(businessExpenses)); }, [businessExpenses, loaded]);
@@ -344,6 +350,33 @@ export default function LeadTracker() {
             effDate: r.effDate,
             period: rowPeriod(r),
             isOwn: r.writingAgent && plan.header?.owner && r.writingAgent.toUpperCase().trim() === plan.header.owner.toUpperCase().trim(),
+            importedAt: new Date().toISOString(),
+          }));
+        return add.length ? [...add, ...prev] : prev;
+      });
+    }
+
+    // 3a. Own advances — per-row payments to the agent for their own sales.
+    //     Dedup by (policyId + period). Used by KPIs to show what was actually
+    //     paid in the period instead of summing lead.dealValue (which gets
+    //     overwritten on every re-import).
+    const ownAdvRows = plan.ownAdvanceRows || [];
+    if (ownAdvRows.length > 0) {
+      setOwnAdvances(prev => {
+        const seen = new Set(prev.map(o => `${o.policyId}|${o.period}`));
+        const add = ownAdvRows
+          .filter(r => r.policyId)
+          .filter(r => !seen.has(`${r.policyId}|${rowPeriod(r)}`))
+          .map(r => ({
+            id: uid(),
+            policyId: r.policyId,
+            customer: r.customer,
+            writingAgent: r.writingAgent,
+            productDesc: r.productDesc,
+            amount: r.netAdvance,
+            appDate: r.appDate,
+            effDate: r.effDate,
+            period: rowPeriod(r),
             importedAt: new Date().toISOString(),
           }));
         return add.length ? [...add, ...prev] : prev;
@@ -745,6 +778,7 @@ export default function LeadTracker() {
         if (what === 'activities' || what === 'everything')   { setActivities([]);   await storage.removeItem(ACT_KEY); }
         if (what === 'chargebacks' || what === 'everything')  { setChargebacks([]);  await storage.removeItem(CB_KEY); }
         if (what === 'overrides' || what === 'everything')    { setOverrides([]);    await storage.removeItem(OVR_KEY); }
+        if (what === 'ownAdvances' || what === 'everything')  { setOwnAdvances([]);  await storage.removeItem(OWN_ADV_KEY); }
         if (what === 'platforms' || what === 'everything')   { setPlatformExpenses([]); await storage.removeItem(PE_KEY); }
         if (what === 'books' || what === 'everything')       { setBusinessExpenses([]); setBusinessIncome([]); await storage.removeItem(BE_KEY); await storage.removeItem(BI_KEY); }
         if (what === 'everything')                            { setAdvanceMonthsHistory([]); await storage.removeItem(AM_KEY); }
@@ -832,6 +866,7 @@ export default function LeadTracker() {
             businessIncome={businessIncome}
             chargebacks={chargebacks}
             overrides={overrides}
+            ownAdvances={ownAdvances}
             onDeleteChargeback={(id) => setChargebacks(prev => prev.filter(c => c.id !== id))}
             onEditInvestment={editInvestment}
             onDeleteInvestment={deleteInvestment}
