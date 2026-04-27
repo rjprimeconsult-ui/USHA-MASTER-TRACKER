@@ -749,8 +749,13 @@ export default function LeadTracker() {
     <div className="min-h-screen bg-slate-50 text-slate-900 relative">
       <OrbBackdrop />
       {/* Header */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-20 relative overflow-hidden">
-        <div className="absolute inset-0 bg-mesh-luxe opacity-90 pointer-events-none" />
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-20 relative">
+        {/* Mesh gradient backdrop — bounded by overflow-hidden on this child wrapper
+            so it doesn't leak, but the parent header itself stays overflow-visible
+            so dropdowns (UserMenu, etc.) can extend below the header. */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute inset-0 bg-mesh-luxe opacity-90" />
+        </div>
         <div className="relative max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <motion.div
