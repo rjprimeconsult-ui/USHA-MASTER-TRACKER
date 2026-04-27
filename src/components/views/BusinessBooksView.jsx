@@ -172,9 +172,8 @@ function BusinessBooksView({
 
   // Total YTD income shown on the dashboard card = books income + commissions.
   const ytdIncome   = ytdBooksIncome + ytdCommissions;
-  // Books-only Net keeps its original meaning (Books in − Books out) so the
-  // \"BOOKS NET (YTD)\" card doesn't change semantics.
-  const ytdNet      = ytdBooksIncome - ytdExpenses;
+  // True YTD Net = all income (commissions + books) − all expenses.
+  const ytdNet      = ytdIncome - ytdExpenses;
 
   // Filters for the daily entries table — per-tab so switching keeps each one
   const [filterCategory, setFilterCategory] = useState('');
@@ -420,14 +419,14 @@ function BusinessBooksView({
           <TiltCard className="bg-white rounded-xl border border-slate-200 p-3 shine-on-hover glow-ring cursor-default">
             <div className="flex items-center gap-2">
               <Wallet size={16} className={ytdNet >= 0 ? 'text-emerald-600' : 'text-red-500'} />
-              <div className="text-xs font-bold text-slate-500 tracking-wider">BOOKS NET (YTD)</div>
+              <div className="text-xs font-bold text-slate-500 tracking-wider">NET (YTD)</div>
             </div>
             <div className="mt-2 text-lg font-bold" style={{ color: ytdNet >= 0 ? '#10b981' : '#ef4444', transform: 'translateZ(10px)' }}>
               {ytdNet >= 0
                 ? <CountUp value={ytdNet} format={(v) => '$' + v.toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: 2 })} />
                 : <>−<CountUp value={Math.abs(ytdNet)} format={(v) => '$' + v.toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: 2 })} /></>}
             </div>
-            <div className="text-[11px] text-slate-500">other income − expenses</div>
+            <div className="text-[11px] text-slate-500">all income − all expenses</div>
           </TiltCard>
         </StaggerItem>
         <StaggerItem>
