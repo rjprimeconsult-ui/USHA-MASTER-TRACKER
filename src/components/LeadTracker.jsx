@@ -174,14 +174,56 @@ export default function LeadTracker() {
       const tierRaw = await storage.getItem(TIER_KEY);
       if (tierRaw) setTier(tierRaw);
 
+      // Normalize period strings to ISO + collapse duplicates introduced by
+      // an earlier format change (overrides/chargebacks were stored as
+      // M/D/YYYY before, switched to YYYY-MM-DD — re-imports created
+      // duplicates because the dedup key included the raw format).
+      const toIsoPeriod = (s) => {
+        if (!s) return '';
+        const t = String(s).trim();
+        if (/^\d{4}-\d{2}-\d{2}/.test(t)) return t.slice(0, 10);
+        const m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+        if (m) {
+          let yy = m[3];
+          if (yy.length === 2) yy = (Number(yy) > 50 ? '19' : '20') + yy;
+          return `${yy}-${String(m[1]).padStart(2, '0')}-${String(m[2]).padStart(2, '0')}`;
+        }
+        return t;
+      };
+      const normalizeAndDedupe = (rows) => {
+        if (!Array.isArray(rows) || rows.length === 0) return rows || [];
+        const byKey = new Map();
+        for (const r of rows) {
+          const period = toIsoPeriod(r.period);
+          const key = `${r.policyId || r.id}|${period}|${(r.customer || '').toLowerCase()}|${Number(r.amount || 0).toFixed(2)}`;
+          if (!byKey.has(key)) byKey.set(key, { ...r, period });
+        }
+        return Array.from(byKey.values());
+      };
+
       const cbRaw = await storage.getItem(CB_KEY);
-      setChargebacks(cbRaw ? JSON.parse(cbRaw) : []);
+      const cbInitial = cbRaw ? JSON.parse(cbRaw) : [];
+      const cbClean = normalizeAndDedupe(cbInitial);
+      setChargebacks(cbClean);
+      if (cbClean.length !== cbInitial.length || cbClean.some((c, i) => c.period !== cbInitial[i]?.period)) {
+        await storage.setItem(CB_KEY, JSON.stringify(cbClean));
+      }
 
       const ovrRaw = await storage.getItem(OVR_KEY);
-      setOverrides(ovrRaw ? JSON.parse(ovrRaw) : []);
+      const ovrInitial = ovrRaw ? JSON.parse(ovrRaw) : [];
+      const ovrClean = normalizeAndDedupe(ovrInitial);
+      setOverrides(ovrClean);
+      if (ovrClean.length !== ovrInitial.length || ovrClean.some((o, i) => o.period !== ovrInitial[i]?.period)) {
+        await storage.setItem(OVR_KEY, JSON.stringify(ovrClean));
+      }
 
       const oaRaw = await storage.getItem(OWN_ADV_KEY);
-      setOwnAdvances(oaRaw ? JSON.parse(oaRaw) : []);
+      const oaInitial = oaRaw ? JSON.parse(oaRaw) : [];
+      const oaClean = normalizeAndDedupe(oaInitial);
+      setOwnAdvances(oaClean);
+      if (oaClean.length !== oaInitial.length || oaClean.some((o, i) => o.period !== oaInitial[i]?.period)) {
+        await storage.setItem(OWN_ADV_KEY, JSON.stringify(oaClean));
+      }
 
       const amRaw = await storage.getItem(AM_KEY);
       setAdvanceMonthsHistory(amRaw ? JSON.parse(amRaw) : []);

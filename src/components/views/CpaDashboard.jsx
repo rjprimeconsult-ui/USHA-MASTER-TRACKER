@@ -228,13 +228,23 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
         return acc;
       }, {});
 
-    const earnedByProduct = scopedIssued.reduce((acc, l) => {
-      const p = l.mainProduct || '— No main product —';
-      if (!acc[p]) acc[p] = { count: 0, total: 0 };
-      acc[p].count += 1;
-      acc[p].total += l.dealValue || 0;
-      return acc;
-    }, {});
+    // Earned breakdown by product. Source must match scopedOwnEarned so the
+    // breakdown rows reconcile with the tile total.
+    const earnedByProduct = scopedOwnSource === 'statements'
+      ? scopedOwnAdvanceRows.reduce((acc, r) => {
+          const p = r.productDesc || '— Unknown product —';
+          if (!acc[p]) acc[p] = { count: 0, total: 0 };
+          acc[p].count += 1;
+          acc[p].total += Number(r.amount || 0);
+          return acc;
+        }, {})
+      : scopedIssued.reduce((acc, l) => {
+          const p = l.mainProduct || '— No main product —';
+          if (!acc[p]) acc[p] = { count: 0, total: 0 };
+          acc[p].count += 1;
+          acc[p].total += l.dealValue || 0;
+          return acc;
+        }, {});
 
     const incomeByCategory = businessIncome
       .filter(e => inPeriod(e.date))
@@ -255,6 +265,7 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
     return {
       scopedInvestments, scopedIssued, scopedInvested, scopedInvestedLeadAcq,
       scopedOwnEarned, scopedOverrideIncome, scopedOverrideCount, scopedEarned, scopedAutoDealCount,
+      scopedOwnSource, scopedOwnAdvanceRows,
       scopedCpa, scopedRoi, scopedPremiums, scopedNet,
       scopedBusinessExpenses, scopedBusinessExpensesNonInvested, scopedBusinessIncome, scopedTrueNet,
       scopedBaseInvested, scopedPlatform,
@@ -270,6 +281,7 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
   const {
     scopedInvestments, scopedIssued, scopedInvested, scopedInvestedLeadAcq,
     scopedOwnEarned, scopedOverrideIncome, scopedOverrideCount, scopedEarned, scopedAutoDealCount,
+    scopedOwnSource, scopedOwnAdvanceRows,
     scopedCpa, scopedRoi, scopedPremiums, scopedNet,
     scopedBusinessExpenses, scopedBusinessExpensesNonInvested, scopedBusinessIncome, scopedTrueNet,
     scopedBaseInvested, scopedPlatform,
@@ -520,7 +532,9 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
             // Own-sales rows by product
             ...Object.entries(earnedByProduct).map(([prod, { count, total }]) => ({
               label: `Own — ${prod}`,
-              hint: `${count} issued deal${count !== 1 ? 's' : ''}`,
+              hint: scopedOwnSource === 'statements'
+                ? `${count} statement row${count !== 1 ? 's' : ''} (personal advance)`
+                : `${count} issued deal${count !== 1 ? 's' : ''}`,
               amount: total,
             })),
             // Override income (single combined row)
@@ -530,7 +544,9 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
               amount: scopedOverrideIncome,
             }] : []),
           ]}
-          totalLabel={`Total Earned (${scopedAutoDealCount} own deals + ${scopedOverrideCount} overrides)`}
+          totalLabel={scopedOwnSource === 'statements'
+            ? `Total Earned (${scopedOwnAdvanceRows.length} own advance row${scopedOwnAdvanceRows.length !== 1 ? 's' : ''} + ${scopedOverrideCount} override row${scopedOverrideCount !== 1 ? 's' : ''})`
+            : `Total Earned (${scopedAutoDealCount} own deals + ${scopedOverrideCount} overrides)`}
           total={scopedEarned}
         />
       )}
