@@ -64,7 +64,7 @@ export function classifyIncome(description) {
 const FILENAME_HINTS = [
   { pattern: /chase\b/i,                      account: 'Chase' },
   { pattern: /bofa|bank.?of.?america/i,        account: 'Bank of America' },
-  { pattern: /\bamex\b|american.?express/i,    account: 'American Express' },
+  { pattern: /\bamex\b|american.?express|^activity[\s(\d).-]*\.csv$/i, account: 'American Express' },
   { pattern: /capital.?one/i,                  account: 'Capital One' },
   { pattern: /discover/i,                      account: 'Discover' },
   { pattern: /\bciti\b/i,                      account: 'Citi' },
@@ -132,6 +132,45 @@ const HEADER_CATEGORIES = {
   CREDIT:      [/^credit$/i, /^deposit/i, /^payment/i],
   DESCRIPTION: [/description/i, /memo/i, /payee/i, /details/i, /merchant/i, /transaction/i],
 };
+
+// Detect a credit-card export. AMEX/Apple Card/Discover/Capital One credit
+// statements use the OPPOSITE sign convention from bank checking accounts:
+//   Positive amount = charge (purchase) -> expense for the user
+//   Negative amount = payment to card    -> NOT an expense (it's a transfer)
+// We detect via filename hints, header signature ("Extended Details" /
+// "Appears On Your Statement As" are AMEX tell-tales), or a heuristic on the
+// data shape.
+const CREDIT_CARD_FILENAME = /\bamex\b|american.?express|apple.?card|discover|capital.?one|\bcredit.?card\b|\bcc\b|^activity\b/i;
+const AMEX_HEADER_TOKENS = [/extended\s*details/i, /appears\s*on\s*your\s*statement/i, /\breference\b/i];
+
+function looksLikeCreditCard({ filename = '', headerCells = [], rows = [], dateCol = -1, descCol = -1, amtCol = -1 }) {
+  // 1. Filename hint
+  if (CREDIT_CARD_FILENAME.test(String(filename))) return true;
+  // 2. AMEX-style header signature
+  const headerStr = headerCells.map(c => String(c || '')).join(' ');
+  if (AMEX_HEADER_TOKENS.some(p => p.test(headerStr))) return true;
+  // 3. Heuristic: in a credit card export, the vast majority of rows are
+  //    positive (charges) with a few large negatives (payments). In a bank
+  //    checking export the opposite is roughly true, AND there's typically
+  //    a steady stream of incoming deposits. If we see >70% positive rows
+  //    AND descriptions look merchant-y (no "DIRECT DEPOSIT" / "PAYROLL" /
+  //    "ACH CREDIT" markers), call it a credit card.
+  if (amtCol === -1 || rows.length < 5) return false;
+  let pos = 0, neg = 0;
+  let depositMarkers = 0;
+  for (const row of rows) {
+    const v = parseAmount(row?.[amtCol]);
+    if (v == null || v === 0) continue;
+    if (v > 0) pos++; else neg++;
+    if (descCol !== -1) {
+      const d = String(row[descCol] || '');
+      if (/direct\s*deposit|payroll|ach\s*credit|interest\s*paid|wire\s*in/i.test(d)) depositMarkers++;
+    }
+  }
+  const total = pos + neg;
+  if (total < 5) return false;
+  return (pos / total) > 0.7 && depositMarkers === 0;
+}
 
 function categorizeHeader(cell) {
   const s = String(cell || '').trim();
@@ -361,6 +400,15 @@ export async function parseBusinessFile(file) {
     return { format: 'unknown', expenses: [], income: [], detectedAccount: null };
   }
 
+  // Credit cards flip the sign convention vs bank checking.
+  const dataRows = rows.slice(headerRowIdx + 1);
+  const isCreditCard = looksLikeCreditCard({
+    filename: file.name || '',
+    headerCells: rows[headerRowIdx] || [],
+    rows: dataRows,
+    dateCol, descCol, amtCol,
+  });
+
   const expenses = [];
   const income = [];
   const sampleDescriptions = [];
@@ -384,6 +432,11 @@ export async function parseBusinessFile(file) {
       else if (credit && credit !== 0) amt =  Math.abs(credit);
     }
     if (amt == null || amt === 0) continue;
+    // Flip sign for credit-card statements: charges (positive) become
+    // expenses (negative in our internal convention), payments (negative)
+    // become "income" (which we'll route to OTHER_INCOME — really a transfer
+    // from checking, but we surface them so the user can verify).
+    if (isCreditCard) amt = -amt;
 
     const paymentMethod = detectPaymentMethod(desc);
 
@@ -423,18 +476,31 @@ export async function parseBusinessFile(file) {
   // Detect account from filename + a sample of descriptions
   const detectedAccount = detectAccount(file.name || '', sampleDescriptions);
 
-  return { format: 'bank', expenses, income, detectedAccount };
+  return { format: 'bank', expenses, income, detectedAccount, isCreditCard };
 }
 
 /**
- * Dedup against existing entries. Match key = date|category|amount|vendor.
+ * Dedup against existing entries.
+ *
+ * Match key = date | amount (2dp) | normalized vendor.
+ *
+ * We intentionally exclude `category` from the key — the user may
+ * re-categorize an entry after import, or our auto-classifier may improve
+ * between imports, and a transaction that's the same date+amount+vendor is
+ * still the same transaction regardless. Vendor is normalized (trimmed,
+ * lowercased, collapsed whitespace) so trivial format differences don't
+ * cause false-fresh entries.
  */
+function vendorKeyFor(s) {
+  return String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
 export function dedupEntries(newEntries, existingEntries, vendorKey = 'vendor') {
-  const seen = new Set(existingEntries.map(e => `${e.date}|${e.category}|${Number(e.amount)}|${e[vendorKey] || ''}`));
+  const keyOf = (e) => `${e.date}|${Number(e.amount || 0).toFixed(2)}|${vendorKeyFor(e[vendorKey])}`;
+  const seen = new Set(existingEntries.map(keyOf));
   const fresh = [];
   const duplicate = [];
   for (const e of newEntries) {
-    const k = `${e.date}|${e.category}|${Number(e.amount)}|${e[vendorKey] || ''}`;
+    const k = keyOf(e);
     if (seen.has(k)) duplicate.push(e);
     else { fresh.push(e); seen.add(k); }
   }
