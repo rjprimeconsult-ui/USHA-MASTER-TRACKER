@@ -817,6 +817,7 @@ export default function LeadTracker() {
             businessExpenses={businessExpenses}
             businessIncome={businessIncome}
             chargebacks={chargebacks}
+            overrides={overrides}
             onDeleteChargeback={(id) => setChargebacks(prev => prev.filter(c => c.id !== id))}
             onEditInvestment={editInvestment}
             onDeleteInvestment={deleteInvestment}

@@ -34,7 +34,7 @@ const Kpi = memo(({ label, value, numeric, isCurrency = true, isPercent = false,
 ));
 Kpi.displayName = 'Kpi';
 
-function CpaDashboard({ leads, investments, activities, platformExpenses = [], businessExpenses = [], businessIncome = [], chargebacks = [], onDeleteChargeback, onEditInvestment, onDeleteInvestment, onDeleteAutoWeek, onNewInvestment, onNewActivity, onEditActivity, onDeleteActivity }) {
+function CpaDashboard({ leads, investments, activities, platformExpenses = [], businessExpenses = [], businessIncome = [], chargebacks = [], overrides = [], onDeleteChargeback, onEditInvestment, onDeleteInvestment, onDeleteAutoWeek, onNewInvestment, onNewActivity, onEditActivity, onDeleteActivity }) {
   const [showHowTo, setShowHowTo] = useState(false);
   const thisWeek = getWeekStart(new Date().toISOString().slice(0, 10));
 
@@ -115,7 +115,20 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
     // "Net" derivation and any place we explicitly want to separate
     // lead-spend from broader per-deal costs.
     const scopedInvestedLeadAcq = scopedBaseInvested + scopedPlatform;
-    const scopedEarned          = scopedIssued.reduce((s, l) => s + (l.dealValue || 0), 0);
+
+    // Own-sales commission income (sum of dealValue across issued leads scoped to period)
+    const scopedOwnEarned       = scopedIssued.reduce((s, l) => s + (l.dealValue || 0), 0);
+
+    // Override commission income — money the agent earns from sub-agents' deals.
+    // Each override entry has { amount, period (statement period end date), ... }.
+    // We scope by the override's period date, not the policy date.
+    const scopedOverrideIncome = overrides
+      .filter(o => inPeriod(o.period))
+      .reduce((s, o) => s + Number(o.amount || 0), 0);
+    const scopedOverrideCount = overrides.filter(o => inPeriod(o.period)).length;
+
+    // Total commission income (own + override) = what the agent's "Earned" really is.
+    const scopedEarned          = scopedOwnEarned + scopedOverrideIncome;
     const scopedAutoDealCount   = scopedIssued.length;
     const scopedPremiums = scopedIssued.reduce((s, l) => {
       const addon = (l.products || []).reduce((a, p) => a + (p.premium || 0), 0);
@@ -213,7 +226,8 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
       }, {});
 
     return {
-      scopedInvestments, scopedIssued, scopedInvested, scopedInvestedLeadAcq, scopedEarned, scopedAutoDealCount,
+      scopedInvestments, scopedIssued, scopedInvested, scopedInvestedLeadAcq,
+      scopedOwnEarned, scopedOverrideIncome, scopedOverrideCount, scopedEarned, scopedAutoDealCount,
       scopedCpa, scopedRoi, scopedPremiums, scopedNet,
       scopedBusinessExpenses, scopedBusinessExpensesNonInvested, scopedBusinessIncome, scopedTrueNet,
       scopedBaseInvested, scopedPlatform,
@@ -223,11 +237,12 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
       earnedByProduct, incomeByCategory, expensesByCategory,
       inKpiPeriod: inPeriod,
     };
-  }, [leads, investments, platformExpenses, businessExpenses, businessIncome, kpiPeriod, kpiWeekStart]);
+  }, [leads, investments, platformExpenses, businessExpenses, businessIncome, overrides, kpiPeriod, kpiWeekStart]);
 
   // Destructure once so the rest of the component reads naturally
   const {
-    scopedInvestments, scopedIssued, scopedInvested, scopedInvestedLeadAcq, scopedEarned, scopedAutoDealCount,
+    scopedInvestments, scopedIssued, scopedInvested, scopedInvestedLeadAcq,
+    scopedOwnEarned, scopedOverrideIncome, scopedOverrideCount, scopedEarned, scopedAutoDealCount,
     scopedCpa, scopedRoi, scopedPremiums, scopedNet,
     scopedBusinessExpenses, scopedBusinessExpensesNonInvested, scopedBusinessIncome, scopedTrueNet,
     scopedBaseInvested, scopedPlatform,
@@ -383,7 +398,9 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
         <StaggerItem>
           <Kpi
             label={`Earned (${kpiLabel})`} numeric={scopedEarned}
-            sub={scopedAutoDealCount > 0 ? `${scopedAutoDealCount} issued deal(s)` : null}
+            sub={scopedOverrideIncome > 0
+              ? `${fmt(scopedOwnEarned)} own + ${fmt(scopedOverrideIncome)} overrides`
+              : (scopedAutoDealCount > 0 ? `${scopedAutoDealCount} issued deal(s)` : null)}
             grad="from-emerald-500 to-green-500" Icon={TrendingUp}
             onClick={() => toggleBreakdown('earned')}
             active={openBreakdown === 'earned'}
@@ -468,16 +485,25 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
       {openBreakdown === 'earned' && (
         <BreakdownPanel
           title={`Earned Breakdown (${kpiLabel})`}
-          subtitle="Sum of dealValue across Issued leads, grouped by main product"
+          subtitle="Own-sales commissions + override income from sub-agents"
           theme="emerald"
           Icon={TrendingUp}
           onClose={closeBreakdown}
-          rows={Object.entries(earnedByProduct).map(([prod, { count, total }]) => ({
-            label: prod,
-            hint: `${count} issued deal${count !== 1 ? 's' : ''}`,
-            amount: total,
-          }))}
-          totalLabel={`Total Earned (${scopedAutoDealCount} deals)`}
+          rows={[
+            // Own-sales rows by product
+            ...Object.entries(earnedByProduct).map(([prod, { count, total }]) => ({
+              label: `Own — ${prod}`,
+              hint: `${count} issued deal${count !== 1 ? 's' : ''}`,
+              amount: total,
+            })),
+            // Override income (single combined row)
+            ...(scopedOverrideIncome > 0 ? [{
+              label: 'Override Income',
+              hint: `${scopedOverrideCount} override row${scopedOverrideCount !== 1 ? 's' : ''} from sub-agents' deals (auto-imported from weekly statements)`,
+              amount: scopedOverrideIncome,
+            }] : []),
+          ]}
+          totalLabel={`Total Earned (${scopedAutoDealCount} own deals + ${scopedOverrideCount} overrides)`}
           total={scopedEarned}
         />
       )}
