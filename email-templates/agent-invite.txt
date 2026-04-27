@@ -1,0 +1,24 @@
+Subject: Quick favor — try out PRIM (built it for USHA agents)
+
+Hey [name] — quick favor
+
+Built a CPA tracker specifically for USHA agents. It tracks leads,
+commissions, expenses, association payouts, and gives you the real
+numbers (true CPA, books P&L) without spreadsheets.
+
+It's free for now, I just need real users to find what's broken or
+missing.
+
+👉 https://primtracker.com — sign up with any email
+
+THINGS TO TRY:
+- Log a few leads
+- Drop a weekly statement PDF
+- Drop your bank statement CSV
+- Attach a receipt or two
+- Whatever feels useful
+
+Text me when you have 10 minutes of feedback or hit any weirdness.
+
+— Juan
+primtracker.com
