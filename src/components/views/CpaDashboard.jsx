@@ -97,14 +97,30 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
   // For an agent with 500+ leads this dashboard becomes the slowest screen if
   // these aren't memoized.
   const kpiData = useMemo(() => {
-    const inPeriod = (isoDate) => {
-      if (!isoDate) return false;
+    // Normalize to YYYY-MM-DD. Some legacy entries (chargebacks/overrides
+    // imported before the parser-side fix) store dates in M/D/YYYY format —
+    // tolerate them here so we don't have to run a data migration.
+    const normIso = (s) => {
+      if (!s) return '';
+      const t = String(s).trim();
+      if (/^\d{4}-\d{2}-\d{2}/.test(t)) return t.slice(0, 10);
+      const m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+      if (m) {
+        let yy = m[3];
+        if (yy.length === 2) yy = (Number(yy) > 50 ? '19' : '20') + yy;
+        return `${yy}-${String(m[1]).padStart(2, '0')}-${String(m[2]).padStart(2, '0')}`;
+      }
+      return '';
+    };
+    const inPeriod = (rawDate) => {
+      const iso = normIso(rawDate);
+      if (!iso) return false;
       if (kpiPeriod === 'all') return true;
       if (kpiPeriod === 'ytd') {
-        const d = new Date(isoDate + 'T00:00:00');
+        const d = new Date(iso + 'T00:00:00');
         return d.getFullYear() === new Date().getFullYear();
       }
-      return getWeekStart(isoDate) === kpiWeekStart;
+      return getWeekStart(iso) === kpiWeekStart;
     };
 
     const scopedInvestments = investments.filter(i => inPeriod(i.weekStart));

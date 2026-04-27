@@ -306,8 +306,22 @@ export default function LeadTracker() {
     // 2. Chargebacks — dedup by (policyId + period) so the same policy can
     //    appear in multiple weeks' statements (common when reserve can't
     //    absorb the full pullback in one week).
-    const fallbackPeriod = plan.header?.periodEnd || plan.header?.periodStart || today();
-    const rowPeriod = (r) => r._statementPeriod || fallbackPeriod;
+    // Normalize PDF dates ("M/D/YYYY") to ISO ("YYYY-MM-DD") so downstream
+    // KPI filters (which expect ISO) work correctly.
+    const toIsoDate = (s) => {
+      if (!s) return today();
+      const t = String(s).trim();
+      if (/^\d{4}-\d{2}-\d{2}/.test(t)) return t.slice(0, 10);
+      const m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+      if (m) {
+        let yy = m[3];
+        if (yy.length === 2) yy = (Number(yy) > 50 ? '19' : '20') + yy;
+        return `${yy}-${String(m[1]).padStart(2, '0')}-${String(m[2]).padStart(2, '0')}`;
+      }
+      return today();
+    };
+    const fallbackPeriod = toIsoDate(plan.header?.periodEnd || plan.header?.periodStart || today());
+    const rowPeriod = (r) => toIsoDate(r._statementPeriod || fallbackPeriod);
     const cbRows = [
       ...(plan.chargebacksMatched?.flatMap(m => m.rows) || []),
       ...(plan.chargebacksUnmatched?.flatMap(u => u.rows) || []),
