@@ -1,0 +1,884 @@
+'use client';
+import { useMemo, useState, memo } from 'react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LabelList } from 'recharts';
+import { DollarSign, TrendingUp, Percent, Target, Package, Plus, Edit2, Trash2, Phone, Calendar, Presentation, Trophy, Info, Sparkles, ChevronDown, ChevronUp, Wallet } from 'lucide-react';
+import { fmt, fmt2, getWeekStart, weekAgo, weekLabel, weekRangeLabel, usDate } from '@/lib/utils';
+import { productPremium, UNDERWRITTEN_PRODUCTS, GI_PRODUCTS, TRUE_CPA_BOOK_CATEGORIES } from '@/lib/constants';
+import TakenRateCalculator from '../TakenRateCalculator';
+import ChargebacksPanel from '../ChargebacksPanel';
+import { TiltCard, CountUp, FadeIn, Stagger, StaggerItem, Chart3DCard, fireConfetti } from '../motion/MotionPrimitives';
+
+const Kpi = memo(({ label, value, numeric, isCurrency = true, isPercent = false, sub, grad, Icon, onClick, active }) => (
+  <TiltCard
+    onClick={onClick}
+    className={`bg-white rounded-xl p-3 border shine-on-hover glow-ring transition-shadow ${onClick ? 'cursor-pointer' : 'cursor-default'} ${active ? 'border-indigo-500 ring-2 ring-indigo-200' : 'border-slate-200'}`}
+  >
+    <div className="flex items-center justify-between mb-2">
+      <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${grad} flex items-center justify-center text-white shadow-md`} style={{ transform: 'translateZ(20px)' }}>
+        <Icon size={16} />
+      </div>
+    </div>
+    <div className="text-xs text-slate-500">{label}</div>
+    <div className="text-xl font-bold text-slate-900" style={{ transform: 'translateZ(15px)' }}>
+      {numeric != null
+        ? <CountUp
+            value={numeric}
+            format={(v) => isPercent
+              ? `${v.toFixed(1)}%`
+              : (isCurrency ? '$' + Math.round(v).toLocaleString() : Math.round(v).toLocaleString())}
+          />
+        : value}
+    </div>
+    {sub && <div className="text-xs text-slate-500 mt-0.5">{sub}</div>}
+  </TiltCard>
+));
+Kpi.displayName = 'Kpi';
+
+function CpaDashboard({ leads, investments, activities, platformExpenses = [], businessExpenses = [], businessIncome = [], chargebacks = [], onDeleteChargeback, onEditInvestment, onDeleteInvestment, onDeleteAutoWeek, onNewInvestment, onNewActivity, onEditActivity, onDeleteActivity }) {
+  const [showHowTo, setShowHowTo] = useState(false);
+  const thisWeek = getWeekStart(new Date().toISOString().slice(0, 10));
+
+  // Period selector — scopes the 6 KPI cards (other sections keep their own scope)
+  const [kpiPeriod, setKpiPeriod] = useState('week'); // 'week' | 'ytd' | 'all'
+  const [kpiWeekStart, setKpiWeekStart] = useState(thisWeek); // ISO Friday date
+
+  const closedByWeek = useMemo(() => {
+    const m = {};
+    leads.filter(l => l.stage === 'Issued' && l.closedDate).forEach(l => {
+      const w = getWeekStart(l.closedDate);
+      (m[w] ||= []).push(l);
+    });
+    return m;
+  }, [leads]);
+
+  // Platform expenses (TextDrip / Ringy / VanillaSoft credits) bucketed by the
+  // ISO Friday-week start of their date — adds to Invested in CPA math.
+  const platformByWeek = useMemo(() => {
+    const m = {};
+    platformExpenses.forEach(e => {
+      if (!e?.date) return;
+      const w = getWeekStart(e.date);
+      m[w] = (m[w] || 0) + Number(e.amount || 0);
+    });
+    return m;
+  }, [platformExpenses]);
+
+  // Earned is driven SOLELY by Issued-lead commissions (the auto-sync).
+  // Manual advances/paid in the investment log are tracked for record-keeping
+  // but do NOT feed Earned/ROI/Net — otherwise they double-count the same money.
+  const weekly = useMemo(() => {
+    const weeks = [];
+    for (let i = 7; i >= 0; i--) {
+      const w = weekAgo(i);
+      const inv = investments.find(x => x.weekStart === w);
+      const baseInvested = inv ? (inv.leadSpend || 0) + (inv.crmWeekly || 0) + (inv.crmDaily || 0) : 0;
+      const platformInvested = platformByWeek[w] || 0;
+      const invested = baseInvested + platformInvested;
+      const manualEarned = inv ? (inv.advances || 0) + (inv.paid || 0) : 0;
+      const autoCloses = closedByWeek[w] || [];
+      const autoCommission = autoCloses.reduce((s, l) => s + (l.dealValue || 0), 0);
+      const earned = autoCommission; // single source of truth
+      weeks.push({ week: w, label: weekLabel(w), invested, earned, auto: autoCommission, autoDeals: autoCloses.length, manualEarned, platformInvested });
+    }
+    return weeks;
+  }, [investments, closedByWeek]);
+
+  const thisWeekRow = weekly[weekly.length - 1];
+
+  // --- KPI scope helpers: return true if a date falls in the selected period ---
+  const kpiLabel = useMemo(() => {
+    if (kpiPeriod === 'all') return 'All time';
+    if (kpiPeriod === 'ytd') return `YTD ${new Date().getFullYear()}`;
+    return `Week of ${weekRangeLabel(kpiWeekStart)}`;
+  }, [kpiPeriod, kpiWeekStart]);
+
+  // All KPI math memoized in one block — was running on every parent re-render
+  // (modal open/close, toast appear/disappear, ANY state change in LeadTracker).
+  // For an agent with 500+ leads this dashboard becomes the slowest screen if
+  // these aren't memoized.
+  const kpiData = useMemo(() => {
+    const inPeriod = (isoDate) => {
+      if (!isoDate) return false;
+      if (kpiPeriod === 'all') return true;
+      if (kpiPeriod === 'ytd') {
+        const d = new Date(isoDate + 'T00:00:00');
+        return d.getFullYear() === new Date().getFullYear();
+      }
+      return getWeekStart(isoDate) === kpiWeekStart;
+    };
+
+    const scopedInvestments = investments.filter(i => inPeriod(i.weekStart));
+    const scopedIssued      = leads.filter(l => l.stage === 'Issued' && inPeriod(l.closedDate));
+    const scopedPlatform    = platformExpenses.filter(e => inPeriod(e.date)).reduce((s, e) => s + Number(e.amount || 0), 0);
+    const scopedBaseInvested = scopedInvestments.reduce((s, i) => s + (i.leadSpend || 0) + (i.crmWeekly || 0) + (i.crmDaily || 0), 0);
+    // Lead-acquisition slice ONLY (Weekly + Platforms). Used for the legacy
+    // "Net" derivation and any place we explicitly want to separate
+    // lead-spend from broader per-deal costs.
+    const scopedInvestedLeadAcq = scopedBaseInvested + scopedPlatform;
+    const scopedEarned          = scopedIssued.reduce((s, l) => s + (l.dealValue || 0), 0);
+    const scopedAutoDealCount   = scopedIssued.length;
+    const scopedPremiums = scopedIssued.reduce((s, l) => {
+      const addon = (l.products || []).reduce((a, p) => a + (p.premium || 0), 0);
+      return s + (l.mainProductPremium || 0) + productPremium(l.associationPlan) + addon;
+    }, 0);
+    const scopedNet = scopedEarned - scopedInvestedLeadAcq;
+    const scopedBusinessExpenses = businessExpenses.filter(e => inPeriod(e.date)).reduce((s, e) => s + Number(e.amount || 0), 0);
+    const scopedBusinessIncome   = businessIncome.filter(e => inPeriod(e.date)).reduce((s, e) => s + Number(e.amount || 0), 0);
+
+    // True CPA per agent direction:
+    //   Numerator = Weekly Investment (leadSpend + crmWeekly + crmDaily)
+    //             + Platform Expenses
+    //             + Books LEAD_INVESTMENT
+    //             + Books SOFTWARE
+    //   Denominator = Issued deals
+    const scopedBookLeadInvestment = businessExpenses
+      .filter(e => inPeriod(e.date) && e.category === 'LEAD_INVESTMENT')
+      .reduce((s, e) => s + Number(e.amount || 0), 0);
+
+    // De-dup: Books SOFTWARE entries whose vendor matches a Platforms-tracked
+    // tool (TextDrip / Ringy / VanillaSoft) are double-counts of what's
+    // already in scopedPlatform. Strip them from True CPA but track the
+    // excluded total for transparency in the breakdown.
+    const PLATFORM_VENDOR_RE = /textdrip|text\s*drip|\bringy\b|vanilla\s*soft|vanillasoft/i;
+    const softwareEntries = businessExpenses.filter(e => inPeriod(e.date) && e.category === 'SOFTWARE');
+    const scopedBookSoftware = softwareEntries
+      .filter(e => !PLATFORM_VENDOR_RE.test(e.vendor || ''))
+      .reduce((s, e) => s + Number(e.amount || 0), 0);
+    const scopedBookSoftwarePlatformOverlap = softwareEntries
+      .filter(e => PLATFORM_VENDOR_RE.test(e.vendor || ''))
+      .reduce((s, e) => s + Number(e.amount || 0), 0);
+
+    // INVESTED (full per-deal cost basis) = Weekly + Platforms + Books LI + Books SW.
+    // This is the same number as the True CPA denominator, so all per-deal
+    // metrics (Invested KPI / True CPA / ROI) tell the same cost story.
+    const scopedTrueCpaBooks = scopedBookLeadInvestment + scopedBookSoftware;
+    const scopedInvested = scopedInvestedLeadAcq + scopedTrueCpaBooks;
+    const scopedTrueCpaBase = scopedInvested; // alias kept for breakdown panel
+    const scopedTrueCpa = scopedAutoDealCount > 0 ? scopedInvested / scopedAutoDealCount : 0;
+    const scopedCpa = scopedAutoDealCount > 0 ? scopedInvested / scopedAutoDealCount : 0;
+
+    // ROI uses the same denominator so all per-deal metrics agree:
+    //   ROI = (Earned − Invested) ÷ Invested × 100
+    const scopedRoi = scopedInvested > 0
+      ? ((scopedEarned - scopedInvested) / scopedInvested) * 100
+      : 0;
+
+    // True Net "out": Invested already contains Books LI + SW, so we must
+    // exclude those categories from BusinessExpenses to avoid double-count.
+    // Platform-overlap SW is also excluded (it's an artifact of bank statement
+    // imports duplicating Platforms-tab entries).
+    const scopedBusinessExpensesNonInvested = businessExpenses
+      .filter(e => inPeriod(e.date) && e.category !== 'LEAD_INVESTMENT' && e.category !== 'SOFTWARE')
+      .reduce((s, e) => s + Number(e.amount || 0), 0);
+    const scopedTrueNet = (scopedEarned + scopedBusinessIncome) - (scopedInvested + scopedBusinessExpensesNonInvested);
+
+    // Detailed breakdowns for the Invested / Earned / Revenue / TrueNet / ROI panels
+    const investmentBreakdown = scopedInvestments.reduce((acc, i) => {
+      acc.leadSpend += i.leadSpend || 0;
+      acc.crmWeekly += i.crmWeekly || 0;
+      acc.crmDaily  += i.crmDaily  || 0;
+      return acc;
+    }, { leadSpend: 0, crmWeekly: 0, crmDaily: 0 });
+
+    const platformBreakdown = platformExpenses
+      .filter(e => inPeriod(e.date))
+      .reduce((acc, e) => {
+        const p = e.platform || 'OTHER';
+        acc[p] = (acc[p] || 0) + Number(e.amount || 0);
+        return acc;
+      }, {});
+
+    const earnedByProduct = scopedIssued.reduce((acc, l) => {
+      const p = l.mainProduct || '— No main product —';
+      if (!acc[p]) acc[p] = { count: 0, total: 0 };
+      acc[p].count += 1;
+      acc[p].total += l.dealValue || 0;
+      return acc;
+    }, {});
+
+    const incomeByCategory = businessIncome
+      .filter(e => inPeriod(e.date))
+      .reduce((acc, e) => {
+        const c = e.category || 'OTHER_INCOME';
+        acc[c] = (acc[c] || 0) + Number(e.amount || 0);
+        return acc;
+      }, {});
+
+    const expensesByCategory = businessExpenses
+      .filter(e => inPeriod(e.date))
+      .reduce((acc, e) => {
+        const c = e.category || 'OTHER_EXPENSE';
+        acc[c] = (acc[c] || 0) + Number(e.amount || 0);
+        return acc;
+      }, {});
+
+    return {
+      scopedInvestments, scopedIssued, scopedInvested, scopedInvestedLeadAcq, scopedEarned, scopedAutoDealCount,
+      scopedCpa, scopedRoi, scopedPremiums, scopedNet,
+      scopedBusinessExpenses, scopedBusinessExpensesNonInvested, scopedBusinessIncome, scopedTrueNet,
+      scopedBaseInvested, scopedPlatform,
+      scopedBookLeadInvestment, scopedBookSoftware, scopedBookSoftwarePlatformOverlap, scopedTrueCpaBooks,
+      scopedTrueCpaBase, scopedTrueCpa,
+      investmentBreakdown, platformBreakdown,
+      earnedByProduct, incomeByCategory, expensesByCategory,
+      inKpiPeriod: inPeriod,
+    };
+  }, [leads, investments, platformExpenses, businessExpenses, businessIncome, kpiPeriod, kpiWeekStart]);
+
+  // Destructure once so the rest of the component reads naturally
+  const {
+    scopedInvestments, scopedIssued, scopedInvested, scopedInvestedLeadAcq, scopedEarned, scopedAutoDealCount,
+    scopedCpa, scopedRoi, scopedPremiums, scopedNet,
+    scopedBusinessExpenses, scopedBusinessExpensesNonInvested, scopedBusinessIncome, scopedTrueNet,
+    scopedBaseInvested, scopedPlatform,
+    scopedBookLeadInvestment, scopedBookSoftware, scopedBookSoftwarePlatformOverlap, scopedTrueCpaBooks,
+    scopedTrueCpaBase, scopedTrueCpa,
+    investmentBreakdown, platformBreakdown,
+    earnedByProduct, incomeByCategory, expensesByCategory,
+    inKpiPeriod,
+  } = kpiData;
+
+  // Single state — only one breakdown panel open at a time
+  const [openBreakdown, setOpenBreakdown] = useState(null); // 'invested' | 'earned' | 'revenue' | 'trueNet' | 'roi' | 'cpa' | 'trueCpa' | null
+  const toggleBreakdown = (key) => setOpenBreakdown(prev => prev === key ? null : key);
+  const closeBreakdown  = () => setOpenBreakdown(null);
+
+  const activityTotalsAll = useMemo(() => activities.reduce((a, x) => ({
+    dials: a.dials + (x.dials || 0),
+    appts: a.appts + (x.appointments || 0),
+    pitches: a.pitches + (x.pitches || 0),
+    closes: a.closes + (x.closes || 0),
+  }), { dials: 0, appts: 0, pitches: 0, closes: 0 }), [activities]);
+
+  const sortedActivities = useMemo(
+    () => [...activities].sort((a, b) => b.date.localeCompare(a.date)),
+    [activities]
+  );
+
+  const activityTotals = activityTotalsAll;
+  const funnelMax = Math.max(activityTotals.dials, 1);
+  const funnelRow = (label, value, Icon, color) => (
+    <div className="flex items-center gap-3">
+      <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${color}`}>
+        <Icon size={14} />
+      </div>
+      <span className="text-sm w-24 text-slate-700">{label}</span>
+      <div className="flex-1 h-5 bg-slate-100 rounded">
+        <div className="h-full bg-indigo-500 rounded" style={{ width: `${(value / funnelMax) * 100}%` }} />
+      </div>
+      <span className="w-12 text-right text-sm font-medium text-slate-900">{value}</span>
+    </div>
+  );
+
+  const allWeeks = useMemo(() => {
+    const merged = {};
+    investments.forEach(i => { merged[i.weekStart] = { ...i, autoDeals: 0, autoCommission: 0, platformSpend: 0 }; });
+    Object.entries(closedByWeek).forEach(([w, leadsArr]) => {
+      merged[w] ||= { id: null, weekStart: w, leadSpend: 0, crmWeekly: 0, crmDaily: 0, advances: 0, paid: 0, notes: '', autoDeals: 0, autoCommission: 0, platformSpend: 0 };
+      merged[w].autoDeals = leadsArr.length;
+      merged[w].autoCommission = leadsArr.reduce((s, l) => s + (l.dealValue || 0), 0);
+    });
+    // Merge in any week that has platform spend but no investment row + no closed deals
+    Object.entries(platformByWeek).forEach(([w, total]) => {
+      merged[w] ||= { id: null, weekStart: w, leadSpend: 0, crmWeekly: 0, crmDaily: 0, advances: 0, paid: 0, notes: '', autoDeals: 0, autoCommission: 0, platformSpend: 0 };
+      merged[w].platformSpend = total;
+    });
+    return Object.values(merged).sort((a, b) => b.weekStart.localeCompare(a.weekStart));
+  }, [investments, closedByWeek, platformByWeek]);
+
+  // Header summary
+  const thisWeekCloseCount = (closedByWeek[thisWeek] || []).length;
+  const thisWeekCloseSum = (closedByWeek[thisWeek] || []).reduce((s, l) => s + (l.dealValue || 0), 0);
+
+  return (
+    <div className="space-y-5">
+      {/* Page Header */}
+      <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">CPA Dashboard</h1>
+          <p className="text-sm text-slate-500 mt-0.5">
+            Week of {weekRangeLabel(thisWeek)}
+            {thisWeekCloseCount > 0 && (
+              <> · <span className="text-slate-700 font-medium">{thisWeekCloseCount} lead{thisWeekCloseCount !== 1 ? 's' : ''} closed worth {fmt(thisWeekCloseSum)}</span></>
+            )}
+          </p>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          <button
+            onClick={() => setShowHowTo(v => !v)}
+            className="border border-slate-200 bg-white rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-1.5"
+          >
+            <Info size={14} /> How to use {showHowTo ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
+          <button
+            onClick={onNewActivity}
+            className="border border-slate-200 bg-white rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-1.5"
+          >
+            <Plus size={14} /> Log Activity
+          </button>
+          <button
+            onClick={onNewInvestment}
+            className="bg-indigo-600 text-white rounded-lg px-3 py-2 text-sm font-medium hover:bg-indigo-700 flex items-center gap-1.5"
+          >
+            <Plus size={14} /> Log Investment
+          </button>
+        </div>
+      </div>
+
+      {/* How to use */}
+      {showHowTo && (
+        <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-3 text-indigo-900 font-semibold text-sm">
+            <Sparkles size={14} /> How to use this dashboard
+          </div>
+          <ol className="space-y-2 text-sm text-slate-700">
+            <li><span className="font-semibold text-indigo-700">1. Start fresh:</span> click the gear icon in the top-right to clear demo data before entering your real numbers.</li>
+            <li><span className="font-semibold text-indigo-700">2. Every end of day:</span> Log Activity — dials, appointments, pitches, closes. Works for any date, past or present.</li>
+            <li><span className="font-semibold text-indigo-700">3. Every Friday:</span> Log Investment. Weeks run Fri → Thu. Pick any date with the calendar and the app auto-maps to that Friday.</li>
+            <li><span className="font-semibold text-indigo-700">4. Backtrack your history:</span> enter any month/year using the date pickers — plug in Jan–Dec in any order.</li>
+            <li><span className="font-semibold text-indigo-700">5. Only Issued deals pay:</span> a deal starts as &ldquo;Pending&rdquo; after close. Once underwriting approves it, move it to &ldquo;Issued&rdquo; and it flows into your Earned / ROI / Closed Deals automatically.</li>
+          </ol>
+        </div>
+      )}
+
+      {/* KPI period selector */}
+      <div className="bg-white rounded-xl border border-slate-200 p-3 flex flex-wrap items-center gap-3">
+        <div className="text-xs font-bold text-slate-500 tracking-wider">KPI PERIOD</div>
+        <div className="flex border border-slate-200 rounded-lg overflow-hidden text-sm">
+          <button onClick={() => setKpiPeriod('week')} className={`px-3 py-1.5 font-medium ${kpiPeriod === 'week' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>Week</button>
+          <button onClick={() => setKpiPeriod('ytd')} className={`px-3 py-1.5 font-medium ${kpiPeriod === 'ytd' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>YTD</button>
+          <button onClick={() => setKpiPeriod('all')} className={`px-3 py-1.5 font-medium ${kpiPeriod === 'all' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>All time</button>
+        </div>
+        {kpiPeriod === 'week' && (
+          <>
+            <input
+              type="date"
+              value={kpiWeekStart}
+              onChange={e => e.target.value && setKpiWeekStart(getWeekStart(e.target.value))}
+              className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm"
+              title="Pick any date; it snaps to the Fri-Thu week it belongs to."
+            />
+            <button
+              onClick={() => setKpiWeekStart(thisWeek)}
+              className="text-xs text-indigo-600 hover:underline"
+              disabled={kpiWeekStart === thisWeek}
+            >
+              Reset to current week
+            </button>
+          </>
+        )}
+        <span className="ml-auto text-xs text-slate-500">Showing: <b className="text-slate-700">{kpiLabel}</b></span>
+      </div>
+
+      <Stagger className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <StaggerItem>
+          <Kpi
+            label={`Invested (${kpiLabel})`} numeric={scopedInvested}
+            sub={openBreakdown === 'invested' ? 'click again to hide' : 'click for breakdown'}
+            grad="from-red-500 to-orange-500" Icon={DollarSign}
+            onClick={() => toggleBreakdown('invested')}
+            active={openBreakdown === 'invested'}
+          />
+        </StaggerItem>
+        <StaggerItem>
+          <Kpi
+            label={`Earned (${kpiLabel})`} numeric={scopedEarned}
+            sub={scopedAutoDealCount > 0 ? `${scopedAutoDealCount} issued deal(s)` : null}
+            grad="from-emerald-500 to-green-500" Icon={TrendingUp}
+            onClick={() => toggleBreakdown('earned')}
+            active={openBreakdown === 'earned'}
+          />
+        </StaggerItem>
+        <StaggerItem>
+          <Kpi
+            label={`Total Revenue (${kpiLabel})`}
+            numeric={scopedEarned + scopedBusinessIncome}
+            sub={scopedBusinessIncome > 0 ? `${fmt(scopedEarned)} comm + ${fmt(scopedBusinessIncome)} books` : 'commissions only'}
+            grad="from-emerald-500 to-cyan-500" Icon={TrendingUp}
+            onClick={() => toggleBreakdown('revenue')}
+            active={openBreakdown === 'revenue'}
+          />
+        </StaggerItem>
+        <StaggerItem>
+          <Kpi
+            label={`True Net (${kpiLabel})`}
+            numeric={scopedTrueNet}
+            sub={(() => {
+              const totalIn  = scopedEarned + scopedBusinessIncome;
+              const totalOut = scopedInvested + scopedBusinessExpensesNonInvested;
+              if (totalIn === 0 && totalOut === 0) return 'add Books entries';
+              return `${fmt(totalIn)} in − ${fmt(totalOut)} out`;
+            })()}
+            grad={scopedTrueNet >= 0 ? 'from-emerald-600 to-cyan-500' : 'from-rose-600 to-red-500'}
+            Icon={Wallet}
+            onClick={() => toggleBreakdown('trueNet')}
+            active={openBreakdown === 'trueNet'}
+          />
+        </StaggerItem>
+        <StaggerItem>
+          <Kpi
+            label={`ROI (${kpiLabel})`} numeric={scopedRoi} isCurrency={false} isPercent={true}
+            sub={openBreakdown === 'roi' ? 'click again to hide' : 'click for breakdown'}
+            grad="from-indigo-500 to-blue-500" Icon={Percent}
+            onClick={() => toggleBreakdown('roi')}
+            active={openBreakdown === 'roi'}
+          />
+        </StaggerItem>
+        <StaggerItem>
+          <Kpi
+            label={`True CPA (${kpiLabel})`} numeric={scopedTrueCpa}
+            sub={openBreakdown === 'trueCpa' ? 'click again to hide' : 'click for breakdown'}
+            grad="from-fuchsia-500 to-purple-600" Icon={Target}
+            onClick={() => toggleBreakdown('trueCpa')}
+            active={openBreakdown === 'trueCpa'}
+          />
+        </StaggerItem>
+      </Stagger>
+
+      {/* ---------- KPI breakdown panels ---------- */}
+      {/* Invested */}
+      {openBreakdown === 'invested' && (
+        <BreakdownPanel
+          title={`Invested Breakdown (${kpiLabel})`}
+          subtitle="Full per-deal cost basis — same denominator as True CPA & ROI"
+          theme="red"
+          Icon={DollarSign}
+          onClose={closeBreakdown}
+          rows={[
+            { label: 'Weekly — Lead Spend',     hint: 'Investment Activity → Lead Spend column',  amount: investmentBreakdown.leadSpend },
+            { label: 'Weekly — CRM Weekly',     hint: 'Investment Activity → CRM Wk column',      amount: investmentBreakdown.crmWeekly },
+            { label: 'Weekly — CRM Daily',      hint: 'Investment Activity → CRM Day column',     amount: investmentBreakdown.crmDaily },
+            ...Object.entries(platformBreakdown).map(([p, amt]) => ({
+              label: `Platform — ${p}`,
+              hint: 'Platforms tab daily entries',
+              amount: amt,
+            })),
+            { label: 'Books — Lead Investment',    hint: 'LEAD_INVESTMENT category in Books',           amount: scopedBookLeadInvestment },
+            { label: 'Books — Software (deduped)', hint: scopedBookSoftwarePlatformOverlap > 0
+                ? `SOFTWARE in Books — excludes ${fmt2(scopedBookSoftwarePlatformOverlap)} of TextDrip/Ringy/VanillaSoft already in Platforms`
+                : 'SOFTWARE category in Books (Calendly, ChatGPT, etc.)',
+              amount: scopedBookSoftware },
+          ]}
+          excluded={`Other Books expenses (Office Rent, Recruiting, Travel, Vehicle, Meals, Healthcare, Phone/Internet, Coaching, Other) flow into True Net but not into Invested.${scopedBookSoftwarePlatformOverlap > 0 ? ` Plus ${fmt2(scopedBookSoftwarePlatformOverlap)} of TextDrip/Ringy/VanillaSoft from Books SOFTWARE was excluded as Platforms-overlap.` : ''}`}
+          totalLabel="Total Invested"
+          total={scopedInvested}
+        />
+      )}
+      {/* Earned */}
+      {openBreakdown === 'earned' && (
+        <BreakdownPanel
+          title={`Earned Breakdown (${kpiLabel})`}
+          subtitle="Sum of dealValue across Issued leads, grouped by main product"
+          theme="emerald"
+          Icon={TrendingUp}
+          onClose={closeBreakdown}
+          rows={Object.entries(earnedByProduct).map(([prod, { count, total }]) => ({
+            label: prod,
+            hint: `${count} issued deal${count !== 1 ? 's' : ''}`,
+            amount: total,
+          }))}
+          totalLabel={`Total Earned (${scopedAutoDealCount} deals)`}
+          total={scopedEarned}
+        />
+      )}
+      {/* Total Revenue */}
+      {openBreakdown === 'revenue' && (
+        <BreakdownPanel
+          title={`Total Revenue Breakdown (${kpiLabel})`}
+          subtitle="Lead commissions + everything in Books → Other Income"
+          theme="cyan"
+          Icon={TrendingUp}
+          onClose={closeBreakdown}
+          rows={[
+            { label: 'Lead Commissions (Earned)', hint: 'From Issued lead dealValue totals', amount: scopedEarned },
+            ...Object.entries(incomeByCategory).map(([cat, amt]) => ({
+              label: `Books Income — ${cat}`,
+              hint: 'From Books → Other Income tab',
+              amount: amt,
+            })),
+          ]}
+          totalLabel="Total Revenue"
+          total={scopedEarned + scopedBusinessIncome}
+        />
+      )}
+      {/* True Net */}
+      {openBreakdown === 'trueNet' && (
+        <BreakdownPanel
+          title={`True Net Breakdown (${kpiLabel})`}
+          subtitle="All money in minus all money out"
+          theme="cyan"
+          Icon={Wallet}
+          onClose={closeBreakdown}
+          twoColumn={{
+            in: [
+              { label: 'Lead Commissions',  amount: scopedEarned },
+              { label: 'Books Income',      amount: scopedBusinessIncome },
+            ],
+            out: [
+              { label: 'Invested (per-deal cost: Weekly + Platforms + Books LI + Books SW)', amount: scopedInvested },
+              { label: 'Books Expenses (other categories — excludes LI + SW already in Invested)', amount: scopedBusinessExpensesNonInvested },
+            ],
+            inTotal: scopedEarned + scopedBusinessIncome,
+            outTotal: scopedInvested + scopedBusinessExpensesNonInvested,
+          }}
+          totalLabel="True Net (in − out)"
+          total={scopedTrueNet}
+        />
+      )}
+      {/* ROI */}
+      {openBreakdown === 'roi' && (
+        <BreakdownPanel
+          title={`ROI Breakdown (${kpiLabel})`}
+          subtitle="Return on per-deal investment (uses same cost basis as True CPA)"
+          theme="indigo"
+          Icon={Percent}
+          onClose={closeBreakdown}
+          rows={[
+            { label: 'Earned (commissions)',       hint: 'From Issued lead dealValue',                 amount: scopedEarned },
+            { label: '− Weekly Investment',        hint: 'Lead Spend + CRM Weekly + CRM Daily',        amount: -scopedBaseInvested },
+            { label: '− Platform Expenses',        hint: 'TextDrip + Ringy + VanillaSoft',             amount: -scopedPlatform },
+            { label: '− Books Lead Investment',    hint: 'LEAD_INVESTMENT category in Books',          amount: -scopedBookLeadInvestment },
+            { label: '− Books Software (deduped)', hint: scopedBookSoftwarePlatformOverlap > 0
+                ? `SOFTWARE in Books — excludes ${fmt2(scopedBookSoftwarePlatformOverlap)} of platform overlap`
+                : 'SOFTWARE category in Books (Calendly, ChatGPT, etc.)',
+              amount: -scopedBookSoftware },
+            { label: '= Net profit', hint: 'Earned minus all per-deal costs', amount: scopedEarned - scopedTrueCpaBase, bold: true },
+          ]}
+          formula={`(${fmt(scopedEarned - scopedTrueCpaBase)} ÷ ${fmt(scopedTrueCpaBase)}) × 100 = ${scopedRoi.toFixed(1)}%`}
+          totalLabel="ROI"
+          totalDisplay={`${scopedRoi.toFixed(1)}%`}
+        />
+      )}
+      {/* True CPA */}
+      {openBreakdown === 'trueCpa' && (
+        <BreakdownPanel
+          title={`True CPA Breakdown (${kpiLabel})`}
+          subtitle="Per-deal cost including direct lead-acquisition + software (deduped vs Platforms)"
+          theme="fuchsia"
+          Icon={Target}
+          onClose={closeBreakdown}
+          rows={[
+            { label: 'Weekly — Lead Spend',     hint: 'Investment Activity → Lead Spend',           amount: investmentBreakdown.leadSpend },
+            { label: 'Weekly — CRM Weekly',     hint: 'Investment Activity → CRM Wk',               amount: investmentBreakdown.crmWeekly },
+            { label: 'Weekly — CRM Daily',      hint: 'Investment Activity → CRM Day',              amount: investmentBreakdown.crmDaily },
+            { label: 'Platform Expenses',       hint: 'TextDrip + Ringy + VanillaSoft (Platforms tab)', amount: scopedPlatform },
+            { label: 'Books — Lead Investment', hint: 'LEAD_INVESTMENT category in Books',          amount: scopedBookLeadInvestment },
+            { label: 'Books — Software (other)', hint: scopedBookSoftwarePlatformOverlap > 0
+                ? `SOFTWARE in Books — excludes ${fmt2(scopedBookSoftwarePlatformOverlap)} of TextDrip/Ringy/VanillaSoft already in Platforms`
+                : 'SOFTWARE category in Books (Calendly, ChatGPT, Canva, etc.)',
+              amount: scopedBookSoftware },
+          ]}
+          formula={`${fmt(scopedTrueCpaBase)} ÷ ${scopedAutoDealCount} deals = ${fmt2(scopedTrueCpa)}`}
+          excluded={`Office rent · Recruiting · Travel · Vehicle · Meals · Healthcare · Phone/Internet · Coaching · Other — these are real business expenses but don't scale per-deal so they flow into True Net instead.${scopedBookSoftwarePlatformOverlap > 0 ? ` Plus ${fmt2(scopedBookSoftwarePlatformOverlap)} of TextDrip/Ringy/VanillaSoft from Books SOFTWARE was excluded as Platforms-overlap.` : ''}`}
+          totalLabel="True CPA"
+          totalDisplay={fmt2(scopedTrueCpa)}
+        />
+      )}
+
+      {/* Taken Rate Calculators — UW (Premier Adv/Choice, Secure Adv) + GI (Health Access III) */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        <TakenRateCalculator
+          leads={leads}
+          title="Underwritten Taken Rate"
+          subtitle="Premier Advantage, Secure Advantage, Premier Choice \u00b7 Issued \u00f7 submitted to underwriting \u00b7 60%+ target \u00b7 over-50 excluded"
+          productFilter={UNDERWRITTEN_PRODUCTS}
+          defaultTarget={60}
+          applyOver50Rule={true}
+        />
+        <TakenRateCalculator
+          leads={leads}
+          title="GI Taken Rate (Guaranteed Issue)"
+          subtitle="Health Access III \u00b7 GI plans issue without underwriting review \u00b7 65%+ target \u00b7 all ages count"
+          productFilter={GI_PRODUCTS}
+          defaultTarget={65}
+          applyOver50Rule={false}
+        />
+      </div>
+
+      {/* Chargebacks */}
+      <ChargebacksPanel chargebacks={chargebacks} onDelete={onDeleteChargeback} />
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <Chart3DCard className="lg:col-span-2">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold text-slate-900">Invested vs. Earned — last 8 weeks</h3>
+          </div>
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={weekly}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <XAxis dataKey="label" fontSize={11} />
+              <YAxis fontSize={11} />
+              <Tooltip />
+              <Legend />
+              <Bar dataKey="invested" name="Invested" fill="#ef4444" radius={[4, 4, 0, 0]} animationDuration={900}>
+                <LabelList dataKey="invested" position="top" fill="#0f172a" fontSize={11} fontWeight={700} formatter={(v) => v > 0 ? fmt(v) : ''} />
+              </Bar>
+              <Bar dataKey="earned" name="Earned" fill="#10b981" radius={[4, 4, 0, 0]} animationDuration={900}>
+                <LabelList dataKey="earned" position="top" fill="#0f172a" fontSize={11} fontWeight={700} formatter={(v) => v > 0 ? fmt(v) : ''} />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </Chart3DCard>
+
+        <div className="bg-white rounded-xl border border-slate-200 p-4">
+          <h3 className="font-semibold text-slate-900 mb-3">Activity Funnel (all-time)</h3>
+          <div className="space-y-3">
+            {funnelRow('Dials', activityTotals.dials, Phone, 'bg-blue-100 text-blue-700')}
+            {funnelRow('Appointments', activityTotals.appts, Calendar, 'bg-violet-100 text-violet-700')}
+            {funnelRow('Pitches', activityTotals.pitches, Presentation, 'bg-amber-100 text-amber-700')}
+            {funnelRow('Closes', activityTotals.closes, Trophy, 'bg-emerald-100 text-emerald-700')}
+          </div>
+          <button onClick={onNewActivity} className="mt-4 w-full border border-slate-200 rounded-lg py-2 text-sm hover:bg-slate-50 flex items-center justify-center gap-1">
+            <Plus size={14} /> Log Activity
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl border border-slate-200">
+        <div className="flex items-center justify-between p-4 border-b border-slate-200">
+          <h3 className="font-semibold text-slate-900">Investment Log</h3>
+          <button onClick={onNewInvestment} className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center gap-1">
+            <Plus size={14} /> New Week
+          </button>
+        </div>
+        <div className="overflow-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 text-slate-600 text-xs">
+              <tr>
+                <th className="text-left p-2">Week</th>
+                <th className="text-right p-2">Lead Spend</th>
+                <th className="text-right p-2">CRM Wk</th>
+                <th className="text-right p-2">CRM Day</th>
+                <th className="text-right p-2" title="TextDrip + Ringy + VanillaSoft credits">Platforms</th>
+                <th className="text-right p-2">Auto-synced Advances</th>
+                <th className="text-right p-2">Total In</th>
+                <th className="text-right p-2">Total Out</th>
+                <th className="text-right p-2 w-16"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {allWeeks.map(w => {
+                const totIn = w.autoCommission || 0;
+                const totOut = (w.leadSpend || 0) + (w.crmWeekly || 0) + (w.crmDaily || 0) + (w.platformSpend || 0);
+                return (
+                  <tr key={w.weekStart} className="border-t border-slate-100">
+                    <td className="p-2 font-medium">
+                      {weekRangeLabel(w.weekStart)}
+                      {!w.id && <span className="ml-2 text-[10px] font-medium px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase tracking-wide">auto</span>}
+                    </td>
+                    <td className="text-right p-2">{fmt(w.leadSpend)}</td>
+                    <td className="text-right p-2">{fmt(w.crmWeekly)}</td>
+                    <td className="text-right p-2">{fmt(w.crmDaily)}</td>
+                    <td className="text-right p-2">
+                      {w.platformSpend > 0 ? (
+                        <span className="text-violet-700 font-medium">{fmt(w.platformSpend)}</span>
+                      ) : <span className="text-slate-300">—</span>}
+                    </td>
+                    <td className="text-right p-2">
+                      {w.autoDeals > 0 ? (
+                        <span className="text-emerald-700 font-medium">
+                          {fmt(w.autoCommission)} <span className="text-xs text-emerald-600">({w.autoDeals})</span>
+                        </span>
+                      ) : <span className="text-slate-300">—</span>}
+                    </td>
+                    <td className="text-right p-2 font-medium text-emerald-700">{fmt(totIn)}</td>
+                    <td className="text-right p-2 font-medium text-red-600">{fmt(totOut)}</td>
+                    <td className="text-right p-2">
+                      <div className="flex justify-end gap-1">
+                        <button
+                          onClick={() => onEditInvestment(w)}
+                          title={w.id ? 'Edit this week' : 'Add manual investment entry for this week'}
+                          className="text-slate-400 hover:text-indigo-600 p-1 rounded hover:bg-indigo-50"
+                        >
+                          <Edit2 size={14} />
+                        </button>
+                        <button
+                          onClick={() => w.id ? onDeleteInvestment(w.id) : onDeleteAutoWeek(w.weekStart)}
+                          title={w.id ? 'Delete this week' : 'Remove auto-synced row (reverts Issued leads back to Pending)'}
+                          className="text-slate-400 hover:text-red-600 p-1 rounded hover:bg-red-50"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              {allWeeks.length === 0 && (
+                <tr><td colSpan="9" className="text-center p-8 text-slate-400">No investment entries yet — click &ldquo;New Week&rdquo; to start.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Activity Log */}
+      <div className="bg-white rounded-xl border border-slate-200">
+        <div className="flex items-center justify-between p-4 border-b border-slate-200">
+          <div>
+            <h3 className="font-semibold text-slate-900">Activity Log</h3>
+            <p className="text-xs text-slate-500 mt-0.5">Daily dials, appointments, pitches, closes</p>
+          </div>
+          <button onClick={onNewActivity} className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center gap-1">
+            <Plus size={14} /> Log Activity
+          </button>
+        </div>
+        <div className="overflow-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 text-slate-600 text-xs">
+              <tr>
+                <th className="text-left p-2">Date</th>
+                <th className="text-left p-2">Agent</th>
+                <th className="text-right p-2"><span className="inline-flex items-center gap-1"><Phone size={11} /> Dials</span></th>
+                <th className="text-right p-2"><span className="inline-flex items-center gap-1"><Calendar size={11} /> Appts</span></th>
+                <th className="text-right p-2"><span className="inline-flex items-center gap-1"><Presentation size={11} /> Pitches</span></th>
+                <th className="text-right p-2"><span className="inline-flex items-center gap-1"><Trophy size={11} /> Closes</span></th>
+                <th className="text-left p-2">Notes</th>
+                <th className="text-right p-2"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedActivities.map(a => (
+                <tr key={a.id} className="border-t border-slate-100 hover:bg-slate-50">
+                  <td className="p-2 font-medium">{usDate(a.date)}</td>
+                  <td className="p-2 text-slate-700">{a.agent}</td>
+                  <td className="text-right p-2">{a.dials}</td>
+                  <td className="text-right p-2">{a.appointments}</td>
+                  <td className="text-right p-2">{a.pitches}</td>
+                  <td className="text-right p-2 text-emerald-700 font-medium">{a.closes}</td>
+                  <td className="p-2 text-xs text-slate-500 max-w-xs truncate" title={a.notes}>{a.notes || <span className="text-slate-300">—</span>}</td>
+                  <td className="text-right p-2">
+                    <div className="flex justify-end gap-1">
+                      <button onClick={() => onEditActivity(a)} title="Edit" className="text-slate-400 hover:text-indigo-600 p-1 rounded hover:bg-indigo-50"><Edit2 size={14} /></button>
+                      <button onClick={() => onDeleteActivity(a.id)} title="Delete" className="text-slate-400 hover:text-red-600 p-1 rounded hover:bg-red-50"><Trash2 size={14} /></button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {activities.length === 0 && (
+                <tr><td colSpan="8" className="text-center p-8 text-slate-400">No activity logged yet — click "Log Activity" to add your first day.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default memo(CpaDashboard);
+
+// ---------- Breakdown panel helper ----------
+// Renders a styled gradient panel showing a numbered breakdown of a KPI.
+// Themes pick the colors; each row is { label, hint?, amount, bold? }.
+// twoColumn={{in, out, inTotal, outTotal}} renders an in/out split (True Net).
+const THEMES = {
+  red:      { bg: 'from-red-50 to-orange-50',         border: 'border-red-200',     header: 'bg-red-50',     text: 'text-red-900',     icon: 'text-red-600',     accent: 'border-red-300',     totalRow: 'from-red-100 to-orange-100',     totalText: 'text-red-900' },
+  emerald:  { bg: 'from-emerald-50 to-green-50',      border: 'border-emerald-200', header: 'bg-emerald-50', text: 'text-emerald-900', icon: 'text-emerald-600', accent: 'border-emerald-300', totalRow: 'from-emerald-100 to-green-100',  totalText: 'text-emerald-900' },
+  cyan:     { bg: 'from-emerald-50 to-cyan-50',       border: 'border-cyan-200',    header: 'bg-cyan-50',    text: 'text-cyan-900',    icon: 'text-cyan-600',    accent: 'border-cyan-300',    totalRow: 'from-cyan-100 to-emerald-100',   totalText: 'text-cyan-900' },
+  indigo:   { bg: 'from-indigo-50 to-blue-50',        border: 'border-indigo-200',  header: 'bg-indigo-50',  text: 'text-indigo-900',  icon: 'text-indigo-600',  accent: 'border-indigo-300',  totalRow: 'from-indigo-100 to-blue-100',    totalText: 'text-indigo-900' },
+  violet:   { bg: 'from-violet-50 to-purple-50',      border: 'border-violet-200',  header: 'bg-violet-50',  text: 'text-violet-900',  icon: 'text-violet-600',  accent: 'border-violet-300',  totalRow: 'from-violet-100 to-purple-100',  totalText: 'text-violet-900' },
+  fuchsia:  { bg: 'from-fuchsia-50 to-purple-50',     border: 'border-fuchsia-200', header: 'bg-fuchsia-50', text: 'text-fuchsia-900', icon: 'text-fuchsia-600', accent: 'border-fuchsia-300', totalRow: 'from-fuchsia-100 to-purple-100', totalText: 'text-purple-900' },
+};
+
+function BreakdownPanel({ title, subtitle, theme = 'indigo', Icon, onClose, rows = [], totalLabel, total, totalDisplay, formula, excluded, twoColumn }) {
+  const t = THEMES[theme] || THEMES.indigo;
+  const formatAmount = (v) => v < 0 ? `−${fmt2(Math.abs(v))}` : fmt2(v);
+  return (
+    <div className={`bg-gradient-to-br ${t.bg} border-2 ${t.border} rounded-xl p-5 space-y-3`}>
+      <div className="flex items-center justify-between mb-1">
+        <div>
+          <h3 className="font-bold text-slate-900 flex items-center gap-2">
+            {Icon && <Icon size={16} className={t.icon} />}
+            {title}
+          </h3>
+          {subtitle && <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>}
+        </div>
+        <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-sm">Hide ✕</button>
+      </div>
+
+      {twoColumn ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {/* Money in */}
+          <div className={`bg-white rounded-lg border ${t.border} overflow-hidden`}>
+            <div className={`${t.header} ${t.text} text-xs font-bold uppercase tracking-wider px-3 py-2`}>Money In</div>
+            <table className="w-full text-sm">
+              <tbody>
+                {twoColumn.in.map((row, i) => (
+                  <tr key={i} className="border-t border-slate-100">
+                    <td className="p-2 text-slate-900">{row.label}</td>
+                    <td className="text-right p-2 font-semibold text-emerald-700">{formatAmount(row.amount)}</td>
+                  </tr>
+                ))}
+                <tr className={`border-t-2 ${t.accent} bg-emerald-50/50`}>
+                  <td className="p-2 font-bold text-emerald-900">Total In</td>
+                  <td className="text-right p-2 font-bold text-emerald-900">{fmt2(twoColumn.inTotal)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          {/* Money out */}
+          <div className={`bg-white rounded-lg border ${t.border} overflow-hidden`}>
+            <div className={`${t.header} ${t.text} text-xs font-bold uppercase tracking-wider px-3 py-2`}>Money Out</div>
+            <table className="w-full text-sm">
+              <tbody>
+                {twoColumn.out.map((row, i) => (
+                  <tr key={i} className="border-t border-slate-100">
+                    <td className="p-2 text-slate-900">{row.label}</td>
+                    <td className="text-right p-2 font-semibold text-red-700">{formatAmount(row.amount)}</td>
+                  </tr>
+                ))}
+                <tr className={`border-t-2 ${t.accent} bg-red-50/50`}>
+                  <td className="p-2 font-bold text-red-900">Total Out</td>
+                  <td className="text-right p-2 font-bold text-red-900">{fmt2(twoColumn.outTotal)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        <div className={`bg-white rounded-lg border ${t.border} overflow-hidden`}>
+          <table className="w-full text-sm">
+            <thead className={`${t.header} ${t.text} text-xs uppercase tracking-wider`}>
+              <tr>
+                <th className="text-left p-2 font-bold">Source</th>
+                <th className="text-left p-2 font-bold">Where it comes from</th>
+                <th className="text-right p-2 font-bold">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, i) => (
+                <tr key={i} className="border-t border-slate-100">
+                  <td className={`p-2 ${row.bold ? 'font-bold' : 'font-semibold'} text-slate-900`}>{row.label}</td>
+                  <td className="p-2 text-xs text-slate-600">{row.hint || '—'}</td>
+                  <td className={`text-right p-2 ${row.bold ? 'font-bold' : 'font-semibold'} text-slate-900`}>
+                    {row.amount < 0 ? <span className="text-red-700">{formatAmount(row.amount)}</span> : formatAmount(row.amount)}
+                  </td>
+                </tr>
+              ))}
+              {(total != null || totalDisplay) && (
+                <tr className={`border-t-2 ${t.accent} bg-gradient-to-r ${t.totalRow}`}>
+                  <td className={`p-2 font-bold ${t.totalText} text-base`} colSpan={2}>= {totalLabel}</td>
+                  <td className={`text-right p-2 font-bold ${t.totalText} text-lg`}>
+                    {totalDisplay ?? fmt2(total)}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {formula && (
+        <div className={`text-xs text-slate-700 bg-white/60 rounded-lg p-2 border ${t.border} font-mono`}>
+          <span className="font-semibold not-italic">Formula: </span>{formula}
+        </div>
+      )}
+      {excluded && (
+        <div className={`text-xs text-slate-600 bg-white/60 rounded-lg p-2 border ${t.border}`}>
+          <span className="font-semibold">Excluded:</span> {excluded}
+        </div>
+      )}
+    </div>
+  );
+}

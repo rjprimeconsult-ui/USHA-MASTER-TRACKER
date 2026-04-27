@@ -1,0 +1,233 @@
+// Post-close outcome stages.
+// A deal is always in one of these — app is an outcome tracker, not a prospect funnel.
+// Pending    = deal submitted to underwriting, awaiting decision
+// Issued     = approved + commission paid
+// Declined   = underwriting rejected (negative taken rate)
+// Not taken  = client chose not to proceed (negative taken rate)
+// Withdrawn  = agent withdrew the app (negative taken rate)
+export const STAGES = [
+  { id: 'Pending',    color: '#f59e0b', bg: 'bg-amber-100',   text: 'text-amber-700',   prob: 50 },
+  { id: 'Issued',     color: '#10b981', bg: 'bg-emerald-100', text: 'text-emerald-700', prob: 100 },
+  { id: 'Declined',   color: '#ef4444', bg: 'bg-red-100',     text: 'text-red-700',     prob: 0 },
+  { id: 'Not taken',  color: '#64748b', bg: 'bg-slate-100',   text: 'text-slate-700',   prob: 0 },
+  { id: 'Withdrawn',  color: '#a855f7', bg: 'bg-purple-100',  text: 'text-purple-700',  prob: 0 },
+];
+
+// Stages that count as "taken" (positive outcome)
+export const TAKEN_STAGES = ['Issued'];
+// Stages that count as pending (not yet decided) — the denominator includes these too
+export const PENDING_STAGES = ['Pending'];
+
+// Taken-rate product pools
+// Underwritten products require underwriting review; GI = Guaranteed Issue (faster approval)
+export const UNDERWRITTEN_PRODUCTS = ['PREMIER ADVANTAGE', 'SECURE ADVANTAGE', 'PREMIER CHOICE'];
+export const GI_PRODUCTS            = ['HEALTH ACCESS III'];
+// Stages that count as NOT taken (negative outcome)
+export const NOT_TAKEN_STAGES = ['Declined', 'Not taken', 'Withdrawn'];
+
+export const SOURCES = ['Website', 'Referral', 'Facebook', 'Google', 'LinkedIn', 'Cold Call', 'Event', 'CRM', 'Dialer', 'Other'];
+
+export const OWNERS = ['You', 'Maria', 'Carlos', 'Jess'];
+
+export const CRMS = [
+  { id: 'RINGY',    badge: 'bg-red-500 text-white',   color: '#ef4444' },
+  { id: 'TEXTDRIP', badge: 'bg-red-900 text-white',   color: '#7f1d1d' },
+  { id: 'VANILLA',  badge: 'bg-blue-900 text-white',  color: '#1e3a8a' },
+  { id: 'GOOGLE',   badge: 'bg-amber-500 text-white', color: '#f59e0b' },
+];
+
+export const CAMPAIGNS = [
+  { id: 'AGED.50',           badge: 'bg-sky-200 text-slate-800',    color: '#bae6fd' },
+  { id: 'AGED.25',           badge: 'bg-pink-200 text-slate-800',   color: '#fbcfe8' },
+  { id: 'AGED.35',           badge: 'bg-violet-200 text-slate-800', color: '#ddd6fe' },
+  { id: 'AGED1.00',          badge: 'bg-violet-500 text-white',     color: '#8b5cf6' },
+  { id: 'AGED.20',           badge: 'bg-slate-300 text-slate-800',  color: '#cbd5e1' },
+  { id: 'AGED.15',           badge: 'bg-red-500 text-white',        color: '#ef4444' },
+  { id: 'AGED.17',           badge: 'bg-red-900 text-white',        color: '#7f1d1d' },
+  { id: 'PREMIUM SHARED',    badge: 'bg-green-200 text-slate-800',  color: '#bbf7d0' },
+  { id: 'STANDARD SHARED',   badge: 'bg-blue-500 text-white',       color: '#3b82f6' },
+  { id: 'HIGH EXCLUSIVE',    badge: 'bg-teal-800 text-white',       color: '#115e59' },
+  { id: 'ELITE EXCLUSIVE',   badge: 'bg-green-500 text-white',      color: '#22c55e' },
+  { id: 'D7 BIZZ LEAD',      badge: 'bg-fuchsia-600 text-white',    color: '#c026d3' },
+  { id: 'JESUS BURGA LEADS', badge: 'bg-yellow-800 text-white',     color: '#854d0e' },
+  { id: 'REFERRAL',          badge: 'bg-purple-500 text-white',     color: '#a855f7' },
+];
+
+export const LEAD_CATEGORIES = [
+  { id: 'AGED',          badge: 'bg-emerald-100 text-emerald-800 border border-emerald-300', color: '#34d399' },
+  { id: 'SHARED',        badge: 'bg-blue-600 text-white',       color: '#2563eb' },
+  { id: 'REFERRAL',      badge: 'bg-purple-500 text-white',     color: '#a855f7' },
+  { id: 'DIALER',        badge: 'bg-orange-500 text-white',     color: '#f97316' },
+  { id: 'REPEAT CLIENT', badge: 'bg-red-500 text-white',        color: '#ef4444' },
+  { id: 'JACKPOT',       badge: 'bg-yellow-300 text-slate-800', color: '#fde047' },
+  { id: 'D7',            badge: 'bg-pink-500 text-white',       color: '#ec4899' },
+  { id: 'GOOGLE LEADS',  badge: 'bg-slate-300 text-slate-800',  color: '#cbd5e1' },
+];
+
+export const MAIN_PRODUCTS = [
+  { id: 'PREMIER ADVANTAGE',    premium: 0 },
+  { id: 'PREMIER CHOICE',       premium: 0 },
+  { id: 'SECURE ADVANTAGE',     premium: 0 },
+  { id: 'HEALTH ACCESS III',    premium: 0 },
+  { id: 'SUPPY',                premium: 0 },
+  { id: 'ACA WRAP',             premium: 0 },
+];
+
+export const ASSOCIATION_PLANS = [
+  { id: 'EXECUTIVE DIAMOND', premium: 89.95 },
+  { id: 'DIAMOND',           premium: 62.25 },
+  { id: 'EMERALD',           premium: 52.95 },
+  { id: 'SAPPHIRE',          premium: 42.95 },
+  { id: 'RUBY',              premium: 32.95 },
+  { id: 'PEARL',             premium: 0 },
+  { id: 'NO ASS.',           premium: 0 },
+  { id: 'ABC ELITE',         premium: 79.95 },
+  { id: 'ABC EXECUTIVE',     premium: 49.95 },
+  { id: 'ABC ENTREPRENEUR',  premium: 34.95 },
+  { id: 'SUPPY',             premium: 0 },
+  { id: 'PRO WRAP',          premium: 0 },
+];
+
+export const ADDON_PRODUCTS = [
+  { id: 'MEDGUARD III',         premium: 65.00 },
+  { id: 'PREMIERVISION',        premium: 0 },
+  { id: 'DENTAL / SECUREDENTAL', premium: 0 },
+];
+
+export const ALL_PRODUCTS = [
+  ...MAIN_PRODUCTS.map(p => ({ ...p, bucket: 'Main' })),
+  ...ASSOCIATION_PLANS.map(p => ({ ...p, bucket: 'Association' })),
+  ...ADDON_PRODUCTS.map(p => ({ ...p, bucket: 'Add-on' })),
+];
+
+export const productPremium = (id) => ALL_PRODUCTS.find(p => p.id === id)?.premium || 0;
+
+export const ASSOCIATION_PRICING = {
+  'EXECUTIVE DIAMOND': {
+    premium: 89.95, commission: 18.00,
+    compatibleWith: ['PREMIER ADVANTAGE', 'PREMIER CHOICE', 'SECURE ADVANTAGE'],
+  },
+  'DIAMOND': {
+    premium: 62.25, commission: 13.00,
+    compatibleWith: ['PREMIER ADVANTAGE', 'PREMIER CHOICE', 'SECURE ADVANTAGE'],
+  },
+  'EMERALD': {
+    premium: 52.95, commission: 9.00,
+    compatibleWith: ['PREMIER ADVANTAGE', 'PREMIER CHOICE', 'SECURE ADVANTAGE'],
+  },
+  'SAPPHIRE': {
+    premium: 42.95, commission: 5.50,
+    compatibleWith: ['PREMIER ADVANTAGE', 'PREMIER CHOICE', 'SECURE ADVANTAGE'],
+  },
+  'RUBY': {
+    premium: 32.95, commission: 4.25,
+    compatibleWith: ['PREMIER ADVANTAGE', 'PREMIER CHOICE', 'SECURE ADVANTAGE'],
+  },
+  'ABC ELITE': {
+    premium: 79.95, commission: 14.00,
+    compatibleWith: ['HEALTH ACCESS III'],
+  },
+  'ABC EXECUTIVE': {
+    premium: 49.95, commission: 6.75,
+    compatibleWith: ['HEALTH ACCESS III'],
+  },
+  'ABC ENTREPRENEUR': {
+    premium: 34.95, commission: 3.25,
+    compatibleWith: ['HEALTH ACCESS III'],
+  },
+};
+
+export const isPricedAssociation = (id) => ASSOCIATION_PRICING[id] !== undefined;
+
+export const compatibleAssociations = (mainProduct) => {
+  const priced = Object.keys(ASSOCIATION_PRICING);
+  const unpriced = ASSOCIATION_PLANS.map(p => p.id).filter(id => !priced.includes(id));
+  if (!mainProduct) return [...priced, ...unpriced];
+  const allowed = priced.filter(id => ASSOCIATION_PRICING[id].compatibleWith.includes(mainProduct));
+  return [...allowed, ...unpriced];
+};
+
+export const QUARTERS = [
+  { key: 'Q1', label: 'Q1', earningMonths: [11, 0],    payoutMonth: 1,  desc: 'Dec–Jan → Feb' },
+  { key: 'Q2', label: 'Q2', earningMonths: [2, 3, 4],  payoutMonth: 5,  desc: 'Mar–May → Jun' },
+  { key: 'Q3', label: 'Q3', earningMonths: [5, 6, 7],  payoutMonth: 8,  desc: 'Jun–Aug → Sep' },
+  { key: 'Q4', label: 'Q4', earningMonths: [8, 9, 10], payoutMonth: 11, desc: 'Sep–Nov → Dec' },
+];
+
+export const RENAME_MAP = {
+  'HEALTH ACCESS':   'HEALTH ACCESS III',
+  'HA ELITE':        'ABC ELITE',
+  'HA EXECUTIVE':    'ABC EXECUTIVE',
+  'HA ENTREPRENEUR': 'ABC ENTREPRENEUR',
+};
+
+// Derived lead category — source overrides stale stored category.
+// "Referral" source ALWAYS wins regardless of what was uploaded as leadCategory,
+// so the Closed Deals chart and Lead lists reflect actual lead origin.
+export function effectiveLeadCategory(lead) {
+  if (!lead) return 'OTHER';
+  if (lead.source === 'Referral') return 'REFERRAL';
+  return lead.leadCategory || 'OTHER';
+}
+
+export const NAV_TABS = [
+  { id: 'cpa',          label: 'CPA Dashboard', icon: 'Calculator' },
+  { id: 'associations', label: 'Associations',  icon: 'Repeat' },
+  { id: 'closed',       label: 'Closed Deals',  icon: 'CheckSquare' },
+  { id: 'dashboard',    label: 'Overview',      icon: 'LayoutDashboard' },
+  { id: 'leads',        label: 'Leads',         icon: 'Users' },
+  { id: 'pipeline',     label: 'Pipeline',      icon: 'Columns' },
+  { id: 'platforms',    label: 'Platforms',     icon: 'DollarSign' },
+  { id: 'books',        label: 'Books',         icon: 'BookOpen' },
+  { id: 'upload',       label: 'Upload',        icon: 'Upload' },
+];
+
+// Business Books — expense categories (money OUT beyond lead spend / platforms)
+export const EXPENSE_CATEGORIES = [
+  { id: 'LEAD_INVESTMENT', label: 'Lead Investment',  color: '#dc2626', badge: 'bg-red-100 text-red-700' },
+  { id: 'OFFICE_RENT',    label: 'Office Rent',       color: '#b91c1c', badge: 'bg-red-100 text-red-800' },
+  { id: 'OFFICE',         label: 'Office Supplies',   color: '#0ea5e9', badge: 'bg-sky-100 text-sky-700' },
+  { id: 'SOFTWARE',       label: 'Software',          color: '#6366f1', badge: 'bg-indigo-100 text-indigo-700' },
+  { id: 'MARKETING',      label: 'Marketing / Ads',   color: '#ec4899', badge: 'bg-pink-100 text-pink-700' },
+  { id: 'RECRUITING',     label: 'Recruiting',        color: '#d946ef', badge: 'bg-fuchsia-100 text-fuchsia-700' },
+  { id: 'TEAM_INCENTIVES', label: 'Team Incentives',  color: '#f97316', badge: 'bg-orange-100 text-orange-700' },
+  { id: 'TRAVEL',         label: 'Travel / Lodging',  color: '#0891b2', badge: 'bg-cyan-100 text-cyan-800' },
+  { id: 'VEHICLE',        label: 'Vehicle / Mileage', color: '#f59e0b', badge: 'bg-amber-100 text-amber-700' },
+  { id: 'MEALS',          label: 'Meals',             color: '#84cc16', badge: 'bg-lime-100 text-lime-700' },
+  { id: 'PROFESSIONAL',   label: 'Professional Fees', color: '#8b5cf6', badge: 'bg-violet-100 text-violet-700' },
+  { id: 'PHONE_INTERNET', label: 'Phone / Internet',  color: '#06b6d4', badge: 'bg-cyan-100 text-cyan-700' },
+  { id: 'HEALTHCARE',     label: 'Healthcare',        color: '#10b981', badge: 'bg-emerald-100 text-emerald-700' },
+  { id: 'COACHING',       label: 'Coaching / Mentor', color: '#a855f7', badge: 'bg-purple-100 text-purple-700' },
+  { id: 'OTHER_EXPENSE',  label: 'Other',             color: '#94a3b8', badge: 'bg-slate-100 text-slate-700' },
+];
+
+// Books expense categories that contribute to TRUE CPA (cost-per-acquisition).
+// Per agent direction: only Lead Investment + Software qualify as direct
+// per-deal acquisition costs. Other categories like office rent / recruiting /
+// travel are valid business expenses but don't scale per-deal so they're
+// excluded from True CPA. They DO still flow into True Net.
+export const TRUE_CPA_BOOK_CATEGORIES = ['LEAD_INVESTMENT', 'SOFTWARE'];
+
+// Business Books — income categories (money IN beyond commissions)
+export const INCOME_CATEGORIES = [
+  { id: 'BONUS',      label: 'Bonus',         color: '#10b981', badge: 'bg-emerald-100 text-emerald-700' },
+  { id: 'OVERRIDE',   label: 'Override',      color: '#3b82f6', badge: 'bg-blue-100 text-blue-700' },
+  { id: 'RENEWAL',    label: 'Renewal',       color: '#f59e0b', badge: 'bg-amber-100 text-amber-700' },
+  { id: 'OTHER_1099', label: 'Other 1099',    color: '#8b5cf6', badge: 'bg-violet-100 text-violet-700' },
+  { id: 'OTHER_INCOME', label: 'Other',       color: '#94a3b8', badge: 'bg-slate-100 text-slate-700' },
+];
+
+// Platform Expenses — daily texting / dialer / CRM credit log
+export const PLATFORMS = [
+  { id: 'TD',      label: 'TextDrip',    color: '#7f1d1d', badge: 'bg-red-900 text-white' },
+  { id: 'RINGY',   label: 'Ringy',       color: '#ef4444', badge: 'bg-red-500 text-white' },
+  { id: 'VANILLA', label: 'VanillaSoft', color: '#1e3a8a', badge: 'bg-blue-900 text-white' },
+];
+
+export const PLATFORM_REASONS = [
+  'CREDIT REFILL',
+  'CREDIT REFILL/RENEWAL',
+  'MONTHLY SUBSCRIPTION',
+  'RENEWAL',
+  'OTHER',
+];
