@@ -113,8 +113,10 @@ ALTER TABLE business_income     ENABLE ROW LEVEL SECURITY;
 -- Profile policies
 DROP POLICY IF EXISTS "profiles_self_read"   ON profiles;
 DROP POLICY IF EXISTS "profiles_self_update" ON profiles;
+DROP POLICY IF EXISTS "profiles_self_insert" ON profiles;
 CREATE POLICY "profiles_self_read"   ON profiles FOR SELECT USING (auth.uid() = id);
 CREATE POLICY "profiles_self_update" ON profiles FOR UPDATE USING (auth.uid() = id);
+CREATE POLICY "profiles_self_insert" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
 
 -- Generic per-table policies (helper macro pattern, repeated for each)
 -- leads
@@ -201,20 +203,29 @@ CREATE POLICY "business_income_delete" ON business_income FOR DELETE USING (auth
 -- Whenever auth.users gets a new row (someone signs up), make a matching
 -- profiles row so the app has a place to store their settings.
 
-CREATE OR REPLACE FUNCTION handle_new_user()
-RETURNS TRIGGER AS $$
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
 BEGIN
-  INSERT INTO profiles (id, email)
+  INSERT INTO public.profiles (id, email)
   VALUES (NEW.id, NEW.email)
   ON CONFLICT (id) DO NOTHING;
   RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
+  -- Never block sign-up — profile can be created lazily later.
+  RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.handle_new_user() TO supabase_auth_admin;
 
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE FUNCTION handle_new_user();
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
 -- ---------- Storage bucket for receipt attachments ----------
 -- Receipt photos / PDFs live in Supabase Storage, not Postgres.

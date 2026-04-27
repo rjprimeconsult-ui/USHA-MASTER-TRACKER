@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { supabase, supabaseConfigured } from '@/lib/supabase';
 import { useAuth } from './AuthProvider';
 import { OrbBackdrop } from '../motion/MotionPrimitives';
+import MigrationPrompt from './MigrationPrompt';
 
 /**
  * AuthGate — wraps the app and shows the sign-in / sign-up screen until the
@@ -36,7 +37,12 @@ export default function AuthGate({ children }) {
 
   if (!user) return <SignInScreen />;
 
-  return children;
+  return (
+    <>
+      <MigrationPrompt />
+      {children}
+    </>
+  );
 }
 
 function SignInScreen() {
