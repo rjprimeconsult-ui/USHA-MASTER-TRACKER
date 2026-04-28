@@ -648,6 +648,7 @@ export default function ProspectsView({
   const [viewing, setViewing] = useState(null);  // read-only detail bubble
   const [showSettings, setShowSettings] = useState(false);
   const [importFile, setImportFile] = useState(null);
+  const [selected, setSelected] = useState(() => new Set());
   const fileRef = useRef(null);
   const dragId = useRef(null);
 
@@ -710,6 +711,47 @@ export default function ProspectsView({
     setEditing(null);
   };
 
+  // ----- Bulk selection helpers -----
+  const allVisibleSelected = visible.length > 0 && visible.every(p => selected.has(p.id));
+  const toggleOne = (id, e) => {
+    if (e) e.stopPropagation();
+    setSelected(s => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const toggleAllVisible = () => {
+    if (allVisibleSelected) {
+      setSelected(s => {
+        const next = new Set(s);
+        visible.forEach(p => next.delete(p.id));
+        return next;
+      });
+    } else {
+      setSelected(s => {
+        const next = new Set(s);
+        visible.forEach(p => next.add(p.id));
+        return next;
+      });
+    }
+  };
+  const clearSelection = () => setSelected(new Set());
+  const bulkDelete = () => {
+    if (selected.size === 0) return;
+    if (!confirm(`Delete ${selected.size} prospect${selected.size !== 1 ? 's' : ''}? This can't be undone.`)) return;
+    selected.forEach(id => onDelete(id));
+    clearSelection();
+  };
+  const bulkSetStage = (stageId) => {
+    if (selected.size === 0 || !stageId) return;
+    selected.forEach(id => {
+      const p = prospects.find(x => x.id === id);
+      if (p && p.stage !== stageId) onUpdate({ ...p, stage: stageId });
+    });
+    clearSelection();
+  };
+
   const onPickFile = (e) => {
     const f = e.target.files?.[0];
     if (f) setImportFile(f);
@@ -748,6 +790,30 @@ export default function ProspectsView({
 
       {/* Today panel */}
       <TodayPanel prospects={prospects} onEdit={onView} />
+
+      {/* Bulk action bar — only when something is selected and we're in List view */}
+      {selected.size > 0 && view === 'list' && (
+        <div className="bg-indigo-600 text-white rounded-xl p-3 flex items-center justify-between gap-3 flex-wrap shadow-lg">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-sm">{selected.size} selected</span>
+            <button onClick={clearSelection} className="text-xs underline opacity-80 hover:opacity-100">clear</button>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <select
+              defaultValue=""
+              onChange={(e) => { bulkSetStage(e.target.value); e.target.value = ''; }}
+              className="bg-indigo-700 border border-indigo-500 text-white text-xs font-semibold rounded-lg px-3 py-1.5 cursor-pointer"
+            >
+              <option value="" disabled>Move to stage…</option>
+              {cfg.stages.map(s => <option key={s.id} value={s.id} className="bg-white text-slate-900">{s.label}</option>)}
+            </select>
+            <button onClick={bulkDelete}
+              className="bg-red-600 hover:bg-red-700 text-white rounded-lg px-3 py-1.5 text-xs font-semibold flex items-center gap-1.5">
+              <Trash2 size={12} /> Delete {selected.size}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Toolbar */}
       <div className="bg-white border border-slate-200 rounded-xl p-3 flex items-center gap-2 flex-wrap">
@@ -819,6 +885,15 @@ export default function ProspectsView({
           <table className="w-full text-sm border-collapse">
             <thead>
               <tr className="bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                <th className="px-3 py-2.5 text-left border-b-2 border-slate-200 border-r border-slate-200 w-10">
+                  <input
+                    type="checkbox"
+                    checked={allVisibleSelected}
+                    onChange={toggleAllVisible}
+                    className="cursor-pointer accent-indigo-600 w-4 h-4"
+                    title="Select all visible"
+                  />
+                </th>
                 <th className="px-4 py-2.5 text-left border-b-2 border-slate-200 border-r border-slate-200">Name</th>
                 <th className="px-4 py-2.5 text-left border-b-2 border-slate-200 border-r border-slate-200 w-44">Phone</th>
                 <th className="px-4 py-2.5 text-left border-b-2 border-slate-200 border-r border-slate-200 w-56">Appointment</th>
@@ -830,12 +905,21 @@ export default function ProspectsView({
                 const st = cfg.stages.find(s => s.id === p.stage);
                 const tu = timeUntil(p.appointmentTime);
                 const apptStr = formatAppt(p.appointmentTime);
+                const isSel = selected.has(p.id);
                 return (
                   <tr
                     key={p.id}
                     onClick={() => onView(p)}
-                    className="cursor-pointer hover:bg-indigo-50/40 transition border-b border-slate-200 last:border-b-0"
+                    className={`cursor-pointer transition border-b border-slate-200 last:border-b-0 ${isSel ? 'bg-indigo-50' : 'hover:bg-indigo-50/40'}`}
                   >
+                    <td className="px-3 py-3 border-r border-slate-200 align-middle" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={isSel}
+                        onChange={(e) => toggleOne(p.id, e)}
+                        className="cursor-pointer accent-indigo-600 w-4 h-4"
+                      />
+                    </td>
                     <td className="px-4 py-3 border-r border-slate-200 align-middle">
                       <div className="font-semibold text-slate-900 truncate flex items-center gap-2">
                         {p.name || '(no name)'}
@@ -879,7 +963,7 @@ export default function ProspectsView({
                 );
               })}
               {visible.length === 0 && (
-                <tr><td colSpan="4" className="px-4 py-8 text-center text-slate-400 italic text-sm">No prospects match these filters.</td></tr>
+                <tr><td colSpan="5" className="px-4 py-8 text-center text-slate-400 italic text-sm">No prospects match these filters.</td></tr>
               )}
             </tbody>
           </table>
