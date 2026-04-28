@@ -37,10 +37,20 @@ function jsonResponse(status, payload) {
 
 export async function POST(req) {
   try {
-    const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    // Trim whitespace + strip any accidental quotes around the env var values
+    // (Vercel's UI sometimes preserves these on paste).
+    const cleanEnv = (s) => String(s || '').trim().replace(/^['"]|['"]$/g, '');
+    const url = cleanEnv(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL);
+    const serviceKey = cleanEnv(process.env.SUPABASE_SERVICE_ROLE_KEY);
     if (!url || !serviceKey) {
       return jsonResponse(500, { error: 'Server not configured (missing SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY)' });
+    }
+    // Validate URL shape — Supabase URLs are always https://*.supabase.co
+    if (!/^https:\/\/[a-z0-9-]+\.supabase\.(co|in)$/i.test(url)) {
+      const preview = url.length > 60 ? url.slice(0, 40) + '...' : url;
+      return jsonResponse(500, {
+        error: `SUPABASE_URL is malformed. Expected "https://<project-ref>.supabase.co" but got "${preview}". Check Vercel env vars for trailing slash, whitespace, or missing https://.`,
+      });
     }
 
     // 1. Read access token from Authorization header
