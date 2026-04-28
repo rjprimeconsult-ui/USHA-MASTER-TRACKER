@@ -79,7 +79,8 @@ export function parseDate(v) {
 /** Skip rows that are section headers / dividers, not real leads. */
 const MONTH_NAMES = new Set(['JANUARY','FEBRUARY','MARCH','APRIL','MAY','JUNE','JULY','AUGUST','SEPTEMBER','OCTOBER','NOVEMBER','DECEMBER']);
 const SKIP_NAMES  = new Set([
-  ...MONTH_NAMES, 'UNDERWRITTEN', 'BOOK OF BUSINESS 2026', 'NAME',
+  ...MONTH_NAMES, 'UNDERWRITTEN', 'BOOK OF BUSINESS 2026', 'BOOK 2026',
+  'BOOK OF BUSINESS', 'NAME',
   'TAKEN RATE', 'TOTAL', 'MONTH TOTALS',
   // Sub-section labels observed in real USHA spreadsheets
   "HA'S", 'HAS', 'ACA WRAP', 'ACA', 'GI', 'UW', 'OTHERS',
@@ -181,6 +182,15 @@ export function normalizeCategory(raw) {
   const known = ['AGED', 'SHARED', 'REFERRAL', 'DIALER', 'REPEAT CLIENT', 'JACKPOT', 'D7', 'GOOGLE LEADS'];
   if (known.includes(u)) return u;
   return 'AGED';
+}
+
+// "ADVANCED" / "ADV" -> 'advance'; "AS EARNED" / "AS-EARNED" -> 'as_earned'.
+export function normalizePayType(raw) {
+  const u = String(raw || '').toUpperCase().trim();
+  if (!u) return 'advance';
+  if (/AS\s*EARN/i.test(u)) return 'as_earned';
+  if (/ADV/i.test(u))       return 'advance';
+  return 'advance';
 }
 
 export function normalizeCampaign(raw) {
@@ -476,30 +486,46 @@ export function previewImportFromUsha(wb) {
    ====================================================================== */
 
 // Maps free-form header strings to canonical Lead field keys.
-// Order matters — more specific patterns first.
+// Order matters — more specific patterns first. Headers in real-world
+// agent spreadsheets often have trailing/leading whitespace which we
+// strip in detectLeadFieldFromHeader before matching.
 const LEAD_HEADER_MAP = [
-  { keys: [/^name$/i, /full\s*name/i, /^client$/i, /customer/i], field: 'name' },
+  // Status fields — checked first so \"POLICY STATUS\" wins before \"POLICY\"
+  { keys: [/policy\s*status/i, /^status$/i, /^stage$/i], field: 'policyStatus' },
+  { keys: [/uw\s*status/i, /underwriting/i], field: 'uwStatus' },
+
+  // Policy / product. POLICY TYPE auto-maps to main product (USHA usage).
   { keys: [/policy\s*(no|num|number|#)/i, /^policy$/i], field: 'policyNumber' },
+  { keys: [/policy\s*type/i, /main\s*product/i, /^plan$/i, /coverage/i, /^product$/i], field: 'mainProduct' },
+  { keys: [/^association$/i, /^assoc(iation)?\s*plan/i], field: 'associationPlan' },
+
+  // Identity
+  { keys: [/^name$/i, /full\s*name/i, /^client$/i, /customer/i], field: 'name' },
   { keys: [/phone/i, /^cell$/i, /mobile/i, /^tel/i], field: 'phone' },
   { keys: [/^e-?mail$/i, /email/i], field: 'email' },
   { keys: [/^state$/i, /^st$/i], field: 'state' },
   { keys: [/^age$/i], field: 'age' },
   { keys: [/^zip/i], field: 'zip' },
-  { keys: [/main\s*product/i, /product/i, /^plan$/i, /coverage/i], field: 'mainProduct' },
-  { keys: [/association/i, /assoc/i], field: 'associationPlan' },
+
+  // Money
   { keys: [/monthly\s*premium/i, /premium/i], field: 'mainProductPremium' },
-  { keys: [/policy\s*status/i, /^status$/i, /^stage$/i], field: 'policyStatus' },
-  { keys: [/uw\s*status/i, /underwriting/i], field: 'uwStatus' },
-  { keys: [/(close|sold|issued|app(lication)?)\s*date/i, /^date\s*sold$/i, /effective\s*date/i], field: 'closedDate' },
-  { keys: [/(association|assoc)\s*start/i], field: 'associationStartDate' },
   { keys: [/lead\s*cost/i, /^cost$/i, /lead\s*price/i], field: 'leadCost' },
-  { keys: [/deal\s*value/i, /commission/i, /advance/i], field: 'dealValue' },
+  { keys: [/deal\s*value/i, /commission/i, /^advance$/i], field: 'dealValue' },
+
+  // Dates
+  { keys: [/(close|sold|issued|app(lication)?|submit(ted)?)\s*date/i, /^date\s*(sold|submitted|issued)/i, /effective\s*date/i], field: 'closedDate' },
+  { keys: [/(association|assoc)\s*start/i, /^start\s*date/i, /eff(ective)?\s*start/i], field: 'associationStartDate' },
+
+  // Pay type — \"ADV / AS EARNED\" column in book-of-business sheets
+  { keys: [/adv.*earn/i, /^pay\s*type$/i, /payment\s*type/i], field: 'payType' },
+
+  // Tracker
   { keys: [/lead\s*category/i, /^category$/i, /^type$/i], field: 'leadCategory' },
   { keys: [/^crm$/i], field: 'crm' },
   { keys: [/campaign/i], field: 'campaign' },
-  { keys: [/^source$/i, /lead\s*from/i], field: 'source' },
-  { keys: [/^owner$/i, /agent/i], field: 'owner' },
-  { keys: [/notes/i, /comments/i, /situation/i], field: 'notes' },
+  { keys: [/lead\s*source/i, /^source$/i, /lead\s*from/i], field: 'source' },
+  { keys: [/^owner$/i, /^agent$/i], field: 'owner' },
+  { keys: [/^notes?$/i, /comments/i, /situation/i], field: 'notes' },
 ];
 
 export function detectLeadFieldFromHeader(header) {
@@ -576,6 +602,7 @@ export function buildImportFromGeneric(wb, sheetName, mapping, defaults = {}, ba
       stage,
       policyNumber: raw.policyNumber || '',
       mainProduct: raw.mainProduct ? normalizeMainProduct(raw.mainProduct) : (defaults.mainProduct || ''),
+      payType: raw.payType ? normalizePayType(raw.payType) : 'advance',
       mainProductPremium: raw.mainProductPremium ? parseCurrency(raw.mainProductPremium) : 0,
       associationPlan: raw.associationPlan ? normalizeAssociation(raw.associationPlan) : '',
       associationStartDate: parseDate(raw.associationStartDate) || null,
