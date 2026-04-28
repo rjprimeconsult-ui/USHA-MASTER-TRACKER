@@ -4,94 +4,112 @@
  * Pipeline:
  *   1. Run Tesseract.js on the image -> raw text blob
  *   2. Pattern-match the text against known USHA portal layouts
- *   3. Return a normalized {name, phone, email, ...} object the
- *      caller maps onto a new Lead.
- *
- * Tesseract is loaded lazily so the ~3MB worker only ships when an
- * agent actually opens the screenshot importer.
+ *   3. Map fuzzy product names to canonical Main / Add-on IDs the rest
+ *      of the app already understands.
  */
 
 // ---------- Pattern catalog ----------
 //
 // These regexes target the visible USHA portal "deal detail" card. They
-// tolerate OCR noise (extra spaces, dropped punctuation, mixed case) by
-// being deliberately loose.
+// tolerate OCR noise (extra spaces, dropped punctuation, lowercase letters
+// where uppercase belongs, common O<->0 / l<->1 confusions) by being
+// deliberately loose.
 const PATTERNS = {
-  // Status badge — the green "Issued" / "Pending" / etc. pill at the top
   status: /\b(Issued|Pending|Submitted|Active|Declined|Withdrawn|Lapsed|Cancelled)\b/i,
 
-  // Customer name — usually the FIRST all-caps multi-word line, often
-  // followed by the policy ID line. We capture as "Last Name First Name"
-  // or "First Last" — caller can tidy.
-  name: /\b([A-Z][A-Z'.\- ]{2,40}\s[A-Z][A-Z'.\- ]{2,40})\b/,
+  // Customer name — first multi-word ALL-CAPS line. Accept letters with
+  // O/0 noise; we'll title-case after.
+  name: /\b([A-Z][A-Z'.\- ]{1,40}\s[A-Z][A-Z'.\- ]{1,40})\b/,
 
-  // Master policy ID — letter-prefixed alphanumeric, e.g. 52Y2502220
-  policyId: /\b(\d{1,3}[A-Z]\d{4,}[A-Z0-9]?)\b/,
+  // Master policy ID — letter-prefixed alphanumeric. Case-insensitive
+  // because OCR often reads "Y" as "v" or "y", and "I" as "1" or "l".
+  policyId: /\b(\d{1,3}[A-Za-z]\d{4,}[A-Za-z0-9]?)\b/,
 
-  // Money line: "Monthly Premium: $599.42"
   monthlyPremium: /Monthly\s*Premium:?\s*\$?\s*([\d,]+\.\d{2})/i,
-
-  // Application date: "Application: 04/23/2026"
   applicationDate: /Application:?\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
-
-  // Paid to Date: "Paid to Date: 05/23/2026"
   paidToDate: /Paid\s*to\s*Date:?\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
-
-  // Effective Date: "Effective Date: 05/23/2026"
   effectiveDate: /Effective\s*Date:?\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
 
-  // Gender (under Primary Information)
   gender: /\b(Male|Female)\b/i,
 
-  // DOB: "08/29/1996 (29)" — date plus age in parens
+  // DOB: "08/29/1996 (29)" — date plus age in parens. Loose date pattern.
   dob: /\b(\d{1,2}[\/\-]\d{1,2}[\/\-](?:19|20)\d{2})\s*\(\s*\d{1,3}\s*\)/,
 
-  // Phone: "(337) 580-4728" — handle OCR variants
-  phone: /\(?\s*(\d{3})\s*\)?[\s\-.]+(\d{3})[\s\-.]+(\d{4})\b/,
+  // Phone — much more lenient. Capture any 10-digit run, accepting common
+  // OCR errors (O <-> 0). We don't require parens or specific separators.
+  // We then re-format consistently.
+  phone: /(\(?\s*[\dOQqo]{3}\s*\)?[\s\-.]*[\dOQqo]{3}[\s\-.]*[\dOQqo]{4})/,
 
-  // Email — standard
-  email: /([A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,})/i,
+  // Email — accept common OCR substitutions. We anchor on the @ sign.
+  email: /([A-Z0-9._%+\-]+\s*@\s*[A-Z0-9.\-]+\.[A-Z]{2,})/i,
 
-  // ZIP code (5 digits at end of address line)
   zip: /\b(\d{5})(?:-\d{4})?\b/,
-
-  // State — 2-letter US state code preceded by a comma or space, before ZIP
-  state: /,\s*([A-Z]{2})\s+\d{5}\b/,
+  state: /,?\s*\b([A-Z]{2})\s+\d{5}\b/,
 };
 
-// Known USHA product names (extend as we encounter new ones)
-const KNOWN_PRODUCTS = [
-  'MedGuard III', 'MedGuard II', 'MedGuard',
-  'PremierAdvantage Fixed Indemnity', 'PremierAdvantage', 'Premier Advantage',
-  'Premier Choice', 'Secure Advantage',
-  'Secure Dental Plus', 'Secure Dental', 'Secure Vision', 'Secure Hearing',
-  'Health Access III', 'Health Access II', 'Health Access',
-  'Critical Illness', 'Accident', 'Life',
+// ---------- Product catalog ----------
+//
+// Maps the prose product names that show up in USHA portal screenshots to
+// the canonical IDs in src/lib/constants.js. Each entry has:
+//   - canonical: the ID stored on the lead
+//   - patterns: regex variants we expect to see in OCR output
+//   - bucket: 'main' | 'addon'
+//
+// Bucket determines whether the match becomes lead.mainProduct or goes
+// into lead.products (add-ons). When multiple main products match (rare),
+// the FIRST in this list wins.
+const PRODUCT_CATALOG = [
+  // ----- MAIN PRODUCTS -----
+  { canonical: 'PREMIER ADVANTAGE', bucket: 'main',
+    patterns: [/\bPremier\s*Advantage\s*Fixed\s*Indemnity\b/i, /\bPremierAdvantage\b/i, /\bPremier\s*Advantage\b/i] },
+  { canonical: 'PREMIER CHOICE', bucket: 'main',
+    patterns: [/\bPremier\s*Choice\b/i, /\bPremierChoice\b/i] },
+  { canonical: 'SECURE ADVANTAGE', bucket: 'main',
+    patterns: [/\bSecure\s*Advantage\b/i, /\bSecureAdvantage\b/i] },
+  { canonical: 'HEALTH ACCESS III', bucket: 'main',
+    patterns: [/\bHealth\s*Access\s*III\b/i, /\bHealth\s*Access\s*3\b/i, /\bHA\s*III\b/i, /\bHealthAccess\b/i] },
+  { canonical: 'SUPPY', bucket: 'main',
+    patterns: [/\bSuppy\b/i] },
+  { canonical: 'ACA WRAP', bucket: 'main',
+    patterns: [/\bACA\s*Wrap\b/i] },
+
+  // ----- ADD-ON PRODUCTS -----
+  { canonical: 'MEDGUARD III', bucket: 'addon',
+    patterns: [/\bMed\s*Guard\s*III\b/i, /\bMedGuard\s*III\b/i, /\bMed\s*Guard\b/i, /\bMedGuard\b/i] },
+  { canonical: 'PREMIERVISION', bucket: 'addon',
+    patterns: [/\bPremier\s*Vision\b/i, /\bPremierVision\b/i] },
+  { canonical: 'DENTAL / SECUREDENTAL', bucket: 'addon',
+    patterns: [/\bSecure\s*Dental\s*Plus\b/i, /\bSecureDental\b/i, /\bSecure\s*Dental\b/i, /\bDental\s*Plus\b/i, /\bDental\b/i] },
 ];
 
-// Find every product mentioned in the OCR text; preserve order of first occurrence
+// Find every product mentioned. Each canonical product matches at most
+// once even if multiple of its pattern variants appear in the text.
 function findProducts(text) {
-  const found = [];
+  const matches = []; // { canonical, bucket, index }
   const seen = new Set();
-  for (const p of KNOWN_PRODUCTS) {
-    const re = new RegExp(p.replace(/\s+/g, '\\s+'), 'i');
-    const m = text.match(re);
-    if (m && !seen.has(p)) {
-      found.push({ name: p, index: m.index });
-      seen.add(p);
+  for (const entry of PRODUCT_CATALOG) {
+    if (seen.has(entry.canonical)) continue;
+    for (const re of entry.patterns) {
+      const m = text.match(re);
+      if (m) {
+        matches.push({ canonical: entry.canonical, bucket: entry.bucket, index: m.index });
+        seen.add(entry.canonical);
+        break;
+      }
     }
   }
-  // Sort by appearance order
-  return found.sort((a, b) => a.index - b.index).map(p => p.name);
+  matches.sort((a, b) => a.index - b.index);
+  return matches;
 }
 
-// Normalize a name from ALL CAPS to Title Case
+// ---------- Field utilities ----------
+
+// Title Case from ALL CAPS, preserving apostrophes/hyphens
 function titleCase(s) {
   if (!s) return '';
   return s.toLowerCase().replace(/\b([a-z])/g, (m) => m.toUpperCase());
 }
 
-// Convert M/D/YYYY to YYYY-MM-DD
 function toIsoDate(s) {
   if (!s) return '';
   const m = String(s).match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
@@ -101,12 +119,40 @@ function toIsoDate(s) {
   return `${yy}-${String(m[1]).padStart(2, '0')}-${String(m[2]).padStart(2, '0')}`;
 }
 
+// Normalize phone string: keep digits only, accept O/Q/q/o as 0
+function normalizePhone(raw) {
+  if (!raw) return '';
+  const digits = String(raw)
+    .replace(/[OoQq]/g, '0')   // common OCR confusions for 0
+    .replace(/\D/g, '');
+  if (digits.length < 10) return '';
+  // Take last 10 digits in case there's a country code prefix
+  const d = digits.slice(-10);
+  return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
+}
+
+// Clean up an email — remove spaces around @, lowercase
+function normalizeEmail(raw) {
+  if (!raw) return '';
+  return String(raw).replace(/\s+/g, '').toLowerCase();
+}
+
+// Reject obvious false-positive policy IDs (e.g. ZIP+suffix, dates)
+function isPlausiblePolicyId(s) {
+  if (!s) return false;
+  const t = String(s);
+  if (t.length < 6) return false;
+  if (/^\d+$/.test(t)) return false;       // pure digits = not a policy ID
+  if (/^\d{1,2}\/\d/.test(t)) return false; // looks like a date
+  return true;
+}
+
 /**
  * Parse the raw OCR text into a structured deal record.
  * Every field is optional — caller can review + edit before saving.
  */
 export function parseDealFromText(rawText) {
-  const text = String(rawText || '').replace(/’/g, "'");
+  const text = String(rawText || '').replace(/[''`]/g, "'");
   const flat = text.replace(/\s+/g, ' ').trim();
 
   const out = {
@@ -125,8 +171,8 @@ export function parseDealFromText(rawText) {
     state: '',
     zip: '',
     indvOrFamily: 'Indv',
-    products: [],
-    mainProduct: '',
+    products: [],         // canonical IDs (add-ons)
+    mainProduct: '',      // canonical ID
     confidence: {},
   };
 
@@ -138,29 +184,25 @@ export function parseDealFromText(rawText) {
     else if (v === 'pending' || v === 'submitted') out.stage = 'Pending';
     else if (v === 'declined' || v === 'lapsed' || v === 'cancelled') out.stage = 'Declined';
     else if (v === 'withdrawn')                     out.stage = 'Withdrawn';
-    out.confidence.stage = 'high';
   }
 
-  // Customer name — first ALL CAPS run that's not a product or city
+  // Customer name
   const nameM = text.match(PATTERNS.name);
-  if (nameM) {
-    out.name = titleCase(nameM[1].trim());
-    out.confidence.name = 'medium';
-  }
+  if (nameM) out.name = titleCase(nameM[1].trim());
 
-  // Policy ID
-  const polM = text.match(PATTERNS.policyId);
-  if (polM) {
-    out.policyNumber = polM[1];
-    out.confidence.policyNumber = 'high';
+  // Policy ID — take FIRST plausible match. Uppercase the letter portion
+  // so OCR'd "52v2502220" becomes "52V2502220".
+  const polMatches = [...text.matchAll(/(\d{1,3}[A-Za-z]\d{4,}[A-Za-z0-9]?)/g)];
+  for (const m of polMatches) {
+    if (isPlausiblePolicyId(m[1])) {
+      out.policyNumber = m[1].toUpperCase();
+      break;
+    }
   }
 
   // Monthly premium
   const premM = flat.match(PATTERNS.monthlyPremium);
-  if (premM) {
-    out.monthlyPremium = Number(premM[1].replace(/,/g, ''));
-    out.confidence.monthlyPremium = 'high';
-  }
+  if (premM) out.monthlyPremium = Number(premM[1].replace(/,/g, ''));
 
   // Dates
   const appM = flat.match(PATTERNS.applicationDate);
@@ -176,11 +218,15 @@ export function parseDealFromText(rawText) {
   const dobM = flat.match(PATTERNS.dob);
   if (dobM) out.dob = toIsoDate(dobM[1]);
 
-  // Contact
+  // Contact — phone (try lenient regex, then extract digits)
   const phoneM = flat.match(PATTERNS.phone);
-  if (phoneM) out.phone = `(${phoneM[1]}) ${phoneM[2]}-${phoneM[3]}`;
+  if (phoneM) {
+    const normalized = normalizePhone(phoneM[1]);
+    if (normalized) out.phone = normalized;
+  }
+  // Email
   const emailM = flat.match(PATTERNS.email);
-  if (emailM) out.email = emailM[1].toLowerCase();
+  if (emailM) out.email = normalizeEmail(emailM[1]);
 
   // Location
   const stateM = flat.match(PATTERNS.state);
@@ -188,10 +234,12 @@ export function parseDealFromText(rawText) {
   const zipM = flat.match(PATTERNS.zip);
   if (zipM) out.zip = zipM[1];
 
-  // Products
-  const products = findProducts(text);
-  out.products = products;
-  out.mainProduct = products[0] || '';
+  // Products — split into main vs add-ons via the catalog.
+  // Main product priority order is the order in PRODUCT_CATALOG.
+  const matches = findProducts(text);
+  const main = matches.find(m => m.bucket === 'main');
+  if (main) out.mainProduct = main.canonical;
+  out.products = matches.filter(m => m.bucket === 'addon').map(m => m.canonical);
 
   // Indv / Family heuristic — Dependents section presence
   if (/\bDependent(s)?\b/i.test(text)) {
@@ -204,11 +252,8 @@ export function parseDealFromText(rawText) {
 /**
  * Run Tesseract.js on an image File or Blob.
  * Returns a Promise that resolves to { rawText, parsed }.
- *
- * Lazy-loads tesseract.js so the heavy worker only ships when used.
  */
 export async function extractDealFromImage(file, onProgress) {
-  // Dynamic import keeps tesseract.js out of the main bundle
   const Tesseract = (await import('tesseract.js')).default;
   const { data: { text } } = await Tesseract.recognize(file, 'eng', {
     logger: m => {

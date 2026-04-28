@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { X, Upload, Image as ImageIcon, Loader2, CheckCircle2, AlertCircle, FileText } from 'lucide-react';
 import { extractDealFromImage } from '@/lib/screenshotExtract';
+import { CRMS, CAMPAIGNS, LEAD_CATEGORIES, SOURCES, OWNERS, MAIN_PRODUCTS, ADDON_PRODUCTS } from '@/lib/constants';
 
 const inp = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500';
 
@@ -59,7 +60,17 @@ export default function ScreenshotImport({ open, onClose, onCreateLead }) {
     try {
       const { parsed, rawText } = await extractDealFromImage(file, setProgress);
       setResult({ parsed, rawText });
-      setEdits({ ...parsed });
+      // Seed tracker-required fields with sensible defaults — agent edits
+      // these before clicking Create Lead.
+      setEdits({
+        ...parsed,
+        crm: 'RINGY',
+        source: 'CRM',
+        leadCategory: 'AGED',
+        campaign: 'AGED.25',
+        owner: 'You',
+        leadCost: '',
+      });
     } catch (e) {
       setError('OCR failed: ' + (e.message || 'unknown error'));
     } finally {
@@ -71,7 +82,9 @@ export default function ScreenshotImport({ open, onClose, onCreateLead }) {
 
   const confirm = () => {
     if (!edits) return;
-    // Map the extracted record onto a Lead patch
+    // Map the extracted record onto a Lead patch. Tracker-required fields
+    // (CRM, source, lead category, campaign, owner, leadCost) come from the
+    // user-edited defaults — they can't be inferred from a USHA screenshot.
     const lead = {
       name: edits.name,
       phone: edits.phone,
@@ -81,10 +94,17 @@ export default function ScreenshotImport({ open, onClose, onCreateLead }) {
       mainProduct: edits.mainProduct,
       mainProductPremium: Number(edits.monthlyPremium) || 0,
       policyNumber: edits.policyNumber,
-      products: (edits.products || []).slice(1).map(p => ({ id: p, premium: 0 })),
+      products: (edits.products || []).map(p => ({ id: p, premium: 0 })),
       closedDate: edits.applicationDate || new Date().toISOString().slice(0, 10),
       dateAdded: edits.applicationDate || new Date().toISOString().slice(0, 10),
       lastTouch: new Date().toISOString().slice(0, 10),
+      // Tracker fields
+      crm: edits.crm || 'RINGY',
+      source: edits.source || 'CRM',
+      leadCategory: edits.leadCategory || 'AGED',
+      campaign: edits.campaign || 'AGED.25',
+      owner: edits.owner || 'You',
+      leadCost: Number(edits.leadCost) || 0,
       notes: [
         edits.gender && `Gender: ${edits.gender}`,
         edits.dob && `DOB: ${edits.dob}`,
@@ -206,7 +226,10 @@ export default function ScreenshotImport({ open, onClose, onCreateLead }) {
                     <input type="date" className={inp} value={edits.effectiveDate || ''} onChange={e => setEdit({ effectiveDate: e.target.value })} />
                   </Field>
                   <Field label="Main Product">
-                    <input className={inp} value={edits.mainProduct || ''} onChange={e => setEdit({ mainProduct: e.target.value })} />
+                    <select className={inp} value={edits.mainProduct || ''} onChange={e => setEdit({ mainProduct: e.target.value })}>
+                      <option value="">— Select —</option>
+                      {MAIN_PRODUCTS.map(p => <option key={p.id} value={p.id}>{p.id}</option>)}
+                    </select>
                   </Field>
                   <Field label="Indv / Family">
                     <select className={inp} value={edits.indvOrFamily || 'Indv'} onChange={e => setEdit({ indvOrFamily: e.target.value })}>
@@ -216,13 +239,64 @@ export default function ScreenshotImport({ open, onClose, onCreateLead }) {
                   </Field>
                 </div>
 
-                {edits.products && edits.products.length > 1 && (
-                  <Field label={`Add-on Products (${edits.products.length - 1})`} hint="Saved into the lead's products list. You can adjust premium per add-on after creating.">
-                    <div className="bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs space-y-1">
-                      {edits.products.slice(1).map((p, i) => <div key={i}>· {p}</div>)}
-                    </div>
-                  </Field>
-                )}
+                {/* Add-ons multi-select */}
+                <Field label="Add-on Products" hint="Comes from the screenshot. Toggle to keep or drop.">
+                  <div className="bg-slate-50 border border-slate-200 rounded-lg p-2 space-y-1">
+                    {ADDON_PRODUCTS.map(ap => {
+                      const checked = (edits.products || []).includes(ap.id);
+                      return (
+                        <label key={ap.id} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-white rounded px-1 py-0.5">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(e) => {
+                              const next = new Set(edits.products || []);
+                              if (e.target.checked) next.add(ap.id); else next.delete(ap.id);
+                              setEdit({ products: [...next] });
+                            }}
+                            className="accent-indigo-600"
+                          />
+                          <span className={checked ? 'text-slate-900 font-medium' : 'text-slate-500'}>{ap.id}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </Field>
+
+                {/* Tracker fields — not in screenshot, agent provides */}
+                <div className="border-t border-slate-200 pt-3 mt-2">
+                  <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Tracker info (not in screenshot)</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="CRM">
+                      <select className={inp} value={edits.crm || 'RINGY'} onChange={e => setEdit({ crm: e.target.value })}>
+                        {CRMS.map(c => <option key={c.id} value={c.id}>{c.id}</option>)}
+                      </select>
+                    </Field>
+                    <Field label="Lead Source">
+                      <select className={inp} value={edits.source || 'CRM'} onChange={e => setEdit({ source: e.target.value })}>
+                        {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </Field>
+                    <Field label="Lead Category">
+                      <select className={inp} value={edits.leadCategory || 'AGED'} onChange={e => setEdit({ leadCategory: e.target.value })}>
+                        {LEAD_CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.id}</option>)}
+                      </select>
+                    </Field>
+                    <Field label="Campaign">
+                      <select className={inp} value={edits.campaign || 'AGED.25'} onChange={e => setEdit({ campaign: e.target.value })}>
+                        {CAMPAIGNS.map(c => <option key={c.id} value={c.id}>{c.id}</option>)}
+                      </select>
+                    </Field>
+                    <Field label="Owner">
+                      <select className={inp} value={edits.owner || 'You'} onChange={e => setEdit({ owner: e.target.value })}>
+                        {OWNERS.map(o => <option key={o} value={o}>{o}</option>)}
+                      </select>
+                    </Field>
+                    <Field label="Lead Cost ($)">
+                      <input type="number" step="0.01" className={inp} value={edits.leadCost || ''} onChange={e => setEdit({ leadCost: e.target.value })} placeholder="0.00" />
+                    </Field>
+                  </div>
+                </div>
 
                 <details className="text-[11px] text-slate-500">
                   <summary className="cursor-pointer hover:text-slate-700">Show raw OCR output (for debugging)</summary>
