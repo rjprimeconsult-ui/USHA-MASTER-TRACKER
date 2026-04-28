@@ -11,6 +11,7 @@ import { storage } from '@/lib/storage';
 import { compressIfImage } from '@/lib/imageCompress';
 import { saveAttachment, getAttachment, deleteAttachment } from '@/lib/attachments';
 import { TiltCard, CountUp, Stagger, StaggerItem, MoneyCell } from '../motion/MotionPrimitives';
+import SmartImportWizard from '../SmartImportWizard';
 
 const ACCOUNTS_KEY = 'business_accounts_v1';
 
@@ -68,6 +69,7 @@ function BusinessBooksView({
   const [importPreview, setImportPreview] = useState(null);
   const [viewAttachment, setViewAttachment] = useState(null);
   const [rescanPreview, setRescanPreview] = useState(null);
+  const [showSmartImport, setShowSmartImport] = useState(false);
 
   // Re-scan all current expense entries through the auto-classifier and find
   // any whose category should change based on the new keyword rules
@@ -459,17 +461,41 @@ function BusinessBooksView({
               </div>
             </div>
           </div>
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={importing}
-            className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white rounded-lg px-4 py-2 text-sm font-semibold transition flex items-center gap-2"
-          >
-            <Upload size={14} />
-            {importing ? 'Reading…' : 'Choose file'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowSmartImport(true)}
+              className="bg-gradient-to-br from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white rounded-lg px-4 py-2 text-sm font-semibold transition flex items-center gap-2 shadow-md shadow-indigo-500/30"
+              title="Drop any expense file (XLSX, CSV, or PDF) — AI parses + categorizes everything"
+            >
+              ✨ Smart Import (AI)
+            </button>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={importing}
+              className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white rounded-lg px-4 py-2 text-sm font-semibold transition flex items-center gap-2"
+            >
+              <Upload size={14} />
+              {importing ? 'Reading…' : 'Classic Import'}
+            </button>
+          </div>
           <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" onChange={handleFileSelect} className="hidden" />
         </div>
       </div>
+
+      {/* Smart import (AI-powered) modal */}
+      <SmartImportWizard
+        open={showSmartImport}
+        onClose={() => setShowSmartImport(false)}
+        defaultAccount={knownAccounts[0] || ''}
+        onImport={({ expenses, income }) => {
+          if (expenses.length) onBulkAddExpenses(expenses);
+          if (income.length) onBulkAddIncome(income);
+          if (expenses.length + income.length > 0) {
+            const newest = [...expenses, ...income].reduce((max, e) => e.date > max ? e.date : max, '');
+            if (newest) setActiveMonth(newest.slice(0, 7));
+          }
+        }}
+      />
 
       {/* Tab toggle + utilities row */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
