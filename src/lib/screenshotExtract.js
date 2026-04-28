@@ -131,10 +131,54 @@ function normalizePhone(raw) {
   return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
 }
 
-// Clean up an email — remove spaces around @, lowercase
+// Clean up an email — remove spaces, lowercase
 function normalizeEmail(raw) {
   if (!raw) return '';
   return String(raw).replace(/\s+/g, '').toLowerCase();
+}
+
+// Aggressive email finder. OCR often mangles the @ sign — we've seen it
+// read as `(`, `[`, `Q`, `&`, `e`, or dropped entirely. We try four
+// strategies in order: clean match, single-char-replacement, domain-anchored
+// reconstruction, and finally bare username + domain run-together.
+const EMAIL_TLDS = ['com', 'net', 'org', 'edu', 'gov', 'io', 'co', 'us', 'info', 'biz', 'me', 'app'];
+const TLD_GROUP = `(?:${EMAIL_TLDS.join('|')})`;
+
+function extractEmail(text) {
+  if (!text) return '';
+  const t = text.replace(/[‘’]/g, "'");
+
+  // 1) Standard match
+  let m = t.match(new RegExp(`([A-Z0-9._%+\\-]{2,})\\s*@\\s*([A-Z0-9.\\-]+\\.${TLD_GROUP})\\b`, 'i'));
+  if (m) return normalizeEmail(`${m[1]}@${m[2]}`);
+
+  // 2) @ misread as a single common substitute character
+  m = t.match(new RegExp(`([A-Z0-9._%+\\-]{2,})\\s*[\\(\\[\\{&Qq]\\s*([A-Z0-9.\\-]+\\.${TLD_GROUP})\\b`, 'i'));
+  if (m) return normalizeEmail(`${m[1]}@${m[2]}`);
+
+  // 3) Domain-anchored: find a known TLD ending, walk backward to grab the
+  // local part. Helps when @ vanished entirely or got replaced by spaces.
+  const domRe = new RegExp(`\\b([A-Z][A-Z0-9\\-]+\\.${TLD_GROUP})\\b`, 'i');
+  const dm = t.match(domRe);
+  if (dm) {
+    const before = t.slice(0, dm.index);
+    // Last word-ish run preceding the domain — at least 3 chars of allowed
+    // username characters, possibly with stray punctuation between it and
+    // the domain.
+    const userMatch = before.match(/([A-Z0-9][A-Z0-9._%+\-]{2,})[\s@(\[\{&Qq]*$/i);
+    if (userMatch) return normalizeEmail(`${userMatch[1]}@${dm[1]}`);
+  }
+
+  // 4) Run-together: "celesteeliz96gmail.com" with no separator at all.
+  // Look for `<username><known-domain-without-extra-dots>.<tld>`.
+  const KNOWN_DOMAINS = ['gmail', 'yahoo', 'hotmail', 'outlook', 'icloud', 'aol', 'comcast', 'live', 'msn'];
+  for (const dom of KNOWN_DOMAINS) {
+    const re = new RegExp(`([A-Z0-9._%+\\-]{2,})${dom}\\.${TLD_GROUP}\\b`, 'i');
+    const rm = t.match(re);
+    if (rm) return normalizeEmail(`${rm[1]}@${dom}.com`);
+  }
+
+  return '';
 }
 
 // Reject obvious false-positive policy IDs (e.g. ZIP+suffix, dates)
@@ -224,9 +268,8 @@ export function parseDealFromText(rawText) {
     const normalized = normalizePhone(phoneM[1]);
     if (normalized) out.phone = normalized;
   }
-  // Email
-  const emailM = flat.match(PATTERNS.email);
-  if (emailM) out.email = normalizeEmail(emailM[1]);
+  // Email — multi-strategy fallback for OCR-mangled @ symbols
+  out.email = extractEmail(text);
 
   // Location
   const stateM = flat.match(PATTERNS.state);
