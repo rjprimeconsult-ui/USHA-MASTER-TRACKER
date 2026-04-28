@@ -189,12 +189,12 @@ export const NAV_TABS = [
 export const DEFAULT_PROSPECT_STAGES = [
   { id: 'NEW',                label: 'New',                color: '#64748b' },
   { id: 'WEBBY_SET',          label: 'Webby Set',          color: '#0ea5e9' },
-  { id: 'WEBBY_CONFIRMED',    label: 'Webby Confirmed',    color: '#0284c7' },
-  { id: 'APPOINTMENT_SET',    label: 'Appointment Set',    color: '#8b5cf6' },
+  { id: 'WEBBY_CONFIRMED',    label: 'Webby Confirmed',    color: '#fb923c' },
+  { id: 'APPOINTMENT_SET',    label: 'Appointment Set',    color: '#3b82f6' },
   { id: 'MISSED_APPT',        label: 'Missed Appt',        color: '#f97316' },
-  { id: 'PENDING_DECISION',   label: 'Pending Decision',   color: '#eab308' },
+  { id: 'PENDING_DECISION',   label: 'Pending Decision',   color: '#facc15' },
   { id: 'FOLLOWUP_LATER',     label: 'Follow-up Later',    color: '#a855f7' },
-  { id: 'GHOSTED',            label: 'Ghosted',            color: '#94a3b8' },
+  { id: 'GHOSTED',            label: 'Ghosted',            color: '#9ca3af' },
   { id: 'SOLD',               label: 'Sold',               color: '#10b981' },
   { id: 'LOST',               label: 'Lost',               color: '#ef4444' },
 ];

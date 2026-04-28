@@ -16,9 +16,9 @@ const inp = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:o
 
 // ---------- helpers ----------
 function timeUntil(isoDateTime) {
-  if (!isoDateTime) return null;
-  const t = new Date(isoDateTime).getTime();
-  if (!Number.isFinite(t)) return null;
+  const d = apptDate(isoDateTime);
+  if (!d) return null;
+  const t = d.getTime();
   const now = Date.now();
   const diffMs = t - now;
   if (diffMs > 0 && diffMs < 60 * 60 * 1000) return { mins: Math.round(diffMs / 60000), soon: true, past: false };
@@ -27,18 +27,68 @@ function timeUntil(isoDateTime) {
   return null;
 }
 
+// Returns a formatted appointment string, OR null if the value isn't a real
+// date. Used to be lenient (returned the raw input) but that allowed garbage
+// (e.g. situation text accidentally mapped to appointmentTime during import)
+// to display in the appointment column. Now we hard-validate.
 function formatAppt(iso) {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
+  if (!iso) return null;
+  const s = String(iso).trim();
+  if (!s) return null;
+  // Reject anything that doesn't look at least like a date string
+  // (must contain digits and either dash, slash, or "T")
+  if (!/\d/.test(s) || !/[-/T:]/.test(s)) return null;
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return null;
+  // Filter out the unix epoch fallback (1970-01-01) which often comes from
+  // bad parsing
+  if (d.getFullYear() < 2000) return null;
   return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
+// Returns the parsed Date object (or null), used by filters
+function apptDate(iso) {
+  if (!iso) return null;
+  const s = String(iso).trim();
+  if (!s || !/\d/.test(s) || !/[-/T:]/.test(s)) return null;
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime()) || d.getFullYear() < 2000) return null;
+  return d;
+}
+
 function isToday(iso) {
-  if (!iso) return false;
-  const d = new Date(iso);
+  const d = apptDate(iso);
+  if (!d) return false;
   const t = new Date();
   return d.getFullYear() === t.getFullYear() && d.getMonth() === t.getMonth() && d.getDate() === t.getDate();
+}
+
+function isThisWeek(iso) {
+  const d = apptDate(iso);
+  if (!d) return false;
+  const now = new Date();
+  // Sunday = 0; treat Monday as start of week
+  const day = now.getDay();
+  const diffToMon = (day === 0 ? -6 : 1) - day;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() + diffToMon);
+  monday.setHours(0, 0, 0, 0);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 7);
+  return d >= monday && d < sunday;
+}
+
+function isUpcoming(iso) {
+  const d = apptDate(iso);
+  if (!d) return false;
+  return d.getTime() > Date.now();
+}
+
+function isOverdueAppt(iso, stage) {
+  const d = apptDate(iso);
+  if (!d) return false;
+  if (['SOLD', 'LOST', 'GHOSTED'].includes(stage)) return false;
+  return d.getTime() < Date.now() - 12 * 60 * 60 * 1000; // > 12h past
 }
 
 function isOverdueFollowup(p) {
@@ -117,6 +167,7 @@ function TodayPanel({ prospects, onEdit }) {
 // ---------- Kanban Card ----------
 function KanbanCard({ prospect, onEdit, onDragStart }) {
   const tu = timeUntil(prospect.appointmentTime);
+  const apptStr = formatAppt(prospect.appointmentTime);
   return (
     <div
       draggable
@@ -136,12 +187,12 @@ function KanbanCard({ prospect, onEdit, onDragStart }) {
       {prospect.state && (
         <div className="text-xs text-slate-500 flex items-center gap-1"><MapPin size={11} /> {prospect.state} {prospect.timezone && `· ${prospect.timezone}`}</div>
       )}
-      {prospect.appointmentTime && (
+      {apptStr && (
         <div className={`mt-1.5 text-[11px] px-2 py-1 rounded inline-flex items-center gap-1
           ${tu?.soon ? 'bg-amber-100 text-amber-800' :
             tu?.past ? 'bg-slate-100 text-slate-500' :
             'bg-indigo-50 text-indigo-700'}`}>
-          <Clock size={10} /> {formatAppt(prospect.appointmentTime)}
+          <Clock size={10} /> {apptStr}
         </div>
       )}
       {prospect.quoteSize && (
@@ -454,7 +505,7 @@ function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, o
   const isSold = prospect.stage === 'SOLD';
   const created = prospect.createdAt ? new Date(prospect.createdAt) : null;
   const daysSinceCreated = created ? Math.floor((Date.now() - created.getTime()) / 86400000) : null;
-  const apptDate = prospect.appointmentTime ? new Date(prospect.appointmentTime) : null;
+  const apptD = apptDate(prospect.appointmentTime);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={onClose}>
@@ -483,8 +534,8 @@ function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, o
             {created && (
               <div>Added: {created.toLocaleDateString()} ({daysSinceCreated} day{daysSinceCreated !== 1 ? 's' : ''} ago)</div>
             )}
-            {apptDate && !Number.isNaN(apptDate.getTime()) && (
-              <div className="font-semibold text-indigo-700">Appointment: {apptDate.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</div>
+            {apptD && (
+              <div className="font-semibold text-indigo-700">Appointment: {apptD.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</div>
             )}
           </div>
         </div>
@@ -506,7 +557,7 @@ function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, o
           {(prospect.lastContact || prospect.appointmentTime || prospect.nextSteps || prospect.crm) && (
             <DetailSection title="Pipeline Activity">
               {prospect.appointmentTime && (
-                <DetailRow Icon={Clock} label="Appointment" value={apptDate?.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} valueClass="font-semibold" />
+                <DetailRow Icon={Clock} label="Appointment" value={apptD?.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} valueClass="font-semibold" />
               )}
               {prospect.lastContact && (
                 <DetailRow Icon={Activity} label="Last Contact" value={prospect.lastContact} />
@@ -592,6 +643,7 @@ export default function ProspectsView({
   const [view, setView] = useState('kanban'); // 'kanban' | 'list'
   const [search, setSearch] = useState('');
   const [stageFilter, setStageFilter] = useState('');
+  const [apptFilter, setApptFilter] = useState(''); // '' | 'today' | 'week' | 'upcoming' | 'overdue' | 'none'
   const [editing, setEditing] = useState(null);
   const [viewing, setViewing] = useState(null);  // read-only detail bubble
   const [showSettings, setShowSettings] = useState(false);
@@ -604,11 +656,18 @@ export default function ProspectsView({
     return prospects.filter(p => {
       if (p.archivedAt) return false;
       if (stageFilter && p.stage !== stageFilter) return false;
+      if (apptFilter) {
+        if (apptFilter === 'today'    && !isToday(p.appointmentTime)) return false;
+        if (apptFilter === 'week'     && !isThisWeek(p.appointmentTime)) return false;
+        if (apptFilter === 'upcoming' && !isUpcoming(p.appointmentTime)) return false;
+        if (apptFilter === 'overdue'  && !isOverdueAppt(p.appointmentTime, p.stage)) return false;
+        if (apptFilter === 'none'     && apptDate(p.appointmentTime)) return false;
+      }
       if (!q) return true;
       const blob = `${p.name} ${p.phone} ${p.email} ${p.state} ${p.notes} ${p.situation} ${p.referrer}`.toLowerCase();
       return blob.includes(q);
     });
-  }, [prospects, search, stageFilter]);
+  }, [prospects, search, stageFilter, apptFilter]);
 
   const grouped = useMemo(() => {
     const map = new Map(cfg.stages.map(s => [s.id, []]));
@@ -702,6 +761,15 @@ export default function ProspectsView({
           <option value="">All stages</option>
           {cfg.stages.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
         </select>
+        <select value={apptFilter} onChange={e => setApptFilter(e.target.value)}
+          className="border border-slate-200 rounded-lg px-3 py-2 text-sm" title="Filter by appointment time">
+          <option value="">Any time</option>
+          <option value="today">Today</option>
+          <option value="week">This week</option>
+          <option value="upcoming">Upcoming</option>
+          <option value="overdue">Overdue</option>
+          <option value="none">No appointment</option>
+        </select>
         <div className="flex bg-slate-100 rounded-lg p-0.5">
           <button onClick={() => setView('kanban')}
             className={`px-3 py-1.5 text-xs font-semibold rounded flex items-center gap-1.5 ${view === 'kanban' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'}`}>
@@ -744,58 +812,77 @@ export default function ProspectsView({
         </div>
       )}
 
-      {/* List — compact 3-column layout: Name · Phone · Appt time.
+      {/* List — compact 3-column layout: Name · Phone · Appt time + Stage.
           Click any row to open the read-only detail bubble. */}
       {prospects.length > 0 && view === 'list' && (
-        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-          <div className="grid grid-cols-[2fr_1fr_1.5fr_auto] gap-3 px-4 py-2.5 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200">
-            <div>Name</div>
-            <div>Phone</div>
-            <div>Appointment</div>
-            <div className="w-20 text-right">Stage</div>
-          </div>
-          <div className="divide-y divide-slate-100">
-            {visible.map(p => {
-              const st = cfg.stages.find(s => s.id === p.stage);
-              const tu = timeUntil(p.appointmentTime);
-              return (
-                <button
-                  key={p.id}
-                  onClick={() => onView(p)}
-                  className="w-full grid grid-cols-[2fr_1fr_1.5fr_auto] gap-3 px-4 py-3 hover:bg-indigo-50/40 transition text-left items-center"
-                >
-                  <div className="min-w-0">
-                    <div className="font-semibold text-slate-900 truncate">{p.name || '(no name)'}</div>
-                    {p.indvOrFamily === 'Family' && (
-                      <span className="text-[10px] font-bold text-violet-700 bg-violet-100 px-1.5 py-0.5 rounded mt-0.5 inline-block">FAM</span>
-                    )}
-                  </div>
-                  <div className="text-sm text-slate-700 truncate">{p.phone || <span className="text-slate-400 italic">—</span>}</div>
-                  <div className="text-sm">
-                    {p.appointmentTime ? (
-                      <div className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md
-                        ${tu?.soon ? 'bg-amber-100 text-amber-800' :
-                          tu?.past ? 'bg-slate-100 text-slate-500' :
-                          'bg-indigo-50 text-indigo-700'}`}>
-                        <Clock size={11} />
-                        <span className="font-medium">{formatAppt(p.appointmentTime)}</span>
+        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+          <table className="w-full text-sm border-collapse">
+            <thead>
+              <tr className="bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                <th className="px-4 py-2.5 text-left border-b-2 border-slate-200 border-r border-slate-200">Name</th>
+                <th className="px-4 py-2.5 text-left border-b-2 border-slate-200 border-r border-slate-200 w-44">Phone</th>
+                <th className="px-4 py-2.5 text-left border-b-2 border-slate-200 border-r border-slate-200 w-56">Appointment</th>
+                <th className="px-4 py-2.5 text-right border-b-2 border-slate-200 w-40">Stage</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map(p => {
+                const st = cfg.stages.find(s => s.id === p.stage);
+                const tu = timeUntil(p.appointmentTime);
+                const apptStr = formatAppt(p.appointmentTime);
+                return (
+                  <tr
+                    key={p.id}
+                    onClick={() => onView(p)}
+                    className="cursor-pointer hover:bg-indigo-50/40 transition border-b border-slate-200 last:border-b-0"
+                  >
+                    <td className="px-4 py-3 border-r border-slate-200 align-middle">
+                      <div className="font-semibold text-slate-900 truncate flex items-center gap-2">
+                        {p.name || '(no name)'}
+                        {p.indvOrFamily === 'Family' && (
+                          <span className="text-[10px] font-bold text-violet-700 bg-violet-100 px-1.5 py-0.5 rounded">FAM</span>
+                        )}
                       </div>
-                    ) : (
-                      <span className="text-slate-400 italic text-xs">No appointment</span>
-                    )}
-                  </div>
-                  <div className="w-20 text-right">
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded whitespace-nowrap" style={{ background: (st?.color || '#64748b') + '22', color: st?.color || '#64748b' }}>
-                      {st?.label || p.stage}
-                    </span>
-                  </div>
-                </button>
-              );
-            })}
-            {visible.length === 0 && (
-              <div className="px-4 py-8 text-center text-slate-400 italic text-sm">No prospects match these filters.</div>
-            )}
-          </div>
+                      {p.source && (
+                        <div className="text-[11px] text-slate-400 mt-0.5">{p.source}</div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 border-r border-slate-200 text-slate-700 align-middle">
+                      {p.phone || <span className="text-slate-400 italic text-xs">—</span>}
+                    </td>
+                    <td className="px-4 py-3 border-r border-slate-200 align-middle">
+                      {apptStr ? (
+                        <div className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium
+                          ${tu?.soon ? 'bg-amber-100 text-amber-800' :
+                            tu?.past ? 'bg-slate-100 text-slate-500' :
+                            'bg-blue-50 text-blue-700'}`}>
+                          <Clock size={11} />
+                          <span>{apptStr}</span>
+                        </div>
+                      ) : (
+                        <span className="text-slate-400 italic text-xs">No appointment</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 align-middle text-right">
+                      <span
+                        className="text-[11px] font-bold px-2.5 py-1 rounded-md whitespace-nowrap inline-block"
+                        style={{
+                          background: (st?.color || '#64748b') + '22',
+                          color: st?.color || '#64748b',
+                          border: `1px solid ${(st?.color || '#64748b')}44`,
+                        }}
+                      >
+                        {st?.label || p.stage}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+              {visible.length === 0 && (
+                <tr><td colSpan="4" className="px-4 py-8 text-center text-slate-400 italic text-sm">No prospects match these filters.</td></tr>
+              )}
+            </tbody>
+          </table>
         </div>
       )}
 
