@@ -169,13 +169,27 @@ function extractEmail(text) {
     if (userMatch) return normalizeEmail(`${userMatch[1]}@${dm[1]}`);
   }
 
-  // 4) Run-together: "celesteeliz96gmail.com" with no separator at all.
-  // Look for `<username><known-domain-without-extra-dots>.<tld>`.
+  // 4) @ present but dot before TLD missing — "user@GMAILCOM".
+  // Real-world OCR loss: USHA portal small text often loses the period.
   const KNOWN_DOMAINS = ['gmail', 'yahoo', 'hotmail', 'outlook', 'icloud', 'aol', 'comcast', 'live', 'msn'];
+  for (const dom of KNOWN_DOMAINS) {
+    const re = new RegExp(`([A-Z0-9._%+\\-]{2,})\\s*[@&Qq(\\[\\{]\\s*${dom}\\s*(com|net|org)\\b`, 'i');
+    const rm = t.match(re);
+    if (rm) return normalizeEmail(`${rm[1]}@${dom}.${rm[2]}`);
+  }
+
+  // 5) Run-together: "celesteeliz96gmail.com" — @ missing, dot present
   for (const dom of KNOWN_DOMAINS) {
     const re = new RegExp(`([A-Z0-9._%+\\-]{2,})${dom}\\.${TLD_GROUP}\\b`, 'i');
     const rm = t.match(re);
     if (rm) return normalizeEmail(`${rm[1]}@${dom}.com`);
+  }
+
+  // 6) Run-together: "celesteeliz96gmailcom" — @ AND dot missing
+  for (const dom of KNOWN_DOMAINS) {
+    const re = new RegExp(`([A-Z0-9._%+\\-]{2,})${dom}(com|net|org)\\b`, 'i');
+    const rm = t.match(re);
+    if (rm) return normalizeEmail(`${rm[1]}@${dom}.${rm[2]}`);
   }
 
   return '';
