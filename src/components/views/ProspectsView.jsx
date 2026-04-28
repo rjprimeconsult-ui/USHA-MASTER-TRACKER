@@ -1,5 +1,5 @@
 'use client';
-import { useState, useMemo, useRef, useCallback } from 'react';
+import { useState, useMemo, useRef, useCallback, useEffect, useLayoutEffect } from 'react';
 import {
   Plus, Search, LayoutGrid, List as ListIcon, Settings as SettingsIcon, Upload,
   Calendar, Phone, Mail, MapPin, ArrowRight, Trash2, X, AlertCircle, Clock, GripVertical,
@@ -165,7 +165,7 @@ function TodayPanel({ prospects, onEdit }) {
 }
 
 // ---------- Kanban Card ----------
-function KanbanCard({ prospect, onEdit, onDragStart }) {
+function KanbanCard({ prospect, onEdit, onDragStart, isSelected, onToggleSelect }) {
   const tu = timeUntil(prospect.appointmentTime);
   const apptStr = formatAppt(prospect.appointmentTime);
   return (
@@ -173,9 +173,22 @@ function KanbanCard({ prospect, onEdit, onDragStart }) {
       draggable
       onDragStart={(e) => onDragStart(e, prospect.id)}
       onClick={() => onEdit(prospect)}
-      className="bg-white border border-slate-200 rounded-lg p-3 cursor-pointer hover:shadow-md hover:border-indigo-300 transition-all"
+      className={`bg-white border rounded-lg p-3 cursor-pointer transition-all relative group ${
+        isSelected ? 'border-indigo-500 ring-2 ring-indigo-300 shadow-md' : 'border-slate-200 hover:shadow-md hover:border-indigo-300'
+      }`}
     >
-      <div className="flex items-start justify-between gap-2 mb-1">
+      {/* Selection checkbox — always visible if selected, on hover otherwise */}
+      <input
+        type="checkbox"
+        checked={isSelected}
+        onClick={(e) => e.stopPropagation()}
+        onChange={() => onToggleSelect(prospect.id)}
+        className={`absolute top-2 left-2 w-4 h-4 cursor-pointer accent-indigo-600 z-10 transition-opacity ${
+          isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+        }`}
+        title="Select"
+      />
+      <div className={`flex items-start justify-between gap-2 mb-1 ${isSelected ? 'pl-6' : ''} group-hover:pl-6 transition-all`}>
         <div className="font-semibold text-sm text-slate-900 truncate">{prospect.name || '(no name)'}</div>
         {prospect.indvOrFamily === 'Family' && (
           <span className="text-[10px] font-bold text-violet-700 bg-violet-100 px-1.5 py-0.5 rounded">FAM</span>
@@ -206,8 +219,10 @@ function KanbanCard({ prospect, onEdit, onDragStart }) {
 }
 
 // ---------- Kanban Column ----------
-function KanbanColumn({ stage, prospects, onEdit, onDragStart, onDrop }) {
+function KanbanColumn({ stage, prospects, onEdit, onDragStart, onDrop, selected, onToggleSelect, onSelectAllInStage }) {
   const [over, setOver] = useState(false);
+  const allSelectedInCol = prospects.length > 0 && prospects.every(p => selected.has(p.id));
+  const someSelectedInCol = prospects.some(p => selected.has(p.id));
   return (
     <div
       onDragOver={(e) => { e.preventDefault(); setOver(true); }}
@@ -216,15 +231,33 @@ function KanbanColumn({ stage, prospects, onEdit, onDragStart, onDrop }) {
       className={`flex-shrink-0 w-72 rounded-xl p-2.5 transition-colors ${over ? 'bg-indigo-50' : 'bg-slate-50'}`}
     >
       <div className="flex items-center justify-between mb-2 px-1">
-        <div className="flex items-center gap-2">
-          <span className="w-2.5 h-2.5 rounded-full" style={{ background: stage.color }} />
-          <span className="text-xs font-bold text-slate-700 tracking-wide uppercase">{stage.label}</span>
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: stage.color }} />
+          <span className="text-xs font-bold text-slate-700 tracking-wide uppercase truncate">{stage.label}</span>
         </div>
-        <span className="text-xs font-semibold text-slate-400">{prospects.length}</span>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <span className="text-xs font-semibold text-slate-400">{prospects.length}</span>
+          {prospects.length > 0 && (
+            <button
+              onClick={() => onSelectAllInStage(stage.id, !allSelectedInCol)}
+              title={allSelectedInCol ? 'Deselect all in this stage' : 'Select all in this stage'}
+              className="text-[10px] font-bold uppercase text-indigo-600 hover:text-indigo-700 hover:bg-indigo-100 px-1.5 py-0.5 rounded"
+            >
+              {allSelectedInCol ? 'Clear' : someSelectedInCol ? 'All' : 'Select'}
+            </button>
+          )}
+        </div>
       </div>
       <div className="space-y-2 min-h-[80px]">
         {prospects.map(p => (
-          <KanbanCard key={p.id} prospect={p} onEdit={onEdit} onDragStart={onDragStart} />
+          <KanbanCard
+            key={p.id}
+            prospect={p}
+            onEdit={onEdit}
+            onDragStart={onDragStart}
+            isSelected={selected.has(p.id)}
+            onToggleSelect={onToggleSelect}
+          />
         ))}
       </div>
     </div>
@@ -646,6 +679,58 @@ function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, o
   );
 }
 
+// ---------- Kanban Scroller ----------
+// Two synchronized scrollbars: a thin one at the top (visible mirror) +
+// the actual content scrollbar at the bottom. Scrolling either updates
+// the other so users with many stages can scroll from the top without
+// having to drag down to the bottom of the page.
+function KanbanScroller({ topScrollRef, bodyScrollRef, innerWidth, setInnerWidth, children }) {
+  // Track the body's scrollWidth so the top mirror has the same width
+  useLayoutEffect(() => {
+    const el = bodyScrollRef.current;
+    if (!el) return;
+    const measure = () => setInnerWidth(el.scrollWidth);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    // Re-measure on child changes too
+    const mo = new MutationObserver(measure);
+    mo.observe(el, { childList: true, subtree: true });
+    return () => { ro.disconnect(); mo.disconnect(); };
+  }, [bodyScrollRef, setInnerWidth]);
+
+  // Use a ref so both scroll handlers share the same flag across renders.
+  const syncingRef = useRef(false);
+  const onTopScroll = (e) => {
+    if (syncingRef.current) return;
+    syncingRef.current = true;
+    if (bodyScrollRef.current) bodyScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
+    requestAnimationFrame(() => { syncingRef.current = false; });
+  };
+  const onBodyScroll = (e) => {
+    if (syncingRef.current) return;
+    syncingRef.current = true;
+    if (topScrollRef.current) topScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
+    requestAnimationFrame(() => { syncingRef.current = false; });
+  };
+
+  return (
+    <div>
+      <div
+        ref={topScrollRef}
+        onScroll={onTopScroll}
+        className="overflow-x-auto overflow-y-hidden h-3 mb-1 rounded"
+        style={{ scrollbarWidth: 'thin' }}
+      >
+        <div style={{ width: innerWidth || 1, height: 1 }} />
+      </div>
+      <div ref={bodyScrollRef} onScroll={onBodyScroll} className="overflow-x-auto pb-3">
+        {children}
+      </div>
+    </div>
+  );
+}
+
 // ---------- Main View ----------
 export default function ProspectsView({
   prospects = [],
@@ -669,6 +754,10 @@ export default function ProspectsView({
   const [selected, setSelected] = useState(() => new Set());
   const fileRef = useRef(null);
   const dragId = useRef(null);
+  // Refs for the dual-scrollbar Kanban (top mirror + body)
+  const topScrollRef = useRef(null);
+  const bodyScrollRef = useRef(null);
+  const [kanbanInnerWidth, setKanbanInnerWidth] = useState(0);
 
   const visible = useMemo(() => {
     const q = search.toLowerCase().trim();
@@ -730,6 +819,14 @@ export default function ProspectsView({
   };
 
   // ----- Bulk selection helpers -----
+  const toggleAllInStage = (stageId, makeSelected) => {
+    const ids = (grouped.get(stageId) || []).map(p => p.id);
+    setSelected(s => {
+      const next = new Set(s);
+      ids.forEach(id => { if (makeSelected) next.add(id); else next.delete(id); });
+      return next;
+    });
+  };
   const allVisibleSelected = visible.length > 0 && visible.every(p => selected.has(p.id));
   const toggleOne = (id, e) => {
     if (e) e.stopPropagation();
@@ -809,8 +906,8 @@ export default function ProspectsView({
       {/* Today panel */}
       <TodayPanel prospects={prospects} onEdit={onView} />
 
-      {/* Bulk action bar — only when something is selected and we're in List view */}
-      {selected.size > 0 && view === 'list' && (
+      {/* Bulk action bar — appears whenever something is selected, in either view */}
+      {selected.size > 0 && (
         <div className="bg-indigo-600 text-white rounded-xl p-3 flex items-center justify-between gap-3 flex-wrap shadow-lg">
           <div className="flex items-center gap-2">
             <span className="font-semibold text-sm">{selected.size} selected</span>
@@ -878,9 +975,15 @@ export default function ProspectsView({
         </div>
       )}
 
-      {/* Kanban */}
+      {/* Kanban — dual scrollbar (top + bottom) so users can scroll from
+           wherever is closer. Top bar is a thin mirror that drives the body. */}
       {prospects.length > 0 && view === 'kanban' && (
-        <div className="overflow-x-auto pb-3">
+        <KanbanScroller
+          topScrollRef={topScrollRef}
+          bodyScrollRef={bodyScrollRef}
+          innerWidth={kanbanInnerWidth}
+          setInnerWidth={setKanbanInnerWidth}
+        >
           <div className="flex gap-3 min-w-min">
             {cfg.stages.map(s => (
               <KanbanColumn
@@ -890,10 +993,13 @@ export default function ProspectsView({
                 onEdit={onView}
                 onDragStart={onDragStart}
                 onDrop={onDrop}
+                selected={selected}
+                onToggleSelect={(id) => toggleOne(id)}
+                onSelectAllInStage={toggleAllInStage}
               />
             ))}
           </div>
-        </div>
+        </KanbanScroller>
       )}
 
       {/* List — compact 3-column layout: Name · Phone · Appt time + Stage.
