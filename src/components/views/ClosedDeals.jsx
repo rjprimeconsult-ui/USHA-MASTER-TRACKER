@@ -1,7 +1,7 @@
 'use client';
 import { useMemo, memo } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import { Edit2, CheckCircle2, Clock } from 'lucide-react';
+import { Edit2, Trash2, CheckCircle2, Clock } from 'lucide-react';
 import { CRMS, LEAD_CATEGORIES, STAGES, effectiveLeadCategory } from '@/lib/constants';
 import { fmt, fmt2, usDate, monthLabel } from '@/lib/utils';
 import { Chart3DCard, Pie3D } from '../motion/MotionPrimitives';
@@ -42,7 +42,7 @@ const StageBadge = ({ stage }) => {
   );
 };
 
-function ClosedDeals({ leads, onEdit }) {
+function ClosedDeals({ leads, onEdit, onDelete }) {
   // Show Submitted + Issued (pending + paid deals)
   const visible = useMemo(() =>
     leads.filter(l => (l.stage === 'Issued' || l.stage === 'Pending') && l.closedDate)
@@ -187,7 +187,16 @@ function ClosedDeals({ leads, onEdit }) {
                             {isIssued ? fmt(profit) : '—'}
                           </td>
                           <td className="text-right p-2">
-                            <button onClick={() => onEdit(l)} className="text-slate-400 hover:text-indigo-600"><Edit2 size={14} /></button>
+                            <div className="flex items-center justify-end gap-1">
+                              <button onClick={() => onEdit(l)} title="Edit" className="text-slate-400 hover:text-indigo-600 p-1 rounded hover:bg-indigo-50"><Edit2 size={14} /></button>
+                              {onDelete && (
+                                <button
+                                  onClick={() => { if (confirm(`Delete deal for ${l.name || '(unnamed)'}? This can't be undone.`)) onDelete(l.id); }}
+                                  title="Delete"
+                                  className="text-slate-400 hover:text-red-600 p-1 rounded hover:bg-red-50"
+                                ><Trash2 size={14} /></button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );

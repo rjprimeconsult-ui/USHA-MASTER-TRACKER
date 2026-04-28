@@ -1,9 +1,10 @@
 'use client';
 import { useState, memo } from 'react';
+import { Trash2 } from 'lucide-react';
 import { STAGES } from '@/lib/constants';
 import { fmt } from '@/lib/utils';
 
-function Pipeline({ leads, onStageChange, onEdit }) {
+function Pipeline({ leads, onStageChange, onEdit, onDelete }) {
   const [dragged, setDragged] = useState(null);
   const [overCol, setOverCol] = useState(null);
 
@@ -41,11 +42,23 @@ function Pipeline({ leads, onStageChange, onEdit }) {
                     draggable
                     onDragStart={() => setDragged(l)}
                     onClick={() => onEdit(l)}
-                    className="bg-white border border-slate-200 rounded-lg p-2 cursor-move hover:border-indigo-400 hover:shadow-sm"
+                    className="bg-white border border-slate-200 rounded-lg p-2 cursor-move hover:border-indigo-400 hover:shadow-sm relative group"
                   >
-                    <div className="font-medium text-sm text-slate-900">{l.name || '—'}</div>
+                    <div className="font-medium text-sm text-slate-900 pr-5">{l.name || '—'}</div>
                     <div className="text-xs text-slate-500">{l.owner} · {l.source}</div>
                     <div className="text-xs text-emerald-700 font-medium mt-1">{fmt(l.dealValue)}</div>
+                    {onDelete && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm(`Delete lead ${l.name || '(unnamed)'}? This can't be undone.`)) onDelete(l.id);
+                        }}
+                        title="Delete"
+                        className="absolute top-1.5 right-1.5 text-slate-300 hover:text-red-600 p-1 rounded hover:bg-red-50 opacity-0 group-hover:opacity-100 transition"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    )}
                   </div>
                 ))}
                 {col.leads.length === 0 && (
