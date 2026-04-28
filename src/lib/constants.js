@@ -186,8 +186,12 @@ export const NAV_TABS = [
 // ---------------- PROSPECTS / CRM ----------------
 // Default stages mirror the spreadsheet pipeline most agents already use.
 // Each agent can rename / reorder / add / delete via the Prospects settings.
+// Default prospect stages — \"New\" was removed because real-world USHA
+// pipelines almost never have a true \"new\" bucket; prospects always land
+// somewhere more specific (Webby Set / Pending Decision / Ghosted / etc.).
+// SOLD is the disposition stage — moving a prospect there auto-converts
+// them into a Lead.
 export const DEFAULT_PROSPECT_STAGES = [
-  { id: 'NEW',                label: 'New',                color: '#64748b' },
   { id: 'WEBBY_SET',          label: 'Webby Set',          color: '#0ea5e9' },
   { id: 'WEBBY_CONFIRMED',    label: 'Webby Confirmed',    color: '#fb923c' },
   { id: 'APPOINTMENT_SET',    label: 'Appointment Set',    color: '#3b82f6' },
@@ -198,6 +202,10 @@ export const DEFAULT_PROSPECT_STAGES = [
   { id: 'SOLD',               label: 'Sold',               color: '#10b981' },
   { id: 'LOST',               label: 'Lost',               color: '#ef4444' },
 ];
+
+// Stage we land on when an unknown / removed stage (like the old \"NEW\") is
+// encountered. Used for auto-migration on load.
+export const PROSPECT_FALLBACK_STAGE = 'PENDING_DECISION';
 
 export const PROSPECT_SOURCES = [
   'Referral',

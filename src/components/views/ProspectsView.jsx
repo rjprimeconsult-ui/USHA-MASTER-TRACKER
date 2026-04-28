@@ -797,7 +797,16 @@ export default function ProspectsView({
   const onDrop = (stageId) => {
     if (!dragId.current) return;
     const p = prospects.find(x => x.id === dragId.current);
-    if (p && p.stage !== stageId) onUpdate({ ...p, stage: stageId });
+    if (p && p.stage !== stageId) {
+      // Disposition: dropping into Sold auto-converts to a Lead.
+      if (stageId === 'SOLD' && p.stage !== 'SOLD') {
+        if (confirm(`Mark ${p.name || 'this prospect'} as Sold? This converts them to a Lead and archives the prospect.`)) {
+          onConvertToLead({ ...p, stage: 'SOLD' });
+        }
+      } else {
+        onUpdate({ ...p, stage: stageId });
+      }
+    }
     dragId.current = null;
   };
 
@@ -809,6 +818,17 @@ export default function ProspectsView({
   const onSave = (p) => {
     const isNew = !p.createdAt;
     const final = isNew ? { ...p, createdAt: new Date().toISOString() } : p;
+    // Disposition: saving with stage = Sold (and it wasn't already Sold)
+    // auto-fires the convert-to-Lead flow.
+    const wasSold = !isNew && prospects.find(x => x.id === p.id)?.stage === 'SOLD';
+    if (final.stage === 'SOLD' && !wasSold) {
+      if (confirm(`Mark ${final.name || 'this prospect'} as Sold? This converts them to a Lead and archives the prospect.`)) {
+        if (isNew) onAdd(final);
+        onConvertToLead(final);
+        setEditing(null);
+        return;
+      }
+    }
     if (isNew) onAdd(final); else onUpdate(final);
     setEditing(null);
   };
@@ -860,9 +880,22 @@ export default function ProspectsView({
   };
   const bulkSetStage = (stageId) => {
     if (selected.size === 0 || !stageId) return;
-    selected.forEach(id => {
-      const p = prospects.find(x => x.id === id);
-      if (p && p.stage !== stageId) onUpdate({ ...p, stage: stageId });
+    const targets = [...selected].map(id => prospects.find(x => x.id === id)).filter(Boolean);
+    // Disposition: bulk-moving to Sold converts each to a Lead. Confirm
+    // because this is a meaningful state change that creates new records.
+    if (stageId === 'SOLD') {
+      const toConvert = targets.filter(p => p.stage !== 'SOLD');
+      if (toConvert.length === 0) { clearSelection(); return; }
+      if (!confirm(`Mark ${toConvert.length} prospect${toConvert.length !== 1 ? 's' : ''} as Sold? Each will be converted to a Lead and archived.`)) {
+        clearSelection();
+        return;
+      }
+      toConvert.forEach(p => onConvertToLead({ ...p, stage: 'SOLD' }));
+      clearSelection();
+      return;
+    }
+    targets.forEach(p => {
+      if (p.stage !== stageId) onUpdate({ ...p, stage: stageId });
     });
     clearSelection();
   };

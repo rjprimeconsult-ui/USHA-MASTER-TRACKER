@@ -51,7 +51,7 @@ export function newProspect(overrides = {}) {
     source: '',
     referrer: '',         // only meaningful when source = Referral
     crm: 'None',
-    stage: 'NEW',
+    stage: 'PENDING_DECISION',
     appointmentTime: '',  // ISO datetime string
     nextSteps: '',
     lastContact: '',      // YYYY-MM-DD
@@ -139,7 +139,9 @@ export function detectStageId(stageLabel, configuredStages) {
     [/confirm/, 'WEBBY_CONFIRMED'],
     [/web/, 'WEBBY_SET'],
     [/(appointment|appt)\s*set/, 'APPOINTMENT_SET'],
-    [/^new$|fresh|just\s*added/, 'NEW'],
+    // \"New\" rows from existing pipelines now land in Pending Decision
+    // (NEW was retired — see constants.js).
+    [/^new$|fresh|just\s*added/, 'PENDING_DECISION'],
   ];
   for (const [re, id] of aliases) {
     if (re.test(s) && configuredStages.some(stg => stg.id === id)) return id;

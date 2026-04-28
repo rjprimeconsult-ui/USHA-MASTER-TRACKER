@@ -242,10 +242,30 @@ export default function LeadTracker() {
       setBusinessIncome(biRaw ? JSON.parse(biRaw) : []);
 
       const prRaw = await storage.getItem(PROSPECTS_KEY);
-      setProspects(prRaw ? JSON.parse(prRaw) : []);
+      const prInitial = prRaw ? JSON.parse(prRaw) : [];
+      // One-shot migration: NEW stage was retired. Move any prospect still
+      // sitting in NEW to Pending Decision so they land in a real bucket.
+      let prMigrated = prInitial;
+      let movedFromNew = 0;
+      if (Array.isArray(prInitial)) {
+        prMigrated = prInitial.map(p => {
+          if (p.stage === 'NEW') { movedFromNew++; return { ...p, stage: 'PENDING_DECISION' }; }
+          return p;
+        });
+        if (movedFromNew > 0) {
+          await storage.setItem(PROSPECTS_KEY, JSON.stringify(prMigrated));
+        }
+      }
+      setProspects(prMigrated);
 
       const psRaw = await storage.getItem(PROSPECT_SETTINGS_KEY);
-      setProspectSettings(psRaw ? JSON.parse(psRaw) : null);
+      let psInitial = psRaw ? JSON.parse(psRaw) : null;
+      // Strip the retired NEW stage from saved settings (idempotent)
+      if (psInitial?.stages?.some?.(s => s.id === 'NEW')) {
+        psInitial = { ...psInitial, stages: psInitial.stages.filter(s => s.id !== 'NEW') };
+        await storage.setItem(PROSPECT_SETTINGS_KEY, JSON.stringify(psInitial));
+      }
+      setProspectSettings(psInitial);
 
       setLoaded(true);
     })();
