@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Shield, Users, DollarSign, Database, ArrowLeft, ChevronDown, ChevronUp, AlertCircle, Loader2, RefreshCw } from 'lucide-react';
+import { Shield, Users, DollarSign, Database, ArrowLeft, ChevronDown, ChevronUp, AlertCircle, Loader2, RefreshCw, LogIn } from 'lucide-react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/components/auth/AuthProvider';
@@ -28,6 +28,37 @@ export default function AdminPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [expandedUser, setExpandedUser] = useState(null);
   const [error, setError] = useState('');
+  const [impersonatingId, setImpersonatingId] = useState('');
+
+  // Generate a magic-link sign-in for the target user, open in new tab.
+  // The current admin tab keeps its session — admin works in the new tab
+  // as the target user, can sign out from there to end the session.
+  const impersonate = async (email, userId) => {
+    if (!email) return;
+    if (!confirm(`Sign in as ${email}?\n\nThis opens a new tab where you'll be signed in as them. Your admin session in this tab is unaffected.`)) return;
+    setImpersonatingId(userId);
+    setError('');
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('No active admin session.');
+      const res = await fetch('/api/admin/impersonate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      if (!data.url) throw new Error('No magic-link URL returned');
+      window.open(data.url, '_blank', 'noopener,noreferrer');
+    } catch (e) {
+      setError(`Impersonation failed: ${e.message || e}`);
+    } finally {
+      setImpersonatingId('');
+    }
+  };
 
   // Verify admin status once we know who the current user is
   useEffect(() => {
@@ -200,11 +231,12 @@ export default function AdminPage() {
                   <th className="text-right p-3">Books In</th>
                   <th className="text-right p-3">Books Out</th>
                   <th className="text-left p-3">Last activity</th>
+                  <th className="text-right p-3">Sign in</th>
                 </tr>
               </thead>
               <tbody>
                 {profiles.length === 0 && (
-                  <tr><td colSpan={10} className="text-center p-8 text-slate-400">No users yet</td></tr>
+                  <tr><td colSpan={11} className="text-center p-8 text-slate-400">No users yet</td></tr>
                 )}
                 {profiles.map(p => {
                   const kv = kvByUser[p.id] || {};
@@ -243,10 +275,21 @@ export default function AdminPage() {
                         <td className="text-right p-3 text-emerald-600 whitespace-nowrap">{fmt(incTotal)}</td>
                         <td className="text-right p-3 text-red-600 whitespace-nowrap">{fmt(expTotal)}</td>
                         <td className="p-3 text-xs text-slate-500 whitespace-nowrap">{lastActivity ? relativeTime(lastActivity) : '—'}</td>
+                        <td className="p-3 text-right" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            onClick={() => impersonate(p.email, p.id)}
+                            disabled={impersonatingId === p.id || p.id === user.id}
+                            title={p.id === user.id ? "You're already signed in as this user" : `Sign in as ${p.email}`}
+                            className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 disabled:text-slate-300 disabled:hover:bg-transparent px-2 py-1 rounded"
+                          >
+                            {impersonatingId === p.id ? <Loader2 size={12} className="animate-spin" /> : <LogIn size={12} />}
+                            Sign in
+                          </button>
+                        </td>
                       </tr>
                       {isExpanded && (
                         <tr className="bg-slate-50">
-                          <td colSpan={10} className="p-4">
+                          <td colSpan={11} className="p-4">
                             <CollectionDetails kv={kv} userId={p.id} userEmail={p.email} />
                           </td>
                         </tr>

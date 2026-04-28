@@ -25,6 +25,7 @@ import InvestmentForm from './InvestmentForm';
 import ActivityForm from './ActivityForm';
 import ConfirmDialog from './ConfirmDialog';
 import NoPhiBanner from './NoPhiBanner';
+import ImpersonationBanner from './ImpersonationBanner';
 import ScreenshotImport from './ScreenshotImport';
 import Toast from './Toast';
 import AdvanceMonthsHistoryEditor from './AdvanceMonthsHistoryEditor';
@@ -1101,6 +1102,9 @@ export default function LeadTracker() {
           <span>Built for USHA agents.</span>
         </div>
       </footer>
+
+      {/* Impersonation banner (shown only when admin is signed in as another user) */}
+      <ImpersonationBanner />
 
       {/* One-time no-PHI acknowledgement (gates the app on first sign-in) */}
       <NoPhiBanner />
