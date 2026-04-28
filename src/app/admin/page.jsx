@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Shield, Users, DollarSign, Database, ArrowLeft, ChevronDown, ChevronUp, AlertCircle, Loader2, RefreshCw, LogIn } from 'lucide-react';
+import { Shield, Users, DollarSign, Database, ArrowLeft, ChevronDown, ChevronUp, AlertCircle, Loader2, RefreshCw, LogIn, Trash2, AlertTriangle, Wrench } from 'lucide-react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/components/auth/AuthProvider';
@@ -29,24 +29,79 @@ export default function AdminPage() {
   const [expandedUser, setExpandedUser] = useState(null);
   const [error, setError] = useState('');
   const [impersonatingId, setImpersonatingId] = useState('');
+  // Phantom-bonus tool state
+  const [phantomScanning, setPhantomScanning] = useState(false);
+  const [phantomList, setPhantomList] = useState(null); // null=not scanned, []=clean, [...]=found
+  const [phantomDeleting, setPhantomDeleting] = useState(new Set());
+
+  // Auth helper for the admin tools
+  const adminFetch = async (url, opts = {}) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error('No active admin session.');
+    return fetch(url, {
+      ...opts,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+        ...(opts.headers || {}),
+      },
+    });
+  };
+
+  const scanPhantoms = async () => {
+    setPhantomScanning(true); setError('');
+    try {
+      const res = await adminFetch('/api/admin/phantom-bonuses');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setPhantomList(data.phantoms || []);
+    } catch (e) {
+      setError(`Phantom scan failed: ${e.message || e}`);
+    } finally {
+      setPhantomScanning(false);
+    }
+  };
+
+  const deletePhantom = async (userId, entryId) => {
+    const key = `${userId}|${entryId}`;
+    setPhantomDeleting(prev => new Set([...prev, key]));
+    setError('');
+    try {
+      const res = await adminFetch('/api/admin/phantom-bonuses', {
+        method: 'POST',
+        body: JSON.stringify({ userId, entryId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setPhantomList(prev => (prev || []).filter(p => !(p.userId === userId && p.entryId === entryId)));
+    } catch (e) {
+      setError(`Delete failed: ${e.message || e}`);
+    } finally {
+      setPhantomDeleting(prev => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+    }
+  };
+
+  const deleteAllPhantoms = async () => {
+    if (!phantomList?.length) return;
+    if (!confirm(`Delete all ${phantomList.length} phantom entries? This can't be undone.`)) return;
+    for (const p of phantomList) {
+      await deletePhantom(p.userId, p.entryId);
+    }
+  };
 
   // Generate a magic-link sign-in for the target user, open in new tab.
-  // The current admin tab keeps its session — admin works in the new tab
-  // as the target user, can sign out from there to end the session.
   const impersonate = async (email, userId) => {
     if (!email) return;
     if (!confirm(`Sign in as ${email}?\n\nThis opens a new tab where you'll be signed in as them. Your admin session in this tab is unaffected.`)) return;
     setImpersonatingId(userId);
     setError('');
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('No active admin session.');
-      const res = await fetch('/api/admin/impersonate', {
+      const res = await adminFetch('/api/admin/impersonate', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.access_token}`,
-        },
         body: JSON.stringify({ email }),
       });
       const data = await res.json().catch(() => ({}));
@@ -302,8 +357,91 @@ export default function AdminPage() {
           </div>
         </div>
 
+        {/* Maintenance tools */}
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Wrench size={16} className="text-amber-600" />
+              <h2 className="font-semibold text-slate-900">Maintenance — phantom bonus entries</h2>
+            </div>
+            <button
+              onClick={scanPhantoms}
+              disabled={phantomScanning}
+              className="text-xs font-semibold bg-amber-600 hover:bg-amber-700 disabled:bg-slate-300 text-white px-3 py-1.5 rounded-lg flex items-center gap-1.5"
+            >
+              {phantomScanning ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+              {phantomScanning ? 'Scanning...' : phantomList === null ? 'Scan all users' : 'Re-scan'}
+            </button>
+          </div>
+          <div className="px-4 py-3">
+            <p className="text-xs text-slate-500 mb-3">
+              Finds Books-income entries that look like phantom bonuses created by the old (pre-fix) statement parser — Account Summary table headers that bridged into unrelated rows. Each user&apos;s data is checked individually; safe to run anytime.
+            </p>
+            {phantomList === null && (
+              <div className="text-sm text-slate-400 italic">Click &quot;Scan all users&quot; to start.</div>
+            )}
+            {phantomList?.length === 0 && (
+              <div className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg p-3 flex items-center gap-2">
+                <Shield size={14} /> All clean — no phantom entries detected across any user.
+              </div>
+            )}
+            {phantomList?.length > 0 && (
+              <>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-sm font-semibold text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5 flex items-center gap-2">
+                    <AlertTriangle size={14} /> {phantomList.length} phantom {phantomList.length === 1 ? 'entry' : 'entries'} found
+                  </div>
+                  <button
+                    onClick={deleteAllPhantoms}
+                    className="text-xs font-semibold bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg flex items-center gap-1.5"
+                  >
+                    <Trash2 size={12} /> Delete all {phantomList.length}
+                  </button>
+                </div>
+                <div className="border border-slate-200 rounded-lg overflow-hidden">
+                  <table className="w-full text-xs">
+                    <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider">
+                      <tr>
+                        <th className="text-left p-2">User</th>
+                        <th className="text-left p-2">Date</th>
+                        <th className="text-right p-2">Amount</th>
+                        <th className="text-left p-2">Phantom label</th>
+                        <th className="text-right p-2"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {phantomList.map(p => {
+                        const key = `${p.userId}|${p.entryId}`;
+                        const deleting = phantomDeleting.has(key);
+                        return (
+                          <tr key={key} className="border-t border-slate-100">
+                            <td className="p-2 font-medium text-slate-900">{p.email}</td>
+                            <td className="p-2 text-slate-600 whitespace-nowrap">{p.date || '—'}</td>
+                            <td className="p-2 text-right text-emerald-700 font-semibold whitespace-nowrap">{fmt2(p.amount)}</td>
+                            <td className="p-2 text-slate-600 max-w-md truncate" title={p.source}>{p.source}</td>
+                            <td className="p-2 text-right">
+                              <button
+                                onClick={() => deletePhantom(p.userId, p.entryId)}
+                                disabled={deleting}
+                                className="text-red-600 hover:bg-red-50 px-2 py-1 rounded text-xs font-semibold flex items-center gap-1 ml-auto"
+                              >
+                                {deleting ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />}
+                                Delete
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
         <div className="text-xs text-slate-500 text-center pb-4">
-          🔒 Read-only view. To modify any user's data, use the Supabase SQL Editor with the queries in <code className="bg-slate-200 px-1 rounded">scripts/support-queries.sql</code>.
+          🔒 Read-only view (except the maintenance tools above). To modify any user&apos;s data ad-hoc, use the Supabase SQL Editor with the queries in <code className="bg-slate-200 px-1 rounded">scripts/support-queries.sql</code>.
         </div>
       </main>
     </div>
