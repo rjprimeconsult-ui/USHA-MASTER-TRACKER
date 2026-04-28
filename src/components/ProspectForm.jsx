@@ -155,8 +155,13 @@ export default function ProspectForm({ open, prospect, stages, customFields = []
 
           {/* Long-text */}
           <div className="grid grid-cols-1 gap-3">
-            <Field label="Meds / Conditions">
-              <input className={inp} value={form.meds || ''} onChange={e => set({ meds: e.target.value })} placeholder="e.g. Lisinopril, Metformin" />
+            <Field label="Health Notes">
+              <input
+                className={inp}
+                value={form.meds || ''}
+                onChange={e => set({ meds: e.target.value })}
+                placeholder="General impressions only — e.g. 'has health concerns'. NO medication names or diagnoses."
+              />
             </Field>
             <Field label="Situation / Notes">
               <textarea className={inp} rows={2} value={form.situation || ''} onChange={e => set({ situation: e.target.value })} placeholder="Anything that helps you remember the conversation" />

@@ -24,6 +24,7 @@ import LeadForm from './LeadForm';
 import InvestmentForm from './InvestmentForm';
 import ActivityForm from './ActivityForm';
 import ConfirmDialog from './ConfirmDialog';
+import NoPhiBanner from './NoPhiBanner';
 import Toast from './Toast';
 import AdvanceMonthsHistoryEditor from './AdvanceMonthsHistoryEditor';
 import { fireConfetti, FadeIn, OrbBackdrop } from './motion/MotionPrimitives';
@@ -1085,6 +1086,22 @@ export default function LeadTracker() {
           />
         </ViewMount>
       </main>
+
+      {/* Footer with copyright + legal links */}
+      <footer className="border-t border-slate-200 mt-8 py-5 px-4 text-center text-xs text-slate-500">
+        <div className="flex items-center justify-center flex-wrap gap-x-3 gap-y-1">
+          <span>© 2026 PRIM. All rights reserved.</span>
+          <span className="text-slate-300">·</span>
+          <a href="/privacy" target="_blank" rel="noopener" className="hover:text-indigo-600">Privacy Policy</a>
+          <span className="text-slate-300">·</span>
+          <a href="/terms" target="_blank" rel="noopener" className="hover:text-indigo-600">Terms of Service</a>
+          <span className="text-slate-300">·</span>
+          <span>Built for USHA agents.</span>
+        </div>
+      </footer>
+
+      {/* One-time no-PHI acknowledgement (gates the app on first sign-in) */}
+      <NoPhiBanner />
 
       {/* Modals */}
       <LeadForm open={!!leadForm} lead={leadForm} tier={tier} onSave={saveLead} onClose={() => setLeadForm(null)} onDelete={deleteLead} />

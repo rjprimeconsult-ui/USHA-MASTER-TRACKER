@@ -435,7 +435,7 @@ function ImportWizard({ open, file, settings, prospects, onImport, onClose }) {
     ['income', 'Income'],
     ['quoteSize', 'Quote Size'],
     ['policyType', 'Policy Type'],
-    ['meds', 'Meds'],
+    ['meds', 'Health Notes'],
     ['situation', 'Situation/Notes'],
     ['startDate', 'Start Date'],
     ['source', 'Lead Source'],
@@ -637,9 +637,9 @@ function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, o
 
           {/* Notes / Health */}
           {(prospect.situation || prospect.meds) && (
-            <DetailSection title="Situation & Health">
-              {prospect.meds && <DetailRow Icon={Pill} label="Meds / Conditions" value={prospect.meds} />}
-              {prospect.situation && <DetailRow Icon={FileText} label="Notes" value={prospect.situation} />}
+            <DetailSection title="Notes">
+              {prospect.meds && <DetailRow Icon={Pill} label="Health Notes" value={prospect.meds} />}
+              {prospect.situation && <DetailRow Icon={FileText} label="Situation" value={prospect.situation} />}
             </DetailSection>
           )}
 
