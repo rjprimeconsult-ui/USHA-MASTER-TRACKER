@@ -159,6 +159,7 @@ const APP_KEYS = [
   'chargebacks_v1', 'overrides_v1', 'own_advances_v1', 'advance_months_history_v1',
   'platform_expenses_v1', 'business_expenses_v1', 'business_income_v1',
   'business_accounts_v1', 'platform_budget_v1',
+  'prospects_v1', 'prospect_settings_v1',
 ];
 export async function migrateLocalToCloud() {
   if (!useCloud()) throw new Error('Not signed in');

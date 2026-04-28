@@ -172,6 +172,7 @@ export function effectiveLeadCategory(lead) {
 
 export const NAV_TABS = [
   { id: 'cpa',          label: 'CPA Dashboard', icon: 'Calculator' },
+  { id: 'prospects',    label: 'Prospects',     icon: 'UserPlus' },
   { id: 'associations', label: 'Associations',  icon: 'Repeat' },
   { id: 'closed',       label: 'Closed Deals',  icon: 'CheckSquare' },
   { id: 'dashboard',    label: 'Overview',      icon: 'LayoutDashboard' },
@@ -180,6 +181,46 @@ export const NAV_TABS = [
   { id: 'platforms',    label: 'Platforms',     icon: 'DollarSign' },
   { id: 'books',        label: 'Books',         icon: 'BookOpen' },
   { id: 'upload',       label: 'Upload',        icon: 'Upload' },
+];
+
+// ---------------- PROSPECTS / CRM ----------------
+// Default stages mirror the spreadsheet pipeline most agents already use.
+// Each agent can rename / reorder / add / delete via the Prospects settings.
+export const DEFAULT_PROSPECT_STAGES = [
+  { id: 'NEW',                label: 'New',                color: '#64748b' },
+  { id: 'WEBBY_SET',          label: 'Webby Set',          color: '#0ea5e9' },
+  { id: 'WEBBY_CONFIRMED',    label: 'Webby Confirmed',    color: '#0284c7' },
+  { id: 'APPOINTMENT_SET',    label: 'Appointment Set',    color: '#8b5cf6' },
+  { id: 'MISSED_APPT',        label: 'Missed Appt',        color: '#f97316' },
+  { id: 'PENDING_DECISION',   label: 'Pending Decision',   color: '#eab308' },
+  { id: 'FOLLOWUP_LATER',     label: 'Follow-up Later',    color: '#a855f7' },
+  { id: 'GHOSTED',            label: 'Ghosted',            color: '#94a3b8' },
+  { id: 'SOLD',               label: 'Sold',               color: '#10b981' },
+  { id: 'LOST',               label: 'Lost',               color: '#ef4444' },
+];
+
+export const PROSPECT_SOURCES = [
+  'Referral',
+  'Google Ads',
+  'Facebook Ads',
+  'Web Lead',
+  'Aged Lead',
+  'Major League',
+  'Bizz Lead',
+  'Cold Call',
+  'Other',
+];
+
+export const PROSPECT_CRMS = ['TextDrip', 'Ringy', 'VanillaSoft', 'None'];
+
+export const PROSPECT_POLICY_TYPES = [
+  'Individual Health',
+  'Family Health',
+  'Short-Term',
+  'Medicare',
+  'Dental/Vision',
+  'Life',
+  'Other',
 ];
 
 // Business Books — expense categories (money OUT beyond lead spend / platforms)

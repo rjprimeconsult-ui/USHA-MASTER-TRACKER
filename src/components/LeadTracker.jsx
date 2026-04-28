@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  Calculator, Repeat, CheckSquare, LayoutDashboard, Users, Columns, Upload, Settings, Sparkles, DollarSign, BookOpen, LogOut,
+  Calculator, Repeat, CheckSquare, LayoutDashboard, Users, Columns, Upload, Settings, Sparkles, DollarSign, BookOpen, LogOut, UserPlus,
 } from 'lucide-react';
 import { storage, onStorageError } from '@/lib/storage';
 import { deleteAttachment as deleteAttachmentFromIdb } from '@/lib/attachments';
@@ -19,6 +19,7 @@ import Pipeline from './views/Pipeline';
 import UploadView from './views/UploadView';
 import PlatformExpensesView from './views/PlatformExpensesView';
 import BusinessBooksView from './views/BusinessBooksView';
+import ProspectsView from './views/ProspectsView';
 import LeadForm from './LeadForm';
 import InvestmentForm from './InvestmentForm';
 import ActivityForm from './ActivityForm';
@@ -29,7 +30,7 @@ import { fireConfetti, FadeIn, OrbBackdrop } from './motion/MotionPrimitives';
 import { useAuth } from './auth/AuthProvider';
 import { motion } from 'framer-motion';
 
-const ICONS = { Calculator, Repeat, CheckSquare, LayoutDashboard, Users, Columns, Upload, DollarSign, BookOpen };
+const ICONS = { Calculator, Repeat, CheckSquare, LayoutDashboard, Users, Columns, Upload, DollarSign, BookOpen, UserPlus };
 
 const LEADS_KEY = 'leads_v5';
 const LEADS_KEY_V4 = 'leads_v4';
@@ -43,6 +44,8 @@ const AM_KEY   = 'advance_months_history_v1';
 const PE_KEY   = 'platform_expenses_v1';
 const BE_KEY   = 'business_expenses_v1';
 const BI_KEY   = 'business_income_v1';
+const PROSPECTS_KEY = 'prospects_v1';
+const PROSPECT_SETTINGS_KEY = 'prospect_settings_v1';
 
 // User menu — shows current email + sign-out button. Lives in the header.
 function UserMenu() {
@@ -116,6 +119,8 @@ export default function LeadTracker() {
   const [platformExpenses, setPlatformExpenses] = useState([]);
   const [businessExpenses, setBusinessExpenses] = useState([]);
   const [businessIncome, setBusinessIncome] = useState([]);
+  const [prospects, setProspects] = useState([]);
+  const [prospectSettings, setProspectSettings] = useState(null);
   const [tier, setTier] = useState('WA');
   const [toast, setToast] = useState(null);
   const [lastImportBatch, setLastImportBatch] = useState(null);
@@ -236,6 +241,12 @@ export default function LeadTracker() {
       const biRaw = await storage.getItem(BI_KEY);
       setBusinessIncome(biRaw ? JSON.parse(biRaw) : []);
 
+      const prRaw = await storage.getItem(PROSPECTS_KEY);
+      setProspects(prRaw ? JSON.parse(prRaw) : []);
+
+      const psRaw = await storage.getItem(PROSPECT_SETTINGS_KEY);
+      setProspectSettings(psRaw ? JSON.parse(psRaw) : null);
+
       setLoaded(true);
     })();
   }, []);
@@ -252,6 +263,8 @@ export default function LeadTracker() {
   useEffect(() => { if (loaded) storage.setItem(PE_KEY, JSON.stringify(platformExpenses)); }, [platformExpenses, loaded]);
   useEffect(() => { if (loaded) storage.setItem(BE_KEY, JSON.stringify(businessExpenses)); }, [businessExpenses, loaded]);
   useEffect(() => { if (loaded) storage.setItem(BI_KEY, JSON.stringify(businessIncome)); }, [businessIncome, loaded]);
+  useEffect(() => { if (loaded) storage.setItem(PROSPECTS_KEY, JSON.stringify(prospects)); }, [prospects, loaded]);
+  useEffect(() => { if (loaded && prospectSettings) storage.setItem(PROSPECT_SETTINGS_KEY, JSON.stringify(prospectSettings)); }, [prospectSettings, loaded]);
 
   // lead handlers — useCallback'd so memoized views can skip re-render
   const newLead = useCallback(() => setLeadForm(mkLead({
@@ -810,6 +823,47 @@ export default function LeadTracker() {
   }, [showToast]);
   const onNewInvestmentNoArg = useCallback(() => newInvestment(), [newInvestment]);
 
+  // ----- Prospects handlers -----
+  const onAddProspect = useCallback((p) => {
+    setProspects(prev => [p, ...prev]);
+    showToast('Prospect added');
+  }, [showToast]);
+  const onUpdateProspect = useCallback((p) => {
+    setProspects(prev => prev.map(x => x.id === p.id ? p : x));
+  }, []);
+  const onDeleteProspect = useCallback((id) => {
+    setProspects(prev => prev.filter(x => x.id !== id));
+    showToast('Prospect deleted');
+  }, [showToast]);
+  const onBulkAddProspects = useCallback((rows) => {
+    if (!rows?.length) return;
+    setProspects(prev => [...rows, ...prev]);
+    showToast(`Imported ${rows.length} prospect${rows.length !== 1 ? 's' : ''}`);
+  }, [showToast]);
+  const onSaveProspectSettings = useCallback((next) => {
+    setProspectSettings(next);
+    showToast('Prospects settings saved');
+  }, [showToast]);
+  // Convert a Sold prospect into a new Lead. Pre-fills lead fields from the
+  // prospect so the user only has to fill in product/premium details.
+  const onConvertProspectToLead = useCallback((p) => {
+    const newLead = mkLead({
+      name: p.name || '',
+      phone: p.phone || '',
+      email: p.email || '',
+      state: p.state || '',
+      source: 'Referral',  // closest match — will be editable
+      stage: 'Pending',
+      closedDate: today(),
+      notes: [p.situation, p.meds && `Meds: ${p.meds}`].filter(Boolean).join(' · '),
+    });
+    setLeads(prev => [newLead, ...prev]);
+    // Mark prospect as archived + linked
+    setProspects(prev => prev.map(x => x.id === p.id ? { ...x, stage: 'SOLD', convertedLeadId: newLead.id, archivedAt: new Date().toISOString() } : x));
+    setView('leads');
+    showToast('Converted to Lead — finish the details on the Leads tab');
+  }, [showToast]);
+
   const clearAll = (what) => {
     setConfirm({
       title: `Clear ${what}?`,
@@ -821,6 +875,7 @@ export default function LeadTracker() {
         if (what === 'chargebacks' || what === 'everything')  { setChargebacks([]);  await storage.removeItem(CB_KEY); }
         if (what === 'overrides' || what === 'everything')    { setOverrides([]);    await storage.removeItem(OVR_KEY); }
         if (what === 'ownAdvances' || what === 'everything')  { setOwnAdvances([]);  await storage.removeItem(OWN_ADV_KEY); }
+        if (what === 'prospects' || what === 'everything')    { setProspects([]);    await storage.removeItem(PROSPECTS_KEY); }
         if (what === 'platforms' || what === 'everything')   { setPlatformExpenses([]); await storage.removeItem(PE_KEY); }
         if (what === 'books' || what === 'everything')       { setBusinessExpenses([]); setBusinessIncome([]); await storage.removeItem(BE_KEY); await storage.removeItem(BI_KEY); }
         if (what === 'everything')                            { setAdvanceMonthsHistory([]); await storage.removeItem(AM_KEY); }
@@ -953,6 +1008,18 @@ export default function LeadTracker() {
             onDelete={(id) => setPlatformExpenses(prev => prev.filter(x => x.id !== id))}
           />
         </ViewMount>
+        <ViewMount visible={view === 'prospects'} viewKey="prospects">
+          <ProspectsView
+            prospects={prospects}
+            settings={prospectSettings}
+            onAdd={onAddProspect}
+            onUpdate={onUpdateProspect}
+            onDelete={onDeleteProspect}
+            onBulkAdd={onBulkAddProspects}
+            onSaveSettings={onSaveProspectSettings}
+            onConvertToLead={onConvertProspectToLead}
+          />
+        </ViewMount>
         <ViewMount visible={view === 'books'} viewKey="books">
           <BusinessBooksView
             expenses={businessExpenses}
@@ -1069,6 +1136,7 @@ export default function LeadTracker() {
               <button onClick={() => clearAll('books')} className="w-full text-left border border-slate-200 rounded-lg px-3 py-2 text-sm hover:bg-slate-50">Clear business books</button>
               <button onClick={() => clearAll('chargebacks')} className="w-full text-left border border-slate-200 rounded-lg px-3 py-2 text-sm hover:bg-slate-50">Clear chargebacks</button>
               <button onClick={() => clearAll('overrides')} className="w-full text-left border border-slate-200 rounded-lg px-3 py-2 text-sm hover:bg-slate-50">Clear overrides</button>
+              <button onClick={() => clearAll('prospects')} className="w-full text-left border border-slate-200 rounded-lg px-3 py-2 text-sm hover:bg-slate-50">Clear prospects</button>
               <button onClick={() => clearAll('leads')} className="w-full text-left border border-slate-200 rounded-lg px-3 py-2 text-sm hover:bg-slate-50">Clear leads</button>
               <button onClick={() => clearAll('everything')} className="w-full text-left bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm hover:bg-red-100 font-medium">Clear everything</button>
             </div>
