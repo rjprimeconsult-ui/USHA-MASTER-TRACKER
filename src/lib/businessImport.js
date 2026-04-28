@@ -370,10 +370,19 @@ export async function readWorkbook(file) {
 // transaction (date present, item not "{Blank}", amount not " $-   "),
 // classify via the existing keyword rules, and combine into one list.
 
-const ACTIVITY_SHEET_NAME_RE = /^\$?\s*Activity\s*-\s*[A-Za-z]+\s*\d{2,4}\s*$/i;
+// Accept sheet names with or without a year suffix:
+//   "$Activity - JAN 26"      (most common — month + 2-digit year)
+//   "$Activity - APRIL 2026"   (full month name + 4-digit year)
+//   "$Activity - AUGUST"       (no year — falls back to row dates)
+// The TEMPLATE sheet is explicitly excluded.
+const ACTIVITY_SHEET_NAME_RE = /^\$?\s*Activity\s*-\s*[A-Za-z]+(\s*\d{2,4})?\s*$/i;
+const ACTIVITY_TEMPLATE_RE = /template/i;
 
 function isActivitySheetName(name) {
-  return ACTIVITY_SHEET_NAME_RE.test(String(name || '').trim());
+  const t = String(name || '').trim();
+  if (!t) return false;
+  if (ACTIVITY_TEMPLATE_RE.test(t)) return false;
+  return ACTIVITY_SHEET_NAME_RE.test(t);
 }
 
 // Detect by scanning sheet names for the $Activity pattern. Returns true
