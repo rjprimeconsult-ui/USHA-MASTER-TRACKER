@@ -346,10 +346,28 @@ function ImportWizard({ open, file, settings, prospects, onImport, onClose }) {
         const ws = wb.Sheets[wb.SheetNames[0]];
         const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
         if (!data || data.length < 2) { setError('Empty or unreadable file.'); return; }
-        // Find first non-empty header row
+        // Smarter header-row detection: scan the first 12 rows and pick the
+        // one with the MOST recognized field names. This handles spreadsheets
+        // that start with section labels ("APPOINTMENT SET" etc.) before the
+        // actual column headers, or a title row above the headers.
         let headerRowIdx = 0;
-        for (let i = 0; i < Math.min(data.length, 6); i++) {
-          if (data[i].some(c => String(c || '').trim())) { headerRowIdx = i; break; }
+        let headerScore = -1;
+        for (let i = 0; i < Math.min(data.length, 12); i++) {
+          const row = data[i] || [];
+          let score = 0;
+          for (const cell of row) {
+            if (detectFieldFromHeader(cell)) score++;
+          }
+          if (score > headerScore) {
+            headerScore = score;
+            headerRowIdx = i;
+          }
+        }
+        // Fallback: if nothing matched any known field, use first non-empty row
+        if (headerScore <= 0) {
+          for (let i = 0; i < Math.min(data.length, 6); i++) {
+            if (data[i].some(c => String(c || '').trim())) { headerRowIdx = i; break; }
+          }
         }
         const hdr = data[headerRowIdx].map(c => String(c || '').trim());
         const body = data.slice(headerRowIdx + 1).filter(row => row.some(c => String(c || '').trim()));
