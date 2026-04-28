@@ -296,12 +296,18 @@ export function parseBonuses(text) {
     'Bonus',
   ].join('|');
 
-  // Match: <Type> + middle content (lazy, no $) + transaction date + amount
-  // The lazy [^\$]+? plus required date-then-amount tail forces the regex to
-  // find the LAST date before the amount (it backtracks past the "Paid by EFT
-  // on <date>" inner date until the trailing transaction date).
+  // Match: <Type> + middle content (lazy) + transaction date + amount
+  //
+  // Lazy `.+?` with the required date-then-amount tail forces the regex to
+  // find the LAST date before the amount (it backtracks past any inner date
+  // like "Paid by EFT on <date>" until the trailing transaction date).
+  //
+  // We previously used [^\$]+? to avoid greediness, but that broke rows where
+  // the Adjustment Description itself contains a "$" (e.g. "$65K Milestone"
+  // for a Production Bonus). Lazy `.+?` is safe here because the trailing
+  // date+amount anchor is specific enough to find the right boundary.
   const ROW_RE = new RegExp(
-    `\\b(${BONUS_TYPES})\\b\\s+([^\\$]+?)\\s+(\\d{1,2}\\/\\d{1,2}\\/\\d{2,4})\\s+(\\$-?[\\d,]+\\.\\d{2})`,
+    `\\b(${BONUS_TYPES})\\b\\s+(.+?)\\s+(\\d{1,2}\\/\\d{1,2}\\/\\d{2,4})\\s+(\\$-?[\\d,]+\\.\\d{2})`,
     'gi'
   );
 
