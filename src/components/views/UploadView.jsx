@@ -9,7 +9,11 @@ import {
   buildBackfillFromUsha,
   USHA_SHEET_PORTAL,
   USHA_SHEET_BOUGHT,
+  detectLeadFieldFromHeader,
+  readSheetForGenericImport,
+  buildImportFromGeneric,
 } from '@/lib/import';
+import { CRMS, CAMPAIGNS, LEAD_CATEGORIES, SOURCES, OWNERS, MAIN_PRODUCTS } from '@/lib/constants';
 import { parseStatementPdf, reconcileStatement, isCommissionDetailPdf } from '@/lib/statement';
 import { parseSalesReport, gapDetect, dealToLead } from '@/lib/salesreport';
 import { mkLead } from '@/lib/seed';
@@ -85,8 +89,23 @@ function HistoryImport({ onImport, onUndoImport, lastImportBatch, leads = [], on
   // established agents than wiping and re-creating. Fresh tracker starts in Create.
   const [backfillOnly, setBackfillOnly] = useState(leads.length > 0);
   const [backfillPlan, setBackfillPlan] = useState(null);
+  // Generic fallback state — used when the workbook doesn't match the USHA
+  // preset and we drop into a column-mapping wizard for the agent.
+  const [genericMode, setGenericMode] = useState(false);
+  const [genericSheet, setGenericSheet] = useState('');
+  const [genericHeaders, setGenericHeaders] = useState([]);
+  const [genericPreviewRow, setGenericPreviewRow] = useState([]);
+  const [genericMapping, setGenericMapping] = useState({});
+  const [genericDefaults, setGenericDefaults] = useState({
+    crm: 'RINGY', source: 'CRM', leadCategory: 'AGED',
+    campaign: 'AGED.25', owner: 'You', mainProduct: '',
+  });
 
-  const reset = () => { setStatus('idle'); setError(''); setFile(null); setWb(null); setPreview(null); setBackfillPlan(null); };
+  const reset = () => {
+    setStatus('idle'); setError(''); setFile(null); setWb(null); setPreview(null); setBackfillPlan(null);
+    setGenericMode(false); setGenericSheet(''); setGenericHeaders([]); setGenericPreviewRow([]);
+    setGenericMapping({});
+  };
 
   const handleFile = async (f) => {
     if (!f) return;
@@ -104,8 +123,27 @@ function HistoryImport({ onImport, onUndoImport, lastImportBatch, leads = [], on
         setBackfillPlan(buildBackfillFromUsha(workbook, leads));
         setStatus('ready');
       } else {
-        const sheetList = workbook.SheetNames.map(n => `"${n}"`).join(', ');
-        throw new Error(`Missing USHA preset tabs. Expected sheets with "portal/client" and "bought/lead" (case-insensitive). Found: ${sheetList}.`);
+        // Fallback: drop into the generic column-mapping wizard using the
+        // FIRST sheet. This lets agents import their own \"book of business\"
+        // spreadsheets without renaming tabs.
+        const firstSheet = workbook.SheetNames[0];
+        if (!firstSheet) throw new Error('Empty workbook — no sheets found.');
+        const { headers, rows } = readSheetForGenericImport(workbook, firstSheet);
+        if (!headers.length || !rows.length) {
+          throw new Error('Could not read any rows from the first sheet. Make sure your spreadsheet has a header row + data.');
+        }
+        // Auto-map any column we recognize
+        const auto = {};
+        headers.forEach((h, i) => {
+          const f = detectLeadFieldFromHeader(h);
+          if (f) auto[i] = f;
+        });
+        setGenericSheet(firstSheet);
+        setGenericHeaders(headers);
+        setGenericPreviewRow(rows[0] || []);
+        setGenericMapping(auto);
+        setGenericMode(true);
+        setStatus('ready');
       }
     } catch (e) {
       setError(e.message || String(e)); setStatus('error');
@@ -115,7 +153,11 @@ function HistoryImport({ onImport, onUndoImport, lastImportBatch, leads = [], on
   const runImport = () => {
     if (!wb) return;
     setStatus('importing');
-    if (backfillOnly) {
+    if (genericMode) {
+      const batchId = `batch_${uid()}`;
+      const { leads: newLeads, stats } = buildImportFromGeneric(wb, genericSheet, genericMapping, genericDefaults, batchId);
+      onImport?.(newLeads, { batchId, stats });
+    } else if (backfillOnly) {
       const plan = backfillPlan || buildBackfillFromUsha(wb, leads);
       onBackfill?.(plan);
     } else {
@@ -179,6 +221,120 @@ function HistoryImport({ onImport, onUndoImport, lastImportBatch, leads = [], on
               <div className="text-sm text-red-700 mt-1">{error}</div>
             </div>
             <button onClick={reset} className="text-sm text-red-700 hover:underline">Try another</button>
+          </div>
+        </div>
+      )}
+
+      {/* Generic mapping wizard — shows when the workbook isn't in USHA format */}
+      {status === 'ready' && genericMode && (
+        <div className="space-y-4">
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm text-amber-900">
+            We didn&apos;t recognize the standard USHA layout, so we dropped into a flexible mapper. Match each column from <b>&quot;{genericSheet}&quot;</b> to a Lead field, then import.
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-xl p-4">
+            <h3 className="text-sm font-bold text-slate-900 mb-3">Map columns ({genericHeaders.length})</h3>
+            <div className="space-y-1.5 max-h-[420px] overflow-y-auto">
+              {genericHeaders.map((h, i) => {
+                const sample = String(genericPreviewRow[i] ?? '').slice(0, 60);
+                return (
+                  <div key={i} className="flex items-center gap-3 bg-slate-50 rounded-lg p-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-semibold text-slate-700 truncate">{h || `(column ${i + 1})`}</div>
+                      <div className="text-[11px] text-slate-400 truncate">e.g. {sample || '(empty)'}</div>
+                    </div>
+                    <select
+                      value={genericMapping[i] || ''}
+                      onChange={e => setGenericMapping(m => ({ ...m, [i]: e.target.value }))}
+                      className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white w-56"
+                    >
+                      <option value="">— Skip —</option>
+                      <option value="name">Name</option>
+                      <option value="phone">Phone</option>
+                      <option value="email">Email</option>
+                      <option value="state">State</option>
+                      <option value="zip">ZIP</option>
+                      <option value="age">Age</option>
+                      <option value="policyNumber">Policy Number</option>
+                      <option value="mainProduct">Main Product</option>
+                      <option value="mainProductPremium">Monthly Premium</option>
+                      <option value="associationPlan">Association Plan</option>
+                      <option value="associationStartDate">Association Start Date</option>
+                      <option value="closedDate">Closed / Issued Date</option>
+                      <option value="policyStatus">Policy Status</option>
+                      <option value="uwStatus">UW Status</option>
+                      <option value="leadCost">Lead Cost</option>
+                      <option value="dealValue">Deal Value / Commission</option>
+                      <option value="leadCategory">Lead Category</option>
+                      <option value="crm">CRM</option>
+                      <option value="campaign">Campaign</option>
+                      <option value="source">Source</option>
+                      <option value="owner">Owner</option>
+                      <option value="notes">Notes</option>
+                    </select>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Default fallbacks for required tracker fields */}
+          <div className="bg-white border border-slate-200 rounded-xl p-4">
+            <h3 className="text-sm font-bold text-slate-900 mb-1">Defaults for un-mapped columns</h3>
+            <p className="text-xs text-slate-500 mb-3">Used when a row doesn&apos;t have its own value for that field.</p>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              <div>
+                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">CRM</label>
+                <select className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm mt-0.5" value={genericDefaults.crm}
+                  onChange={e => setGenericDefaults(d => ({ ...d, crm: e.target.value }))}>
+                  {CRMS.map(c => <option key={c.id} value={c.id}>{c.id}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Source</label>
+                <select className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm mt-0.5" value={genericDefaults.source}
+                  onChange={e => setGenericDefaults(d => ({ ...d, source: e.target.value }))}>
+                  {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Lead Category</label>
+                <select className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm mt-0.5" value={genericDefaults.leadCategory}
+                  onChange={e => setGenericDefaults(d => ({ ...d, leadCategory: e.target.value }))}>
+                  {LEAD_CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.id}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Campaign</label>
+                <select className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm mt-0.5" value={genericDefaults.campaign}
+                  onChange={e => setGenericDefaults(d => ({ ...d, campaign: e.target.value }))}>
+                  {CAMPAIGNS.map(c => <option key={c.id} value={c.id}>{c.id}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Owner</label>
+                <select className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm mt-0.5" value={genericDefaults.owner}
+                  onChange={e => setGenericDefaults(d => ({ ...d, owner: e.target.value }))}>
+                  {OWNERS.map(o => <option key={o} value={o}>{o}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Main Product (fallback)</label>
+                <select className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm mt-0.5" value={genericDefaults.mainProduct}
+                  onChange={e => setGenericDefaults(d => ({ ...d, mainProduct: e.target.value }))}>
+                  <option value="">— None —</option>
+                  {MAIN_PRODUCTS.map(p => <option key={p.id} value={p.id}>{p.id}</option>)}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <button onClick={reset} className="border border-slate-200 hover:bg-slate-50 px-4 py-2 rounded-lg text-sm font-semibold">Try another file</button>
+            <button onClick={runImport}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">
+              Import leads
+            </button>
           </div>
         </div>
       )}

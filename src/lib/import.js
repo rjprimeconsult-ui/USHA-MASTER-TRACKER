@@ -467,3 +467,138 @@ export function previewImportFromUsha(wb) {
   }));
   return stats;
 }
+
+/* ======================================================================
+   GENERIC MAPPER — fallback for spreadsheets that don't follow the USHA
+   preset (single sheet, custom columns, agent's own "book of business"
+   format). Same UX as the prospect import wizard: read first sheet,
+   detect headers automatically, let the user remap, build leads.
+   ====================================================================== */
+
+// Maps free-form header strings to canonical Lead field keys.
+// Order matters — more specific patterns first.
+const LEAD_HEADER_MAP = [
+  { keys: [/^name$/i, /full\s*name/i, /^client$/i, /customer/i], field: 'name' },
+  { keys: [/policy\s*(no|num|number|#)/i, /^policy$/i], field: 'policyNumber' },
+  { keys: [/phone/i, /^cell$/i, /mobile/i, /^tel/i], field: 'phone' },
+  { keys: [/^e-?mail$/i, /email/i], field: 'email' },
+  { keys: [/^state$/i, /^st$/i], field: 'state' },
+  { keys: [/^age$/i], field: 'age' },
+  { keys: [/^zip/i], field: 'zip' },
+  { keys: [/main\s*product/i, /product/i, /^plan$/i, /coverage/i], field: 'mainProduct' },
+  { keys: [/association/i, /assoc/i], field: 'associationPlan' },
+  { keys: [/monthly\s*premium/i, /premium/i], field: 'mainProductPremium' },
+  { keys: [/policy\s*status/i, /^status$/i, /^stage$/i], field: 'policyStatus' },
+  { keys: [/uw\s*status/i, /underwriting/i], field: 'uwStatus' },
+  { keys: [/(close|sold|issued|app(lication)?)\s*date/i, /^date\s*sold$/i, /effective\s*date/i], field: 'closedDate' },
+  { keys: [/(association|assoc)\s*start/i], field: 'associationStartDate' },
+  { keys: [/lead\s*cost/i, /^cost$/i, /lead\s*price/i], field: 'leadCost' },
+  { keys: [/deal\s*value/i, /commission/i, /advance/i], field: 'dealValue' },
+  { keys: [/lead\s*category/i, /^category$/i, /^type$/i], field: 'leadCategory' },
+  { keys: [/^crm$/i], field: 'crm' },
+  { keys: [/campaign/i], field: 'campaign' },
+  { keys: [/^source$/i, /lead\s*from/i], field: 'source' },
+  { keys: [/^owner$/i, /agent/i], field: 'owner' },
+  { keys: [/notes/i, /comments/i, /situation/i], field: 'notes' },
+];
+
+export function detectLeadFieldFromHeader(header) {
+  const s = String(header || '').trim();
+  if (!s) return null;
+  for (const { keys, field } of LEAD_HEADER_MAP) {
+    if (keys.some(re => re.test(s))) return field;
+  }
+  return null;
+}
+
+/**
+ * Find the row in a workbook sheet that's most likely the header row by
+ * counting how many cells in it look like recognized lead-field headers.
+ * Returns { idx, headers, rows }.
+ */
+export function readSheetForGenericImport(wb, sheetName) {
+  const ws = wb.Sheets[sheetName];
+  if (!ws) return { idx: -1, headers: [], rows: [] };
+  const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
+  if (!data.length) return { idx: -1, headers: [], rows: [] };
+
+  let bestIdx = 0, bestScore = -1;
+  for (let i = 0; i < Math.min(data.length, 12); i++) {
+    const row = data[i] || [];
+    let score = 0;
+    for (const cell of row) if (detectLeadFieldFromHeader(cell)) score++;
+    if (score > bestScore) { bestScore = score; bestIdx = i; }
+  }
+  if (bestScore <= 0) {
+    // Fallback: first non-empty row
+    for (let i = 0; i < Math.min(data.length, 6); i++) {
+      if (data[i].some(c => String(c || '').trim())) { bestIdx = i; break; }
+    }
+  }
+  const headers = (data[bestIdx] || []).map(c => String(c || '').trim());
+  const rows = data.slice(bestIdx + 1).filter(r => r.some(c => String(c || '').trim()));
+  return { idx: bestIdx, headers, rows };
+}
+
+/**
+ * Build leads from a generic mapping.
+ *   wb         the workbook
+ *   sheetName  the sheet to read
+ *   mapping    { [colIdx]: 'name' | 'phone' | ... }
+ *   defaults   tracker-required fallbacks (crm, source, leadCategory, etc.)
+ *   batchId    string for undo grouping
+ */
+export function buildImportFromGeneric(wb, sheetName, mapping, defaults = {}, batchId = `batch_${uid()}`) {
+  const { rows } = readSheetForGenericImport(wb, sheetName);
+  const leads = [];
+  let skipped = 0;
+
+  for (const row of rows) {
+    const raw = {};
+    for (const [colIdxStr, field] of Object.entries(mapping)) {
+      if (!field) continue;
+      const v = row[Number(colIdxStr)];
+      if (v == null || v === '') continue;
+      raw[field] = String(v).trim();
+    }
+    // Skip rows with no name AND no policy AND no phone — almost certainly a divider
+    if (!raw.name && !raw.policyNumber && !raw.phone) { skipped++; continue; }
+    if (raw.name && isSkipRow(raw.name)) { skipped++; continue; }
+
+    const stage = normalizeStage(raw.policyStatus, raw.uwStatus);
+    const lead = mkLead({
+      _batchId: batchId,
+      name: raw.name || '',
+      age: raw.age ? parseInt(raw.age, 10) || 0 : 0,
+      email: raw.email || '',
+      phone: raw.phone || '',
+      state: raw.state || '',
+      stage,
+      policyNumber: raw.policyNumber || '',
+      mainProduct: raw.mainProduct ? normalizeMainProduct(raw.mainProduct) : (defaults.mainProduct || ''),
+      mainProductPremium: raw.mainProductPremium ? parseCurrency(raw.mainProductPremium) : 0,
+      associationPlan: raw.associationPlan ? normalizeAssociation(raw.associationPlan) : '',
+      associationStartDate: parseDate(raw.associationStartDate) || null,
+      closedDate: parseDate(raw.closedDate) || (stage === 'Issued' ? today() : null),
+      leadCost: raw.leadCost ? parseCurrency(raw.leadCost) : 0,
+      dealValue: raw.dealValue ? parseCurrency(raw.dealValue) : 0,
+      leadCategory: raw.leadCategory ? normalizeCategory(raw.leadCategory) : (defaults.leadCategory || 'AGED'),
+      crm: raw.crm ? normalizeCrm(raw.crm) : (defaults.crm || 'RINGY'),
+      campaign: raw.campaign ? normalizeCampaign(raw.campaign) : (defaults.campaign || 'AGED.25'),
+      source: raw.source || defaults.source || 'CRM',
+      owner: raw.owner || defaults.owner || 'You',
+      notes: raw.notes || '',
+      dateAdded: parseDate(raw.closedDate) || today(),
+    });
+    leads.push(lead);
+  }
+
+  return {
+    leads,
+    stats: {
+      total: leads.length,
+      skipped,
+      byStage: leads.reduce((acc, l) => { acc[l.stage] = (acc[l.stage] || 0) + 1; return acc; }, {}),
+    },
+  };
+}
