@@ -1,7 +1,7 @@
 'use client';
 import { useMemo, memo } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import { Edit2, Trash2, CheckCircle2, Clock } from 'lucide-react';
+import { Edit2, Trash2, CheckCircle2, Clock, ImageUp } from 'lucide-react';
 import { CRMS, LEAD_CATEGORIES, STAGES, effectiveLeadCategory } from '@/lib/constants';
 import { fmt, fmt2, usDate, monthLabel } from '@/lib/utils';
 import { Chart3DCard, Pie3D } from '../motion/MotionPrimitives';
@@ -42,7 +42,7 @@ const StageBadge = ({ stage }) => {
   );
 };
 
-function ClosedDeals({ leads, onEdit, onDelete }) {
+function ClosedDeals({ leads, onEdit, onDelete, onImportFromScreenshot }) {
   // Show Submitted + Issued (pending + paid deals)
   const visible = useMemo(() =>
     leads.filter(l => (l.stage === 'Issued' || l.stage === 'Pending') && l.closedDate)
@@ -78,8 +78,14 @@ function ClosedDeals({ leads, onEdit, onDelete }) {
             <p className="text-sm text-slate-500 mt-0.5">Pending + Issued deals grouped by month</p>
           </div>
         </div>
-        <div className="bg-white rounded-xl border border-slate-200 text-center py-16 text-slate-400">
-          No closed deals yet — submit a deal from the Leads tab.
+        <div className="bg-white rounded-xl border border-slate-200 text-center py-16">
+          <p className="text-slate-400 mb-4">No closed deals yet — submit a deal from the Leads tab.</p>
+          {onImportFromScreenshot && (
+            <button onClick={onImportFromScreenshot}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-4 py-2 text-sm font-semibold inline-flex items-center gap-1.5">
+              <ImageUp size={14} /> Import from screenshot
+            </button>
+          )}
         </div>
       </div>
     );
@@ -97,7 +103,13 @@ function ClosedDeals({ leads, onEdit, onDelete }) {
             {' '}· Pending deals show but don&apos;t contribute advance until Issued.
           </p>
         </div>
-        <div className="flex gap-2 text-sm">
+        <div className="flex gap-2 text-sm flex-wrap">
+          {onImportFromScreenshot && (
+            <button onClick={onImportFromScreenshot}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-3 py-2 font-semibold flex items-center gap-1.5">
+              <ImageUp size={14} /> Import from screenshot
+            </button>
+          )}
           <div className="bg-white border border-slate-200 rounded-lg px-3 py-2">
             <span className="text-slate-500">Deals: </span>
             <span className="font-bold text-slate-900">{totals.deals}</span>

@@ -25,6 +25,7 @@ import InvestmentForm from './InvestmentForm';
 import ActivityForm from './ActivityForm';
 import ConfirmDialog from './ConfirmDialog';
 import NoPhiBanner from './NoPhiBanner';
+import ScreenshotImport from './ScreenshotImport';
 import Toast from './Toast';
 import AdvanceMonthsHistoryEditor from './AdvanceMonthsHistoryEditor';
 import { fireConfetti, FadeIn, OrbBackdrop } from './motion/MotionPrimitives';
@@ -110,6 +111,7 @@ function ViewMount({ visible, viewKey, children }) {
 export default function LeadTracker() {
   const [loaded, setLoaded] = useState(false);
   const [view, setView] = useState('cpa');
+  const [showScreenshotImport, setShowScreenshotImport] = useState(false);
   const [leads, setLeads] = useState([]);
   const [investments, setInvestments] = useState([]);
   const [activities, setActivities] = useState([]);
@@ -1005,7 +1007,7 @@ export default function LeadTracker() {
           />
         </ViewMount>
         <ViewMount visible={view === 'closed'} viewKey="closed">
-          <ClosedDeals leads={leads} onEdit={editLead} onDelete={deleteLead} />
+          <ClosedDeals leads={leads} onEdit={editLead} onDelete={deleteLead} onImportFromScreenshot={() => setShowScreenshotImport(true)} />
         </ViewMount>
         <ViewMount visible={view === 'dashboard'} viewKey="dashboard">
           <Dashboard leads={leads} />
@@ -1102,6 +1104,18 @@ export default function LeadTracker() {
 
       {/* One-time no-PHI acknowledgement (gates the app on first sign-in) */}
       <NoPhiBanner />
+
+      {/* Screenshot -> Lead import (USHA portal OCR) */}
+      <ScreenshotImport
+        open={showScreenshotImport}
+        onClose={() => setShowScreenshotImport(false)}
+        onCreateLead={(patch) => {
+          const newLead = mkLead(patch);
+          setLeads(prev => [newLead, ...prev]);
+          showToast('Lead created from screenshot');
+          setView('leads');
+        }}
+      />
 
       {/* Modals */}
       <LeadForm open={!!leadForm} lead={leadForm} tier={tier} onSave={saveLead} onClose={() => setLeadForm(null)} onDelete={deleteLead} />
