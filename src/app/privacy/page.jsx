@@ -11,7 +11,8 @@ export default function PrivacyPage() {
         </Link>
 
         <h1 className="text-3xl font-bold text-slate-900 mb-2">Privacy Policy</h1>
-        <p className="text-sm text-slate-500 mb-8">Last updated: April 28, 2026</p>
+        <p className="text-sm text-slate-500 mb-1">Last updated: April 28, 2026</p>
+        <p className="text-sm text-slate-500 mb-8">PRIM is operated by R&amp;J Prime Consultancy LLC, a Florida limited liability company.</p>
 
         <div className="prose prose-slate max-w-none space-y-6 text-slate-700">
           <p className="text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm">
@@ -57,7 +58,9 @@ export default function PrivacyPage() {
 
           <section>
             <h2 className="text-xl font-bold text-slate-900 mt-6 mb-3">Contact</h2>
-            <p>Juan Trejo · <a href="mailto:juantrejo9082@gmail.com" className="text-indigo-600 hover:underline">juantrejo9082@gmail.com</a></p>
+            <p>R&amp;J Prime Consultancy LLC<br/>
+            Attn: Juan Trejo<br/>
+            <a href="mailto:juantrejo9082@gmail.com" className="text-indigo-600 hover:underline">juantrejo9082@gmail.com</a></p>
           </section>
         </div>
       </div>

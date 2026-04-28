@@ -11,7 +11,8 @@ export default function TermsPage() {
         </Link>
 
         <h1 className="text-3xl font-bold text-slate-900 mb-2">Terms of Service</h1>
-        <p className="text-sm text-slate-500 mb-8">Last updated: April 28, 2026</p>
+        <p className="text-sm text-slate-500 mb-1">Last updated: April 28, 2026</p>
+        <p className="text-sm text-slate-500 mb-8">PRIM is operated by R&amp;J Prime Consultancy LLC, a Florida limited liability company. By using the app you agree to these terms.</p>
 
         <div className="prose prose-slate max-w-none space-y-6 text-slate-700">
           <p className="text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm">
@@ -20,7 +21,7 @@ export default function TermsPage() {
 
           <section>
             <h2 className="text-xl font-bold text-slate-900 mt-6 mb-3">1. Plain summary</h2>
-            <p>PRIM (&quot;the app&quot;) is a CPA / pipeline / books tracker for insurance agents. Use it for your own business. Don&apos;t break it on purpose. We don&apos;t guarantee uptime or that the math is correct for your tax filing — verify your own numbers.</p>
+            <p>PRIM (&quot;the app&quot;) is a CPA / pipeline / books tracker for insurance agents, owned and operated by R&amp;J Prime Consultancy LLC (&quot;we,&quot; &quot;us&quot;). Use it for your own business. Don&apos;t break it on purpose. We don&apos;t guarantee uptime or that the math is correct for your tax filing — verify your own numbers.</p>
           </section>
 
           <section>
@@ -64,8 +65,15 @@ export default function TermsPage() {
           </section>
 
           <section>
-            <h2 className="text-xl font-bold text-slate-900 mt-6 mb-3">8. Contact</h2>
-            <p>Juan Trejo · <a href="mailto:juantrejo9082@gmail.com" className="text-indigo-600 hover:underline">juantrejo9082@gmail.com</a></p>
+            <h2 className="text-xl font-bold text-slate-900 mt-6 mb-3">8. Governing law</h2>
+            <p>These terms are governed by the laws of the State of Florida, USA. Any disputes will be resolved in the state or federal courts located in Florida.</p>
+          </section>
+
+          <section>
+            <h2 className="text-xl font-bold text-slate-900 mt-6 mb-3">9. Contact</h2>
+            <p>R&amp;J Prime Consultancy LLC<br/>
+            Attn: Juan Trejo<br/>
+            <a href="mailto:juantrejo9082@gmail.com" className="text-indigo-600 hover:underline">juantrejo9082@gmail.com</a></p>
           </section>
         </div>
       </div>
