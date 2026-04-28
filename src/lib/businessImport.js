@@ -15,18 +15,18 @@ import { uid } from './utils';
 const EXPENSE_KEYWORDS = [
   // Lead acquisition — checked FIRST so "LEADS MARKETPLACE" doesn't fall into Marketing.
   // These directly buy lead lists / aged leads / vendor splits — they go into CPA math.
-  { cat: 'LEAD_INVESTMENT', patterns: [/leads?\s*marketplace/i, /lead\s*vendor/i, /lead\s*purchase/i, /lead\s*buy/i, /\baged\s*leads?\b/i, /jesus\s*burga/i, /\busha\s*leads?\b/i, /lead\s*list/i, /\bringy\s*leads/i, /facebook\s*lead/i, /google\s*ads\s*split/i, /\bgoogle\s*ads(?!\s*spend)/i] },
+  { cat: 'LEAD_INVESTMENT', patterns: [/leads?\s*marketplace/i, /lead\s*vendor/i, /lead\s*purchase/i, /lead\s*buy/i, /\baged\s*leads?\b/i, /jesus\s*burga/i, /\busha\s*leads?\b/i, /lead\s*list/i, /\bringy\s*leads/i, /facebook\s*lead/i, /google\s*ads\s*split/i, /\bgoogle\s*ads(?!\s*spend)/i, /^leads?$/i, /\bchev(rolet)?\s*credits?/i, /\bbenepath/i, /\bnectar\b/i, /^smartfinancial/i] },
   { cat: 'OFFICE_RENT',    patterns: [/\boffice\s*rent\b/i, /\bfsl\s*rent\b/i, /\boffice\s*pack\b/i, /\boffice\s*split\b/i, /\bdesk\s*rent\b/i] },
   { cat: 'TRAVEL',         patterns: [/airbnb/i, /\bmarriott\b/i, /\bhilton\b/i, /\bhyatt\b/i, /\baloft\b/i, /\bsheraton\b/i, /\bwyndham\b/i, /\bbest\s*western\b/i, /booking\.com/i, /\bexpedia\b/i, /\bvrbo\b/i, /\bdelta\b/i, /\bunited\s*air/i, /\bsouthwest\s*air/i, /\bjetblue\b/i, /\bspirit\s*air/i, /\bamerican\s*air/i, /\bfrontier\s*air/i, /\balaska\s*air/i, /\bairline\b/i, /\bflight\b/i, /work\s*trip/i, /company\s*trip/i, /\bexcursion\b/i] },
   { cat: 'RECRUITING',     patterns: [/\brecruit/i] },
-  { cat: 'TEAM_INCENTIVES', patterns: [/incentive\s*for\s*agents?/i, /agent\s*incentive/i, /outing\s*with\s*top\s*producers?/i, /dinner\s*for\s*top\s*producers?/i, /lunch\s*for\s*top\s*producers?/i, /lunch\s*for\s*agents?/i, /dinner\s*for\s*agents?/i, /team\s*incentive/i, /team\s*outing/i, /team\s*meal/i, /coffee\s*team/i, /coffee\s*for\s*the\s*team/i, /uber\s*eats\s*for\s*the\s*team/i, /bfast\s*for\s*team/i, /breakfast\s*for\s*team/i, /gift\s*for\s*top\s*producer/i, /top\s*producer/i] },
+  { cat: 'TEAM_INCENTIVES', patterns: [/incentive\s*for\s*agents?/i, /agent\s*incentive/i, /outing\s*with\s*top\s*producers?/i, /dinner\s*for\s*top\s*producers?/i, /lunch\s*for\s*top\s*producers?/i, /lunch\s*for\s*agents?/i, /dinner\s*for\s*agents?/i, /team\s*incentive/i, /team\s*outing/i, /team\s*meal/i, /coffee\s*team/i, /coffee\s*for\s*the\s*team/i, /uber\s*eats\s*for\s*the\s*team/i, /bfast\s*for\s*team/i, /breakfast\s*for\s*team/i, /gift\s*for\s*top\s*producer/i, /top\s*producer/i, /^team\s+(uber\s*eats|wings|pizza|coffee|breakfast|bfast|lunch|dinner|food|meal|snack|donuts?|bagels?|tacos?)/i] },
   { cat: 'MARKETING',      patterns: [/facebook\s*ads/i, /\bmeta\b.*ads/i, /linkedin.*ads/i, /tiktok.*ads/i, /mailchimp/i, /constant\s*contact/i, /hootsuite/i, /buffer/i] },
-  { cat: 'SOFTWARE',       patterns: [/notion/i, /slack/i, /zoom/i, /google\s*workspace/i, /gsuite/i, /microsoft\s*365/i, /office\s*365/i, /adobe/i, /dropbox/i, /\baws\b/i, /github/i, /openai/i, /anthropic/i, /claude/i, /chat\s*gpt/i, /chatgpt/i, /figma/i, /canva/i, /calendly/i, /textdrip/i, /\bringy\b/i, /vanilla\s*soft/i, /vanillasoft/i, /only\s*sales/i] },
+  { cat: 'SOFTWARE',       patterns: [/notion/i, /slack/i, /zoom/i, /google\s*workspace/i, /gsuite/i, /microsoft\s*365/i, /office\s*365/i, /adobe/i, /dropbox/i, /\baws\b/i, /github/i, /openai/i, /anthropic/i, /claude/i, /chat\s*gpt/i, /chatgpt/i, /figma/i, /canva/i, /calendly/i, /textdrip/i, /\bringy\b/i, /vanilla\s*soft/i, /vanillasoft/i, /only\s*sales/i, /text\s*cred/i, /\bvs\b\s*cred/i, /vsoft\s*cred/i, /\bcami's\s*vs\b/i, /\bvs\s*creds?$/i] },
   { cat: 'VEHICLE',        patterns: [/\bshell\b/i, /chevron/i, /\bexxon\b/i, /\bmobil\b/i, /\b76\b/i, /\barco\b/i, /\bbp\b/i, /valero/i, /circle\s*k/i, /7-?eleven/i, /gas\s*station/i, /\bfuel\b/i, /\buber\b(?!\s*eats)/i, /\blyft\b/i, /\bparking\b/i, /\btoll\b/i, /sunpass/i, /\bdmv\b/i, /jiffy\s*lube/i, /oil\s*change/i, /car\s*payment/i, /car\s*lease/i, /car\s*insurance/i, /commute\s*to\s*work/i] },
-  { cat: 'MEALS',          patterns: [/restaurant/i, /\bcafe\b/i, /starbucks/i, /chipotle/i, /chick-?fil-?a/i, /mcdonald/i, /subway/i, /panera/i, /uber\s*eats/i, /doordash/i, /grubhub/i, /postmates/i, /pizza/i, /\bdeli\b/i, /\bdiner\b/i, /work\s*food/i, /meal\s*plan/i, /eat\s*clean/i] },
+  { cat: 'MEALS',          patterns: [/restaurant/i, /\bcafe\b/i, /starbucks/i, /chipotle/i, /chick-?fil-?a/i, /mcdonald/i, /subway/i, /panera/i, /uber\s*eats/i, /doordash/i, /grubhub/i, /postmates/i, /pizza/i, /\bdeli\b/i, /\bdiner\b/i, /work\s*food/i, /meal\s*plan/i, /eat\s*clean/i, /^breakfast$/i, /^lunch$/i, /^dinner$/i, /^bfast$/i, /\bwings\b/i] },
   { cat: 'OFFICE',         patterns: [/staples/i, /office\s*depot/i, /amazon\.?com/i, /amzn\s*mktp/i, /\bamazon\b/i, /walmart/i, /\btarget\b/i, /\bups\b/i, /fedex/i, /usps/i, /post\s*office/i, /office\s*supplies/i] },
   { cat: 'PHONE_INTERNET', patterns: [/at\s*&\s*t/i, /verizon/i, /comcast/i, /xfinity/i, /spectrum/i, /\bt-?mobile\b/i, /sprint/i, /cox\s*comm/i, /\bvonage\b/i, /ringcentral/i, /\bcricket\b/i, /\binternet\b/i] },
-  { cat: 'PROFESSIONAL',   patterns: [/\be&o\b/i, /\bnaifa\b/i, /licensing/i, /\binsurance\s*license/i, /quickbooks/i, /turbotax/i, /\bcpa\b/i, /accountant/i, /accounting/i, /attorney/i, /lawyer/i, /\btax\b/i, /\blexisnexis\b/i, /\bnipr\b/i, /sircon/i] },
+  { cat: 'PROFESSIONAL',   patterns: [/\be&o\b/i, /\bnaifa\b/i, /licensing/i, /\binsurance\s*license/i, /license\s*fee/i, /\blicense\b/i, /quickbooks/i, /turbotax/i, /\bcpa\b/i, /accountant/i, /accounting/i, /attorney/i, /lawyer/i, /\btax\b/i, /\blexisnexis\b/i, /\bnipr\b/i, /sircon/i, /^llc$/i, /\bllc\s*(fee|filing|annual)/i, /\bsunbiz\b/i, /annual\s*report/i, /registered\s*agent/i] },
   { cat: 'HEALTHCARE',     patterns: [/\bcvs\b/i, /walgreens/i, /pharmacy/i, /\bclinic\b/i, /hospital/i, /\bmedical\b/i, /\bdental\b/i, /dentist/i, /\bvision\b/i, /\bdoctor/i, /\bdds\b/i] },
   { cat: 'COACHING',       patterns: [/\bcoach/i, /\bmentor/i, /\btraining/i, /\bseminar/i, /\bworkshop/i, /\bconference/i, /\bsummit/i, /\bmastermind/i] },
 ];
@@ -351,6 +351,103 @@ export async function readSheetRows(file) {
 }
 
 /**
+ * Read every sheet in a workbook. Used by multi-sheet formats like the
+ * Harrison-style "$Activity - <MONTH> <YR>" weekly trackers.
+ */
+export async function readWorkbook(file) {
+  const buffer = await file.arrayBuffer();
+  return XLSX.read(buffer, { type: 'array', cellDates: true });
+}
+
+// ---------- Harrison-style $Activity weekly tracker ----------
+// One workbook with many sheets named "$Activity - <MONTH> <YR>". Each
+// sheet has Money In/Out transactions in columns B/C/D as triplets:
+//   B: date (m/d/yy)
+//   C: item description (e.g. "Text Creds", "Leads", "team uber eats")
+//   D: amount as "$-90" / " $-1,000" / "$81" — negative = expense
+//
+// We scan each $Activity sheet, pull every triplet that's a real
+// transaction (date present, item not "{Blank}", amount not " $-   "),
+// classify via the existing keyword rules, and combine into one list.
+
+const ACTIVITY_SHEET_NAME_RE = /^\$?\s*Activity\s*-\s*[A-Za-z]+\s*\d{2,4}\s*$/i;
+
+function isActivitySheetName(name) {
+  return ACTIVITY_SHEET_NAME_RE.test(String(name || '').trim());
+}
+
+// Detect by scanning sheet names for the $Activity pattern. Returns true
+// if we find at least one matching sheet.
+export function isHarrisonActivityWorkbook(wb) {
+  if (!wb || !Array.isArray(wb.SheetNames)) return false;
+  return wb.SheetNames.some(isActivitySheetName);
+}
+
+// Extract transactions from a single $Activity sheet.
+function parseActivitySheet(ws, sheetName) {
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
+  const out = [];
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i] || [];
+    const date = parseDate(r[1]);
+    const item = String(r[2] || '').trim();
+    const amt  = parseAmount(r[3]);
+    if (!date || !item) continue;
+    if (item === '{Blank}' || /^select\s+source$/i.test(item)) continue;
+    if (amt == null || amt === 0) continue;
+    out.push({ date, item, amount: amt, sheet: sheetName });
+  }
+  return out;
+}
+
+// Aggregate every $Activity sheet in the workbook into one expense+income list.
+export function parseHarrisonActivityWorkbook(wb) {
+  const allTx = [];
+  for (const sheetName of wb.SheetNames) {
+    if (!isActivitySheetName(sheetName)) continue;
+    const ws = wb.Sheets[sheetName];
+    if (!ws) continue;
+    const tx = parseActivitySheet(ws, sheetName);
+    allTx.push(...tx);
+  }
+  // Split into expenses (negative) and income (positive). Classify each.
+  const expenses = [];
+  const income = [];
+  for (const t of allTx) {
+    if (t.amount < 0) {
+      expenses.push({
+        id: uid(),
+        date: t.date,
+        category: classifyExpense(t.item),
+        amount: Math.abs(t.amount),
+        vendor: t.item.slice(0, 80),
+        notes: `From sheet "${t.sheet}"`,
+        account: '',
+        paymentMethod: null,
+        attachment: null,
+        _source: 'activity',
+      });
+    } else {
+      income.push({
+        id: uid(),
+        date: t.date,
+        category: classifyIncome(t.item),
+        amount: t.amount,
+        source: t.item.slice(0, 80),
+        notes: `From sheet "${t.sheet}"`,
+        account: '',
+        paymentMethod: null,
+        attachment: null,
+        _source: 'activity',
+      });
+    }
+  }
+  expenses.sort((a, b) => b.date.localeCompare(a.date));
+  income.sort((a, b) => b.date.localeCompare(a.date));
+  return { expenses, income };
+}
+
+/**
  * Parse a bank/credit-card statement file into pre-classified expense + income rows.
  *
  * Returns: {
@@ -360,7 +457,24 @@ export async function readSheetRows(file) {
  * }
  */
 export async function parseBusinessFile(file) {
-  const rows = await readSheetRows(file);
+  // Harrison-style activity workbook check first — it spans multiple
+  // sheets named "$Activity - <MONTH> <YR>". If we see that pattern,
+  // sweep them all instead of just sheet 0.
+  const wb = await readWorkbook(file);
+  if (isHarrisonActivityWorkbook(wb)) {
+    const { expenses, income } = parseHarrisonActivityWorkbook(wb);
+    return {
+      format: 'activity',
+      expenses,
+      income,
+      detectedAccount: null,
+      sheetCount: wb.SheetNames.filter(isActivitySheetName).length,
+    };
+  }
+
+  // Other formats use first-sheet rows
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = ws ? XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false }) : [];
   if (!rows || rows.length === 0) {
     return { format: 'empty', expenses: [], income: [], detectedAccount: null };
   }
