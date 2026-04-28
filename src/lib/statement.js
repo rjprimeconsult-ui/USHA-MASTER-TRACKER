@@ -318,8 +318,24 @@ export function parseBonuses(text) {
     const amount = money(m[4]);
     if (!Number.isFinite(amount) || amount <= 0) continue;
 
-    // Skip header / total bleeds (e.g. "Bonus Total" rows)
+    // Skip header / total bleeds (e.g. "Bonus Total" rows, table headers)
     if (/total|column|year[\s-]?to[\s-]?date|\bytd\b|\bmtd\b|summary/i.test(middleRaw)) continue;
+
+    // Account Summary / Reserve sections: tables with column headers like
+    // "Beginning Balance" and rows like "E&O Charge $X" can splice into a
+    // false "<Bonus Type>...<random date>...<random amount>" match. Reject
+    // any match whose middle contains telltale reserve-statement words.
+    if (/\b(beginning\s+balance|ending\s+balance|e\s*&\s*o\s+charge|week\s+ending|reserve\s+(adjustment|short|withheld|balance)|advance\s+reserve|chargeback|reinstatement)\b/i.test(middleRaw)) continue;
+
+    // A real bonus row has at most ONE "$amount" inside the middle (the
+    // breakdown / "Paid by EFT" tail). If we see 2+ separate dollar amounts
+    // or any parenthesized negative, the regex bridged two unrelated rows
+    // and the trailing capture isn't actually this bonus's amount.
+    const dollarHits = (middleRaw.match(/\$\s*-?\(?[\d,]+\.\d{2}\)?/g) || []).length;
+    if (dollarHits >= 2) continue;
+    if (/\(\s*\$/.test(middleRaw)) continue; // parenthesized negative ($)
+    if (middleRaw.length > 100) continue;     // sanity cap on description length
+
     // Strip trailing "Paid by ... on <date>" so the label stays readable
     const middle = middleRaw.replace(/\s*Paid\s*by\s*[A-Za-z]+\s*on\s*\d{1,2}\/\d{1,2}\/\d{2,4}\s*$/i, '').trim();
     if (!middle) continue;
