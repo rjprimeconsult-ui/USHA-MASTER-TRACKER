@@ -3,6 +3,7 @@ import { useState, useMemo, useRef, useCallback } from 'react';
 import {
   Plus, Search, LayoutGrid, List as ListIcon, Settings as SettingsIcon, Upload,
   Calendar, Phone, Mail, MapPin, ArrowRight, Trash2, X, AlertCircle, Clock, GripVertical,
+  User, Home, Briefcase, FileText, Pencil, Pill, Activity, DollarSign, Tag,
 } from 'lucide-react';
 import { TiltCard, FadeIn, Stagger, StaggerItem } from '../motion/MotionPrimitives';
 import { fmt2, today } from '@/lib/utils';
@@ -422,6 +423,160 @@ function ImportWizard({ open, file, settings, prospects, onImport, onClose }) {
   );
 }
 
+// ---------- Detail Bubble (read-only summary card) ----------
+function DetailRow({ Icon, label, value, valueClass = '' }) {
+  if (!value && value !== 0) return null;
+  return (
+    <div className="flex items-start gap-2.5 text-sm py-1.5">
+      <Icon size={14} className="text-slate-400 mt-0.5 flex-shrink-0" />
+      <div className="flex-1 min-w-0">
+        {label && <div className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">{label}</div>}
+        <div className={`text-slate-800 ${valueClass} break-words`}>{value}</div>
+      </div>
+    </div>
+  );
+}
+
+function DetailSection({ title, children }) {
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 p-4">
+      <h3 className="text-sm font-bold text-slate-900 mb-2">{title}</h3>
+      <div className="divide-y divide-slate-100 -my-1.5">{children}</div>
+    </div>
+  );
+}
+
+function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, onConvertToLead }) {
+  if (!open || !prospect) return null;
+  const stage = settings.stages.find(s => s.id === prospect.stage);
+  const stageColor = stage?.color || '#64748b';
+  const stageLabel = stage?.label || prospect.stage;
+  const isSold = prospect.stage === 'SOLD';
+  const created = prospect.createdAt ? new Date(prospect.createdAt) : null;
+  const daysSinceCreated = created ? Math.floor((Date.now() - created.getTime()) / 86400000) : null;
+  const apptDate = prospect.appointmentTime ? new Date(prospect.appointmentTime) : null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} className="bg-slate-50 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] overflow-y-auto">
+        {/* Hero header */}
+        <div className="bg-white rounded-t-2xl border-b border-slate-200 p-6 relative">
+          <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 p-1">
+            <X size={20} />
+          </button>
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-[11px] font-bold px-2.5 py-1 rounded-full" style={{ background: stageColor + '22', color: stageColor }}>
+              {stageLabel}
+            </span>
+            {prospect.indvOrFamily === 'Family' && (
+              <span className="text-[11px] font-bold text-violet-700 bg-violet-100 px-2.5 py-1 rounded-full">FAMILY</span>
+            )}
+            {prospect.source && (
+              <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">{prospect.source}</span>
+            )}
+          </div>
+          <h2 className="text-2xl font-bold text-slate-900 tracking-tight">{prospect.name || '(no name)'}</h2>
+          <div className="text-sm text-slate-500 mt-1 space-y-0.5">
+            {prospect.quoteSize && (
+              <div className="flex items-center gap-1.5"><DollarSign size={14} className="text-emerald-600" /><span className="text-emerald-700 font-semibold">Quote: {prospect.quoteSize}</span></div>
+            )}
+            {created && (
+              <div>Added: {created.toLocaleDateString()} ({daysSinceCreated} day{daysSinceCreated !== 1 ? 's' : ''} ago)</div>
+            )}
+            {apptDate && !Number.isNaN(apptDate.getTime()) && (
+              <div className="font-semibold text-indigo-700">Appointment: {apptDate.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</div>
+            )}
+          </div>
+        </div>
+
+        {/* Body sections */}
+        <div className="p-4 space-y-3">
+          {/* Primary Information */}
+          <DetailSection title="Primary Information">
+            <DetailRow Icon={User} value={prospect.indvOrFamily === 'Family' ? 'Family policy' : 'Individual'} />
+            {prospect.dobs && <DetailRow Icon={Calendar} value={prospect.dobs} />}
+            {prospect.phone && <DetailRow Icon={Phone} value={<a href={`tel:${prospect.phone}`} className="text-indigo-700 hover:underline">{prospect.phone}</a>} />}
+            {prospect.email && <DetailRow Icon={Mail} value={<a href={`mailto:${prospect.email}`} className="text-indigo-700 hover:underline break-all">{prospect.email}</a>} />}
+            {(prospect.state || prospect.zip || prospect.timezone) && (
+              <DetailRow Icon={Home} value={[prospect.state, prospect.zip, prospect.timezone].filter(Boolean).join(' · ')} />
+            )}
+          </DetailSection>
+
+          {/* Pipeline Activity */}
+          {(prospect.lastContact || prospect.appointmentTime || prospect.nextSteps || prospect.crm) && (
+            <DetailSection title="Pipeline Activity">
+              {prospect.appointmentTime && (
+                <DetailRow Icon={Clock} label="Appointment" value={apptDate?.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} valueClass="font-semibold" />
+              )}
+              {prospect.lastContact && (
+                <DetailRow Icon={Activity} label="Last Contact" value={prospect.lastContact} />
+              )}
+              {prospect.nextSteps && (
+                <DetailRow Icon={ArrowRight} label="Next Steps" value={prospect.nextSteps} valueClass="font-medium" />
+              )}
+              {prospect.crm && prospect.crm !== 'None' && (
+                <DetailRow Icon={Tag} label="CRM" value={prospect.crm} />
+              )}
+              {prospect.referrer && (
+                <DetailRow Icon={User} label="Referred By" value={prospect.referrer} />
+              )}
+            </DetailSection>
+          )}
+
+          {/* Coverage Needs */}
+          {(prospect.policyType || prospect.income || prospect.quoteSize || prospect.startDate) && (
+            <DetailSection title="Coverage Needs">
+              {prospect.policyType && <DetailRow Icon={Briefcase} label="Policy Type" value={prospect.policyType} />}
+              {prospect.income && <DetailRow Icon={DollarSign} label="Income" value={prospect.income} />}
+              {prospect.quoteSize && <DetailRow Icon={DollarSign} label="Quote Size" value={prospect.quoteSize} valueClass="font-semibold text-emerald-700" />}
+              {prospect.startDate && <DetailRow Icon={Calendar} label="Desired Start" value={prospect.startDate} />}
+            </DetailSection>
+          )}
+
+          {/* Notes / Health */}
+          {(prospect.situation || prospect.meds) && (
+            <DetailSection title="Situation & Health">
+              {prospect.meds && <DetailRow Icon={Pill} label="Meds / Conditions" value={prospect.meds} />}
+              {prospect.situation && <DetailRow Icon={FileText} label="Notes" value={prospect.situation} />}
+            </DetailSection>
+          )}
+
+          {/* Custom fields */}
+          {settings.customFields?.length > 0 && Object.values(prospect.custom || {}).some(v => v !== '' && v != null) && (
+            <DetailSection title="Custom Fields">
+              {settings.customFields.map(cf => {
+                const v = prospect.custom?.[cf.id];
+                if (v === '' || v == null) return null;
+                return <DetailRow key={cf.id} Icon={Tag} label={cf.label} value={String(v)} />;
+              })}
+            </DetailSection>
+          )}
+        </div>
+
+        {/* Action footer */}
+        <div className="bg-white border-t border-slate-200 rounded-b-2xl p-4 flex items-center justify-between gap-2 sticky bottom-0">
+          <button onClick={() => onDelete(prospect.id)}
+            className="text-red-600 hover:bg-red-50 px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5">
+            <Trash2 size={14} /> Delete
+          </button>
+          <div className="flex gap-2">
+            {isSold && (
+              <button onClick={() => onConvertToLead(prospect)}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg px-4 py-2 text-sm font-semibold flex items-center gap-1.5">
+                <ArrowRight size={14} /> Convert to Lead
+              </button>
+            )}
+            <button onClick={() => onEdit(prospect)}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-4 py-2 text-sm font-semibold flex items-center gap-1.5">
+              <Pencil size={14} /> Edit
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ---------- Main View ----------
 export default function ProspectsView({
   prospects = [],
@@ -438,6 +593,7 @@ export default function ProspectsView({
   const [search, setSearch] = useState('');
   const [stageFilter, setStageFilter] = useState('');
   const [editing, setEditing] = useState(null);
+  const [viewing, setViewing] = useState(null);  // read-only detail bubble
   const [showSettings, setShowSettings] = useState(false);
   const [importFile, setImportFile] = useState(null);
   const fileRef = useRef(null);
@@ -479,7 +635,10 @@ export default function ProspectsView({
   };
 
   const startNew = () => setEditing(newProspect({ createdAt: '' }));
-  const onEdit = (p) => setEditing(p);
+  // Click anywhere a row/card → open the read-only detail bubble.
+  // The bubble has its own Edit button which switches to the form.
+  const onView = (p) => setViewing(p);
+  const onEdit = (p) => { setViewing(null); setEditing(p); };
   const onSave = (p) => {
     const isNew = !p.createdAt;
     const final = isNew ? { ...p, createdAt: new Date().toISOString() } : p;
@@ -529,7 +688,7 @@ export default function ProspectsView({
       </div>
 
       {/* Today panel */}
-      <TodayPanel prospects={prospects} onEdit={onEdit} />
+      <TodayPanel prospects={prospects} onEdit={onView} />
 
       {/* Toolbar */}
       <div className="bg-white border border-slate-200 rounded-xl p-3 flex items-center gap-2 flex-wrap">
@@ -576,7 +735,7 @@ export default function ProspectsView({
                 key={s.id}
                 stage={s}
                 prospects={grouped.get(s.id) || []}
-                onEdit={onEdit}
+                onEdit={onView}
                 onDragStart={onDragStart}
                 onDrop={onDrop}
               />
@@ -585,49 +744,71 @@ export default function ProspectsView({
         </div>
       )}
 
-      {/* List */}
+      {/* List — compact 3-column layout: Name · Phone · Appt time.
+          Click any row to open the read-only detail bubble. */}
       {prospects.length > 0 && view === 'list' && (
         <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-slate-500 text-[11px] font-bold uppercase tracking-wider">
-              <tr>
-                <th className="px-3 py-2 text-left">Name</th>
-                <th className="px-3 py-2 text-left">Phone</th>
-                <th className="px-3 py-2 text-left">Stage</th>
-                <th className="px-3 py-2 text-left">Source</th>
-                <th className="px-3 py-2 text-left">Appointment</th>
-                <th className="px-3 py-2 text-left">Quote</th>
-                <th className="px-3 py-2 text-left">State</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visible.map(p => {
-                const st = cfg.stages.find(s => s.id === p.stage);
-                return (
-                  <tr key={p.id} onClick={() => onEdit(p)} className="border-t border-slate-100 hover:bg-slate-50 cursor-pointer">
-                    <td className="px-3 py-2 font-semibold text-slate-900">{p.name || '(no name)'}</td>
-                    <td className="px-3 py-2 text-slate-700">{p.phone}</td>
-                    <td className="px-3 py-2">
-                      <span className="text-[11px] font-bold px-2 py-0.5 rounded" style={{ background: (st?.color || '#64748b') + '22', color: st?.color || '#64748b' }}>
-                        {st?.label || p.stage}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 text-slate-500">{p.source || '—'}</td>
-                    <td className="px-3 py-2 text-slate-500">{formatAppt(p.appointmentTime)}</td>
-                    <td className="px-3 py-2 text-emerald-700 font-semibold">{p.quoteSize || '—'}</td>
-                    <td className="px-3 py-2 text-slate-500">{p.state || '—'}</td>
-                  </tr>
-                );
-              })}
-              {visible.length === 0 && (
-                <tr><td colSpan="7" className="px-3 py-6 text-center text-slate-400 italic">No prospects match these filters.</td></tr>
-              )}
-            </tbody>
-          </table>
+          <div className="grid grid-cols-[2fr_1fr_1.5fr_auto] gap-3 px-4 py-2.5 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200">
+            <div>Name</div>
+            <div>Phone</div>
+            <div>Appointment</div>
+            <div className="w-20 text-right">Stage</div>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {visible.map(p => {
+              const st = cfg.stages.find(s => s.id === p.stage);
+              const tu = timeUntil(p.appointmentTime);
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => onView(p)}
+                  className="w-full grid grid-cols-[2fr_1fr_1.5fr_auto] gap-3 px-4 py-3 hover:bg-indigo-50/40 transition text-left items-center"
+                >
+                  <div className="min-w-0">
+                    <div className="font-semibold text-slate-900 truncate">{p.name || '(no name)'}</div>
+                    {p.indvOrFamily === 'Family' && (
+                      <span className="text-[10px] font-bold text-violet-700 bg-violet-100 px-1.5 py-0.5 rounded mt-0.5 inline-block">FAM</span>
+                    )}
+                  </div>
+                  <div className="text-sm text-slate-700 truncate">{p.phone || <span className="text-slate-400 italic">—</span>}</div>
+                  <div className="text-sm">
+                    {p.appointmentTime ? (
+                      <div className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md
+                        ${tu?.soon ? 'bg-amber-100 text-amber-800' :
+                          tu?.past ? 'bg-slate-100 text-slate-500' :
+                          'bg-indigo-50 text-indigo-700'}`}>
+                        <Clock size={11} />
+                        <span className="font-medium">{formatAppt(p.appointmentTime)}</span>
+                      </div>
+                    ) : (
+                      <span className="text-slate-400 italic text-xs">No appointment</span>
+                    )}
+                  </div>
+                  <div className="w-20 text-right">
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded whitespace-nowrap" style={{ background: (st?.color || '#64748b') + '22', color: st?.color || '#64748b' }}>
+                      {st?.label || p.stage}
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+            {visible.length === 0 && (
+              <div className="px-4 py-8 text-center text-slate-400 italic text-sm">No prospects match these filters.</div>
+            )}
+          </div>
         </div>
       )}
 
       {/* Modals */}
+      <ProspectDetail
+        open={!!viewing}
+        prospect={viewing}
+        settings={cfg}
+        onClose={() => setViewing(null)}
+        onEdit={onEdit}
+        onDelete={(id) => { setViewing(null); onDeleteWrap(id); }}
+        onConvertToLead={(p) => { setViewing(null); onConvertWrap(p); }}
+      />
       <ProspectForm
         open={!!editing}
         prospect={editing}
