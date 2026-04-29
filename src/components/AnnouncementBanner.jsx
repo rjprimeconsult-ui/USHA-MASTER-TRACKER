@@ -57,7 +57,10 @@ export default function AnnouncementBanner({ onNavigate }) {
 
   const unacked = useMemo(() => {
     if (!acked) return [];
-    return SORTED_ANNOUNCEMENTS.filter(a => !acked.has(a.id));
+    // `silent: true` entries appear in the "What's New" panel but never
+    // pop as a banner — used so a single launch with many changes doesn't
+    // become a banner waterfall.
+    return SORTED_ANNOUNCEMENTS.filter(a => !acked.has(a.id) && !a.silent);
   }, [acked]);
 
   // Don't render anything until we know what's been ack'd (avoids flash)

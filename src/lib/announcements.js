@@ -18,16 +18,40 @@
  *                    • view: switches the in-app view ID (e.g. "books",
  *                      "prospects", "upload") and dismisses
  *                    • url: opens external in a new tab and dismisses
+ *   silent       — optional bool. When true, the entry appears in the
+ *                  "What's New" panel/changelog but never pops as a banner.
+ *                  Use this when shipping many changes in a single release
+ *                  so users get ONE meta-banner instead of a waterfall —
+ *                  individual entries stay visible for reference but don't
+ *                  hijack first-load attention.
  *
- * Banner shows the LATEST unack'd item. After dismissing, the next-most-
- * recent unack'd one slides in. The "What's New" panel shows every entry
- * with a "Read" badge for the ones already dismissed.
+ * Banner shows the LATEST unack'd, non-silent item. After dismissing, the
+ * next-most-recent unack'd, non-silent one slides in. The "What's New" panel
+ * shows every entry (silent and not) with a "Read" badge for the ones
+ * already dismissed.
  */
 
 export const ANNOUNCEMENTS = [
+  // ── ACTIVE BANNER (latest release roll-up) ─────────────────────────────
+  // One meta-announcement covers the whole April 28-29 release so users
+  // get a single banner instead of a 12-card waterfall on first load.
+  // Individual feature entries below are marked `silent: true` — they
+  // remain visible in the "What's New" panel/changelog as a reference,
+  // they just don't pop as banners.
+  {
+    id: '2026-04-29-prim-v2-meta',
+    date: '2026-04-29',
+    emoji: '🚀',
+    title: 'PRIM v2 — Smart Import everywhere, plus a built-in AI assistant',
+    body: 'Big release: Smart Import (AI) now handles leads, prospects, expenses, platforms, and statements — drop any PDF, screenshot, Excel, or CSV and PRIM extracts it. The wizard learns from your corrections (vendor memory). New PRIM Assistant chat bubble in the bottom-right answers questions about your data. New Prospects tab + family-members on a policy + smarter dedup + KPI math fixes. Open "What\'s New" for the full changelog.',
+    cta: { label: 'See changelog', view: 'whatsnew' },
+  },
+
+  // ── SILENT (visible in changelog, never banners) ───────────────────────
   {
     id: '2026-04-29-vendor-memory',
     date: '2026-04-29',
+    silent: true,
     emoji: '🧠',
     title: 'Smart Import now learns from your corrections',
     body: 'Every time you confirm or fix a category in the Smart Import wizard, PRIM remembers it. Next time you upload a file with the same vendor (or a similar one — "AMZN MKTPL" vs "Amazon.com"), it gets your category automatically. Look for the violet "Remembered" badge on rows pulled from memory.',
@@ -36,6 +60,7 @@ export const ANNOUNCEMENTS = [
   {
     id: '2026-04-29-platforms-smart-import',
     date: '2026-04-29',
+    silent: true,
     emoji: '⚡',
     title: 'Platforms tab: Smart Import (AI) — drop any PDF',
     body: 'Platforms tab now has its own "Smart Import (AI)" button. Drop a credit-card statement PDF, screenshot, or any messy export — AI pulls every Ringy/TextDrip/VanillaSoft charge straight into Platforms. Non-platform charges in the same file get routed to Books automatically.',
@@ -44,6 +69,7 @@ export const ANNOUNCEMENTS = [
   {
     id: '2026-04-29-family-members',
     date: '2026-04-29',
+    silent: true,
     emoji: '👨‍👩‍👧',
     title: 'New: Family members on a policy',
     body: 'When a primary applicant is declined but the spouse gets partially issued, USHA pays out under the spouse\'s name on the weekly statement. Each lead now has a "Family Members on Policy" section — adding the spouse + dependents makes statement matching find them automatically. Smart Lead Import auto-extracts spouses + dependents from your files.',
@@ -52,6 +78,7 @@ export const ANNOUNCEMENTS = [
   {
     id: '2026-04-29-smart-prospects',
     date: '2026-04-29',
+    silent: true,
     emoji: '✨',
     title: 'Smart Prospect Import — drop any pipeline file',
     body: 'Prospects tab now has a "Smart Import (AI)" button. Drop your existing pipeline spreadsheet, a CRM export, or even a screenshot — AI extracts every prospect with their stage, source, appointment time, and situation notes. Already-existing prospects are pre-skipped.',
@@ -60,6 +87,7 @@ export const ANNOUNCEMENTS = [
   {
     id: '2026-04-29-chatbot',
     date: '2026-04-29',
+    silent: true,
     emoji: '💬',
     title: 'New: PRIM Assistant — built-in AI help',
     body: 'Look for the gradient chat bubble in the bottom-right corner. Ask anything: "How do I import my book of business?", "Why is my Earned KPI different from my statement?", "Show me my YTD numbers." It knows the app inside-out and can read your data to give specific answers.',
@@ -67,6 +95,7 @@ export const ANNOUNCEMENTS = [
   {
     id: '2026-04-29-lead-dedup',
     date: '2026-04-29',
+    silent: true,
     emoji: '🔁',
     title: 'No more duplicate leads on re-import',
     body: 'Re-uploading a SalesReport, Excel, or any lead file now skips leads that already exist in your tracker. Matches by policy number first (handling multi-policy customers correctly), then by name + phone. You\'ll see a "skipped N duplicates" toast.',
@@ -74,6 +103,7 @@ export const ANNOUNCEMENTS = [
   {
     id: '2026-04-28-smart-platforms',
     date: '2026-04-28',
+    silent: true,
     emoji: '⚡',
     title: 'Smart Import now populates Platforms too',
     body: 'When you drop a file with Ringy, TextDrip, or VanillaSoft charges, those rows now route to the Platforms tab automatically (instead of getting buried under Books → Software). Feeds your True CPA calculation correctly.',
@@ -82,6 +112,7 @@ export const ANNOUNCEMENTS = [
   {
     id: '2026-04-28-smart-statement',
     date: '2026-04-28',
+    silent: true,
     emoji: '✨',
     title: 'Smart Statement Parser — handles any USHA PDF layout',
     body: 'Upload tab → Weekly Advance Statement and Monthly Payout now have a "Smart (AI)" toggle. Flip it on for any statement that won\'t parse cleanly with the standard parser, or for scanned/image PDFs. Same matching pipeline runs after — no surprises.',
@@ -90,6 +121,7 @@ export const ANNOUNCEMENTS = [
   {
     id: '2026-04-28-smart-leads',
     date: '2026-04-28',
+    silent: true,
     emoji: '✨',
     title: 'Smart Lead Import — drop any lead file, AI extracts everything',
     body: 'Drag in a "Book of business" Excel, USHA portal export, PDF, or even a screenshot. AI figures out the columns, normalizes dates and phone numbers, picks the right canonical product/stage/association, and creates leads in one shot. Look for the gradient "Smart Import (AI)" button on the Upload tab.',
@@ -98,6 +130,7 @@ export const ANNOUNCEMENTS = [
   {
     id: '2026-04-28-smart-expenses',
     date: '2026-04-28',
+    silent: true,
     emoji: '✨',
     title: 'Smart Expense Import — works with any spreadsheet or PDF',
     body: 'Books tab → "Smart Import (AI)" button. Drop a bank CSV, credit-card statement PDF, your own custom Excel — AI parses every transaction and auto-classifies into Software / Lead Investment / Meals / Travel / etc. Edit anything before importing.',
@@ -106,6 +139,7 @@ export const ANNOUNCEMENTS = [
   {
     id: '2026-04-28-prospects',
     date: '2026-04-28',
+    silent: true,
     emoji: '🚀',
     title: 'New tab: Prospects (mini-CRM)',
     body: 'Track your pipeline BEFORE deals close. Kanban + List views, drag-drop between stages, bulk select, customizable stages and fields. When a prospect goes Sold, one click converts them into a Lead with all info pre-filled.',
@@ -114,6 +148,7 @@ export const ANNOUNCEMENTS = [
   {
     id: '2026-04-28-screenshot-leads',
     date: '2026-04-28',
+    silent: true,
     emoji: '📸',
     title: 'Import Closed Deals from a USHA portal screenshot',
     body: 'Closed Deals tab → "Import from screenshot". Drop a screenshot of a USHA deal-detail page and PRIM extracts the customer, policy, premium, products, and dates automatically.',
@@ -122,6 +157,7 @@ export const ANNOUNCEMENTS = [
   {
     id: '2026-04-28-math-fix',
     date: '2026-04-28',
+    silent: true,
     emoji: '🧮',
     title: 'KPIs now match your statements exactly',
     body: 'Earned, Total Revenue, and True Net now read from your statement-derived advances (own + override) instead of summing lead values. YTD Income includes all commissions. Books NET (YTD) is now true net (all income − all expenses).',

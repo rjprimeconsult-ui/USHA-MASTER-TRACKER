@@ -15,30 +15,30 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import * as XLSX from 'xlsx';
+import {
+  STAGES as STAGE_DEFS,
+  MAIN_PRODUCTS as MAIN_PRODUCT_DEFS,
+  ADDON_PRODUCTS as ADDON_PRODUCT_DEFS,
+  ASSOCIATION_PLANS as ASSOCIATION_PLAN_DEFS,
+  CRMS as CRM_DEFS,
+  SOURCES as SOURCE_DEFS,
+  LEAD_CATEGORIES as LEAD_CATEGORY_DEFS,
+} from '@/lib/constants';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
-// Canonical IDs Claude must pick from. Inline (not imported) so the route
-// stays standalone. Keep in sync with src/lib/constants.js.
-const STAGES = ['Pending', 'Issued', 'Declined', 'Not taken', 'Withdrawn'];
-
-const MAIN_PRODUCTS = [
-  'PREMIER ADVANTAGE', 'PREMIER CHOICE', 'SECURE ADVANTAGE',
-  'HEALTH ACCESS III', 'SUPPY', 'ACA WRAP',
-];
-
-const ADDON_PRODUCTS = ['MEDGUARD III', 'PREMIERVISION', 'DENTAL / SECUREDENTAL'];
-
-const ASSOCIATION_PLANS = [
-  'EXECUTIVE DIAMOND', 'DIAMOND', 'EMERALD', 'SAPPHIRE', 'RUBY', 'PEARL',
-  'NO ASS.', 'ABC ELITE', 'ABC EXECUTIVE', 'ABC ENTREPRENEUR', 'SUPPY', 'PRO WRAP',
-];
-
-const CRMS = ['RINGY', 'TEXTDRIP', 'VANILLA', 'GOOGLE'];
-const SOURCES = ['Website', 'Referral', 'Facebook', 'Google', 'LinkedIn', 'Cold Call', 'Event', 'CRM', 'Dialer', 'Other'];
-const LEAD_CATEGORIES = ['AGED', 'SHARED', 'REFERRAL', 'DIALER', 'REPEAT CLIENT', 'JACKPOT', 'D7', 'GOOGLE LEADS'];
+// Single source of truth — derive ID arrays from the canonical defs in
+// src/lib/constants.js. Adding/renaming a stage or product in one place
+// updates the AI rubric automatically.
+const STAGES = STAGE_DEFS.map(s => s.id);
+const MAIN_PRODUCTS = MAIN_PRODUCT_DEFS.map(p => p.id);
+const ADDON_PRODUCTS = ADDON_PRODUCT_DEFS.map(p => p.id);
+const ASSOCIATION_PLANS = ASSOCIATION_PLAN_DEFS.map(p => p.id);
+const CRMS = CRM_DEFS.map(c => c.id);
+const SOURCES = [...SOURCE_DEFS];
+const LEAD_CATEGORIES = LEAD_CATEGORY_DEFS.map(c => c.id);
 
 // Cached system prompt — large, stable, repeated across calls. Re-imports
 // hit the prompt cache for ~0.1x input cost.

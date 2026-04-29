@@ -25,28 +25,25 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import * as XLSX from 'xlsx';
+import {
+  EXPENSE_CATEGORIES as EXPENSE_CATEGORY_DEFS,
+  INCOME_CATEGORIES as INCOME_CATEGORY_DEFS,
+  PLATFORMS as PLATFORM_DEFS,
+  PLATFORM_REASONS as PLATFORM_REASON_DEFS,
+} from '@/lib/constants';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 // Allow up to 60s — Vision on a multi-page PDF can take a while.
 export const maxDuration = 60;
 
-// Categories Claude must pick from. Kept inline (not imported) so this
-// route can run on the edge if we ever move it there. Keep in sync with
-// src/lib/constants.js.
-const EXPENSE_CATEGORIES = [
-  'LEAD_INVESTMENT', 'OFFICE_RENT', 'OFFICE', 'SOFTWARE', 'MARKETING',
-  'RECRUITING', 'TEAM_INCENTIVES', 'TRAVEL', 'VEHICLE', 'MEALS',
-  'PROFESSIONAL', 'PHONE_INTERNET', 'HEALTHCARE', 'COACHING',
-  'AGENT_PAYOUT', 'OTHER_EXPENSE',
-];
-const INCOME_CATEGORIES = [
-  'BONUS', 'OVERRIDE', 'RENEWAL', 'OTHER_INCOME',
-];
-// Platforms tracked separately from Books — these CRM expenses appear
-// throughout most agents' spreadsheets and feed the True CPA calculation.
-const PLATFORMS = ['TD', 'RINGY', 'VANILLA']; // TD = TextDrip, VANILLA = VanillaSoft
-const PLATFORM_REASONS = ['CREDIT REFILL', 'CREDIT REFILL/RENEWAL', 'MONTHLY SUBSCRIPTION', 'RENEWAL', 'OTHER'];
+// Single source of truth — derive ID arrays from the canonical defs in
+// src/lib/constants.js so adding/renaming a category in one place updates
+// every downstream consumer (forms, badges, AI prompts).
+const EXPENSE_CATEGORIES = EXPENSE_CATEGORY_DEFS.map(c => c.id);
+const INCOME_CATEGORIES = INCOME_CATEGORY_DEFS.map(c => c.id);
+const PLATFORMS = PLATFORM_DEFS.map(p => p.id);
+const PLATFORM_REASONS = [...PLATFORM_REASON_DEFS];
 
 // The classification rubric. Cached as a system-prompt prefix so repeat
 // calls are ~0.1× input cost.

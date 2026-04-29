@@ -10,26 +10,23 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import * as XLSX from 'xlsx';
+import {
+  DEFAULT_PROSPECT_STAGES as STAGE_DEFS,
+  PROSPECT_SOURCES,
+  PROSPECT_CRMS,
+  PROSPECT_POLICY_TYPES,
+} from '@/lib/constants';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
-// Canonical IDs Claude must pick from. Inline (not imported) so the route
-// stays standalone. Keep in sync with src/lib/constants.js DEFAULT_PROSPECT_STAGES.
-const DEFAULT_STAGES = [
-  'WEBBY_SET', 'WEBBY_CONFIRMED', 'APPOINTMENT_SET', 'MISSED_APPT',
-  'PENDING_DECISION', 'FOLLOWUP_LATER', 'GHOSTED', 'SOLD', 'LOST',
-];
-const SOURCES = [
-  'Referral', 'Google Ads', 'Facebook Ads', 'Web Lead', 'Aged Lead',
-  'Major League', 'Bizz Lead', 'Cold Call', 'Other',
-];
-const CRMS = ['TextDrip', 'Ringy', 'VanillaSoft', 'None'];
-const POLICY_TYPES = [
-  'Individual Health', 'Family Health', 'Short-Term', 'Medicare',
-  'Dental/Vision', 'Life', 'Other',
-];
+// Single source of truth — derive ID arrays from src/lib/constants.js so a
+// new prospect stage anywhere in the app updates the AI rubric automatically.
+const DEFAULT_STAGES = STAGE_DEFS.map(s => s.id);
+const SOURCES = [...PROSPECT_SOURCES];
+const CRMS = [...PROSPECT_CRMS];
+const POLICY_TYPES = [...PROSPECT_POLICY_TYPES];
 
 const PROSPECT_RUBRIC = `
 You are extracting prospect (pre-deal pipeline) records from a USHA agent's documents. Each prospect is someone an agent is working with BEFORE the deal closes — appointment scheduled, quoted, follow-up needed, etc. Once a prospect closes, they become a Lead — but until then they live in the Prospects tab.

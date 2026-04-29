@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { CloudUpload, Check, X, Loader2 } from 'lucide-react';
 import { useAuth } from './AuthProvider';
-import { inspectStorage, migrateLocalToCloud } from '@/lib/storage';
+import { inspectStorage, migrateLocalToCloud, storage } from '@/lib/storage';
 
 const DISMISS_KEY = 'prim_migration_dismissed_v1';
 
@@ -23,20 +23,25 @@ export default function MigrationPrompt() {
 
   useEffect(() => {
     if (loading || !user) return;
-    // Don't re-prompt after user dismisses
-    try {
-      if (window.localStorage.getItem(DISMISS_KEY)) {
+    // Don't re-prompt after user dismisses — go through the cloud-aware
+    // adapter so dismissal syncs across devices for this user.
+    let alive = true;
+    (async () => {
+      const dismissed = await storage.getItem(DISMISS_KEY);
+      if (!alive) return;
+      if (dismissed) {
         setState({ checking: false, show: false, local: {} });
         return;
       }
-    } catch {}
-    inspectStorage().then(({ local, hasLocal, hasCloud }) => {
+      const { local, hasLocal, hasCloud } = await inspectStorage();
+      if (!alive) return;
       setState({
         checking: false,
         show: hasLocal && !hasCloud,
         local,
       });
-    });
+    })();
+    return () => { alive = false; };
   }, [loading, user]);
 
   if (loading || state.checking || !state.show) return null;
@@ -54,7 +59,7 @@ export default function MigrationPrompt() {
   };
 
   const dismiss = () => {
-    try { window.localStorage.setItem(DISMISS_KEY, '1'); } catch {}
+    storage.setItem(DISMISS_KEY, '1').catch(() => {});
     setState(s => ({ ...s, show: false }));
   };
 
@@ -63,7 +68,7 @@ export default function MigrationPrompt() {
     try {
       const result = await migrateLocalToCloud();
       setDone(result);
-      try { window.localStorage.setItem(DISMISS_KEY, '1'); } catch {}
+      await storage.setItem(DISMISS_KEY, '1').catch(() => {});
       // Reload after a beat so the app re-fetches from cloud
       setTimeout(() => window.location.reload(), 1500);
     } catch (e) {
