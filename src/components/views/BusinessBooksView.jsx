@@ -2,16 +2,17 @@
 import { useMemo, useRef, useState, useEffect, memo } from 'react';
 import {
   Plus, Trash2, DollarSign, TrendingUp, TrendingDown, AlertCircle, Calendar,
-  Upload, X, Check, Paperclip, Eye, ChevronLeft, ChevronRight, ArrowDownCircle, ArrowUpCircle, Wallet,
+  Upload, X, Check, Paperclip, Eye, ChevronLeft, ChevronRight, ArrowDownCircle, ArrowUpCircle, Wallet, Tag,
 } from 'lucide-react';
-import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '@/lib/constants';
 import { fmt, fmt2, today, uid } from '@/lib/utils';
 import { parseBusinessFile, dedupEntries, classifyExpense } from '@/lib/businessImport';
 import { storage } from '@/lib/storage';
 import { compressIfImage } from '@/lib/imageCompress';
 import { saveAttachment, getAttachment, deleteAttachment } from '@/lib/attachments';
+import { useCategoriesAll } from '@/lib/customCategories';
 import { TiltCard, CountUp, Stagger, StaggerItem, MoneyCell } from '../motion/MotionPrimitives';
 import SmartImportWizard from '../SmartImportWizard';
+import CustomCategoryManager from '../CustomCategoryManager';
 
 const ACCOUNTS_KEY = 'business_accounts_v1';
 
@@ -21,8 +22,6 @@ const ymLabel = (ym) => {
   const [y, m] = ym.split('-').map(Number);
   return new Date(y, m - 1, 1).toLocaleString(undefined, { month: 'long', year: 'numeric' });
 };
-const expCat   = (id) => EXPENSE_CATEGORIES.find(c => c.id === id) || EXPENSE_CATEGORIES[EXPENSE_CATEGORIES.length - 1];
-const incCat   = (id) => INCOME_CATEGORIES.find(c => c.id === id)  || INCOME_CATEGORIES[INCOME_CATEGORIES.length - 1];
 
 // Pre-compress: images are downscaled + JPEG-recompressed before storing in
 // IndexedDB. Cuts a 2MB phone photo to ~150KB without losing receipt
@@ -71,6 +70,13 @@ function BusinessBooksView({
   const [viewAttachment, setViewAttachment] = useState(null);
   const [rescanPreview, setRescanPreview] = useState(null);
   const [showSmartImport, setShowSmartImport] = useState(false);
+  const [showCategoryManager, setShowCategoryManager] = useState(false);
+
+  // Merged categories (built-in + user customs). Reloads automatically when
+  // the manager modal saves changes.
+  const { expense: EXPENSE_CATEGORIES, income: INCOME_CATEGORIES, customMap, reload: reloadCustomCats } = useCategoriesAll();
+  const expCat = (id) => EXPENSE_CATEGORIES.find(c => c.id === id) || EXPENSE_CATEGORIES[EXPENSE_CATEGORIES.length - 1];
+  const incCat = (id) => INCOME_CATEGORIES.find(c => c.id === id) || INCOME_CATEGORIES[INCOME_CATEGORIES.length - 1];
 
   // Re-scan all current expense entries through the auto-classifier and find
   // any whose category should change based on the new keyword rules
@@ -98,6 +104,34 @@ function BusinessBooksView({
       if (original) onUpdateExpense({ ...original, category: p.to });
     }
     setRescanPreview(null);
+  };
+
+  // Per-category usage counts for the manager modal — used to warn before
+  // delete and to migrate affected rows.
+  const expenseUsage = useMemo(() => {
+    const m = {};
+    for (const e of expenses) m[e.category] = (m[e.category] || 0) + 1;
+    return m;
+  }, [expenses]);
+  const incomeUsage = useMemo(() => {
+    const m = {};
+    for (const e of income) m[e.category] = (m[e.category] || 0) + 1;
+    return m;
+  }, [income]);
+
+  // When a custom category is deleted with rows still tagged to it, re-tag
+  // those rows to the catch-all (OTHER_EXPENSE / OTHER_INCOME).
+  const migrateCategoryUsage = (deletedId, fallbackId) => {
+    if (tab === 'expenses' || expenseUsage[deletedId]) {
+      for (const e of expenses) {
+        if (e.category === deletedId) onUpdateExpense({ ...e, category: fallbackId });
+      }
+    }
+    if (tab === 'income' || incomeUsage[deletedId]) {
+      for (const e of income) {
+        if (e.category === deletedId) onUpdateIncome({ ...e, category: fallbackId });
+      }
+    }
   };
 
   // Known account names — auto-grown from imports + manual entries
@@ -500,6 +534,16 @@ function BusinessBooksView({
         }}
       />
 
+      {/* Manage custom categories modal */}
+      <CustomCategoryManager
+        open={showCategoryManager}
+        onClose={() => setShowCategoryManager(false)}
+        direction={tab === 'expenses' ? 'expense' : 'income'}
+        usageCounts={tab === 'expenses' ? expenseUsage : incomeUsage}
+        onMigrate={migrateCategoryUsage}
+        onChanged={() => reloadCustomCats()}
+      />
+
       {/* Tab toggle + utilities row */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="bg-white rounded-xl border border-slate-200 p-1 inline-flex">
@@ -518,15 +562,24 @@ function BusinessBooksView({
             Other Income ({income.length})
           </button>
         </div>
-        {tab === 'expenses' && expenses.length > 0 && (
+        <div className="flex items-center gap-3">
+          {tab === 'expenses' && expenses.length > 0 && (
+            <button
+              onClick={runRecategorize}
+              className="text-xs text-indigo-700 hover:text-indigo-900 underline-offset-2 hover:underline"
+              title="Re-scan vendor names against current keyword rules and propose category fixes (e.g. LEADS MARKETPLACE → Lead Investment)"
+            >
+              Re-scan categories
+            </button>
+          )}
           <button
-            onClick={runRecategorize}
-            className="text-xs text-indigo-700 hover:text-indigo-900 underline-offset-2 hover:underline"
-            title="Re-scan vendor names against current keyword rules and propose category fixes (e.g. LEADS MARKETPLACE → Lead Investment)"
+            onClick={() => setShowCategoryManager(true)}
+            className="text-xs text-violet-700 hover:text-violet-900 flex items-center gap-1 border border-violet-200 hover:border-violet-400 bg-white rounded-lg px-2.5 py-1 transition"
+            title="Add or edit your own custom categories"
           >
-            Re-scan categories
+            <Tag size={12} /> Manage categories
           </button>
-        )}
+        </div>
       </div>
 
       {/* Per-category cards for active month */}

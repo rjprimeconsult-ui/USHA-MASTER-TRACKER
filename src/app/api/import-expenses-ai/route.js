@@ -104,58 +104,61 @@ The user's message may include a "USER PREFERENCES" block with prior {vendor -> 
 `.trim();
 
 // JSON schema Claude must conform to. Strict mode means valid JSON,
-// no commentary, no fences.
-const TRANSACTION_SCHEMA = {
-  type: 'object',
-  properties: {
-    transactions: {
-      type: 'array',
-      items: {
+// no commentary, no fences. Built per-request so custom category IDs
+// (passed by the client) join the enum dynamically.
+function buildTransactionSchema(allowedCategoryIds) {
+  return {
+    type: 'object',
+    properties: {
+      transactions: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            date: { type: 'string', description: 'YYYY-MM-DD' },
+            vendor: { type: 'string', description: 'Merchant or item description, terse' },
+            amount: { type: 'number', description: 'Absolute value, positive number' },
+            direction: { type: 'string', enum: ['expense', 'income'] },
+            category: { type: 'string', enum: allowedCategoryIds },
+            notes: { type: 'string', description: 'Any helpful context (account, sheet name, etc.). Optional.' },
+          },
+          required: ['date', 'vendor', 'amount', 'direction', 'category'],
+          additionalProperties: false,
+        },
+      },
+      platformExpenses: {
+        type: 'array',
+        description: 'CRM-platform charges (Ringy, TextDrip, VanillaSoft). Tracked separately from Books because they feed the True CPA calculation.',
+        items: {
+          type: 'object',
+          properties: {
+            date: { type: 'string', description: 'YYYY-MM-DD' },
+            platformId: { type: 'string', enum: PLATFORMS, description: 'TD = TextDrip, VANILLA = VanillaSoft' },
+            amount: { type: 'number', description: 'Absolute value, positive number' },
+            reason: { type: 'string', enum: PLATFORM_REASONS },
+            vendor: { type: 'string', description: 'Original line-item description as printed' },
+            notes: { type: 'string' },
+          },
+          required: ['date', 'platformId', 'amount', 'reason'],
+          additionalProperties: false,
+        },
+      },
+      summary: {
         type: 'object',
         properties: {
-          date: { type: 'string', description: 'YYYY-MM-DD' },
-          vendor: { type: 'string', description: 'Merchant or item description, terse' },
-          amount: { type: 'number', description: 'Absolute value, positive number' },
-          direction: { type: 'string', enum: ['expense', 'income'] },
-          category: { type: 'string', enum: [...EXPENSE_CATEGORIES, ...INCOME_CATEGORIES] },
-          notes: { type: 'string', description: 'Any helpful context (account, sheet name, etc.). Optional.' },
+          totalExpenses: { type: 'number' },
+          totalIncome: { type: 'number' },
+          totalPlatforms: { type: 'number' },
+          format: { type: 'string', description: 'Best-guess label: "bank statement", "credit card", "weekly tracker", "expense ledger", etc.' },
         },
-        required: ['date', 'vendor', 'amount', 'direction', 'category'],
+        required: ['totalExpenses', 'totalIncome', 'format'],
         additionalProperties: false,
       },
     },
-    platformExpenses: {
-      type: 'array',
-      description: 'CRM-platform charges (Ringy, TextDrip, VanillaSoft). Tracked separately from Books because they feed the True CPA calculation.',
-      items: {
-        type: 'object',
-        properties: {
-          date: { type: 'string', description: 'YYYY-MM-DD' },
-          platformId: { type: 'string', enum: PLATFORMS, description: 'TD = TextDrip, VANILLA = VanillaSoft' },
-          amount: { type: 'number', description: 'Absolute value, positive number' },
-          reason: { type: 'string', enum: PLATFORM_REASONS },
-          vendor: { type: 'string', description: 'Original line-item description as printed' },
-          notes: { type: 'string' },
-        },
-        required: ['date', 'platformId', 'amount', 'reason'],
-        additionalProperties: false,
-      },
-    },
-    summary: {
-      type: 'object',
-      properties: {
-        totalExpenses: { type: 'number' },
-        totalIncome: { type: 'number' },
-        totalPlatforms: { type: 'number' },
-        format: { type: 'string', description: 'Best-guess label: "bank statement", "credit card", "weekly tracker", "expense ledger", etc.' },
-      },
-      required: ['totalExpenses', 'totalIncome', 'format'],
-      additionalProperties: false,
-    },
-  },
-  required: ['transactions', 'platformExpenses', 'summary'],
-  additionalProperties: false,
-};
+    required: ['transactions', 'platformExpenses', 'summary'],
+    additionalProperties: false,
+  };
+}
 
 // ---- File extraction helpers ----
 
@@ -218,6 +221,7 @@ export async function POST(req) {
 
   let file;
   let vendorHints = []; // [{ vendor, direction, category?, platformId? }]
+  let customCategories = []; // [{ id, label, direction: 'expense'|'income' }]
   try {
     const form = await req.formData();
     file = form.get('file');
@@ -231,9 +235,36 @@ export async function POST(req) {
         if (Array.isArray(parsed)) vendorHints = parsed.slice(0, 100);
       } catch { /* ignore — hints are optional */ }
     }
+    const customRaw = form.get('customCategories');
+    if (typeof customRaw === 'string' && customRaw.length > 0) {
+      try {
+        const parsed = JSON.parse(customRaw);
+        if (Array.isArray(parsed)) {
+          customCategories = parsed
+            .filter(c => c && typeof c.id === 'string' && typeof c.label === 'string')
+            .slice(0, 50);
+        }
+      } catch { /* ignore — customs are optional */ }
+    }
   } catch (e) {
     return Response.json({ error: `Couldn't read upload: ${e.message}` }, { status: 400 });
   }
+
+  // Merge user-defined custom categories into the enum lists + rubric.
+  const customExpenseIds = customCategories.filter(c => c.direction === 'expense').map(c => c.id);
+  const customIncomeIds  = customCategories.filter(c => c.direction === 'income').map(c => c.id);
+  const allowedExpenseCats = [...EXPENSE_CATEGORIES, ...customExpenseIds];
+  const allowedIncomeCats  = [...INCOME_CATEGORIES,  ...customIncomeIds];
+  const allowedAllCats     = [...allowedExpenseCats, ...allowedIncomeCats];
+
+  // Render a "USER CUSTOM CATEGORIES" hint block so the AI knows what each
+  // custom ID is for. Appended to the user message, not cached.
+  const renderCustomCats = (cats) => {
+    if (!cats?.length) return '';
+    const lines = cats.map(c => `  ${c.id} (${c.direction}): "${c.label}"`);
+    return `\n\n--- USER CUSTOM CATEGORIES (route into these when a row matches the label semantically) ---\n${lines.join('\n')}`;
+  };
+  const customCatsText = renderCustomCats(customCategories);
 
   const buffer = Buffer.from(await file.arrayBuffer());
   const filename = file.name || 'upload';
@@ -264,7 +295,7 @@ export async function POST(req) {
       const truncated = text.length > 200000 ? text.slice(0, 200000) + '\n[...truncated]' : text;
       userContent = [{
         type: 'text',
-        text: `File: ${filename}\nType: ${fileType.toUpperCase()}\n\nExtract every transaction as structured JSON.${hintsText}\n\n--- FILE CONTENT ---\n${truncated}`,
+        text: `File: ${filename}\nType: ${fileType.toUpperCase()}\n\nExtract every transaction as structured JSON.${hintsText}${customCatsText}\n\n--- FILE CONTENT ---\n${truncated}`,
       }];
       extractedHint = `Parsed ${text.split('\n').length} rows from spreadsheet.`;
     } else if (fileType === 'pdf') {
@@ -275,7 +306,7 @@ export async function POST(req) {
         // Digital PDF — use text path
         userContent = [{
           type: 'text',
-          text: `File: ${filename}\nType: PDF (text-extractable)\n\nExtract every transaction as structured JSON.${hintsText}\n\n--- FILE CONTENT ---\n${pdfText.slice(0, 200000)}`,
+          text: `File: ${filename}\nType: PDF (text-extractable)\n\nExtract every transaction as structured JSON.${hintsText}${customCatsText}\n\n--- FILE CONTENT ---\n${pdfText.slice(0, 200000)}`,
         }];
         extractedHint = `Extracted ${cleanText.length} chars of text from PDF.`;
       } else {
@@ -288,7 +319,7 @@ export async function POST(req) {
           },
           {
             type: 'text',
-            text: `File: ${filename}\nType: PDF (image-based — sent for vision processing).\n\nExtract every transaction as structured JSON.${hintsText}`,
+            text: `File: ${filename}\nType: PDF (image-based — sent for vision processing).\n\nExtract every transaction as structured JSON.${hintsText}${customCatsText}`,
           },
         ];
         extractedHint = `Sent ${(buffer.length / 1024).toFixed(0)}KB PDF to vision.`;
@@ -317,7 +348,7 @@ export async function POST(req) {
       output_config: {
         format: {
           type: 'json_schema',
-          schema: TRANSACTION_SCHEMA,
+          schema: buildTransactionSchema(allowedAllCats),
         },
       },
       messages: [{ role: 'user', content: userContent }],

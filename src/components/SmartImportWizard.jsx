@@ -4,29 +4,14 @@ import {
   X, Upload, FileText, FileSpreadsheet, Image as ImageIcon, Sparkles,
   Loader2, CheckCircle2, AlertCircle, Trash2, ArrowRight, RefreshCw, Brain,
 } from 'lucide-react';
-import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, PLATFORMS, PLATFORM_REASONS } from '@/lib/constants';
+import { PLATFORMS, PLATFORM_REASONS } from '@/lib/constants';
 import { uid } from '@/lib/utils';
 import {
   loadVendorMemory, saveVendorMemory, lookupVendor, recordVendor, vendorMemoryToHints,
 } from '@/lib/vendorMemory';
+import { useCategoriesAll } from '@/lib/customCategories';
 
 const inp = 'w-full border border-slate-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500';
-
-// Visual mapping for category badges
-const expCatById = Object.fromEntries(EXPENSE_CATEGORIES.map(c => [c.id, c]));
-const incCatById = Object.fromEntries(INCOME_CATEGORIES.map(c => [c.id, c]));
-
-function CategoryBadge({ category, direction }) {
-  const lookup = direction === 'expense' ? expCatById : incCatById;
-  const c = lookup[category];
-  if (!c) return <span className="text-xs text-slate-400 italic">{category}</span>;
-  return (
-    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded inline-block whitespace-nowrap"
-      style={{ background: c.color + '22', color: c.color, border: `1px solid ${c.color}44` }}>
-      {c.label}
-    </span>
-  );
-}
 
 function fmtMoney(v) {
   return '$' + Number(v || 0).toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: 2 });
@@ -46,6 +31,10 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
   const [rememberedSet, setRememberedSet] = useState(new Set()); // edits-array indices that came from memory
   const [rememberedPlatformSet, setRememberedPlatformSet] = useState(new Set());
   const fileRef = useRef(null);
+
+  // Merged categories (built-in + user customs) — stays in sync with the
+  // Books tab so user-added buckets show up here automatically.
+  const { expense: EXPENSE_CATEGORIES, income: INCOME_CATEGORIES, customMap } = useCategoriesAll();
 
   // Load vendor memory when the wizard opens — keeps it fresh after every
   // confirm cycle.
@@ -85,6 +74,13 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
       // bookkeeping style on similar new vendors.
       const hints = vendorMemoryToHints(vendorMemory, 60);
       if (hints.length > 0) form.append('vendorHints', JSON.stringify(hints));
+      // Send custom categories so the AI can route into them when a vendor
+      // matches a user-defined bucket. Only id + label needed server-side.
+      const customCats = [
+        ...(customMap.expense || []).map(c => ({ id: c.id, label: c.label, direction: 'expense' })),
+        ...(customMap.income  || []).map(c => ({ id: c.id, label: c.label, direction: 'income' })),
+      ];
+      if (customCats.length > 0) form.append('customCategories', JSON.stringify(customCats));
 
       const res = await fetch('/api/import-expenses-ai', { method: 'POST', body: form });
       const data = await res.json();
