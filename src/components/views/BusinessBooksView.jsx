@@ -76,6 +76,7 @@ function BusinessBooksView({
   const [showCategoryManager, setShowCategoryManager] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [aiRescanning, setAiRescanning] = useState(false);
+  const [aiRescanProgress, setAiRescanProgress] = useState({ done: 0, total: 0 });
   const [aiRescanPreview, setAiRescanPreview] = useState(null); // [{ id, vendor, amount, from, to, picked, confidence, reason }]
 
   // Merged categories (built-in + user customs). Reloads automatically when
@@ -125,11 +126,34 @@ function BusinessBooksView({
     return m;
   }, [income]);
 
-  // AI bulk re-categorization — sends current rows to /api/recategorize-ai
-  // and returns suggested fixes. User reviews and applies selectively.
+  // AI bulk re-categorization — chunks all expenses into 100-row batches,
+  // calls /api/recategorize-ai sequentially with progress reporting, and
+  // collects every proposed change into a single review modal.
+  //
+  // Why batch on the client side:
+  //   - 500-row single calls timed out at the Vercel function boundary
+  //   - Smaller batches stay well under output-token caps (~3K out per 100)
+  //   - Progress updates feel responsive and let users abort if it stalls
+  //   - System-prompt caching means batches 2..N cost ~10% of batch 1
+  const RESCAN_BATCH_SIZE = 100;
+
   const runAiRescan = async () => {
     if (expenses.length === 0 || aiRescanning) return;
+
+    // Soft cap with confirmation when the backlog is huge — gives the user
+    // a chance to back out before incurring 10+ AI calls.
+    if (expenses.length > 300) {
+      const ok = window.confirm(
+        `Re-scanning ${expenses.length} expenses with AI. ` +
+        `This will run in batches of ${RESCAN_BATCH_SIZE} (about ${Math.ceil(expenses.length / RESCAN_BATCH_SIZE)} calls, ` +
+        `~10-30 seconds each). Estimated cost: under $0.05 total. Continue?`
+      );
+      if (!ok) return;
+    }
+
     setAiRescanning(true);
+    setAiRescanProgress({ done: 0, total: expenses.length });
+
     try {
       const [vm, urubric] = await Promise.all([loadVendorMemory(), loadUserRubric()]);
       const vendorHints = vendorMemoryToHints(vm, 60);
@@ -137,28 +161,46 @@ function BusinessBooksView({
         ...(customMap.expense || []).map(c => ({ id: c.id, label: c.label, direction: 'expense' })),
         ...(customMap.income  || []).map(c => ({ id: c.id, label: c.label, direction: 'income' })),
       ];
-      // Process up to 500 rows (route caps at 500). For bigger backlogs the
-      // user can re-run after applying a batch.
-      const rows = expenses.slice(0, 500).map(e => ({
+      const rubricText = urubric?.expense || '';
+
+      const allRows = expenses.map(e => ({
         id: e.id,
         vendor: e.vendor || '',
         amount: Number(e.amount) || 0,
         currentDirection: 'expense',
         currentCategory: e.category || 'OTHER_EXPENSE',
       }));
-      const res = await fetch('/api/recategorize-ai', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rows, vendorHints, customCategories: customCats, userRubric: urubric?.expense || '' }),
-      });
-      const text = await res.text();
-      let data;
-      try { data = JSON.parse(text); }
-      catch { throw new Error(`Server returned non-JSON (HTTP ${res.status}): ${text.slice(0, 200)}`); }
-      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+      const allSuggestions = [];
+      for (let i = 0; i < allRows.length; i += RESCAN_BATCH_SIZE) {
+        const chunk = allRows.slice(i, i + RESCAN_BATCH_SIZE);
+        const res = await fetch('/api/recategorize-ai', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            rows: chunk,
+            vendorHints,
+            customCategories: customCats,
+            userRubric: rubricText,
+          }),
+        });
+        const text = await res.text();
+        let data;
+        try { data = JSON.parse(text); }
+        catch {
+          if (res.status === 504 || /timeout|gateway/i.test(text)) {
+            throw new Error(`Batch ${Math.floor(i / RESCAN_BATCH_SIZE) + 1} timed out. Try fewer expenses at a time.`);
+          }
+          throw new Error(`Server returned non-JSON (HTTP ${res.status}): ${text.slice(0, 200)}`);
+        }
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+        if (Array.isArray(data.suggestions)) allSuggestions.push(...data.suggestions);
+        setAiRescanProgress({ done: Math.min(i + RESCAN_BATCH_SIZE, allRows.length), total: allRows.length });
+      }
 
       // Build the preview — only rows where AI proposed a change
-      const proposals = (data.suggestions || []).reduce((acc, s) => {
+      const proposals = allSuggestions.reduce((acc, s) => {
         const original = expenses.find(e => e.id === s.id);
         if (!original) return acc;
         const proposedCat = s.suggestedCategory;
@@ -175,11 +217,17 @@ function BusinessBooksView({
         });
         return acc;
       }, []);
-      setAiRescanPreview(proposals);
+
+      if (proposals.length === 0) {
+        alert(`AI re-scanned ${allRows.length} expense${allRows.length !== 1 ? 's' : ''} — every category looks correct. Nothing to change.`);
+      } else {
+        setAiRescanPreview(proposals);
+      }
     } catch (e) {
       alert(`AI re-scan failed: ${e.message || e}`);
     } finally {
       setAiRescanning(false);
+      setAiRescanProgress({ done: 0, total: 0 });
     }
   };
   const togglePickAi = (id) => {
@@ -669,9 +717,14 @@ function BusinessBooksView({
                 onClick={runAiRescan}
                 disabled={aiRescanning}
                 className="text-xs text-violet-700 hover:text-violet-900 flex items-center gap-1 border border-violet-200 hover:border-violet-400 bg-white rounded-lg px-2.5 py-1 transition disabled:opacity-50"
-                title="Re-classify every expense using the latest AI rubric + your vendor memory + your custom categories"
+                title="Re-classify every expense using the latest AI rubric + your vendor memory + your custom categories. Runs in batches of 100. Cost: under $0.05 typical."
               >
-                <Sparkles size={12} /> {aiRescanning ? 'Re-scanning…' : 'Re-scan with AI'}
+                <Sparkles size={12} />
+                {aiRescanning
+                  ? (aiRescanProgress.total > 0
+                      ? `Re-scanning ${aiRescanProgress.done}/${aiRescanProgress.total}…`
+                      : 'Re-scanning…')
+                  : 'Re-scan with AI'}
               </button>
             </>
           )}

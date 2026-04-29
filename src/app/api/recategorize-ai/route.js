@@ -22,7 +22,9 @@ import {
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-export const maxDuration = 120;
+// Batches stay small (client chunks at ~100 rows), but give plenty of
+// headroom for cold starts.
+export const maxDuration = 300;
 
 const EXPENSE_CATEGORIES = EXPENSE_CATEGORY_DEFS.map(c => c.id);
 const INCOME_CATEGORIES = INCOME_CATEGORY_DEFS.map(c => c.id);
@@ -107,7 +109,9 @@ async function handle(req) {
     return Response.json({ error: 'Bad request — expected { rows: [{id, vendor, amount, currentCategory, currentDirection}, ...] }' }, { status: 400 });
   }
 
-  const rows = body.rows.slice(0, 500); // hard cap so a runaway client can't blow the budget
+  // Hard cap per call. Client should chunk requests above this. Smaller
+  // batches keep individual calls fast (<30s) and avoid output-token caps.
+  const rows = body.rows.slice(0, 100);
   if (rows.length === 0) {
     return Response.json({ suggestions: [] });
   }
