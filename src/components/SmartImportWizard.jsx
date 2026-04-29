@@ -2,10 +2,13 @@
 import { useState, useRef, useEffect } from 'react';
 import {
   X, Upload, FileText, FileSpreadsheet, Image as ImageIcon, Sparkles,
-  Loader2, CheckCircle2, AlertCircle, Trash2, ArrowRight, RefreshCw,
+  Loader2, CheckCircle2, AlertCircle, Trash2, ArrowRight, RefreshCw, Brain,
 } from 'lucide-react';
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, PLATFORMS, PLATFORM_REASONS } from '@/lib/constants';
 import { uid } from '@/lib/utils';
+import {
+  loadVendorMemory, saveVendorMemory, lookupVendor, recordVendor, vendorMemoryToHints,
+} from '@/lib/vendorMemory';
 
 const inp = 'w-full border border-slate-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500';
 
@@ -39,12 +42,22 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
   const [platformEdits, setPlatformEdits] = useState([]); // editable copy of platform expenses
   const [platformSkipMask, setPlatformSkipMask] = useState(new Set());
   const [account, setAccount] = useState(defaultAccount);
+  const [vendorMemory, setVendorMemory] = useState({});
+  const [rememberedSet, setRememberedSet] = useState(new Set()); // edits-array indices that came from memory
+  const [rememberedPlatformSet, setRememberedPlatformSet] = useState(new Set());
   const fileRef = useRef(null);
+
+  // Load vendor memory when the wizard opens — keeps it fresh after every
+  // confirm cycle.
+  useEffect(() => {
+    if (open) loadVendorMemory().then(setVendorMemory).catch(() => setVendorMemory({}));
+  }, [open]);
 
   useEffect(() => {
     if (!open) {
       setFile(null); setBusy(false); setError(''); setResult(null);
       setEdits([]); setSkipMask(new Set()); setPlatformEdits([]); setPlatformSkipMask(new Set());
+      setRememberedSet(new Set()); setRememberedPlatformSet(new Set());
       setAccount(defaultAccount);
     }
   }, [open, defaultAccount]);
@@ -68,12 +81,43 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
     try {
       const form = new FormData();
       form.append('file', file);
+      // Send the user's confirmed vendor->category map so the AI mimics their
+      // bookkeeping style on similar new vendors.
+      const hints = vendorMemoryToHints(vendorMemory, 60);
+      if (hints.length > 0) form.append('vendorHints', JSON.stringify(hints));
+
       const res = await fetch('/api/import-expenses-ai', { method: 'POST', body: form });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+      // Pre-fill rows from vendor memory: when a row's vendor was previously
+      // confirmed by the user, override the AI's guess with the user's pick.
+      const remembered = new Set();
+      const rememberedPlat = new Set();
+      const txs = (data.transactions || []).map((t, i) => {
+        const id = uid();
+        const mem = lookupVendor(vendorMemory, t.vendor);
+        if (mem && mem.direction !== 'platform') {
+          remembered.add(i);
+          return { ...t, id, direction: mem.direction || t.direction, category: mem.category || t.category };
+        }
+        return { ...t, id };
+      });
+      const plats = (data.platformExpenses || []).map((p, i) => {
+        const id = uid();
+        const mem = lookupVendor(vendorMemory, p.vendor || p.notes);
+        if (mem && mem.direction === 'platform' && mem.platformId) {
+          rememberedPlat.add(i);
+          return { ...p, id, platformId: mem.platformId };
+        }
+        return { ...p, id };
+      });
+
       setResult(data);
-      setEdits((data.transactions || []).map(t => ({ ...t, id: uid() })));
-      setPlatformEdits((data.platformExpenses || []).map(p => ({ ...p, id: uid() })));
+      setEdits(txs);
+      setPlatformEdits(plats);
+      setRememberedSet(remembered);
+      setRememberedPlatformSet(rememberedPlat);
       setSkipMask(new Set());
       setPlatformSkipMask(new Set());
     } catch (e) {
@@ -106,6 +150,10 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
     const today = () => new Date().toISOString().slice(0, 10);
     const expenses = [];
     const income = [];
+    // Build up vendor-memory updates as we go so future imports inherit
+    // every category the user confirmed in this session.
+    let memoryNext = { ...vendorMemory };
+
     edits.forEach((t, i) => {
       if (skipMask.has(i)) return;
       const base = {
@@ -122,6 +170,14 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
       } else {
         income.push({ ...base, category: t.category || 'OTHER_INCOME', source: t.vendor || '' });
       }
+      // Record vendor memory only when we have something useful to remember
+      if (t.vendor) {
+        memoryNext = recordVendor(memoryNext, {
+          vendor: t.vendor,
+          direction: t.direction,
+          category: t.category || (t.direction === 'expense' ? 'OTHER_EXPENSE' : 'OTHER_INCOME'),
+        });
+      }
     });
 
     // Platform rows go to a separate destination — same shape as
@@ -137,7 +193,18 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
         reason: p.reason || 'CREDIT REFILL',
         notes: [p.vendor && `From: ${p.vendor}`, p.notes].filter(Boolean).join(' · '),
       });
+      if (p.vendor && p.platformId) {
+        memoryNext = recordVendor(memoryNext, {
+          vendor: p.vendor,
+          direction: 'platform',
+          platformId: p.platformId,
+        });
+      }
     });
+
+    // Persist learning before we close — fire-and-forget; storage adapter
+    // mirrors to localStorage so a network blip can't drop it.
+    saveVendorMemory(memoryNext);
 
     onImport({ expenses, income, platforms });
     onClose();
@@ -179,7 +246,14 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
             </div>
             <div>
               <h2 className="text-lg font-bold text-slate-900">Smart Import</h2>
-              <p className="text-xs text-slate-500">Drop any expense file — AI figures out the structure</p>
+              <p className="text-xs text-slate-500 flex items-center gap-1.5">
+                Drop any expense file — AI figures out the structure
+                {Object.keys(vendorMemory).length > 0 && (
+                  <span title={`${Object.keys(vendorMemory).length} vendor categories remembered from past imports`} className="inline-flex items-center gap-1 bg-violet-100 text-violet-700 border border-violet-300 rounded px-1.5 py-0.5 text-[10px] font-bold">
+                    <Brain size={10} /> {Object.keys(vendorMemory).length} remembered
+                  </span>
+                )}
+              </p>
             </div>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-700 p-1"><X size={20} /></button>
@@ -324,7 +398,14 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
                               </select>
                             </td>
                             <td className="px-2 py-1.5">
-                              <input className={inp} value={p.vendor || ''} onChange={e => setPlatformEdit(i, { vendor: e.target.value })} disabled={skipped} />
+                              <div className="flex items-center gap-1">
+                                <input className={inp + ' flex-1'} value={p.vendor || ''} onChange={e => setPlatformEdit(i, { vendor: e.target.value })} disabled={skipped} />
+                                {rememberedPlatformSet.has(i) && (
+                                  <span title="Routed to this platform from your past corrections" className="text-[9px] font-bold uppercase bg-violet-100 text-violet-700 border border-violet-300 rounded px-1 py-0.5 flex items-center gap-0.5 whitespace-nowrap">
+                                    <Brain size={9} /> Remembered
+                                  </span>
+                                )}
+                              </div>
                             </td>
                             <td className="px-2 py-1.5">
                               <input type="number" step="0.01" className={inp + ' text-right'} value={p.amount || ''}
@@ -370,7 +451,14 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
                             <input type="date" className={inp} value={t.date || ''} onChange={e => setEdit(i, { date: e.target.value })} disabled={skipped} />
                           </td>
                           <td className="px-2 py-1.5">
-                            <input className={inp} value={t.vendor || ''} onChange={e => setEdit(i, { vendor: e.target.value })} disabled={skipped} />
+                            <div className="flex items-center gap-1">
+                              <input className={inp + ' flex-1'} value={t.vendor || ''} onChange={e => setEdit(i, { vendor: e.target.value })} disabled={skipped} />
+                              {rememberedSet.has(i) && (
+                                <span title="Categorized from your past corrections" className="text-[9px] font-bold uppercase bg-violet-100 text-violet-700 border border-violet-300 rounded px-1 py-0.5 flex items-center gap-0.5 whitespace-nowrap">
+                                  <Brain size={9} /> Remembered
+                                </span>
+                              )}
+                            </div>
                             {t.notes && <div className="text-[10px] text-slate-400 italic mt-0.5 truncate">{t.notes}</div>}
                           </td>
                           <td className="px-2 py-1.5">

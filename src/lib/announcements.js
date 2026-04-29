@@ -26,6 +26,14 @@
 
 export const ANNOUNCEMENTS = [
   {
+    id: '2026-04-29-vendor-memory',
+    date: '2026-04-29',
+    emoji: '🧠',
+    title: 'Smart Import now learns from your corrections',
+    body: 'Every time you confirm or fix a category in the Smart Import wizard, PRIM remembers it. Next time you upload a file with the same vendor (or a similar one — "AMZN MKTPL" vs "Amazon.com"), it gets your category automatically. Look for the violet "Remembered" badge on rows pulled from memory.',
+    cta: { label: 'Open Books', view: 'books' },
+  },
+  {
     id: '2026-04-29-platforms-smart-import',
     date: '2026-04-29',
     emoji: '⚡',

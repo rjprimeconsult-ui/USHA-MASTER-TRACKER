@@ -99,6 +99,9 @@ CRITICAL RULES:
 10. If you genuinely cannot tell what category fits, use OTHER_EXPENSE or OTHER_INCOME — don't guess.
 
 Return an empty transactions array if the document has no extractable transaction-level data (only summaries, only narrative text, etc.).
+
+USER PREFERENCES:
+The user's message may include a "USER PREFERENCES" block with prior {vendor -> direction/category} mappings the user has personally confirmed in past imports. When you encounter a vendor in the file that matches OR closely resembles one of these (after lowercasing and ignoring trailing store numbers / transaction codes), you MUST use the user's preferred direction and category instead of guessing from the rubric. This includes routing to platforms when the user has previously routed a similar vendor there. Treat the preferences as ground truth — they reflect this specific user's bookkeeping style.
 `.trim();
 
 // JSON schema Claude must conform to. Strict mode means valid JSON,
@@ -215,11 +218,19 @@ export async function POST(req) {
   }
 
   let file;
+  let vendorHints = []; // [{ vendor, direction, category?, platformId? }]
   try {
     const form = await req.formData();
     file = form.get('file');
     if (!file || typeof file === 'string') {
       return Response.json({ error: 'No file uploaded.' }, { status: 400 });
+    }
+    const hintsRaw = form.get('vendorHints');
+    if (typeof hintsRaw === 'string' && hintsRaw.length > 0) {
+      try {
+        const parsed = JSON.parse(hintsRaw);
+        if (Array.isArray(parsed)) vendorHints = parsed.slice(0, 100);
+      } catch { /* ignore — hints are optional */ }
     }
   } catch (e) {
     return Response.json({ error: `Couldn't read upload: ${e.message}` }, { status: 400 });
@@ -228,6 +239,20 @@ export async function POST(req) {
   const buffer = Buffer.from(await file.arrayBuffer());
   const filename = file.name || 'upload';
   const fileType = detectFileType(filename, buffer);
+
+  // Render the vendor-hints block once — appended to the user message so it
+  // doesn't bust the system-prompt cache.
+  const renderHints = (hints) => {
+    if (!hints?.length) return '';
+    const lines = hints.map(h => {
+      if (h.direction === 'platform' && h.platformId) {
+        return `  "${h.vendor}" -> PLATFORM (${h.platformId})`;
+      }
+      return `  "${h.vendor}" -> ${h.direction || 'expense'} / ${h.category || 'OTHER_EXPENSE'}`;
+    });
+    return `\n\n--- USER PREFERENCES (apply these mappings when vendors match) ---\n${lines.join('\n')}`;
+  };
+  const hintsText = renderHints(vendorHints);
 
   // Build the user-message content depending on file type
   let userContent;
@@ -240,7 +265,7 @@ export async function POST(req) {
       const truncated = text.length > 200000 ? text.slice(0, 200000) + '\n[...truncated]' : text;
       userContent = [{
         type: 'text',
-        text: `File: ${filename}\nType: ${fileType.toUpperCase()}\n\nExtract every transaction as structured JSON.\n\n--- FILE CONTENT ---\n${truncated}`,
+        text: `File: ${filename}\nType: ${fileType.toUpperCase()}\n\nExtract every transaction as structured JSON.${hintsText}\n\n--- FILE CONTENT ---\n${truncated}`,
       }];
       extractedHint = `Parsed ${text.split('\n').length} rows from spreadsheet.`;
     } else if (fileType === 'pdf') {
@@ -251,7 +276,7 @@ export async function POST(req) {
         // Digital PDF — use text path
         userContent = [{
           type: 'text',
-          text: `File: ${filename}\nType: PDF (text-extractable)\n\nExtract every transaction as structured JSON.\n\n--- FILE CONTENT ---\n${pdfText.slice(0, 200000)}`,
+          text: `File: ${filename}\nType: PDF (text-extractable)\n\nExtract every transaction as structured JSON.${hintsText}\n\n--- FILE CONTENT ---\n${pdfText.slice(0, 200000)}`,
         }];
         extractedHint = `Extracted ${cleanText.length} chars of text from PDF.`;
       } else {
@@ -264,7 +289,7 @@ export async function POST(req) {
           },
           {
             type: 'text',
-            text: `File: ${filename}\nType: PDF (image-based — sent for vision processing).\n\nExtract every transaction as structured JSON.`,
+            text: `File: ${filename}\nType: PDF (image-based — sent for vision processing).\n\nExtract every transaction as structured JSON.${hintsText}`,
           },
         ];
         extractedHint = `Sent ${(buffer.length / 1024).toFixed(0)}KB PDF to vision.`;
