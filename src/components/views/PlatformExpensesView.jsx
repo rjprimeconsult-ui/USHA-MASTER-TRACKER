@@ -1,11 +1,12 @@
 'use client';
 import { useMemo, useRef, useState, useEffect, memo } from 'react';
-import { Plus, Trash2, DollarSign, TrendingUp, AlertCircle, Calendar, Upload, X, Check, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Trash2, DollarSign, TrendingUp, AlertCircle, Calendar, Upload, X, Check, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
 import { PLATFORMS, PLATFORM_REASONS } from '@/lib/constants';
 import { fmt, fmt2, today, uid } from '@/lib/utils';
 import { storage } from '@/lib/storage';
 import { parsePlatformFile, dedupAgainst } from '@/lib/platformImport';
 import { TiltCard, CountUp, Stagger, StaggerItem, MoneyCell } from '../motion/MotionPrimitives';
+import SmartImportWizard from '../SmartImportWizard';
 
 const BUDGET_KEY = 'platform_budget_v1';
 
@@ -27,10 +28,11 @@ const daysInMonth = (ym) => {
   return new Date(y, m, 0).getDate();
 };
 
-function PlatformExpensesView({ expenses, onAdd, onUpdate, onDelete, onBulkAdd }) {
+function PlatformExpensesView({ expenses, onAdd, onUpdate, onDelete, onBulkAdd, onBulkAddBooksExpenses, onBulkAddBooksIncome }) {
   const fileInputRef = useRef(null);
   const [importPreview, setImportPreview] = useState(null); // { format, entries, fresh, duplicate, error }
   const [importing, setImporting] = useState(false);
+  const [showSmartImport, setShowSmartImport] = useState(false);
 
   const handleFileSelect = async (e) => {
     const file = e.target.files?.[0];
@@ -380,18 +382,28 @@ function PlatformExpensesView({ expenses, onAdd, onUpdate, onDelete, onBulkAdd }
             <div>
               <div className="font-semibold text-slate-900">Upload from file</div>
               <div className="text-xs text-slate-600">
-                Drop your Don Julio budget sheet OR a bank/credit card statement (CSV/XLSX). Auto-detects format.
+                <span className="font-semibold">Smart (AI):</span> any PDF, screenshot, or messy export — Ringy/TextDrip/VanillaSoft auto-detected.
+                <span className="block">Classic: Don Julio budget sheet or bank statement (CSV/XLSX).</span>
               </div>
             </div>
           </div>
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={importing}
-            className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white rounded-lg px-4 py-2 text-sm font-semibold transition flex items-center gap-2"
-          >
-            <Upload size={14} />
-            {importing ? 'Reading…' : 'Choose file'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowSmartImport(true)}
+              className="bg-gradient-to-br from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white rounded-lg px-4 py-2 text-sm font-semibold transition flex items-center gap-2 shadow-lg shadow-indigo-500/30"
+            >
+              <Sparkles size={14} />
+              Smart Import (AI)
+            </button>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={importing}
+              className="border border-indigo-300 bg-white hover:bg-indigo-50 disabled:bg-slate-100 text-indigo-700 rounded-lg px-4 py-2 text-sm font-semibold transition flex items-center gap-2"
+            >
+              <Upload size={14} />
+              {importing ? 'Reading…' : 'Classic'}
+            </button>
+          </div>
           <input
             ref={fileInputRef}
             type="file"
@@ -401,6 +413,23 @@ function PlatformExpensesView({ expenses, onAdd, onUpdate, onDelete, onBulkAdd }
           />
         </div>
       </div>
+
+      {/* Smart Import (AI) wizard — same as Books, but rows route correctly */}
+      <SmartImportWizard
+        open={showSmartImport}
+        onClose={() => setShowSmartImport(false)}
+        onImport={({ expenses: bookExp, income: bookInc, platforms }) => {
+          if (platforms?.length) {
+            onBulkAdd?.(platforms);
+            const newest = platforms.reduce((max, e) => e.date > max ? e.date : max, '');
+            if (newest) setActiveMonth(newest.slice(0, 7));
+          }
+          // Any non-platform rows extracted from the file get routed to Books
+          // automatically — so a PDF with mixed charges Just Works.
+          if (bookExp?.length && onBulkAddBooksExpenses) onBulkAddBooksExpenses(bookExp);
+          if (bookInc?.length && onBulkAddBooksIncome) onBulkAddBooksIncome(bookInc);
+        }}
+      />
 
       {/* Quick add */}
       <div className="bg-white rounded-xl border border-slate-200 p-4">

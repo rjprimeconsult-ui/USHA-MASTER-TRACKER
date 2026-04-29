@@ -1057,6 +1057,16 @@ export default function LeadTracker() {
             }}
             onUpdate={(e) => setPlatformExpenses(prev => prev.map(x => x.id === e.id ? e : x))}
             onDelete={(id) => setPlatformExpenses(prev => prev.filter(x => x.id !== id))}
+            onBulkAddBooksExpenses={(rows) => {
+              if (!rows?.length) return;
+              setBusinessExpenses(prev => [...rows, ...prev]);
+              showToast(`Also imported ${rows.length} non-platform expense${rows.length !== 1 ? 's' : ''} → Books`);
+            }}
+            onBulkAddBooksIncome={(rows) => {
+              if (!rows?.length) return;
+              setBusinessIncome(prev => [...rows, ...prev]);
+              showToast(`Also imported ${rows.length} income entr${rows.length !== 1 ? 'ies' : 'y'} → Books`);
+            }}
           />
         </ViewMount>
         <ViewMount visible={view === 'prospects'} viewKey="prospects">

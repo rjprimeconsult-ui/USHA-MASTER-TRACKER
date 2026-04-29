@@ -26,6 +26,14 @@
 
 export const ANNOUNCEMENTS = [
   {
+    id: '2026-04-29-platforms-smart-import',
+    date: '2026-04-29',
+    emoji: '⚡',
+    title: 'Platforms tab: Smart Import (AI) — drop any PDF',
+    body: 'Platforms tab now has its own "Smart Import (AI)" button. Drop a credit-card statement PDF, screenshot, or any messy export — AI pulls every Ringy/TextDrip/VanillaSoft charge straight into Platforms. Non-platform charges in the same file get routed to Books automatically.',
+    cta: { label: 'Open Platforms', view: 'platforms' },
+  },
+  {
     id: '2026-04-29-family-members',
     date: '2026-04-29',
     emoji: '👨‍👩‍👧',
