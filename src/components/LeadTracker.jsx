@@ -1076,6 +1076,7 @@ export default function LeadTracker() {
               setBusinessIncome(prev => [...rows, ...prev]);
               showToast(`Imported ${rows.length} income entr${rows.length !== 1 ? 'ies' : 'y'}`);
             }}
+            onBulkAddPlatforms={onBulkAddPlatformExpenses}
           />
         </ViewMount>
         <ViewMount visible={view === 'upload'} viewKey="upload">

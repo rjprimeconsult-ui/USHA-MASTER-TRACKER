@@ -4,7 +4,7 @@ import {
   X, Upload, FileText, FileSpreadsheet, Image as ImageIcon, Sparkles,
   Loader2, CheckCircle2, AlertCircle, Trash2, ArrowRight, RefreshCw,
 } from 'lucide-react';
-import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '@/lib/constants';
+import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, PLATFORMS, PLATFORM_REASONS } from '@/lib/constants';
 import { uid } from '@/lib/utils';
 
 const inp = 'w-full border border-slate-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500';
@@ -36,13 +36,16 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
   const [result, setResult] = useState(null); // { transactions, summary, extractedHint, usage }
   const [edits, setEdits] = useState([]); // editable copy of transactions
   const [skipMask, setSkipMask] = useState(new Set()); // indices to exclude
+  const [platformEdits, setPlatformEdits] = useState([]); // editable copy of platform expenses
+  const [platformSkipMask, setPlatformSkipMask] = useState(new Set());
   const [account, setAccount] = useState(defaultAccount);
   const fileRef = useRef(null);
 
   useEffect(() => {
     if (!open) {
       setFile(null); setBusy(false); setError(''); setResult(null);
-      setEdits([]); setSkipMask(new Set()); setAccount(defaultAccount);
+      setEdits([]); setSkipMask(new Set()); setPlatformEdits([]); setPlatformSkipMask(new Set());
+      setAccount(defaultAccount);
     }
   }, [open, defaultAccount]);
 
@@ -70,7 +73,9 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       setResult(data);
       setEdits((data.transactions || []).map(t => ({ ...t, id: uid() })));
+      setPlatformEdits((data.platformExpenses || []).map(p => ({ ...p, id: uid() })));
       setSkipMask(new Set());
+      setPlatformSkipMask(new Set());
     } catch (e) {
       setError(e.message || String(e));
     } finally {
@@ -86,6 +91,16 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
   });
   const skipAll = () => setSkipMask(new Set(edits.map((_, i) => i)));
   const skipNone = () => setSkipMask(new Set());
+
+  // Platform-row equivalents
+  const setPlatformEdit = (idx, patch) => setPlatformEdits(prev => prev.map((t, i) => i === idx ? { ...t, ...patch } : t));
+  const togglePlatformSkip = (idx) => setPlatformSkipMask(prev => {
+    const next = new Set(prev);
+    if (next.has(idx)) next.delete(idx); else next.add(idx);
+    return next;
+  });
+  const platformSkipAll = () => setPlatformSkipMask(new Set(platformEdits.map((_, i) => i)));
+  const platformSkipNone = () => setPlatformSkipMask(new Set());
 
   const confirm = () => {
     const today = () => new Date().toISOString().slice(0, 10);
@@ -108,7 +123,23 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
         income.push({ ...base, category: t.category || 'OTHER_INCOME', source: t.vendor || '' });
       }
     });
-    onImport({ expenses, income });
+
+    // Platform rows go to a separate destination — same shape as
+    // PlatformExpensesView's onAdd entries.
+    const platforms = [];
+    platformEdits.forEach((p, i) => {
+      if (platformSkipMask.has(i)) return;
+      platforms.push({
+        id: uid(),
+        date: p.date || today(),
+        platform: p.platformId,  // 'TD' | 'RINGY' | 'VANILLA'
+        amount: Math.abs(Number(p.amount) || 0),
+        reason: p.reason || 'CREDIT REFILL',
+        notes: [p.vendor && `From: ${p.vendor}`, p.notes].filter(Boolean).join(' · '),
+      });
+    });
+
+    onImport({ expenses, income, platforms });
     onClose();
   };
 
@@ -121,12 +152,21 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
     return acc;
   }, { expense: 0, income: 0 });
 
+  const platformTotal = platformEdits.reduce((acc, p, i) => {
+    if (platformSkipMask.has(i)) return acc;
+    return acc + Math.abs(Number(p.amount) || 0);
+  }, 0);
+
   const counts = edits.reduce((acc, t, i) => {
     if (skipMask.has(i)) acc.skipped++;
     else if (t.direction === 'expense') acc.exp++;
     else acc.inc++;
     return acc;
   }, { exp: 0, inc: 0, skipped: 0 });
+  const platformCounts = platformEdits.reduce((acc, _p, i) => {
+    if (platformSkipMask.has(i)) acc.skipped++; else acc.kept++;
+    return acc;
+  }, { kept: 0, skipped: 0 });
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
@@ -213,18 +253,22 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
               </div>
 
               {/* Live totals */}
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <div className="bg-white border border-slate-200 rounded-xl p-3">
-                  <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Expenses ({counts.exp})</div>
+                  <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Books Expenses ({counts.exp})</div>
                   <div className="text-base font-bold text-red-600 mt-0.5">{fmtMoney(liveTotals.expense)}</div>
                 </div>
                 <div className="bg-white border border-slate-200 rounded-xl p-3">
-                  <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Income ({counts.inc})</div>
+                  <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Books Income ({counts.inc})</div>
                   <div className="text-base font-bold text-emerald-600 mt-0.5">{fmtMoney(liveTotals.income)}</div>
                 </div>
+                <div className="bg-gradient-to-br from-indigo-50 to-violet-50 border border-indigo-200 rounded-xl p-3">
+                  <div className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">Platforms ({platformCounts.kept})</div>
+                  <div className="text-base font-bold text-indigo-700 mt-0.5">{fmtMoney(platformTotal)}</div>
+                </div>
                 <div className="bg-white border border-slate-200 rounded-xl p-3">
-                  <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Skipped ({counts.skipped})</div>
-                  <div className="text-base font-bold text-slate-400 mt-0.5">{counts.skipped} rows</div>
+                  <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Skipped</div>
+                  <div className="text-base font-bold text-slate-400 mt-0.5">{counts.skipped + platformCounts.skipped} rows</div>
                 </div>
               </div>
 
@@ -240,6 +284,65 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
                   <button onClick={skipAll} className="text-xs border border-slate-200 hover:bg-slate-50 px-2 py-1.5 rounded-lg">Skip all</button>
                 </div>
               </div>
+
+              {/* Platform expenses (Ringy / TextDrip / VanillaSoft) — populated separately */}
+              {platformEdits.length > 0 && (
+                <div className="bg-gradient-to-br from-indigo-50/40 to-violet-50/40 border border-indigo-200 rounded-xl overflow-hidden">
+                  <div className="px-3 py-2 bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-xs font-bold uppercase tracking-wider flex items-center justify-between">
+                    <span>Platforms (Ringy / TextDrip / VanillaSoft)</span>
+                    <div className="flex gap-1.5">
+                      <button onClick={platformSkipNone} className="bg-white/15 hover:bg-white/25 rounded px-2 py-0.5 text-[10px] font-semibold normal-case">Include all</button>
+                      <button onClick={platformSkipAll} className="bg-white/15 hover:bg-white/25 rounded px-2 py-0.5 text-[10px] font-semibold normal-case">Skip all</button>
+                    </div>
+                  </div>
+                  <table className="w-full text-xs">
+                    <thead className="bg-indigo-50">
+                      <tr className="text-[10px] uppercase tracking-wider text-indigo-700 font-bold">
+                        <th className="px-2 py-2 text-center w-8">Keep</th>
+                        <th className="px-2 py-2 text-left w-28">Date</th>
+                        <th className="px-2 py-2 text-left w-32">Platform</th>
+                        <th className="px-2 py-2 text-left">Description</th>
+                        <th className="px-2 py-2 text-right w-24">Amount</th>
+                        <th className="px-2 py-2 text-left w-44">Reason</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {platformEdits.map((p, i) => {
+                        const skipped = platformSkipMask.has(i);
+                        return (
+                          <tr key={p.id} className={`border-t border-indigo-100 ${skipped ? 'bg-slate-50/60 opacity-40' : 'hover:bg-indigo-50/40'}`}>
+                            <td className="px-2 py-1.5 text-center">
+                              <input type="checkbox" checked={!skipped} onChange={() => togglePlatformSkip(i)} className="accent-indigo-600 w-4 h-4 cursor-pointer" />
+                            </td>
+                            <td className="px-2 py-1.5">
+                              <input type="date" className={inp} value={p.date || ''} onChange={e => setPlatformEdit(i, { date: e.target.value })} disabled={skipped} />
+                            </td>
+                            <td className="px-2 py-1.5">
+                              <select className={inp} value={p.platformId} disabled={skipped}
+                                onChange={e => setPlatformEdit(i, { platformId: e.target.value })}>
+                                {PLATFORMS.map(pl => <option key={pl.id} value={pl.id}>{pl.label}</option>)}
+                              </select>
+                            </td>
+                            <td className="px-2 py-1.5">
+                              <input className={inp} value={p.vendor || ''} onChange={e => setPlatformEdit(i, { vendor: e.target.value })} disabled={skipped} />
+                            </td>
+                            <td className="px-2 py-1.5">
+                              <input type="number" step="0.01" className={inp + ' text-right'} value={p.amount || ''}
+                                onChange={e => setPlatformEdit(i, { amount: e.target.value })} disabled={skipped} />
+                            </td>
+                            <td className="px-2 py-1.5">
+                              <select className={inp} value={p.reason || 'CREDIT REFILL'} disabled={skipped}
+                                onChange={e => setPlatformEdit(i, { reason: e.target.value })}>
+                                {PLATFORM_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
+                              </select>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
 
               {/* Transactions table */}
               <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
@@ -319,9 +422,9 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
           <button onClick={onClose} className="border border-slate-200 hover:bg-slate-100 bg-white px-4 py-2 rounded-lg text-sm font-semibold">Cancel</button>
           {result && (
             <button onClick={confirm}
-              disabled={counts.exp + counts.inc === 0}
+              disabled={counts.exp + counts.inc + platformCounts.kept === 0}
               className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white px-5 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5">
-              <CheckCircle2 size={14} /> Import {counts.exp + counts.inc} transaction{counts.exp + counts.inc !== 1 ? 's' : ''}
+              <CheckCircle2 size={14} /> Import {counts.exp + counts.inc} books{platformCounts.kept > 0 ? ` + ${platformCounts.kept} platform${platformCounts.kept !== 1 ? 's' : ''}` : ''}
             </button>
           )}
         </div>

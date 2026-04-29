@@ -42,15 +42,30 @@ const EXPENSE_CATEGORIES = [
 const INCOME_CATEGORIES = [
   'BONUS', 'OVERRIDE', 'RENEWAL', 'OTHER_INCOME',
 ];
+// Platforms tracked separately from Books — these CRM expenses appear
+// throughout most agents' spreadsheets and feed the True CPA calculation.
+const PLATFORMS = ['TD', 'RINGY', 'VANILLA']; // TD = TextDrip, VANILLA = VanillaSoft
+const PLATFORM_REASONS = ['CREDIT REFILL', 'CREDIT REFILL/RENEWAL', 'MONTHLY SUBSCRIPTION', 'RENEWAL', 'OTHER'];
 
 // The classification rubric. Cached as a system-prompt prefix so repeat
 // calls are ~0.1× input cost.
 const CATEGORY_RUBRIC = `
-You are extracting transactions from financial documents for an insurance agent's bookkeeping app. Each transaction must be classified into one of these categories.
+You are extracting transactions from financial documents for an insurance agent's bookkeeping app. Each row must be routed to ONE of three buckets:
 
-EXPENSE CATEGORIES (when amount represents money OUT):
-- LEAD_INVESTMENT: lead purchases (aged leads, USHA leads, Ringy leads, Benepath, lead vendors, "leads", "chev credits"). Direct cost-per-acquisition spend.
-- SOFTWARE: CRM subscriptions (TextDrip / "Text Creds", Ringy, VanillaSoft / "VS Creds" / "cami's vs", Calendly), AI tools (ChatGPT, Claude), Notion, Slack, Zoom, dev tools.
+  1) PLATFORMS — CRM platform charges that get tracked separately from Books because they feed the agent's True-CPA calculation. Use this whenever a row clearly relates to one of:
+       - TD (TextDrip): "Text Creds", "TextDrip", "TextDrip credits", "td credits", any reference to TextDrip subscription/refill.
+       - RINGY: "Ringy", "Ringy credits", "Ringy subscription".
+       - VANILLA (VanillaSoft): "VanillaSoft", "Vanilla Soft", "VS Creds", "VS credits", "cami's vs", "vsoft creds".
+     For these rows, output a "platformExpenses[]" entry with platformId set to TD / RINGY / VANILLA — DO NOT also add them to "transactions".
+     Reason should be CREDIT REFILL when the row is a top-up (most "creds" / "credits" rows), MONTHLY SUBSCRIPTION when periodic, RENEWAL when explicitly a renewal, otherwise OTHER.
+
+  2) BOOKS expenses — every other money-out item. Goes into "transactions[]" with direction = "expense" and one of the EXPENSE CATEGORIES below.
+
+  3) BOOKS income — money-in items. Goes into "transactions[]" with direction = "income" and one of the INCOME CATEGORIES below.
+
+EXPENSE CATEGORIES (when direction = expense, NOT a platform row):
+- LEAD_INVESTMENT: lead purchases (aged leads, USHA leads, Ringy leads, Benepath, lead vendors, "leads", "chev credits"). Direct cost-per-acquisition spend. NOTE: "Ringy leads" goes here (LEAD_INVESTMENT) — but a plain "Ringy" subscription/credits charge goes to PLATFORMS as platformId=RINGY.
+- SOFTWARE: subscriptions other than TD/Ringy/VanillaSoft (Calendly, AI tools like ChatGPT/Claude, Notion, Slack, Zoom, dev tools, Adobe, etc.).
 - MARKETING: Facebook ads, Google ads (general, not lead-specific), Meta ads, mailchimp.
 - OFFICE_RENT: office rent, FSL rent, desk rent, co-working.
 - OFFICE: office supplies, Amazon, Staples, shipping (UPS/FedEx).
@@ -107,18 +122,36 @@ const TRANSACTION_SCHEMA = {
         additionalProperties: false,
       },
     },
+    platformExpenses: {
+      type: 'array',
+      description: 'CRM-platform charges (Ringy, TextDrip, VanillaSoft). Tracked separately from Books because they feed the True CPA calculation.',
+      items: {
+        type: 'object',
+        properties: {
+          date: { type: 'string', description: 'YYYY-MM-DD' },
+          platformId: { type: 'string', enum: PLATFORMS, description: 'TD = TextDrip, VANILLA = VanillaSoft' },
+          amount: { type: 'number', description: 'Absolute value, positive number' },
+          reason: { type: 'string', enum: PLATFORM_REASONS },
+          vendor: { type: 'string', description: 'Original line-item description as printed' },
+          notes: { type: 'string' },
+        },
+        required: ['date', 'platformId', 'amount', 'reason'],
+        additionalProperties: false,
+      },
+    },
     summary: {
       type: 'object',
       properties: {
         totalExpenses: { type: 'number' },
         totalIncome: { type: 'number' },
+        totalPlatforms: { type: 'number' },
         format: { type: 'string', description: 'Best-guess label: "bank statement", "credit card", "weekly tracker", "expense ledger", etc.' },
       },
       required: ['totalExpenses', 'totalIncome', 'format'],
       additionalProperties: false,
     },
   },
-  required: ['transactions', 'summary'],
+  required: ['transactions', 'platformExpenses', 'summary'],
   additionalProperties: false,
 };
 
@@ -293,10 +326,11 @@ export async function POST(req) {
   }
 
   // Log usage for cost tracking
-  console.log(`[import-expenses-ai] file=${filename} type=${fileType} txs=${parsed.transactions?.length || 0} input=${resp.usage.input_tokens} cached_read=${resp.usage.cache_read_input_tokens || 0} output=${resp.usage.output_tokens}`);
+  console.log(`[import-expenses-ai] file=${filename} type=${fileType} txs=${parsed.transactions?.length || 0} platforms=${parsed.platformExpenses?.length || 0} input=${resp.usage.input_tokens} cached_read=${resp.usage.cache_read_input_tokens || 0} output=${resp.usage.output_tokens}`);
 
   return Response.json({
     transactions: parsed.transactions || [],
+    platformExpenses: parsed.platformExpenses || [],
     summary: parsed.summary || { totalExpenses: 0, totalIncome: 0, format: 'unknown' },
     extractedHint,
     usage: {

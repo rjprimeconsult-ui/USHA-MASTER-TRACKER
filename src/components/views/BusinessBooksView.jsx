@@ -62,6 +62,7 @@ function BusinessBooksView({
   leads = [], overrides = [], ownAdvances = [],
   onAddExpense, onUpdateExpense, onDeleteExpense, onBulkAddExpenses,
   onAddIncome,  onUpdateIncome,  onDeleteIncome,  onBulkAddIncome,
+  onBulkAddPlatforms,
 }) {
   const [tab, setTab] = useState('expenses'); // 'expenses' | 'income'
   const fileInputRef = useRef(null);
@@ -487,11 +488,13 @@ function BusinessBooksView({
         open={showSmartImport}
         onClose={() => setShowSmartImport(false)}
         defaultAccount={knownAccounts[0] || ''}
-        onImport={({ expenses, income }) => {
+        onImport={({ expenses, income, platforms }) => {
           if (expenses.length) onBulkAddExpenses(expenses);
           if (income.length) onBulkAddIncome(income);
-          if (expenses.length + income.length > 0) {
-            const newest = [...expenses, ...income].reduce((max, e) => e.date > max ? e.date : max, '');
+          if (platforms?.length && onBulkAddPlatforms) onBulkAddPlatforms(platforms);
+          const all = [...(expenses || []), ...(income || []), ...(platforms || [])];
+          if (all.length > 0) {
+            const newest = all.reduce((max, e) => e.date > max ? e.date : max, '');
             if (newest) setActiveMonth(newest.slice(0, 7));
           }
         }}
