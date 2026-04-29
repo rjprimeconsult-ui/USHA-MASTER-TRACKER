@@ -26,6 +26,13 @@
 
 export const ANNOUNCEMENTS = [
   {
+    id: '2026-04-29-lead-dedup',
+    date: '2026-04-29',
+    emoji: '🔁',
+    title: 'No more duplicate leads on re-import',
+    body: 'Re-uploading a SalesReport, Excel, or any lead file now skips leads that already exist in your tracker. Matches by policy number first (handling multi-policy customers correctly), then by name + phone. You\'ll see a "skipped N duplicates" toast.',
+  },
+  {
     id: '2026-04-28-smart-platforms',
     date: '2026-04-28',
     emoji: '⚡',
