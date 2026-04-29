@@ -26,6 +26,7 @@ import ActivityForm from './ActivityForm';
 import ConfirmDialog from './ConfirmDialog';
 import NoPhiBanner from './NoPhiBanner';
 import ImpersonationBanner from './ImpersonationBanner';
+import AnnouncementBanner from './AnnouncementBanner';
 import ScreenshotImport from './ScreenshotImport';
 import Toast from './Toast';
 import AdvanceMonthsHistoryEditor from './AdvanceMonthsHistoryEditor';
@@ -1105,6 +1106,9 @@ export default function LeadTracker() {
 
       {/* Impersonation banner (shown only when admin is signed in as another user) */}
       <ImpersonationBanner />
+
+      {/* What's-new announcements (top of app, dismissed per-user via cloud sync) */}
+      <AnnouncementBanner onNavigate={(v) => setView(v)} />
 
       {/* One-time no-PHI acknowledgement (gates the app on first sign-in) */}
       <NoPhiBanner />
