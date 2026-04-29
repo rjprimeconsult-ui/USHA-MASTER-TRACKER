@@ -179,28 +179,32 @@ export default function AgentSettingsPanel({ open, onClose }) {
                     </button>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                    {Object.entries(vendorMemory).slice(0, 200).map(([vendor, info]) => (
-                      <div key={vendor} className="flex items-center justify-between gap-2 px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs">
-                        <div className="min-w-0 flex-1">
-                          <div className="font-semibold text-slate-900 truncate">{vendor}</div>
-                          <div className="text-[10px] text-slate-500">
-                            {info.direction === 'platform'
-                              ? `→ Platform / ${info.platformId}`
-                              : `→ ${info.direction || 'expense'} / ${info.category || '?'}`}
+                    {Object.entries(vendorMemory).slice(0, 200).map(([vendor, info]) => {
+                      const safe = info && typeof info === 'object' ? info : {};
+                      return (
+                        <div key={vendor} className="flex items-center justify-between gap-2 px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs">
+                          <div className="min-w-0 flex-1">
+                            <div className="font-semibold text-slate-900 truncate">{vendor}</div>
+                            <div className="text-[10px] text-slate-500">
+                              {safe.direction === 'platform'
+                                ? `→ Platform / ${safe.platformId || '?'}`
+                                : `→ ${safe.direction || 'expense'} / ${safe.category || '?'}`}
+                            </div>
                           </div>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const next = { ...vendorMemory }; delete next[vendor];
+                              setVendorMemory(next); await saveVendorMemory(next);
+                            }}
+                            title="Forget this mapping"
+                            className="text-slate-400 hover:text-red-600 p-1"
+                          >
+                            <Trash2 size={11} />
+                          </button>
                         </div>
-                        <button
-                          onClick={async () => {
-                            const next = { ...vendorMemory }; delete next[vendor];
-                            setVendorMemory(next); await saveVendorMemory(next);
-                          }}
-                          title="Forget this mapping"
-                          className="text-slate-400 hover:text-red-600 p-1"
-                        >
-                          <Trash2 size={11} />
-                        </button>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                   {vendorMemoryCount > 200 && (
                     <div className="text-[11px] text-slate-400 text-center pt-2">
@@ -284,26 +288,40 @@ function RubricField({ label, hint, value, onChange }) {
 }
 
 function HistoryRow({ entry, expanded, onToggle, onDelete }) {
-  const total = (entry.counts?.transactions || 0) + (entry.counts?.platforms || 0) + (entry.counts?.leads || 0) + (entry.counts?.prospects || 0);
-  const isError = !!entry.error;
+  const total = (entry?.counts?.transactions || 0) + (entry?.counts?.platforms || 0) + (entry?.counts?.leads || 0) + (entry?.counts?.prospects || 0);
+  const isError = !!entry?.error;
+  // Note: outer element is a div + onClick rather than a <button> so the
+  // nested delete button doesn't violate the no-button-in-button HTML rule
+  // (React 19 / Next 16 hydration is strict about this).
   return (
     <div className={`border rounded-lg overflow-hidden ${isError ? 'border-red-200 bg-red-50/40' : 'border-slate-200 bg-white'}`}>
-      <button onClick={onToggle} className="w-full flex items-center gap-2 p-3 hover:bg-slate-50/60 text-left">
-        {expanded ? <ChevronDown size={14} className="text-slate-400" /> : <ChevronRight size={14} className="text-slate-400" />}
-        {isError ? <AlertCircle size={14} className="text-red-600" /> : <FileText size={14} className="text-slate-500" />}
+      <div
+        onClick={onToggle}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } }}
+        className="w-full flex items-center gap-2 p-3 hover:bg-slate-50/60 text-left cursor-pointer"
+      >
+        {expanded ? <ChevronDown size={14} className="text-slate-400 flex-shrink-0" /> : <ChevronRight size={14} className="text-slate-400 flex-shrink-0" />}
+        {isError ? <AlertCircle size={14} className="text-red-600 flex-shrink-0" /> : <FileText size={14} className="text-slate-500 flex-shrink-0" />}
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-semibold text-slate-900 truncate">{entry.filename}</div>
+          <div className="text-sm font-semibold text-slate-900 truncate">{entry?.filename || 'upload'}</div>
           <div className="text-[10px] text-slate-500">
-            {new Date(entry.runAt).toLocaleString()} · {entry.kind}
-            {entry.durationMs > 0 && ` · ${(entry.durationMs / 1000).toFixed(1)}s`}
+            {entry?.runAt ? new Date(entry.runAt).toLocaleString() : '—'} · {entry?.kind || 'unknown'}
+            {entry?.durationMs > 0 && ` · ${(entry.durationMs / 1000).toFixed(1)}s`}
             {!isError && total > 0 && ` · ${total} rows extracted`}
           </div>
         </div>
-        {isError && <span className="text-[9px] font-bold uppercase bg-red-100 text-red-700 border border-red-300 rounded px-1.5 py-0.5">Failed</span>}
-        <button onClick={(e) => { e.stopPropagation(); onDelete(); }} title="Delete entry" className="text-slate-400 hover:text-red-600 p-1">
+        {isError && <span className="text-[9px] font-bold uppercase bg-red-100 text-red-700 border border-red-300 rounded px-1.5 py-0.5 flex-shrink-0">Failed</span>}
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onDelete(); }}
+          title="Delete entry"
+          className="text-slate-400 hover:text-red-600 p-1 flex-shrink-0"
+        >
           <Trash2 size={11} />
         </button>
-      </button>
+      </div>
       {expanded && (
         <div className="px-3 pb-3 pt-1 border-t border-slate-100 text-xs space-y-2">
           {isError ? (
