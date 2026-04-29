@@ -26,6 +26,14 @@
 
 export const ANNOUNCEMENTS = [
   {
+    id: '2026-04-29-smart-prospects',
+    date: '2026-04-29',
+    emoji: '✨',
+    title: 'Smart Prospect Import — drop any pipeline file',
+    body: 'Prospects tab now has a "Smart Import (AI)" button. Drop your existing pipeline spreadsheet, a CRM export, or even a screenshot — AI extracts every prospect with their stage, source, appointment time, and situation notes. Already-existing prospects are pre-skipped.',
+    cta: { label: 'Open Prospects', view: 'prospects' },
+  },
+  {
     id: '2026-04-29-chatbot',
     date: '2026-04-29',
     emoji: '💬',

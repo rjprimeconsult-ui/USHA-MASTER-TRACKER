@@ -11,6 +11,7 @@ import { newProspect, defaultProspectSettings, detectFieldFromHeader, detectStag
 import { DEFAULT_PROSPECT_STAGES } from '@/lib/constants';
 import * as XLSX from 'xlsx';
 import ProspectForm from '../ProspectForm';
+import SmartProspectImportWizard from '../SmartProspectImportWizard';
 
 const inp = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500';
 
@@ -751,6 +752,7 @@ export default function ProspectsView({
   const [viewing, setViewing] = useState(null);  // read-only detail bubble
   const [showSettings, setShowSettings] = useState(false);
   const [importFile, setImportFile] = useState(null);
+  const [showSmartImport, setShowSmartImport] = useState(false);
   const [selected, setSelected] = useState(() => new Set());
   const fileRef = useRef(null);
   const dragId = useRef(null);
@@ -921,9 +923,14 @@ export default function ProspectsView({
         </div>
         <div className="flex items-center gap-2">
           <input type="file" ref={fileRef} accept=".csv,.xlsx,.xls" onChange={onPickFile} className="hidden" />
+          <button onClick={() => setShowSmartImport(true)}
+            className="bg-gradient-to-br from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white rounded-lg px-3 py-2 text-sm font-semibold flex items-center gap-1.5 shadow-md shadow-indigo-500/30"
+            title="Drop any pipeline file (Excel, CSV, PDF, screenshot) — AI extracts every prospect">
+            ✨ Smart Import (AI)
+          </button>
           <button onClick={() => fileRef.current?.click()}
             className="border border-slate-200 hover:bg-slate-50 rounded-lg px-3 py-2 text-sm font-semibold flex items-center gap-1.5">
-            <Upload size={14} /> Import
+            <Upload size={14} /> Classic
           </button>
           <button onClick={() => setShowSettings(true)}
             className="border border-slate-200 hover:bg-slate-50 rounded-lg px-3 py-2 text-sm font-semibold flex items-center gap-1.5">
@@ -1150,6 +1157,17 @@ export default function ProspectsView({
       <SettingsModal open={showSettings} settings={cfg} onSave={onSaveSettings} onClose={() => setShowSettings(false)} />
       <ImportWizard open={!!importFile} file={importFile} settings={cfg} prospects={prospects}
         onImport={onImportDone} onClose={() => setImportFile(null)} />
+      <SmartProspectImportWizard
+        open={showSmartImport}
+        onClose={() => setShowSmartImport(false)}
+        stages={cfg.stages}
+        existingProspects={prospects}
+        onImport={(newProspects, opts) => {
+          if (newProspects.length) onBulkAdd(newProspects);
+          const dupNote = opts?.duplicatesSkipped ? ` · ${opts.duplicatesSkipped} duplicate${opts.duplicatesSkipped !== 1 ? 's' : ''} skipped` : '';
+          alert(`Imported ${newProspects.length} prospect${newProspects.length !== 1 ? 's' : ''}${dupNote}.`);
+        }}
+      />
     </div>
   );
 }
