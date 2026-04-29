@@ -700,8 +700,22 @@ function StatementReconcile({ leads, onApply }) {
   // Manual mappings the user has confirmed for previously-unmatched customers.
   // Keyed by customer nameKey → leadId.
   const [manualMatches, setManualMatches] = useState({});
+  // AI parse mode: when on, route PDFs through /api/parse-statement-ai
+  // instead of the regex-based parseStatementPdf. Output shape matches.
+  const [aiMode, setAiMode] = useState(false);
+  const [aiUsage, setAiUsage] = useState(null); // { inputTokens, cachedReadTokens, outputTokens }
 
-  const reset = () => { setStatus('idle'); setError(''); setFiles([]); setStatements([]); setPlan(null); setManualMatches({}); };
+  const reset = () => { setStatus('idle'); setError(''); setFiles([]); setStatements([]); setPlan(null); setManualMatches({}); setAiUsage(null); };
+
+  // Parse one PDF via the AI route, return same shape as parseStatementPdf
+  const parseStatementWithAI = async (file) => {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch('/api/parse-statement-ai', { method: 'POST', body: form });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    return data;
+  };
 
   const handleFiles = async (fileList) => {
     if (!fileList || fileList.length === 0) return;
@@ -713,10 +727,24 @@ function StatementReconcile({ leads, onApply }) {
       setStatus('error');
       return;
     }
-    setFiles(fArr); setStatus('parsing'); setError('');
+    setFiles(fArr); setStatus('parsing'); setError(''); setAiUsage(null);
     try {
-      // Parse all in parallel
-      const parsedArr = await Promise.all(fArr.map(f => parseStatementPdf(f).then(p => ({ file: f, parsed: p }))));
+      // Parse all in parallel — either via the regex parser or the AI route
+      const parser = aiMode ? parseStatementWithAI : parseStatementPdf;
+      const parsedArr = await Promise.all(fArr.map(f => parser(f).then(p => ({ file: f, parsed: p }))));
+
+      // Sum AI usage across all files for the cost telemetry footer
+      if (aiMode) {
+        const totals = parsedArr.reduce((acc, { parsed }) => {
+          const u = parsed?._usage;
+          if (!u) return acc;
+          acc.inputTokens += u.inputTokens || 0;
+          acc.cachedReadTokens += u.cachedReadTokens || 0;
+          acc.outputTokens += u.outputTokens || 0;
+          return acc;
+        }, { inputTokens: 0, cachedReadTokens: 0, outputTokens: 0 });
+        setAiUsage(totals);
+      }
 
       // Combine all advance/chargeback/reinstatement rows into one merged parsed object.
       // Use the FIRST statement's header for owner/tier info (they should all
@@ -855,25 +883,54 @@ function StatementReconcile({ leads, onApply }) {
   return (
     <div className="space-y-4">
       {status === 'idle' && (
-        <div
-          onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={(e) => { e.preventDefault(); setDragging(false); handleFiles(e.dataTransfer?.files); }}
-          className={`border-2 border-dashed rounded-2xl p-10 text-center transition ${dragging ? 'border-indigo-500 bg-indigo-50' : 'border-slate-300 bg-white'}`}
-        >
-          <div className="w-16 h-16 mx-auto rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center mb-4">
-            <FileText size={28} />
+        <>
+          {/* Parser mode toggle: regex (default) vs AI */}
+          <div className="bg-white border border-slate-200 rounded-xl p-3 flex items-center justify-between gap-3 flex-wrap">
+            <div className="text-xs">
+              <span className="font-bold text-slate-700">Parser mode:</span>
+              <span className="text-slate-500 ml-2">
+                {aiMode
+                  ? 'AI handles any USHA layout — recommended for unusual statements.'
+                  : 'Fast regex parser — works on standard USHA weekly statements.'}
+              </span>
+            </div>
+            <div className="flex border border-slate-200 rounded-lg overflow-hidden text-xs">
+              <button onClick={() => setAiMode(false)}
+                className={`px-3 py-1.5 font-semibold ${!aiMode ? 'bg-slate-700 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>
+                Standard
+              </button>
+              <button onClick={() => setAiMode(true)}
+                className={`px-3 py-1.5 font-semibold ${aiMode ? 'bg-gradient-to-br from-indigo-600 to-violet-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>
+                ✨ Smart (AI)
+              </button>
+            </div>
           </div>
-          <h2 className="text-lg font-semibold text-slate-900">Drop your Weekly Advance Statements</h2>
-          <p className="text-sm text-slate-600 mt-1">One or many USHA weekly PDFs. Drop them all at once — we&apos;ll parse each, sum up advances per customer across all weeks, and apply the combined total.</p>
-          <label className="mt-5 inline-block">
-            <input type="file" accept=".pdf" multiple className="hidden" onChange={(e) => handleFiles(e.target.files)} />
-            <span className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium cursor-pointer inline-flex items-center gap-2">
-              <FileText size={16} /> Choose PDF(s)
-            </span>
-          </label>
-          <div className="text-xs text-slate-500 mt-3">Hold Ctrl (Cmd on Mac) to select multiple files at once.</div>
-        </div>
+          <div
+            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={(e) => { e.preventDefault(); setDragging(false); handleFiles(e.dataTransfer?.files); }}
+            className={`border-2 border-dashed rounded-2xl p-10 text-center transition ${dragging ? 'border-indigo-500 bg-indigo-50' : aiMode ? 'border-violet-300 bg-gradient-to-br from-indigo-50/30 to-violet-50/30' : 'border-slate-300 bg-white'}`}
+          >
+            <div className={`w-16 h-16 mx-auto rounded-full flex items-center justify-center mb-4 ${aiMode ? 'bg-gradient-to-br from-indigo-500 to-violet-600 text-white' : 'bg-indigo-100 text-indigo-600'}`}>
+              {aiMode ? <span className="text-2xl">✨</span> : <FileText size={28} />}
+            </div>
+            <h2 className="text-lg font-semibold text-slate-900">
+              {aiMode ? 'Smart Parse — Drop any USHA statement PDF' : 'Drop your Weekly Advance Statements'}
+            </h2>
+            <p className="text-sm text-slate-600 mt-1">
+              {aiMode
+                ? 'AI handles any layout — weekly advance, account summary, scanned/image PDFs. Output flows through the same matching pipeline.'
+                : 'One or many USHA weekly PDFs. Drop them all at once — we’ll parse each, sum up advances per customer across all weeks, and apply the combined total.'}
+            </p>
+            <label className="mt-5 inline-block">
+              <input type="file" accept=".pdf" multiple className="hidden" onChange={(e) => handleFiles(e.target.files)} />
+              <span className={`px-4 py-2 rounded-lg text-sm font-medium cursor-pointer inline-flex items-center gap-2 text-white ${aiMode ? 'bg-gradient-to-br from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 shadow-md shadow-indigo-500/30' : 'bg-indigo-600 hover:bg-indigo-700'}`}>
+                <FileText size={16} /> Choose PDF(s)
+              </span>
+            </label>
+            <div className="text-xs text-slate-500 mt-3">Hold Ctrl (Cmd on Mac) to select multiple files at once.</div>
+          </div>
+        </>
       )}
 
       {status === 'parsing' && (
@@ -1497,9 +1554,19 @@ function MonthlyPayoutUpload({ onApply }) {
   const [error, setError] = useState('');
   const [results, setResults] = useState([]); // [{file, bonusRows, rawText, error}]
   const [showDebug, setShowDebug] = useState(false);
+  const [aiMode, setAiMode] = useState(false);
 
   const reset = () => {
     setFiles([]); setStatus('idle'); setError(''); setResults([]); setShowDebug(false);
+  };
+
+  const parseStatementWithAI = async (file) => {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch('/api/parse-statement-ai', { method: 'POST', body: form });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    return data;
   };
 
   const onFiles = async (selected) => {
@@ -1514,9 +1581,10 @@ function MonthlyPayoutUpload({ onApply }) {
     setFiles(fArr); setStatus('parsing'); setError('');
     try {
       const out = [];
+      const parser = aiMode ? parseStatementWithAI : parseStatementPdf;
       for (const f of fArr) {
         try {
-          const parsed = await parseStatementPdf(f);
+          const parsed = await parser(f);
           // For this mode we only care about Account Summary bonuses (RENEWAL_BONUS-typed).
           // But we also accept any bonusRows that show a Total > 0 in case of variants.
           out.push({ file: f, bonusRows: parsed.bonusRows || [], rawText: parsed._rawText || '' });
@@ -1563,14 +1631,35 @@ function MonthlyPayoutUpload({ onApply }) {
   if (status === 'idle' || status === 'error') {
     return (
       <div className="space-y-4">
-        <div className="bg-white border-2 border-dashed border-slate-300 rounded-xl p-10 text-center">
-          <Wallet className="mx-auto mb-3 text-indigo-500" size={36} />
-          <h2 className="text-lg font-semibold text-slate-900">Drop your Account Summary PDFs</h2>
+        <div className="bg-white border border-slate-200 rounded-xl p-3 flex items-center justify-between gap-3 flex-wrap">
+          <div className="text-xs">
+            <span className="font-bold text-slate-700">Parser mode:</span>
+            <span className="text-slate-500 ml-2">
+              {aiMode ? 'AI handles any layout — recommended for unusual or scanned PDFs.' : 'Fast regex parser — works on standard Account Summary PDFs.'}
+            </span>
+          </div>
+          <div className="flex border border-slate-200 rounded-lg overflow-hidden text-xs">
+            <button onClick={() => setAiMode(false)}
+              className={`px-3 py-1.5 font-semibold ${!aiMode ? 'bg-slate-700 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>
+              Standard
+            </button>
+            <button onClick={() => setAiMode(true)}
+              className={`px-3 py-1.5 font-semibold ${aiMode ? 'bg-gradient-to-br from-indigo-600 to-violet-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>
+              ✨ Smart (AI)
+            </button>
+          </div>
+        </div>
+        <div className={`bg-white border-2 border-dashed rounded-xl p-10 text-center ${aiMode ? 'border-violet-300 bg-gradient-to-br from-indigo-50/30 to-violet-50/30' : 'border-slate-300'}`}>
+          {aiMode ? <span className="text-3xl block mb-3">✨</span> : <Wallet className="mx-auto mb-3 text-indigo-500" size={36} />}
+          <h2 className="text-lg font-semibold text-slate-900">
+            {aiMode ? 'Smart Parse — Drop your Account Summary PDFs' : 'Drop your Account Summary PDFs'}
+          </h2>
           <p className="text-sm text-slate-600 mt-1 max-w-xl mx-auto">
             One-page PDFs from the USHA portal &ldquo;Print Summary&rdquo; button. Each captures one month&rsquo;s payout
             (Primary + Secondary + Association Bonus) — flows into Books → Other Income.
+            {aiMode && ' AI mode handles scanned/image PDFs and any layout variants.'}
           </p>
-          <label className="mt-4 inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-4 py-2 text-sm font-medium cursor-pointer">
+          <label className={`mt-4 inline-flex items-center gap-2 text-white rounded-lg px-4 py-2 text-sm font-medium cursor-pointer ${aiMode ? 'bg-gradient-to-br from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 shadow-md shadow-indigo-500/30' : 'bg-indigo-600 hover:bg-indigo-700'}`}>
             <Upload size={14} /> Choose PDFs
             <input
               type="file"
