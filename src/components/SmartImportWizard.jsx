@@ -530,6 +530,7 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
                   <tbody>
                     {sortedEditIndices.map(i => {
                       const t = edits[i];
+                      if (!t) return null; // defensive: edits could have shrunk while sort ran
                       const skipped = skipMask.has(i);
                       const cats = t.direction === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
                       return (
