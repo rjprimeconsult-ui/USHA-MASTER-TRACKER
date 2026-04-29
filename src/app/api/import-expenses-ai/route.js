@@ -34,8 +34,9 @@ import {
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-// Allow up to 60s — Vision on a multi-page PDF can take a while.
-export const maxDuration = 60;
+// Allow up to 5 minutes — Vision on a multi-page bank statement PDF
+// (Chase, Amex, etc) can take 60-180s on cold starts.
+export const maxDuration = 300;
 
 // Single source of truth — derive ID arrays from the canonical defs in
 // src/lib/constants.js so adding/renaming a category in one place updates
@@ -179,15 +180,31 @@ function extractXlsxText(buffer) {
   return parts.join('\n');
 }
 
+// Race a promise against a timer — if the PDF extractor hangs on a
+// malformed/encrypted file we don't want it eating the whole 300s budget.
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(
+      () => reject(new Error(`${label} timed out after ${ms}ms`)),
+      ms
+    )),
+  ]);
+}
+
 async function extractPdfText(buffer) {
   // pdfjs-dist legacy build runs in Node without a worker
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
   const data = new Uint8Array(buffer);
-  const doc = await pdfjs.getDocument({ data, useSystemFonts: true, disableFontFace: true }).promise;
+  const doc = await withTimeout(
+    pdfjs.getDocument({ data, useSystemFonts: true, disableFontFace: true }).promise,
+    20000,
+    'PDF document load'
+  );
   const pages = [];
   for (let i = 1; i <= doc.numPages; i++) {
-    const page = await doc.getPage(i);
-    const content = await page.getTextContent();
+    const page = await withTimeout(doc.getPage(i), 5000, `PDF page ${i} load`);
+    const content = await withTimeout(page.getTextContent(), 5000, `PDF page ${i} text`);
     const txt = content.items.map(it => it.str).join(' ');
     pages.push(`--- Page ${i} ---\n${txt}`);
   }
@@ -211,6 +228,20 @@ function detectFileType(filename, buffer) {
 // ---- Main handler ----
 
 export async function POST(req) {
+  // Top-level safety net: ANY uncaught error becomes a JSON error response,
+  // never a Vercel HTML/plain-text page that the client can't parse.
+  try {
+    return await handlePOST(req);
+  } catch (e) {
+    console.error('[import-expenses-ai] Uncaught error:', e);
+    return Response.json({
+      error: `Server error: ${e?.message || String(e)}`,
+      fallback: true,
+    }, { status: 500 });
+  }
+}
+
+async function handlePOST(req) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return Response.json({

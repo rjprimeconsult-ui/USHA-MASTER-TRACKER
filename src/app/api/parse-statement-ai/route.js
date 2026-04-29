@@ -15,7 +15,7 @@ import Anthropic from '@anthropic-ai/sdk';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 const STATEMENT_RUBRIC = `
 You are extracting structured data from a USHEALTH ADVISORS agent statement PDF. There are two formats:

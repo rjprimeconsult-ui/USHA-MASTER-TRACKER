@@ -83,7 +83,29 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
       if (customCats.length > 0) form.append('customCategories', JSON.stringify(customCats));
 
       const res = await fetch('/api/import-expenses-ai', { method: 'POST', body: form });
-      const data = await res.json();
+
+      // Resilient response parsing — when Vercel itself times out / returns
+      // a 504 gateway error, the body is a plain HTML/text page, not JSON.
+      // Reading it as text first and surfacing the real reason keeps the
+      // user from seeing a confusing "Unexpected token 'A'" parse error.
+      const rawText = await res.text();
+      let data;
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        // Not JSON. Most common cause: Vercel function exceeded maxDuration.
+        if (res.status === 504 || /timeout|gateway/i.test(rawText)) {
+          throw new Error(
+            `Server timed out processing this file (took longer than 5 minutes). ` +
+            `This usually means the PDF is image-based with many pages. Try splitting ` +
+            `the statement into one page per file, or export it as CSV from your bank instead.`
+          );
+        }
+        throw new Error(
+          `Server returned a non-JSON response (HTTP ${res.status}). ` +
+          `Snippet: ${rawText.slice(0, 200)}`
+        );
+      }
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
 
       // Pre-fill rows from vendor memory: when a row's vendor was previously

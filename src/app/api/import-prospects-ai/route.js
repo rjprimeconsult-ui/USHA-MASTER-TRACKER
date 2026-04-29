@@ -19,7 +19,7 @@ import {
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 // Single source of truth — derive ID arrays from src/lib/constants.js so a
 // new prospect stage anywhere in the app updates the AI rubric automatically.

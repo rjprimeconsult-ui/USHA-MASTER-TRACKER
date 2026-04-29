@@ -27,7 +27,7 @@ import {
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 // Single source of truth — derive ID arrays from the canonical defs in
 // src/lib/constants.js. Adding/renaming a stage or product in one place
