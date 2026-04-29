@@ -1196,9 +1196,12 @@ export default function LeadTracker() {
         open={showScreenshotImport}
         onClose={() => setShowScreenshotImport(false)}
         onCreateLead={(patch) => {
+          // Route through importLeads() so screenshot imports get the same
+          // universal dedup as every other path. Re-importing the same
+          // screenshot for the same customer skips/merges instead of
+          // creating a duplicate.
           const newLead = mkLead(patch);
-          setLeads(prev => [newLead, ...prev]);
-          showToast('Lead created from screenshot');
+          importLeads([newLead], { batchId: `screenshot_${uid()}`, mode: 'skip' });
           setView('leads');
         }}
       />
