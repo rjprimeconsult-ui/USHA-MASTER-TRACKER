@@ -26,6 +26,14 @@
 
 export const ANNOUNCEMENTS = [
   {
+    id: '2026-04-28-smart-platforms',
+    date: '2026-04-28',
+    emoji: '⚡',
+    title: 'Smart Import now populates Platforms too',
+    body: 'When you drop a file with Ringy, TextDrip, or VanillaSoft charges, those rows now route to the Platforms tab automatically (instead of getting buried under Books → Software). Feeds your True CPA calculation correctly.',
+    cta: { label: 'Open Books', view: 'books' },
+  },
+  {
     id: '2026-04-28-smart-statement',
     date: '2026-04-28',
     emoji: '✨',
