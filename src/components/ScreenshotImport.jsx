@@ -113,6 +113,19 @@ export default function ScreenshotImport({ open, onClose, onCreateLead }) {
         edits.effectiveDate && `Effective: ${edits.effectiveDate}`,
         edits.paidToDate && `Paid through: ${edits.paidToDate}`,
       ].filter(Boolean).join(' · '),
+      // Family members on the policy — protects against partial-issuance
+      // commission loss. Statement matcher will index this lead under each
+      // dependent's name too, so a payout under the spouse/dependent name
+      // routes back to this same lead.
+      dependents: Array.isArray(edits.dependents)
+        ? edits.dependents
+            .filter(d => d?.name?.trim())
+            .map(d => ({
+              name: d.name.trim(),
+              relationship: d.relationship || 'other',
+              dob: d.dob || '',
+            }))
+        : [],
     };
     onCreateLead(lead);
     onClose();
@@ -262,6 +275,68 @@ export default function ScreenshotImport({ open, onClose, onCreateLead }) {
                     })}
                   </div>
                 </Field>
+
+                {/* Family members on the policy — protects partial-issuance commissions */}
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-[11px] font-bold text-amber-900 tracking-wider uppercase">Family Members on Policy</div>
+                      <div className="text-[10px] text-amber-700 mt-0.5">If primary is declined but a dependent gets approved, the statement comes back under their name. Adding them here makes sure the commission still routes to this lead.</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setEdit({ dependents: [...(edits.dependents || []), { name: '', relationship: 'spouse', dob: '' }] })}
+                      className="text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white rounded px-2 py-1 flex-shrink-0"
+                    >
+                      + Add
+                    </button>
+                  </div>
+                  {(edits.dependents || []).length === 0 ? (
+                    <div className="text-[11px] text-amber-700/70 italic">None detected. Click "Add" to add manually.</div>
+                  ) : (
+                    <div className="space-y-1">
+                      {(edits.dependents || []).map((dep, i) => (
+                        <div key={i} className="flex items-center gap-1.5 bg-white border border-amber-200 rounded px-1.5 py-1">
+                          <input
+                            className="flex-1 min-w-0 border border-slate-200 rounded px-1.5 py-0.5 text-xs"
+                            placeholder="Full name"
+                            value={dep.name || ''}
+                            onChange={e => setEdit({
+                              dependents: edits.dependents.map((d, j) => j === i ? { ...d, name: e.target.value } : d)
+                            })}
+                          />
+                          <select
+                            className="border border-slate-200 rounded px-1 py-0.5 text-[11px] w-20"
+                            value={dep.relationship || 'spouse'}
+                            onChange={e => setEdit({
+                              dependents: edits.dependents.map((d, j) => j === i ? { ...d, relationship: e.target.value } : d)
+                            })}
+                          >
+                            <option value="spouse">Spouse</option>
+                            <option value="child">Child</option>
+                            <option value="other">Other</option>
+                          </select>
+                          <input
+                            type="date"
+                            className="border border-slate-200 rounded px-1 py-0.5 text-[11px] w-32"
+                            value={dep.dob || ''}
+                            onChange={e => setEdit({
+                              dependents: edits.dependents.map((d, j) => j === i ? { ...d, dob: e.target.value } : d)
+                            })}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setEdit({ dependents: edits.dependents.filter((_, j) => j !== i) })}
+                            className="text-red-500 hover:bg-red-50 px-1 py-0.5 rounded text-xs"
+                            title="Remove"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
 
                 {/* Tracker fields — not in screenshot, agent provides */}
                 <div className="border-t border-slate-200 pt-3 mt-2">

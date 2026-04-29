@@ -209,6 +209,55 @@ function isPlausiblePolicyId(s) {
  * Parse the raw OCR text into a structured deal record.
  * Every field is optional — caller can review + edit before saving.
  */
+// Extract structured dependents from a USHA portal screenshot's
+// "Dependents" panel. Returns an array of { name, relationship, dob }.
+// Skips the primary applicant if their name accidentally falls inside
+// the section (defensive — some layouts show the primary at the top).
+function extractDependents(rawText, primaryName) {
+  if (!rawText) return [];
+  const flat = String(rawText).replace(/\s+/g, ' ');
+  // Find the "Dependents" section header and capture the chunk that follows
+  // up to the next major section ("APS Notes", "Call Notes", "Policies",
+  // "Print Detail", "Reset", or end of text).
+  const sectionRe = /Dependents\s+([\s\S]*?)(?=APS\s*Notes|Call\s*Notes|Policies|Print\s*Detail|Primary\s*Information|Reset|$)/i;
+  const sectionM = flat.match(sectionRe);
+  if (!sectionM) return [];
+  const section = sectionM[1];
+
+  // Each dependent row has these signals (any subset):
+  //   - ALL-CAPS name (1+ words)
+  //   - Relationship word: Dependent | Spouse | Child
+  //   - DOB pattern: m/d/yyyy or m/d/yy
+  //   - Gender: Male | Female
+  //
+  // The cleanest anchor is the relationship label. Match every occurrence
+  // and capture the all-caps name preceding it + the date+gender after.
+  const ROW_RE = /\b([A-Z][A-Z'.\- ]{1,40}[A-Z])\s+(Dependent|Spouse|Child)\b[\s\S]{0,80}?(?:(\d{1,2}[\/\-]\d{1,2}[\/\-](?:\d{4}|\d{2})))?(?:[\s\S]{0,30}?\(?\s*\d{1,3}\s*\)?)?(?:[\s\S]{0,30}?\b(Male|Female)\b)?/gi;
+
+  const out = [];
+  const seen = new Set();
+  const primaryKey = String(primaryName || '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+  for (const m of section.matchAll(ROW_RE)) {
+    const rawName = (m[1] || '').replace(/\s+/g, ' ').trim();
+    if (!rawName || rawName.length < 3) continue;
+    const titled = titleCase(rawName);
+    const key = titled.toLowerCase();
+    if (seen.has(key)) continue;
+    if (key === primaryKey) continue; // skip primary if it bled in
+    seen.add(key);
+
+    const rel = String(m[2] || 'other').toLowerCase();
+    const relationship = rel === 'spouse' ? 'spouse' : rel === 'child' ? 'child' : 'other';
+    // "Dependent" by itself doesn't tell us spouse vs child — leave as 'other'
+    // unless we can infer from age (DOB).
+
+    const dob = m[3] ? toIsoDate(m[3]) : '';
+    out.push({ name: titled, relationship, dob });
+  }
+  return out;
+}
+
 export function parseDealFromText(rawText) {
   const text = String(rawText || '').replace(/[''`]/g, "'");
   const flat = text.replace(/\s+/g, ' ').trim();
@@ -231,6 +280,7 @@ export function parseDealFromText(rawText) {
     indvOrFamily: 'Indv',
     products: [],         // canonical IDs (add-ons)
     mainProduct: '',      // canonical ID
+    dependents: [],       // [{ name, relationship, dob }]
     confidence: {},
   };
 
@@ -302,6 +352,22 @@ export function parseDealFromText(rawText) {
   if (/\bDependent(s)?\b/i.test(text)) {
     out.indvOrFamily = 'Family';
   }
+
+  // ---- Structured dependent extraction ----
+  //
+  // The USHA portal "Dependents" panel lists each family member as:
+  //   <ALL CAPS NAME>   <Relationship>     (e.g. "SCOTTY ABLES   Dependent")
+  //   <m/d/yyyy or m/d/yy> (<age>)         (e.g. "12/23/2025 (0)")
+  //   <Male|Female>
+  //
+  // After OCR + whitespace flattening these often land as a continuous
+  // string like:
+  //   "Dependents Q SCOTTY ABLES Dependent A 12/23/2025 (0) Male ..."
+  // (Q / A are icon glyphs that OCR converts to letters — we ignore them.)
+  //
+  // Strategy: find the "Dependents" section header, then within the next
+  // ~600 chars, repeatedly match: <name> <relationship> <date+age?> <gender?>
+  out.dependents = extractDependents(text, out.name);
 
   return out;
 }
