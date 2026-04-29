@@ -52,11 +52,19 @@ const CATEGORY_RUBRIC = `
 You are extracting transactions from financial documents for an insurance agent's bookkeeping app. Each row must be routed to ONE of three buckets:
 
   1) PLATFORMS — CRM platform charges that get tracked separately from Books because they feed the agent's True-CPA calculation. Use this whenever a row clearly relates to one of:
-       - TD (TextDrip): "Text Creds", "TextDrip", "TextDrip credits", "td credits", any reference to TextDrip subscription/refill.
-       - RINGY: "Ringy", "Ringy credits", "Ringy subscription".
+       - TD (TextDrip): "Text Creds", "TextDrip", "TextDrip credits", "td credits", "TXTDRIP", any reference to TextDrip subscription/refill.
+       - RINGY: "Ringy", "Ringy credits", "Ringy subscription", "RINGY.AI", "Ringy.com".
        - VANILLA (VanillaSoft): "VanillaSoft", "Vanilla Soft", "VS Creds", "VS credits", "cami's vs", "vsoft creds".
      For these rows, output a "platformExpenses[]" entry with platformId set to TD / RINGY / VANILLA — DO NOT also add them to "transactions".
-     Reason should be CREDIT REFILL when the row is a top-up (most "creds" / "credits" rows), MONTHLY SUBSCRIPTION when periodic, RENEWAL when explicitly a renewal, otherwise OTHER.
+
+     PLATFORM "vendor" FIELD — REQUIRED. Always copy the original transaction description from the file verbatim (e.g. "TEXTDRIP CREDS", "TEXTDRIP*MONTHLY", "RINGY CREDS REFILL"). The user reviews this in the wizard. Empty vendor strings are NOT acceptable.
+
+     PLATFORM "reason" — pick using these concrete patterns (do NOT default to OTHER for platform rows):
+       • CREDIT REFILL — variable / round-dollar top-ups: "creds", "credits", "credit refill", "refill", "topup", "top up", "buy credits". Most ad-hoc TextDrip/Ringy/VanillaSoft charges fall here. ALSO use this when the description is missing/blank but the amount is a typical refill range ($20-$500). When in doubt for a platform row, prefer CREDIT REFILL over OTHER.
+       • MONTHLY SUBSCRIPTION — recurring same-amount charges, "monthly", "subscription", "membership", "plan", "*Monthly", or canonical subscription prices (e.g. TextDrip ~$34.99/mo, Ringy ~$99-$149/mo). If you see the same amount on roughly the same day-of-month across multiple rows, it's MONTHLY SUBSCRIPTION.
+       • RENEWAL — only when the description literally says "renewal" or "annual renewal".
+       • CREDIT REFILL/RENEWAL — combo line items that mention both refill and renewal in one charge.
+       • OTHER — reserved for genuinely ambiguous platform charges (rare). Do NOT use OTHER as a lazy fallback for platform rows.
 
   2) BOOKS expenses — every other money-out item. Goes into "transactions[]" with direction = "expense" and one of the EXPENSE CATEGORIES below.
 
@@ -117,7 +125,11 @@ function buildTransactionSchema(allowedCategoryIds) {
           type: 'object',
           properties: {
             date: { type: 'string', description: 'YYYY-MM-DD' },
-            vendor: { type: 'string', description: 'Merchant or item description, terse' },
+            vendor: {
+              type: 'string',
+              description: 'REQUIRED. Original merchant or item description from the file, cleaned up (strip extra whitespace, remove trailing transaction codes/store numbers but keep the merchant name). Never empty — if the row has no merchant, use a short description of the line.',
+              minLength: 1,
+            },
             amount: { type: 'number', description: 'Absolute value, positive number' },
             direction: { type: 'string', enum: ['expense', 'income'] },
             category: { type: 'string', enum: allowedCategoryIds },
@@ -136,11 +148,19 @@ function buildTransactionSchema(allowedCategoryIds) {
             date: { type: 'string', description: 'YYYY-MM-DD' },
             platformId: { type: 'string', enum: PLATFORMS, description: 'TD = TextDrip, VANILLA = VanillaSoft' },
             amount: { type: 'number', description: 'Absolute value, positive number' },
-            reason: { type: 'string', enum: PLATFORM_REASONS },
-            vendor: { type: 'string', description: 'Original line-item description as printed' },
+            reason: {
+              type: 'string',
+              enum: PLATFORM_REASONS,
+              description: 'CREDIT REFILL is the default for platform top-ups. MONTHLY SUBSCRIPTION for recurring same-amount charges. RENEWAL only when the description says "renewal". OTHER is a last resort — never use OTHER just because the description is short.',
+            },
+            vendor: {
+              type: 'string',
+              description: 'REQUIRED. Original transaction description copied from the file verbatim — e.g. "TEXTDRIP CREDS", "RINGY*MONTHLY", "TXTDRIP CREDIT REFILL". Never empty.',
+              minLength: 1,
+            },
             notes: { type: 'string' },
           },
-          required: ['date', 'platformId', 'amount', 'reason'],
+          required: ['date', 'platformId', 'amount', 'reason', 'vendor'],
           additionalProperties: false,
         },
       },
