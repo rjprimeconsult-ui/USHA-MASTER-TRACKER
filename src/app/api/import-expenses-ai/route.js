@@ -37,7 +37,8 @@ export const maxDuration = 60;
 const EXPENSE_CATEGORIES = [
   'LEAD_INVESTMENT', 'OFFICE_RENT', 'OFFICE', 'SOFTWARE', 'MARKETING',
   'RECRUITING', 'TEAM_INCENTIVES', 'TRAVEL', 'VEHICLE', 'MEALS',
-  'PROFESSIONAL', 'PHONE_INTERNET', 'HEALTHCARE', 'COACHING', 'OTHER_EXPENSE',
+  'PROFESSIONAL', 'PHONE_INTERNET', 'HEALTHCARE', 'COACHING',
+  'AGENT_PAYOUT', 'OTHER_EXPENSE',
 ];
 const INCOME_CATEGORIES = [
   'BONUS', 'OVERRIDE', 'RENEWAL', 'OTHER_INCOME',
@@ -78,6 +79,7 @@ EXPENSE CATEGORIES (when direction = expense, NOT a platform row):
 - PHONE_INTERNET: AT&T, Verizon, Comcast, Xfinity, T-Mobile, internet.
 - HEALTHCARE: CVS, Walgreens, doctor, dentist, medical, dental, pharmacy.
 - COACHING: business coach, mentor, training, seminar, mastermind.
+- AGENT_PAYOUT: payments to downline / sub-agents — split commissions, agent payouts, override payouts to a producing agent. Look for descriptions like "agent split", "split to [name]", "payout to [agent]", "1099 to agent", "downline payout", Zelle/Venmo/CashApp transfers explicitly to another agent on the team. This is money the user pays OUT of their commissions to another agent. NOT to be confused with OVERRIDE income (which is money IN from the user's downline).
 - OTHER_EXPENSE: legitimate business expense that doesn't fit any other bucket.
 
 INCOME CATEGORIES (when amount represents money IN):

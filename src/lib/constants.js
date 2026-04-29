@@ -247,6 +247,7 @@ export const EXPENSE_CATEGORIES = [
   { id: 'PHONE_INTERNET', label: 'Phone / Internet',  color: '#06b6d4', badge: 'bg-cyan-100 text-cyan-700' },
   { id: 'HEALTHCARE',     label: 'Healthcare',        color: '#10b981', badge: 'bg-emerald-100 text-emerald-700' },
   { id: 'COACHING',       label: 'Coaching / Mentor', color: '#a855f7', badge: 'bg-purple-100 text-purple-700' },
+  { id: 'AGENT_PAYOUT',   label: 'Agent Payout / Split Commission', color: '#e11d48', badge: 'bg-rose-100 text-rose-700' },
   { id: 'OTHER_EXPENSE',  label: 'Other',             color: '#94a3b8', badge: 'bg-slate-100 text-slate-700' },
 ];
 
