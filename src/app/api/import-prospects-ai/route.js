@@ -209,12 +209,15 @@ export async function POST(req) {
   }
 
   let file;
+  let userRubric = '';
   try {
     const form = await req.formData();
     file = form.get('file');
     if (!file || typeof file === 'string') {
       return Response.json({ error: 'No file uploaded.' }, { status: 400 });
     }
+    const rubricRaw = form.get('userRubric');
+    if (typeof rubricRaw === 'string') userRubric = rubricRaw.slice(0, 1500);
   } catch (e) {
     return Response.json({ error: `Couldn't read upload: ${e.message}` }, { status: 400 });
   }
@@ -222,6 +225,11 @@ export async function POST(req) {
   const buffer = Buffer.from(await file.arrayBuffer());
   const filename = file.name || 'upload';
   const fileType = detectFileType(filename, buffer);
+
+  // Agent's free-form rubric overlay — appended to user message.
+  const userRubricText = userRubric.trim()
+    ? `\n\n--- AGENT'S OWN RUBRIC NOTES (apply on top of standard rubric) ---\n${userRubric.trim()}\n--- END AGENT NOTES ---`
+    : '';
 
   let userContent;
   let extractedHint = '';
@@ -232,7 +240,7 @@ export async function POST(req) {
       const truncated = text.length > 200000 ? text.slice(0, 200000) + '\n[...truncated]' : text;
       userContent = [{
         type: 'text',
-        text: `File: ${filename}\nType: ${fileType.toUpperCase()}\n\nExtract every prospect as structured JSON.\n\n--- FILE CONTENT ---\n${truncated}`,
+        text: `File: ${filename}\nType: ${fileType.toUpperCase()}\n\nExtract every prospect as structured JSON.${userRubricText}\n\n--- FILE CONTENT ---\n${truncated}`,
       }];
       extractedHint = `Parsed ${text.split('\n').length} rows from spreadsheet.`;
     } else if (fileType === 'pdf') {
@@ -241,7 +249,7 @@ export async function POST(req) {
       if (cleanText.length > 200) {
         userContent = [{
           type: 'text',
-          text: `File: ${filename}\nType: PDF (text-extractable)\n\nExtract every prospect as structured JSON.\n\n--- FILE CONTENT ---\n${pdfText.slice(0, 200000)}`,
+          text: `File: ${filename}\nType: PDF (text-extractable)\n\nExtract every prospect as structured JSON.${userRubricText}\n\n--- FILE CONTENT ---\n${pdfText.slice(0, 200000)}`,
         }];
         extractedHint = `Extracted ${cleanText.length} chars of text from PDF.`;
       } else {
@@ -253,7 +261,7 @@ export async function POST(req) {
           },
           {
             type: 'text',
-            text: `File: ${filename}\nType: PDF (image-based — sent for vision processing).\n\nExtract every prospect as structured JSON.`,
+            text: `File: ${filename}\nType: PDF (image-based — sent for vision processing).\n\nExtract every prospect as structured JSON.${userRubricText}`,
           },
         ];
         extractedHint = `Sent ${(buffer.length / 1024).toFixed(0)}KB PDF to vision.`;
@@ -268,7 +276,7 @@ export async function POST(req) {
         },
         {
           type: 'text',
-          text: `File: ${filename}\nType: Image (sent for vision processing).\n\nExtract every prospect visible in this image as structured JSON.`,
+          text: `File: ${filename}\nType: Image (sent for vision processing).\n\nExtract every prospect visible in this image as structured JSON.${userRubricText}`,
         },
       ];
       extractedHint = `Sent ${(buffer.length / 1024).toFixed(0)}KB image to vision.`;

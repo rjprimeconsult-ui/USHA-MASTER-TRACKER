@@ -133,9 +133,14 @@ function buildTransactionSchema(allowedCategoryIds) {
             amount: { type: 'number', description: 'Absolute value, positive number' },
             direction: { type: 'string', enum: ['expense', 'income'] },
             category: { type: 'string', enum: allowedCategoryIds },
+            confidence: {
+              type: 'string',
+              enum: ['high', 'medium', 'low'],
+              description: 'How sure are you about (direction, category)? "high" = obvious match (e.g. "AT&T" -> PHONE_INTERNET). "medium" = reasonable inference but ambiguous (e.g. "Costco" could be office, meals, or other). "low" = guessing — vendor is unfamiliar OR description is terse. The user reviews low-confidence rows first.',
+            },
             notes: { type: 'string', description: 'Any helpful context (account, sheet name, etc.). Optional.' },
           },
-          required: ['date', 'vendor', 'amount', 'direction', 'category'],
+          required: ['date', 'vendor', 'amount', 'direction', 'category', 'confidence'],
           additionalProperties: false,
         },
       },
@@ -158,9 +163,14 @@ function buildTransactionSchema(allowedCategoryIds) {
               description: 'REQUIRED. Original transaction description copied from the file verbatim — e.g. "TEXTDRIP CREDS", "RINGY*MONTHLY", "TXTDRIP CREDIT REFILL". Never empty.',
               minLength: 1,
             },
+            confidence: {
+              type: 'string',
+              enum: ['high', 'medium', 'low'],
+              description: 'How sure about platformId + reason? high/medium/low.',
+            },
             notes: { type: 'string' },
           },
-          required: ['date', 'platformId', 'amount', 'reason', 'vendor'],
+          required: ['date', 'platformId', 'amount', 'reason', 'vendor', 'confidence'],
           additionalProperties: false,
         },
       },
@@ -270,9 +280,11 @@ async function handlePOST(req) {
     }, { status: 503 });
   }
 
+  const startedAt = Date.now();
   let file;
   let vendorHints = []; // [{ vendor, direction, category?, platformId? }]
   let customCategories = []; // [{ id, label, direction: 'expense'|'income' }]
+  let userRubric = ''; // free-form agent-supplied rubric overlay
   try {
     const form = await req.formData();
     file = form.get('file');
@@ -297,6 +309,10 @@ async function handlePOST(req) {
         }
       } catch { /* ignore — customs are optional */ }
     }
+    const rubricRaw = form.get('userRubric');
+    if (typeof rubricRaw === 'string') {
+      userRubric = rubricRaw.slice(0, 1500);
+    }
   } catch (e) {
     return Response.json({ error: `Couldn't read upload: ${e.message}` }, { status: 400 });
   }
@@ -316,6 +332,12 @@ async function handlePOST(req) {
     return `\n\n--- USER CUSTOM CATEGORIES (route into these when a row matches the label semantically) ---\n${lines.join('\n')}`;
   };
   const customCatsText = renderCustomCats(customCategories);
+
+  // Agent's own rubric overlay — appended after standard rubric to bias
+  // classifications without invalidating the cached system prompt.
+  const userRubricText = userRubric.trim()
+    ? `\n\n--- AGENT'S OWN RUBRIC NOTES (apply on top of standard rubric — these reflect this specific agent's preferences) ---\n${userRubric.trim()}\n--- END AGENT NOTES ---`
+    : '';
 
   const buffer = Buffer.from(await file.arrayBuffer());
   const filename = file.name || 'upload';
@@ -346,7 +368,7 @@ async function handlePOST(req) {
       const truncated = text.length > 200000 ? text.slice(0, 200000) + '\n[...truncated]' : text;
       userContent = [{
         type: 'text',
-        text: `File: ${filename}\nType: ${fileType.toUpperCase()}\n\nExtract every transaction as structured JSON.${hintsText}${customCatsText}\n\n--- FILE CONTENT ---\n${truncated}`,
+        text: `File: ${filename}\nType: ${fileType.toUpperCase()}\n\nExtract every transaction as structured JSON.${hintsText}${customCatsText}${userRubricText}\n\n--- FILE CONTENT ---\n${truncated}`,
       }];
       extractedHint = `Parsed ${text.split('\n').length} rows from spreadsheet.`;
     } else if (fileType === 'pdf') {
@@ -357,7 +379,7 @@ async function handlePOST(req) {
         // Digital PDF — use text path
         userContent = [{
           type: 'text',
-          text: `File: ${filename}\nType: PDF (text-extractable)\n\nExtract every transaction as structured JSON.${hintsText}${customCatsText}\n\n--- FILE CONTENT ---\n${pdfText.slice(0, 200000)}`,
+          text: `File: ${filename}\nType: PDF (text-extractable)\n\nExtract every transaction as structured JSON.${hintsText}${customCatsText}${userRubricText}\n\n--- FILE CONTENT ---\n${pdfText.slice(0, 200000)}`,
         }];
         extractedHint = `Extracted ${cleanText.length} chars of text from PDF.`;
       } else {
@@ -370,7 +392,7 @@ async function handlePOST(req) {
           },
           {
             type: 'text',
-            text: `File: ${filename}\nType: PDF (image-based — sent for vision processing).\n\nExtract every transaction as structured JSON.${hintsText}${customCatsText}`,
+            text: `File: ${filename}\nType: PDF (image-based — sent for vision processing).\n\nExtract every transaction as structured JSON.${hintsText}${customCatsText}${userRubricText}`,
           },
         ];
         extractedHint = `Sent ${(buffer.length / 1024).toFixed(0)}KB PDF to vision.`;
@@ -434,11 +456,26 @@ async function handlePOST(req) {
   // Log usage for cost tracking
   console.log(`[import-expenses-ai] file=${filename} type=${fileType} txs=${parsed.transactions?.length || 0} platforms=${parsed.platformExpenses?.length || 0} input=${resp.usage.input_tokens} cached_read=${resp.usage.cache_read_input_tokens || 0} output=${resp.usage.output_tokens}`);
 
+  // Format fingerprint — lightweight signal so the client can pre-fill
+  // defaults next time the same kind of file shows up. Filename pattern
+  // (e.g. "Chase_*.pdf") + fileType + page/row count gives enough signal
+  // to recognize "this is a repeat of a previous import shape".
+  const filenamePattern = (filename || '').replace(/\d{2,}/g, '#');
+  const fingerprint = {
+    filenamePattern,
+    fileType,
+    sizeBytes: buffer.length,
+  };
+
+  const durationMs = Date.now() - startedAt;
+
   return Response.json({
     transactions: parsed.transactions || [],
     platformExpenses: parsed.platformExpenses || [],
     summary: parsed.summary || { totalExpenses: 0, totalIncome: 0, format: 'unknown' },
     extractedHint,
+    fingerprint,
+    durationMs,
     usage: {
       inputTokens: resp.usage.input_tokens,
       cachedReadTokens: resp.usage.cache_read_input_tokens || 0,

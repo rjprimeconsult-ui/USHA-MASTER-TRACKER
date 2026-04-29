@@ -2,7 +2,7 @@
 import { useMemo, useRef, useState, useEffect, memo } from 'react';
 import {
   Plus, Trash2, DollarSign, TrendingUp, TrendingDown, AlertCircle, Calendar,
-  Upload, X, Check, Paperclip, Eye, ChevronLeft, ChevronRight, ArrowDownCircle, ArrowUpCircle, Wallet, Tag,
+  Upload, X, Check, Paperclip, Eye, ChevronLeft, ChevronRight, ArrowDownCircle, ArrowUpCircle, Wallet, Tag, Settings, Sparkles,
 } from 'lucide-react';
 import { fmt, fmt2, today, uid } from '@/lib/utils';
 import { parseBusinessFile, dedupEntries, classifyExpense } from '@/lib/businessImport';
@@ -10,9 +10,12 @@ import { storage } from '@/lib/storage';
 import { compressIfImage } from '@/lib/imageCompress';
 import { saveAttachment, getAttachment, deleteAttachment } from '@/lib/attachments';
 import { useCategoriesAll } from '@/lib/customCategories';
+import { vendorMemoryToHints, loadVendorMemory } from '@/lib/vendorMemory';
+import { loadUserRubric } from '@/lib/userRubric';
 import { TiltCard, CountUp, Stagger, StaggerItem, MoneyCell } from '../motion/MotionPrimitives';
 import SmartImportWizard from '../SmartImportWizard';
 import CustomCategoryManager from '../CustomCategoryManager';
+import AgentSettingsPanel from '../AgentSettingsPanel';
 
 const ACCOUNTS_KEY = 'business_accounts_v1';
 
@@ -71,6 +74,9 @@ function BusinessBooksView({
   const [rescanPreview, setRescanPreview] = useState(null);
   const [showSmartImport, setShowSmartImport] = useState(false);
   const [showCategoryManager, setShowCategoryManager] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [aiRescanning, setAiRescanning] = useState(false);
+  const [aiRescanPreview, setAiRescanPreview] = useState(null); // [{ id, vendor, amount, from, to, picked, confidence, reason }]
 
   // Merged categories (built-in + user customs). Reloads automatically when
   // the manager modal saves changes.
@@ -118,6 +124,76 @@ function BusinessBooksView({
     for (const e of income) m[e.category] = (m[e.category] || 0) + 1;
     return m;
   }, [income]);
+
+  // AI bulk re-categorization — sends current rows to /api/recategorize-ai
+  // and returns suggested fixes. User reviews and applies selectively.
+  const runAiRescan = async () => {
+    if (expenses.length === 0 || aiRescanning) return;
+    setAiRescanning(true);
+    try {
+      const [vm, urubric] = await Promise.all([loadVendorMemory(), loadUserRubric()]);
+      const vendorHints = vendorMemoryToHints(vm, 60);
+      const customCats = [
+        ...(customMap.expense || []).map(c => ({ id: c.id, label: c.label, direction: 'expense' })),
+        ...(customMap.income  || []).map(c => ({ id: c.id, label: c.label, direction: 'income' })),
+      ];
+      // Process up to 500 rows (route caps at 500). For bigger backlogs the
+      // user can re-run after applying a batch.
+      const rows = expenses.slice(0, 500).map(e => ({
+        id: e.id,
+        vendor: e.vendor || '',
+        amount: Number(e.amount) || 0,
+        currentDirection: 'expense',
+        currentCategory: e.category || 'OTHER_EXPENSE',
+      }));
+      const res = await fetch('/api/recategorize-ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows, vendorHints, customCategories: customCats, userRubric: urubric?.expense || '' }),
+      });
+      const text = await res.text();
+      let data;
+      try { data = JSON.parse(text); }
+      catch { throw new Error(`Server returned non-JSON (HTTP ${res.status}): ${text.slice(0, 200)}`); }
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+      // Build the preview — only rows where AI proposed a change
+      const proposals = (data.suggestions || []).reduce((acc, s) => {
+        const original = expenses.find(e => e.id === s.id);
+        if (!original) return acc;
+        const proposedCat = s.suggestedCategory;
+        if (!proposedCat || proposedCat === original.category) return acc;
+        acc.push({
+          id: original.id,
+          vendor: original.vendor,
+          amount: original.amount,
+          from: original.category,
+          to: proposedCat,
+          confidence: s.confidence || 'medium',
+          reason: s.reason || '',
+          picked: s.confidence !== 'low', // pre-pick high+medium, leave low unchecked
+        });
+        return acc;
+      }, []);
+      setAiRescanPreview(proposals);
+    } catch (e) {
+      alert(`AI re-scan failed: ${e.message || e}`);
+    } finally {
+      setAiRescanning(false);
+    }
+  };
+  const togglePickAi = (id) => {
+    setAiRescanPreview(p => p?.map(x => x.id === id ? { ...x, picked: !x.picked } : x));
+  };
+  const applyAiRescan = () => {
+    if (!aiRescanPreview) return;
+    const picked = aiRescanPreview.filter(p => p.picked);
+    for (const p of picked) {
+      const original = expenses.find(e => e.id === p.id);
+      if (original) onUpdateExpense({ ...original, category: p.to });
+    }
+    setAiRescanPreview(null);
+  };
 
   // When a custom category is deleted with rows still tagged to it, re-tag
   // those rows to the catch-all (OTHER_EXPENSE / OTHER_INCOME).
@@ -544,6 +620,23 @@ function BusinessBooksView({
         onChanged={() => reloadCustomCats()}
       />
 
+      {/* Agent settings panel */}
+      <AgentSettingsPanel
+        open={showSettings}
+        onClose={() => setShowSettings(false)}
+      />
+
+      {/* AI re-scan preview modal */}
+      {aiRescanPreview && (
+        <AiRescanPreview
+          proposals={aiRescanPreview}
+          onTogglePick={togglePickAi}
+          onApply={applyAiRescan}
+          onClose={() => setAiRescanPreview(null)}
+          expCat={expCat}
+        />
+      )}
+
       {/* Tab toggle + utilities row */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="bg-white rounded-xl border border-slate-200 p-1 inline-flex">
@@ -562,15 +655,25 @@ function BusinessBooksView({
             Other Income ({income.length})
           </button>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 flex-wrap">
           {tab === 'expenses' && expenses.length > 0 && (
-            <button
-              onClick={runRecategorize}
-              className="text-xs text-indigo-700 hover:text-indigo-900 underline-offset-2 hover:underline"
-              title="Re-scan vendor names against current keyword rules and propose category fixes (e.g. LEADS MARKETPLACE → Lead Investment)"
-            >
-              Re-scan categories
-            </button>
+            <>
+              <button
+                onClick={runRecategorize}
+                className="text-xs text-indigo-700 hover:text-indigo-900 underline-offset-2 hover:underline"
+                title="Re-scan vendor names against keyword rules and propose category fixes (deterministic — fast and free)"
+              >
+                Re-scan (rules)
+              </button>
+              <button
+                onClick={runAiRescan}
+                disabled={aiRescanning}
+                className="text-xs text-violet-700 hover:text-violet-900 flex items-center gap-1 border border-violet-200 hover:border-violet-400 bg-white rounded-lg px-2.5 py-1 transition disabled:opacity-50"
+                title="Re-classify every expense using the latest AI rubric + your vendor memory + your custom categories"
+              >
+                <Sparkles size={12} /> {aiRescanning ? 'Re-scanning…' : 'Re-scan with AI'}
+              </button>
+            </>
           )}
           <button
             onClick={() => setShowCategoryManager(true)}
@@ -578,6 +681,13 @@ function BusinessBooksView({
             title="Add or edit your own custom categories"
           >
             <Tag size={12} /> Manage categories
+          </button>
+          <button
+            onClick={() => setShowSettings(true)}
+            className="text-xs text-slate-700 hover:text-slate-900 flex items-center gap-1 border border-slate-200 hover:border-slate-400 bg-white rounded-lg px-2.5 py-1 transition"
+            title="My Rubric, Import History, Vendor Memory, AI cost"
+          >
+            <Settings size={12} /> Settings
           </button>
         </div>
       </div>
@@ -1187,6 +1297,94 @@ function PreviewSection({ title, rows, cats, selected, onToggle, onUpdate, vendo
           })}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+// AI re-scan preview — modal that lists proposed category changes from
+// /api/recategorize-ai. User toggles which to apply. Confidence-aware:
+// "low" suggestions start unchecked; "high" / "medium" start checked.
+function AiRescanPreview({ proposals, onTogglePick, onApply, onClose, expCat }) {
+  const pickedCount = proposals.filter(p => p.picked).length;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[92vh] overflow-hidden flex flex-col">
+        <div className="flex items-center justify-between p-5 border-b border-slate-200 bg-gradient-to-br from-violet-50 to-indigo-50">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-white shadow-lg">
+              <Sparkles size={18} />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-slate-900">AI re-scan preview</h2>
+              <p className="text-xs text-slate-500">{proposals.length} proposed change{proposals.length !== 1 ? 's' : ''} · {pickedCount} picked</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 p-1"><X size={20} /></button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-5">
+          {proposals.length === 0 ? (
+            <div className="text-center py-8 text-slate-500 text-sm">
+              <Check className="mx-auto mb-2 text-emerald-500" size={28} />
+              Every expense looks correctly categorized. Nothing to change.
+            </div>
+          ) : (
+            <table className="w-full text-xs">
+              <thead className="bg-slate-50 sticky top-0">
+                <tr className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">
+                  <th className="px-2 py-2 w-8 text-center">Apply</th>
+                  <th className="px-2 py-2 text-left">Vendor</th>
+                  <th className="px-2 py-2 text-right w-20">Amount</th>
+                  <th className="px-2 py-2 text-left w-32">From</th>
+                  <th className="px-2 py-2 text-left w-32">To</th>
+                  <th className="px-2 py-2 text-left">Reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                {proposals.map(p => {
+                  const fromCat = expCat(p.from);
+                  const toCat = expCat(p.to);
+                  return (
+                    <tr key={p.id} className="border-t border-slate-100 hover:bg-slate-50/40">
+                      <td className="px-2 py-1.5 text-center">
+                        <input type="checkbox" checked={p.picked} onChange={() => onTogglePick(p.id)} className="accent-indigo-600 w-4 h-4 cursor-pointer" />
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <div className="font-semibold text-slate-900 truncate">{p.vendor}</div>
+                        {p.confidence === 'low' && (
+                          <span className="text-[9px] font-bold uppercase bg-amber-100 text-amber-800 border border-amber-300 rounded px-1 py-0.5 inline-block mt-0.5">⚠ Low confidence</span>
+                        )}
+                        {p.confidence === 'medium' && (
+                          <span className="text-[9px] font-bold uppercase bg-sky-100 text-sky-800 border border-sky-300 rounded px-1 py-0.5 inline-block mt-0.5">Medium</span>
+                        )}
+                      </td>
+                      <td className="px-2 py-1.5 text-right text-slate-700">${Number(p.amount || 0).toFixed(2)}</td>
+                      <td className="px-2 py-1.5">
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded inline-block whitespace-nowrap" style={{ background: fromCat.color + '22', color: fromCat.color, border: `1px solid ${fromCat.color}44` }}>
+                          {fromCat.label}
+                        </span>
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded inline-block whitespace-nowrap" style={{ background: toCat.color + '22', color: toCat.color, border: `1px solid ${toCat.color}44` }}>
+                          {toCat.label}
+                        </span>
+                      </td>
+                      <td className="px-2 py-1.5 text-slate-500 text-[11px] italic">{p.reason || '—'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+        <div className="flex justify-end gap-2 p-4 border-t border-slate-200 bg-slate-50">
+          <button onClick={onClose} className="border border-slate-200 hover:bg-slate-100 bg-white px-4 py-2 rounded-lg text-sm font-semibold">Cancel</button>
+          {proposals.length > 0 && (
+            <button onClick={onApply} disabled={pickedCount === 0} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white px-5 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5">
+              <Check size={14} /> Apply {pickedCount} change{pickedCount !== 1 ? 's' : ''}
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

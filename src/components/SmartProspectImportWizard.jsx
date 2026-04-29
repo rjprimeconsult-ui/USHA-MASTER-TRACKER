@@ -46,9 +46,36 @@ export default function SmartProspectImportWizard({ open, onClose, onImport, sta
     try {
       const form = new FormData();
       form.append('file', file);
+      // Agent rubric overlay
+      try {
+        const { loadUserRubric } = await import('@/lib/userRubric');
+        const r = await loadUserRubric();
+        if (r?.prospect && r.prospect.trim()) form.append('userRubric', r.prospect.trim());
+      } catch {}
       const res = await fetch('/api/import-prospects-ai', { method: 'POST', body: form });
-      const data = await res.json();
+      const rawText = await res.text();
+      let data;
+      try { data = JSON.parse(rawText); }
+      catch {
+        if (res.status === 504 || /timeout|gateway/i.test(rawText)) {
+          throw new Error('Server timed out (>5 min). Try splitting the file.');
+        }
+        throw new Error(`Server returned non-JSON (HTTP ${res.status}). Snippet: ${rawText.slice(0, 200)}`);
+      }
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      // Audit trail
+      try {
+        const { recordImport } = await import('@/lib/importHistory');
+        await recordImport({
+          kind: 'prospects',
+          filename: file?.name || 'upload',
+          size: file?.size || 0,
+          counts: { prospects: data.prospects?.length || 0 },
+          usage: data.usage,
+          durationMs: data.durationMs,
+          raw: { prospects: data.prospects, summary: data.summary },
+        });
+      } catch {}
       setResult(data);
       // Pre-skip rows that already exist in the user's prospects (by phone/email/name)
       const existingKeys = new Set(existingProspects.map(prospectDedupKey));

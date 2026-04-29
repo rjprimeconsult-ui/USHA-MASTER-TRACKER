@@ -1,8 +1,8 @@
 'use client';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import {
   X, Upload, FileText, FileSpreadsheet, Image as ImageIcon, Sparkles,
-  Loader2, CheckCircle2, AlertCircle, Trash2, ArrowRight, RefreshCw, Brain,
+  Loader2, CheckCircle2, AlertCircle, Trash2, ArrowRight, RefreshCw, Brain, Eye,
 } from 'lucide-react';
 import { PLATFORMS, PLATFORM_REASONS } from '@/lib/constants';
 import { uid } from '@/lib/utils';
@@ -10,6 +10,8 @@ import {
   loadVendorMemory, saveVendorMemory, lookupVendor, recordVendor, vendorMemoryToHints,
 } from '@/lib/vendorMemory';
 import { useCategoriesAll } from '@/lib/customCategories';
+import { loadUserRubric } from '@/lib/userRubric';
+import { recordImport } from '@/lib/importHistory';
 
 const inp = 'w-full border border-slate-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500';
 
@@ -30,16 +32,22 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
   const [vendorMemory, setVendorMemory] = useState({});
   const [rememberedSet, setRememberedSet] = useState(new Set()); // edits-array indices that came from memory
   const [rememberedPlatformSet, setRememberedPlatformSet] = useState(new Set());
+  const [previewMode, setPreviewMode] = useState(false); // true = "Test extract" without committing
+  const [showLowConfFirst, setShowLowConfFirst] = useState(false);
+  const [userRubric, setUserRubric] = useState('');
   const fileRef = useRef(null);
 
   // Merged categories (built-in + user customs) — stays in sync with the
   // Books tab so user-added buckets show up here automatically.
   const { expense: EXPENSE_CATEGORIES, income: INCOME_CATEGORIES, customMap } = useCategoriesAll();
 
-  // Load vendor memory when the wizard opens — keeps it fresh after every
-  // confirm cycle.
+  // Load vendor memory + user rubric when the wizard opens — keeps both
+  // fresh after every confirm cycle.
   useEffect(() => {
-    if (open) loadVendorMemory().then(setVendorMemory).catch(() => setVendorMemory({}));
+    if (open) {
+      loadVendorMemory().then(setVendorMemory).catch(() => setVendorMemory({}));
+      loadUserRubric().then(r => setUserRubric(r?.expense || '')).catch(() => setUserRubric(''));
+    }
   }, [open]);
 
   useEffect(() => {
@@ -81,6 +89,8 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
         ...(customMap.income  || []).map(c => ({ id: c.id, label: c.label, direction: 'income' })),
       ];
       if (customCats.length > 0) form.append('customCategories', JSON.stringify(customCats));
+      // Send the agent's free-form rubric overlay so AI bias matches their style
+      if (userRubric && userRubric.trim()) form.append('userRubric', userRubric.trim());
 
       const res = await fetch('/api/import-expenses-ai', { method: 'POST', body: form });
 
@@ -138,8 +148,37 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
       setRememberedPlatformSet(rememberedPlat);
       setSkipMask(new Set());
       setPlatformSkipMask(new Set());
+
+      // Log every extraction to import history (audit trail). We log here
+      // so even Preview-mode runs are remembered — useful for debugging
+      // misclassifications without polluting the user's books.
+      try {
+        await recordImport({
+          kind: previewMode ? 'expenses-preview' : 'expenses',
+          filename: file?.name || 'upload',
+          size: file?.size || 0,
+          counts: {
+            transactions: data.transactions?.length || 0,
+            platforms: data.platformExpenses?.length || 0,
+          },
+          usage: data.usage,
+          fingerprint: data.fingerprint,
+          durationMs: data.durationMs,
+          raw: { transactions: data.transactions, platformExpenses: data.platformExpenses, summary: data.summary },
+        });
+      } catch { /* don't block the user on history-write failures */ }
     } catch (e) {
       setError(e.message || String(e));
+      // Log failures too so users can see what went wrong later
+      try {
+        await recordImport({
+          kind: 'expenses-error',
+          filename: file?.name || 'upload',
+          size: file?.size || 0,
+          counts: {},
+          error: e.message || String(e),
+        });
+      } catch {}
     } finally {
       setBusy(false);
     }
@@ -163,6 +202,16 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
   });
   const platformSkipAll = () => setPlatformSkipMask(new Set(platformEdits.map((_, i) => i)));
   const platformSkipNone = () => setPlatformSkipMask(new Set());
+
+  // Indices of `edits` rendered in display order. Low-confidence rows go
+  // to the top when the user toggles "Review low-confidence first" so
+  // they review the AI's least-sure guesses without scrolling.
+  const sortedEditIndices = useMemo(() => {
+    const idx = edits.map((_, i) => i);
+    if (!showLowConfFirst) return idx;
+    const rank = (c) => (c === 'low' ? 0 : c === 'medium' ? 1 : 2);
+    return idx.sort((a, b) => rank(edits[a]?.confidence) - rank(edits[b]?.confidence));
+  }, [edits, showLowConfFirst]);
 
   const confirm = () => {
     const today = () => new Date().toISOString().slice(0, 10);
@@ -306,11 +355,19 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
                     </div>
                     <button onClick={() => { setFile(null); }} className="text-slate-400 hover:text-slate-700 text-xs underline">Change</button>
                   </div>
-                  <button onClick={runExtract} disabled={busy}
-                    className="w-full bg-gradient-to-br from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 disabled:from-slate-300 disabled:to-slate-300 text-white rounded-xl py-3 font-semibold flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/30">
-                    {busy ? <><Loader2 size={16} className="animate-spin" /> Extracting transactions...</> : <><Sparkles size={16} /> Extract with AI</>}
-                  </button>
-                  <p className="text-[11px] text-slate-400 text-center">First call usually takes 5-15 seconds depending on file size.</p>
+                  <div className="flex gap-2">
+                    <button onClick={() => { setPreviewMode(false); runExtract(); }} disabled={busy}
+                      className="flex-1 bg-gradient-to-br from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 disabled:from-slate-300 disabled:to-slate-300 text-white rounded-xl py-3 font-semibold flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/30">
+                      {busy && !previewMode ? <><Loader2 size={16} className="animate-spin" /> Extracting...</> : <><Sparkles size={16} /> Extract with AI</>}
+                    </button>
+                    <button onClick={() => { setPreviewMode(true); runExtract(); }} disabled={busy}
+                      title="Run extraction without committing — useful to test if a file parses cleanly before you import it"
+                      className="bg-white hover:bg-slate-50 disabled:bg-slate-200 text-slate-700 border border-slate-200 rounded-xl px-4 py-3 font-semibold flex items-center justify-center gap-2">
+                      {busy && previewMode ? <Loader2 size={16} className="animate-spin" /> : <Eye size={16} />}
+                      Preview
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-400 text-center">First call usually takes 5-15 seconds. Use <b>Preview</b> to test extraction without importing.</p>
                 </div>
               )}
               {error && (
@@ -443,8 +500,22 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
                 </div>
               )}
 
-              {/* Transactions table */}
+              {/* Transactions table — with confidence-based ordering toggle */}
               <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-2 flex-wrap">
+                  <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    Books transactions
+                  </div>
+                  <label className="flex items-center gap-1.5 text-[11px] text-slate-600 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={showLowConfFirst}
+                      onChange={e => setShowLowConfFirst(e.target.checked)}
+                      className="accent-amber-600 w-3.5 h-3.5"
+                    />
+                    Review low-confidence rows first
+                  </label>
+                </div>
                 <table className="w-full text-xs">
                   <thead className="bg-slate-50">
                     <tr className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">
@@ -457,7 +528,8 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
                     </tr>
                   </thead>
                   <tbody>
-                    {edits.map((t, i) => {
+                    {sortedEditIndices.map(i => {
+                      const t = edits[i];
                       const skipped = skipMask.has(i);
                       const cats = t.direction === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
                       return (
@@ -469,11 +541,21 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
                             <input type="date" className={inp} value={t.date || ''} onChange={e => setEdit(i, { date: e.target.value })} disabled={skipped} />
                           </td>
                           <td className="px-2 py-1.5">
-                            <div className="flex items-center gap-1">
-                              <input className={inp + ' flex-1'} value={t.vendor || ''} onChange={e => setEdit(i, { vendor: e.target.value })} disabled={skipped} />
+                            <div className="flex items-center gap-1 flex-wrap">
+                              <input className={inp + ' flex-1 min-w-[120px]'} value={t.vendor || ''} onChange={e => setEdit(i, { vendor: e.target.value })} disabled={skipped} />
                               {rememberedSet.has(i) && (
                                 <span title="Categorized from your past corrections" className="text-[9px] font-bold uppercase bg-violet-100 text-violet-700 border border-violet-300 rounded px-1 py-0.5 flex items-center gap-0.5 whitespace-nowrap">
                                   <Brain size={9} /> Remembered
+                                </span>
+                              )}
+                              {!rememberedSet.has(i) && t.confidence === 'low' && (
+                                <span title="AI is guessing — please double-check" className="text-[9px] font-bold uppercase bg-amber-100 text-amber-800 border border-amber-300 rounded px-1 py-0.5 whitespace-nowrap">
+                                  ⚠ Review
+                                </span>
+                              )}
+                              {!rememberedSet.has(i) && t.confidence === 'medium' && (
+                                <span title="AI confidence: medium" className="text-[9px] font-bold uppercase bg-sky-100 text-sky-800 border border-sky-300 rounded px-1 py-0.5 whitespace-nowrap">
+                                  Medium
                                 </span>
                               )}
                             </div>
@@ -526,7 +608,18 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
         {/* Footer */}
         <div className="flex justify-end gap-2 p-4 border-t border-slate-200 bg-slate-50">
           <button onClick={onClose} className="border border-slate-200 hover:bg-slate-100 bg-white px-4 py-2 rounded-lg text-sm font-semibold">Cancel</button>
-          {result && (
+          {result && previewMode && (
+            <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5 flex items-center gap-1.5">
+              <Eye size={13} /> <b>Preview mode</b> — extraction looks good? Click "Re-run as final" to import.
+            </div>
+          )}
+          {result && previewMode && (
+            <button onClick={() => { setPreviewMode(false); runExtract(); }}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5">
+              <RefreshCw size={14} /> Re-run as final
+            </button>
+          )}
+          {result && !previewMode && (
             <button onClick={confirm}
               disabled={counts.exp + counts.inc + platformCounts.kept === 0}
               className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white px-5 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5">

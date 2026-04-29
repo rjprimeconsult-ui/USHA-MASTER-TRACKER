@@ -60,9 +60,37 @@ export default function SmartLeadImportWizard({ open, onClose, onImport, existin
     try {
       const form = new FormData();
       form.append('file', file);
+      // Apply agent rubric overlay for leads
+      try {
+        const { loadUserRubric } = await import('@/lib/userRubric');
+        const r = await loadUserRubric();
+        if (r?.lead && r.lead.trim()) form.append('userRubric', r.lead.trim());
+      } catch {}
       const res = await fetch('/api/import-leads-ai', { method: 'POST', body: form });
-      const data = await res.json();
+      // Resilient response parsing — fall back to text if not JSON
+      const rawText = await res.text();
+      let data;
+      try { data = JSON.parse(rawText); }
+      catch {
+        if (res.status === 504 || /timeout|gateway/i.test(rawText)) {
+          throw new Error('Server timed out (>5 min). Try splitting the file into smaller chunks.');
+        }
+        throw new Error(`Server returned non-JSON (HTTP ${res.status}). Snippet: ${rawText.slice(0, 200)}`);
+      }
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      // Audit trail
+      try {
+        const { recordImport } = await import('@/lib/importHistory');
+        await recordImport({
+          kind: 'leads',
+          filename: file?.name || 'upload',
+          size: file?.size || 0,
+          counts: { leads: data.leads?.length || 0 },
+          usage: data.usage,
+          durationMs: data.durationMs,
+          raw: { leads: data.leads, summary: data.summary },
+        });
+      } catch {}
       setResult(data);
       setEdits((data.leads || []).map(l => ({ ...l, _id: uid() })));
       setSkipMask(new Set());
