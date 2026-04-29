@@ -26,6 +26,14 @@
 
 export const ANNOUNCEMENTS = [
   {
+    id: '2026-04-29-family-members',
+    date: '2026-04-29',
+    emoji: '👨‍👩‍👧',
+    title: 'New: Family members on a policy',
+    body: 'When a primary applicant is declined but the spouse gets partially issued, USHA pays out under the spouse\'s name on the weekly statement. Each lead now has a "Family Members on Policy" section — adding the spouse + dependents makes statement matching find them automatically. Smart Lead Import auto-extracts spouses + dependents from your files.',
+    cta: { label: 'Open Leads', view: 'leads' },
+  },
+  {
     id: '2026-04-29-smart-prospects',
     date: '2026-04-29',
     emoji: '✨',
