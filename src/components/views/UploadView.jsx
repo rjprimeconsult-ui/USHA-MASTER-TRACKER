@@ -14,6 +14,7 @@ import {
   buildImportFromGeneric,
 } from '@/lib/import';
 import { CRMS, CAMPAIGNS, LEAD_CATEGORIES, SOURCES, OWNERS, MAIN_PRODUCTS } from '@/lib/constants';
+import SmartLeadImportWizard from '../SmartLeadImportWizard';
 import { parseStatementPdf, reconcileStatement, isCommissionDetailPdf } from '@/lib/statement';
 import { parseSalesReport, gapDetect, dealToLead } from '@/lib/salesreport';
 import { mkLead } from '@/lib/seed';
@@ -81,6 +82,7 @@ export default memo(UploadView);
 function HistoryImport({ onImport, onUndoImport, lastImportBatch, leads = [], onBackfill }) {
   const [dragging, setDragging] = useState(false);
   const [status, setStatus] = useState('idle');
+  const [showSmartImport, setShowSmartImport] = useState(false);
   const [error, setError] = useState('');
   const [file, setFile] = useState(null);
   const [wb, setWb] = useState(null);
@@ -180,6 +182,32 @@ function HistoryImport({ onImport, onUndoImport, lastImportBatch, leads = [], on
             </span>
           </div>
           <button onClick={onUndoImport} className="border border-amber-300 bg-white text-amber-800 rounded-lg px-3 py-1.5 text-sm font-medium hover:bg-amber-100">Undo import</button>
+        </div>
+      )}
+
+      {/* Smart Import (AI) — preferred path for any non-USHA layout */}
+      {status === 'idle' && (
+        <div className="bg-gradient-to-br from-indigo-50 via-violet-50 to-pink-50 border border-indigo-200 rounded-2xl p-5 flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white shadow-lg flex-shrink-0">
+              ✨
+            </div>
+            <div>
+              <div className="font-bold text-slate-900 text-sm">Smart Import (AI)</div>
+              <div className="text-xs text-slate-600">Drop ANY lead file — Excel, CSV, PDF, or screenshot. AI figures out the structure and extracts every lead.</div>
+            </div>
+          </div>
+          <button onClick={() => setShowSmartImport(true)}
+            className="bg-gradient-to-br from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white rounded-lg px-4 py-2 text-sm font-semibold shadow-md shadow-indigo-500/30 flex items-center gap-2 flex-shrink-0">
+            ✨ Try Smart Import
+          </button>
+          <SmartLeadImportWizard
+            open={showSmartImport}
+            onClose={() => setShowSmartImport(false)}
+            onImport={(newLeads, opts) => {
+              onImport?.(newLeads, { batchId: opts.batchId, stats: { total: newLeads.length, smartImport: true } });
+            }}
+          />
         </div>
       )}
 
