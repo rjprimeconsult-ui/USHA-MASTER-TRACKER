@@ -59,6 +59,17 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
     }
   }, [open, defaultAccount]);
 
+  // Indices of `edits` rendered in display order. Low-confidence rows go
+  // to the top when the user toggles "Review low-confidence first" so
+  // they review the AI's least-sure guesses without scrolling.
+  // MUST be declared BEFORE any early return — Rules of Hooks.
+  const sortedEditIndices = useMemo(() => {
+    const idx = edits.map((_, i) => i);
+    if (!showLowConfFirst) return idx;
+    const rank = (c) => (c === 'low' ? 0 : c === 'medium' ? 1 : 2);
+    return idx.sort((a, b) => rank(edits[a]?.confidence) - rank(edits[b]?.confidence));
+  }, [edits, showLowConfFirst]);
+
   if (!open) return null;
 
   const onPick = (e) => {
@@ -202,16 +213,6 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
   });
   const platformSkipAll = () => setPlatformSkipMask(new Set(platformEdits.map((_, i) => i)));
   const platformSkipNone = () => setPlatformSkipMask(new Set());
-
-  // Indices of `edits` rendered in display order. Low-confidence rows go
-  // to the top when the user toggles "Review low-confidence first" so
-  // they review the AI's least-sure guesses without scrolling.
-  const sortedEditIndices = useMemo(() => {
-    const idx = edits.map((_, i) => i);
-    if (!showLowConfFirst) return idx;
-    const rank = (c) => (c === 'low' ? 0 : c === 'medium' ? 1 : 2);
-    return idx.sort((a, b) => rank(edits[a]?.confidence) - rank(edits[b]?.confidence));
-  }, [edits, showLowConfFirst]);
 
   const confirm = () => {
     const today = () => new Date().toISOString().slice(0, 10);
