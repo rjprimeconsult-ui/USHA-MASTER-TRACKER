@@ -77,6 +77,20 @@ PAY TYPE (lead.payType — pick one): "advance" (default — paid upfront as adv
 - "ADVANCED", "ADV" -> "advance"
 - "AS EARNED", "AS-EARNED" -> "as_earned"
 
+FAMILY MEMBERS — capture spouse + dependents:
+When a row indicates a family policy (Indv/Family = "Family", or notes mention "spouse", "wife", "husband", "dependent", "fam 2", "family of 3", "+ kids", etc.), populate the dependents array. Each entry has:
+  - name (full name as printed)
+  - relationship ("spouse" | "child" | "other")
+  - dob (YYYY-MM-DD if available, else empty)
+
+Sources of dependent names:
+- A dedicated "Spouse" / "Dependents" / "Family" column
+- Free-form notes that say "wife: Mary Smith DOB 5/12/1985" or "spouse Jane Doe"
+- A "Names" column listing multiple people separated by commas / slashes
+- DOB columns with multiple dates (paired with names if present)
+
+Why it matters: if the primary applicant is declined but the spouse gets approved, USHA pays out under the SPOUSE's name on the weekly statement. Capturing them on the lead protects the commission attribution. Don't skip this when the data is in the file.
+
 CRITICAL RULES:
 1. Skip section headers, totals, subtotals, divider rows ("January", "FEBRUARY", "BOOK 2026", "TOTALS", "MONTH TOTALS", "TAKEN RATE", "UNDERWRITTEN", "HA's", etc.).
 2. Skip blank rows.
@@ -124,6 +138,20 @@ const LEAD_SCHEMA = {
           leadCategory: { type: 'string', enum: ['', ...LEAD_CATEGORIES] },
           source: { type: 'string', enum: ['', ...SOURCES] },
           notes: { type: 'string' },
+          dependents: {
+            type: 'array',
+            description: 'Family members on the policy (spouse + dependents). Crucial for partial-issuance commission tracking.',
+            items: {
+              type: 'object',
+              properties: {
+                name: { type: 'string', description: 'Full name as printed' },
+                relationship: { type: 'string', enum: ['spouse', 'child', 'other'] },
+                dob: { type: 'string', description: 'YYYY-MM-DD or empty' },
+              },
+              required: ['name', 'relationship'],
+              additionalProperties: false,
+            },
+          },
         },
         required: ['name', 'stage', 'payType'],
         additionalProperties: false,

@@ -31,6 +31,12 @@ export const mkLead = (o = {}) => ({
   associationStartDate: null,
   associationEndDate: null,
   associationPauseDate: null,
+  // Family members on the policy. When the primary is declined but the
+  // spouse / a dependent gets approved, the weekly statement comes back
+  // under THEIR name — statement matching looks up names in this list
+  // too so the advance still routes to the right lead.
+  // Each entry: { name, relationship: 'spouse' | 'child' | 'other', dob? }
+  dependents: [],
   ...o,
 });
 
@@ -84,6 +90,9 @@ export const migrateLead = (l) => {
 
   // Any post-close stage should have a closedDate; backfill with dateAdded if missing
   if (!migrated.closedDate) migrated.closedDate = l.closedDate || l.dateAdded || today();
+
+  // Ensure dependents is always an array (was added later — older leads have no field)
+  if (!Array.isArray(migrated.dependents)) migrated.dependents = [];
 
   // Set association start date retroactively to the close/submission date
   // (Juan's rule: association counts retroactive to the month it was submitted,

@@ -388,6 +388,75 @@ export default function LeadForm({ open, lead, tier = 'WA', onSave, onClose, onD
             </Field>
           </div>
 
+          {/* Family members on the policy — protects against partial-issuance
+              commission loss. When the primary is declined but the spouse or
+              a dependent gets approved, the weekly statement comes back under
+              THEIR name. Statement matching looks up all names on the lead. */}
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-xs font-bold text-amber-900 tracking-wide">FAMILY MEMBERS ON POLICY</div>
+                <div className="text-[11px] text-amber-700 mt-0.5">
+                  Spouse + dependents. If the primary is declined but a family member is partially issued,
+                  the statement comes back under their name — adding them here makes sure you don&apos;t miss the commission.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => set({ dependents: [...(form.dependents || []), { name: '', relationship: 'spouse', dob: '' }] })}
+                className="text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white rounded-lg px-3 py-1.5 flex items-center gap-1 flex-shrink-0"
+              >
+                <Plus size={12} /> Add
+              </button>
+            </div>
+            {(form.dependents || []).length === 0 ? (
+              <div className="text-xs text-amber-700/70 italic">No family members added.</div>
+            ) : (
+              <div className="space-y-1.5">
+                {(form.dependents || []).map((dep, i) => (
+                  <div key={i} className="flex items-center gap-2 bg-white border border-amber-200 rounded-lg px-2 py-1.5">
+                    <input
+                      className="flex-1 min-w-0 border border-slate-200 rounded px-2 py-1 text-sm"
+                      placeholder="Full name"
+                      value={dep.name || ''}
+                      onChange={e => set({
+                        dependents: form.dependents.map((d, j) => j === i ? { ...d, name: e.target.value } : d)
+                      })}
+                    />
+                    <select
+                      className="border border-slate-200 rounded px-2 py-1 text-xs w-24"
+                      value={dep.relationship || 'spouse'}
+                      onChange={e => set({
+                        dependents: form.dependents.map((d, j) => j === i ? { ...d, relationship: e.target.value } : d)
+                      })}
+                    >
+                      <option value="spouse">Spouse</option>
+                      <option value="child">Child</option>
+                      <option value="other">Other</option>
+                    </select>
+                    <input
+                      type="date"
+                      className="border border-slate-200 rounded px-2 py-1 text-xs w-36"
+                      value={dep.dob || ''}
+                      onChange={e => set({
+                        dependents: form.dependents.map((d, j) => j === i ? { ...d, dob: e.target.value } : d)
+                      })}
+                      title="Date of birth (optional)"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => set({ dependents: form.dependents.filter((_, j) => j !== i) })}
+                      className="text-red-500 hover:bg-red-50 p-1 rounded"
+                      title="Remove"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Notes */}
           <Field label="Notes">
             <textarea className={inp} rows="3" value={form.notes} onChange={e => set({ notes: e.target.value })} placeholder="Anything worth remembering about this lead…" />

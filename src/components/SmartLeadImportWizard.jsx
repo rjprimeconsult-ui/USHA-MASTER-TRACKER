@@ -111,6 +111,11 @@ export default function SmartLeadImportWizard({ open, onClose, onImport, existin
         owner: defaults.owner,
         leadCost: Number(defaults.leadCost) || 0,
         notes: l.notes || '',
+        dependents: Array.isArray(l.dependents)
+          ? l.dependents
+              .filter(d => d?.name?.trim())
+              .map(d => ({ name: d.name.trim(), relationship: d.relationship || 'other', dob: d.dob || '' }))
+          : [],
       })];
     });
     // Dedup against existing tracker leads + within the batch itself.

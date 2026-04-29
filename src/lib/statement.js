@@ -668,16 +668,32 @@ export function reconcileStatement(parsed, leads) {
     if (parts.length < 2) return nk;
     return `${parts[0]} ${parts[parts.length - 1]}`;
   };
-  for (const l of leads) {
-    const fk = nameKey(l.name);
-    const sk = firstLastKey(l.name);
+  // Index each lead by EVERY name on the policy — primary applicant plus
+  // any spouse / dependents. When a partial issuance comes back under the
+  // spouse's name (primary declined, spouse approved), the statement row
+  // still routes back to the right lead.
+  const indexLeadByName = (lead, rawName) => {
+    if (!rawName) return;
+    const fk = nameKey(rawName);
+    const sk = firstLastKey(rawName);
     if (fk) {
       if (!leadsByFullKey.has(fk)) leadsByFullKey.set(fk, []);
-      leadsByFullKey.get(fk).push(l);
+      const arr = leadsByFullKey.get(fk);
+      if (!arr.includes(lead)) arr.push(lead);
     }
     if (sk && sk !== fk) {
       if (!leadsByShortKey.has(sk)) leadsByShortKey.set(sk, []);
-      leadsByShortKey.get(sk).push(l);
+      const arr = leadsByShortKey.get(sk);
+      if (!arr.includes(lead)) arr.push(lead);
+    }
+  };
+  for (const l of leads) {
+    indexLeadByName(l, l.name);
+    // Also index by every dependent's name (spouse, kids, etc.)
+    if (Array.isArray(l.dependents)) {
+      for (const dep of l.dependents) {
+        if (dep?.name) indexLeadByName(l, dep.name);
+      }
     }
   }
   const findLeads = (rawName) => {
