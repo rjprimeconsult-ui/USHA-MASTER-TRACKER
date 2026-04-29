@@ -412,7 +412,10 @@ async function handlePOST(req) {
   try {
     resp = await client.messages.create({
       model: 'claude-haiku-4-5',
-      max_tokens: 16000,
+      // Bumped to 32K so multi-month bank statements (200+ transactions ≈
+      // 25K output tokens) don't get truncated mid-JSON. Haiku 4.5 supports
+      // up to 64K output; 32K balances headroom against latency.
+      max_tokens: 32000,
       // Cache the (large, stable) rubric so repeat calls on multi-file
       // imports cost ~0.1× on the system prompt.
       system: [
@@ -442,10 +445,28 @@ async function handlePOST(req) {
     return Response.json({ error: 'AI returned no text block.', fallback: true }, { status: 500 });
   }
 
+  // Detect truncation BEFORE attempting to parse — gives a clearer error
+  // than "Unterminated string in JSON at position 40028" which is what
+  // users saw before. stop_reason='max_tokens' means the model ran out
+  // of output budget mid-response.
+  const hitTokenLimit = resp.stop_reason === 'max_tokens';
+
   let parsed;
   try {
     parsed = JSON.parse(textBlock.text);
   } catch (e) {
+    if (hitTokenLimit) {
+      return Response.json({
+        error:
+          `This file has too many transactions for one extraction call ` +
+          `(AI ran out of output budget mid-response). Try splitting the ` +
+          `statement into 2-3 smaller files (e.g. half the month per file) ` +
+          `and importing each separately.`,
+        truncated: true,
+        partialChars: textBlock.text.length,
+        fallback: true,
+      }, { status: 500 });
+    }
     return Response.json({
       error: `AI returned invalid JSON: ${e.message}`,
       raw: textBlock.text.slice(0, 500),

@@ -325,7 +325,8 @@ export async function POST(req) {
   try {
     resp = await client.messages.create({
       model: 'claude-haiku-4-5',
-      max_tokens: 16000,
+      // 32K so book-of-business files with 200+ leads don't truncate
+      max_tokens: 32000,
       system: [
         { type: 'text', text: LEAD_RUBRIC, cache_control: { type: 'ephemeral' } },
       ],

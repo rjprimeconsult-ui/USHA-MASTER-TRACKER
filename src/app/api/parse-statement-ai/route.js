@@ -272,7 +272,8 @@ export async function POST(req) {
   try {
     resp = await client.messages.create({
       model: 'claude-haiku-4-5',
-      max_tokens: 16000,
+      // 32K so multi-page payout/advance statements don't truncate
+      max_tokens: 32000,
       system: [
         { type: 'text', text: STATEMENT_RUBRIC, cache_control: { type: 'ephemeral' } },
       ],
