@@ -126,3 +126,54 @@ export function dedupLeads(candidateLeads, existingLeads) {
   }
   return { fresh, duplicates };
 }
+
+/**
+ * Find duplicate groups within an existing leads list.
+ *
+ * Returns an array of groups where each group is 2+ leads that match each
+ * other by policyId / name+phone / name+state+closedDate. The first lead in
+ * each group is the "canonical" (oldest, most-complete) — we order by:
+ *   1. has policyNumber (1 if yes, 0 if no)
+ *   2. has phone (1/0)
+ *   3. has email (1/0)
+ *   4. dateAdded (older first)
+ *
+ * The caller can then offer "keep canonical, delete rest" UX, or let the
+ * admin pick which one to keep manually.
+ */
+export function findDuplicateGroups(leads) {
+  const idx = buildLeadIndex([]);
+  const leadIdToGroup = new Map(); // leadId -> mutable group array
+  for (const lead of leads || []) {
+    if (!lead?.id) continue;
+    const match = idx.findExisting(lead);
+    if (match && leadIdToGroup.has(match.id)) {
+      const group = leadIdToGroup.get(match.id);
+      group.push(lead);
+      leadIdToGroup.set(lead.id, group);
+      idx.absorb(lead); // chain matching: catch transitively-related leads
+    } else {
+      idx.absorb(lead);
+      const newGroup = [lead];
+      leadIdToGroup.set(lead.id, newGroup);
+    }
+  }
+
+  // Collect unique groups of size 2+
+  const seen = new Set();
+  const out = [];
+  for (const g of leadIdToGroup.values()) {
+    if (g.length >= 2 && !seen.has(g)) {
+      seen.add(g);
+      // Sort by completeness (canonical = first)
+      const ranked = [...g].sort((a, b) => {
+        const score = (l) => (l.policyNumber ? 1000 : 0) + (l.phone ? 100 : 0) + (l.email ? 10 : 0);
+        const sa = score(a), sb = score(b);
+        if (sa !== sb) return sb - sa;
+        return String(a.dateAdded || '').localeCompare(String(b.dateAdded || ''));
+      });
+      out.push(ranked);
+    }
+  }
+  return out;
+}

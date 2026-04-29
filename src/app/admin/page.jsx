@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Shield, Users, DollarSign, Database, ArrowLeft, ChevronDown, ChevronUp, AlertCircle, Loader2, RefreshCw, LogIn, Trash2, AlertTriangle, Wrench } from 'lucide-react';
+import { Shield, Users, DollarSign, Database, ArrowLeft, ChevronDown, ChevronUp, AlertCircle, Loader2, RefreshCw, LogIn, Trash2, AlertTriangle, Wrench, Copy } from 'lucide-react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/components/auth/AuthProvider';
@@ -33,6 +33,12 @@ export default function AdminPage() {
   const [phantomScanning, setPhantomScanning] = useState(false);
   const [phantomList, setPhantomList] = useState(null); // null=not scanned, []=clean, [...]=found
   const [phantomDeleting, setPhantomDeleting] = useState(new Set());
+  // Duplicate-leads tool state
+  const [dupScanning, setDupScanning] = useState(false);
+  const [dupResult, setDupResult] = useState(null); // null=not scanned, { users:[...], totalDuplicates }
+  const [dupDeleting, setDupDeleting] = useState(false);
+  // Per-group: lead ID to KEEP (default = canonical / first in group, set on scan)
+  const [keepIdByGroupKey, setKeepIdByGroupKey] = useState({});
 
   // Auth helper for the admin tools
   const adminFetch = async (url, opts = {}) => {
@@ -91,6 +97,68 @@ export default function AdminPage() {
     for (const p of phantomList) {
       await deletePhantom(p.userId, p.entryId);
     }
+  };
+
+  // ----- Duplicate-leads tool -----
+  const scanDuplicates = async () => {
+    setDupScanning(true); setError('');
+    try {
+      const res = await adminFetch('/api/admin/duplicate-leads');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      // Default: keep the first (canonical) lead in each group
+      const keep = {};
+      (data.users || []).forEach(u => {
+        u.groups.forEach((group, gi) => {
+          keep[`${u.userId}|${gi}`] = group[0]?.id;
+        });
+      });
+      setKeepIdByGroupKey(keep);
+      setDupResult(data);
+    } catch (e) {
+      setError(`Duplicate scan failed: ${e.message || e}`);
+    } finally {
+      setDupScanning(false);
+    }
+  };
+
+  const deleteAllDuplicates = async () => {
+    if (!dupResult?.users?.length) return;
+    const totalToDelete = dupResult.users.reduce((s, u) =>
+      s + u.groups.reduce((g, group, gi) => {
+        const keepId = keepIdByGroupKey[`${u.userId}|${gi}`];
+        return g + group.filter(l => l.id !== keepId).length;
+      }, 0), 0);
+    if (totalToDelete === 0) return;
+    if (!confirm(`Delete ${totalToDelete} duplicate leads across all users? Each duplicate group will keep the canonical lead. This can't be undone.`)) return;
+    setDupDeleting(true);
+    setError('');
+    try {
+      for (const u of dupResult.users) {
+        const idsToDelete = [];
+        u.groups.forEach((group, gi) => {
+          const keepId = keepIdByGroupKey[`${u.userId}|${gi}`];
+          group.forEach(l => { if (l.id !== keepId) idsToDelete.push(l.id); });
+        });
+        if (idsToDelete.length === 0) continue;
+        const res = await adminFetch('/api/admin/duplicate-leads', {
+          method: 'POST',
+          body: JSON.stringify({ userId: u.userId, deleteIds: idsToDelete }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(`${u.email}: ${data.error || `HTTP ${res.status}`}`);
+      }
+      // Re-scan to refresh the panel
+      await scanDuplicates();
+    } catch (e) {
+      setError(`Bulk delete failed: ${e.message || e}`);
+    } finally {
+      setDupDeleting(false);
+    }
+  };
+
+  const setKeepInGroup = (userId, groupIdx, leadId) => {
+    setKeepIdByGroupKey(prev => ({ ...prev, [`${userId}|${groupIdx}`]: leadId }));
   };
 
   // Generate a magic-link sign-in for the target user, open in new tab.
@@ -434,6 +502,117 @@ export default function AdminPage() {
                       })}
                     </tbody>
                   </table>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Maintenance — duplicate leads */}
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Copy size={16} className="text-orange-600" />
+              <h2 className="font-semibold text-slate-900">Maintenance — duplicate leads</h2>
+            </div>
+            <button
+              onClick={scanDuplicates}
+              disabled={dupScanning}
+              className="text-xs font-semibold bg-orange-600 hover:bg-orange-700 disabled:bg-slate-300 text-white px-3 py-1.5 rounded-lg flex items-center gap-1.5"
+            >
+              {dupScanning ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+              {dupScanning ? 'Scanning...' : dupResult === null ? 'Scan all users' : 'Re-scan'}
+            </button>
+          </div>
+          <div className="px-4 py-3">
+            <p className="text-xs text-slate-500 mb-3">
+              Finds leads in each user&apos;s tracker that match each other by policy number, name + phone, or name + state + closed-date. Pre-selects the most-complete record in each group as the one to KEEP. You can change which one to keep before bulk-deleting.
+            </p>
+            {dupResult === null && (
+              <div className="text-sm text-slate-400 italic">Click &quot;Scan all users&quot; to start.</div>
+            )}
+            {dupResult && dupResult.users.length === 0 && (
+              <div className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg p-3 flex items-center gap-2">
+                <Shield size={14} /> All clean — no duplicate leads detected across any user.
+              </div>
+            )}
+            {dupResult && dupResult.users.length > 0 && (
+              <>
+                <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                  <div className="text-sm font-semibold text-orange-900 bg-orange-50 border border-orange-200 rounded-lg px-3 py-1.5 flex items-center gap-2">
+                    <AlertTriangle size={14} /> {dupResult.totalDuplicates} duplicate{dupResult.totalDuplicates !== 1 ? 's' : ''} across {dupResult.users.length} user{dupResult.users.length !== 1 ? 's' : ''}
+                  </div>
+                  <button
+                    onClick={deleteAllDuplicates}
+                    disabled={dupDeleting}
+                    className="text-xs font-semibold bg-red-600 hover:bg-red-700 disabled:bg-slate-300 text-white px-3 py-1.5 rounded-lg flex items-center gap-1.5"
+                  >
+                    {dupDeleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                    Delete all duplicates (keep canonical)
+                  </button>
+                </div>
+                <div className="space-y-3">
+                  {dupResult.users.map(u => (
+                    <div key={u.userId} className="border border-slate-200 rounded-lg overflow-hidden">
+                      <div className="px-3 py-2 bg-slate-50 flex items-center justify-between text-xs">
+                        <div className="font-semibold text-slate-900">{u.email}</div>
+                        <div className="text-slate-500">{u.duplicateCount} duplicate{u.duplicateCount !== 1 ? 's' : ''} in {u.groupCount} group{u.groupCount !== 1 ? 's' : ''} ({u.totalLeads} total leads)</div>
+                      </div>
+                      <div className="divide-y divide-slate-100">
+                        {u.groups.map((group, gi) => {
+                          const keepId = keepIdByGroupKey[`${u.userId}|${gi}`];
+                          return (
+                            <div key={gi} className="p-3">
+                              <div className="text-[10px] font-bold text-slate-500 tracking-wider uppercase mb-1.5">
+                                Group {gi + 1} — {group.length} matching leads · keeping the one you select, deleting the rest
+                              </div>
+                              <table className="w-full text-xs">
+                                <thead className="text-[10px] uppercase tracking-wider text-slate-400">
+                                  <tr>
+                                    <th className="text-left px-2 py-1 w-12">Keep</th>
+                                    <th className="text-left px-2 py-1">Name</th>
+                                    <th className="text-left px-2 py-1">Phone</th>
+                                    <th className="text-left px-2 py-1">Email</th>
+                                    <th className="text-left px-2 py-1">St</th>
+                                    <th className="text-left px-2 py-1">Policy #</th>
+                                    <th className="text-left px-2 py-1">Stage</th>
+                                    <th className="text-right px-2 py-1">Premium</th>
+                                    <th className="text-left px-2 py-1">Added</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {group.map(l => {
+                                    const isKept = l.id === keepId;
+                                    return (
+                                      <tr key={l.id} className={`border-t border-slate-100 ${isKept ? 'bg-emerald-50' : 'hover:bg-slate-50'}`}>
+                                        <td className="px-2 py-1.5 text-center">
+                                          <input
+                                            type="radio"
+                                            name={`keep-${u.userId}-${gi}`}
+                                            checked={isKept}
+                                            onChange={() => setKeepInGroup(u.userId, gi, l.id)}
+                                            className="cursor-pointer accent-emerald-600 w-4 h-4"
+                                          />
+                                        </td>
+                                        <td className="px-2 py-1.5 font-medium text-slate-900">{l.name || '(no name)'}</td>
+                                        <td className="px-2 py-1.5 text-slate-700">{l.phone || '—'}</td>
+                                        <td className="px-2 py-1.5 text-slate-500 truncate max-w-[160px]" title={l.email}>{l.email || '—'}</td>
+                                        <td className="px-2 py-1.5 text-slate-500">{l.state || '—'}</td>
+                                        <td className="px-2 py-1.5 text-slate-500 font-mono text-[11px]">{l.policyNumber || '—'}</td>
+                                        <td className="px-2 py-1.5 text-slate-500">{l.stage || '—'}</td>
+                                        <td className="px-2 py-1.5 text-right text-emerald-700">{l.mainProductPremium ? fmt2(l.mainProductPremium) : '—'}</td>
+                                        <td className="px-2 py-1.5 text-slate-400">{l.dateAdded || '—'}</td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </>
             )}
