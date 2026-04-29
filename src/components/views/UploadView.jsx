@@ -204,8 +204,9 @@ function HistoryImport({ onImport, onUndoImport, lastImportBatch, leads = [], on
           <SmartLeadImportWizard
             open={showSmartImport}
             onClose={() => setShowSmartImport(false)}
+            existingLeads={leads}
             onImport={(newLeads, opts) => {
-              onImport?.(newLeads, { batchId: opts.batchId, stats: { total: newLeads.length, smartImport: true } });
+              onImport?.(newLeads, { batchId: opts.batchId, stats: { total: newLeads.length, smartImport: true, duplicatesSkipped: opts.duplicatesSkipped } });
             }}
           />
         </div>

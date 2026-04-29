@@ -9,6 +9,7 @@ import { mkLead, migrateLead, SEED_LEADS, SEED_INVESTMENTS, SEED_ACTIVITIES } fr
 import { today, uid, getWeekStart } from '@/lib/utils';
 import { isPricedAssociation, NAV_TABS } from '@/lib/constants';
 import { TIERS, DEFAULT_ADVANCE_MONTHS, getAdvanceMonthsForDate, currentAdvanceMonths } from '@/lib/commission';
+import { dedupLeads } from '@/lib/leadDedup';
 
 import CpaDashboard from './views/CpaDashboard';
 import AssociationsView from './views/AssociationsView';
@@ -343,14 +344,28 @@ export default function LeadTracker() {
   // Import handlers — append imported leads to existing data, track batchId for undo
   const importLeads = useCallback((newLeads, { batchId, stats } = {}) => {
     if (!newLeads || newLeads.length === 0) return;
-    setLeads(prev => [...newLeads, ...prev]);
-    setLastImportBatch({
-      batchId,
-      count: newLeads.length,
-      at: new Date().toISOString(),
-      stats,
+    // Universal dedup gate: every lead-creation path runs through here, so
+    // any importer (USHA preset, generic mapper, AI Smart, SalesReport gap
+    // detector) automatically gets dedup against existing leads. Matches by
+    // policyNumber first (split on commas), then name+phone-tail.
+    setLeads(prev => {
+      const { fresh, duplicates } = dedupLeads(newLeads, prev);
+      if (duplicates.length > 0) {
+        // Toast appears after the state update — non-blocking
+        setTimeout(() => {
+          showToast(`Imported ${fresh.length} leads · skipped ${duplicates.length} duplicate${duplicates.length !== 1 ? 's' : ''}`);
+        }, 0);
+      } else {
+        setTimeout(() => showToast(`Imported ${fresh.length} leads`), 0);
+      }
+      setLastImportBatch({
+        batchId,
+        count: fresh.length,
+        at: new Date().toISOString(),
+        stats: { ...(stats || {}), duplicatesSkipped: duplicates.length },
+      });
+      return [...fresh, ...prev];
     });
-    showToast(`Imported ${newLeads.length} leads`);
   }, [showToast]);
 
   // Apply a parsed Weekly Advance Statement: update matched leads with

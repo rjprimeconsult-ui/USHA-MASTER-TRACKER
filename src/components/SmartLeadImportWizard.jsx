@@ -10,10 +10,11 @@ import {
 } from '@/lib/constants';
 import { mkLead } from '@/lib/seed';
 import { uid } from '@/lib/utils';
+import { dedupLeads } from '@/lib/leadDedup';
 
 const inp = 'w-full border border-slate-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500';
 
-export default function SmartLeadImportWizard({ open, onClose, onImport }) {
+export default function SmartLeadImportWizard({ open, onClose, onImport, existingLeads = [] }) {
   const [file, setFile] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -81,7 +82,7 @@ export default function SmartLeadImportWizard({ open, onClose, onImport }) {
   const confirm = () => {
     const today = () => new Date().toISOString().slice(0, 10);
     const batchId = `batch_${uid()}`;
-    const newLeads = edits.flatMap((l, i) => {
+    const candidates = edits.flatMap((l, i) => {
       if (skipMask.has(i)) return [];
       if (!l.name?.trim()) return [];
       return [mkLead({
@@ -109,7 +110,17 @@ export default function SmartLeadImportWizard({ open, onClose, onImport }) {
         notes: l.notes || '',
       })];
     });
-    onImport(newLeads, { batchId });
+    // Dedup against existing tracker leads + within the batch itself.
+    // Note: importLeads() in LeadTracker also re-runs dedup as a backstop,
+    // but doing it here too gives the user explicit visibility before import.
+    const { fresh, duplicates } = dedupLeads(candidates, existingLeads);
+    if (duplicates.length > 0) {
+      const proceed = window.confirm(
+        `${duplicates.length} of these ${candidates.length} leads already exist in your tracker (matched by policy number, or by name + phone). Skip duplicates and import only the ${fresh.length} new leads?`
+      );
+      if (!proceed) return;
+    }
+    onImport(fresh, { batchId, duplicatesSkipped: duplicates.length });
     onClose();
   };
 

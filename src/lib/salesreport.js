@@ -261,11 +261,27 @@ export function parseSalesReport(wb) {
  * and extras (in tracker, not in report).
  */
 export function gapDetect(deals, leads) {
-  // Index existing tracker leads by policy number (primary) and name (fallback)
+  // Index existing tracker leads by policy number (primary) and name (fallback).
+  //
+  // CRITICAL: A lead's policyNumber field can hold multiple comma-joined IDs
+  // (e.g. "52Y2502220, 52Y250222F") when one customer has multiple policies —
+  // dealToLead() does this on import. Split on commas/pipes/whitespace so
+  // EVERY individual policyId routes back to the same lead. Without this,
+  // re-uploading the same SalesReport creates duplicates because the next
+  // gapDetect can't match its single-policyId deals against the joined-string
+  // lead.policyNumber.
   const leadsByPolicy = new Map();
   const leadsByName = new Map();
   for (const l of leads) {
-    if (l.policyNumber) leadsByPolicy.set(l.policyNumber, l);
+    if (l.policyNumber) {
+      const ids = String(l.policyNumber)
+        .split(/[,;|\s]+/)
+        .map(p => p.trim().toUpperCase())
+        .filter(Boolean);
+      for (const pid of ids) {
+        if (!leadsByPolicy.has(pid)) leadsByPolicy.set(pid, l);
+      }
+    }
     const nk = nameKey(l.name);
     if (nk) {
       if (!leadsByName.has(nk)) leadsByName.set(nk, []);
@@ -278,11 +294,13 @@ export function gapDetect(deals, leads) {
   const matchedLeadIds = new Set();
 
   for (const d of deals) {
-    // Try to match by any of this deal's policy numbers first
+    // Try to match by any of this deal's policy numbers first.
+    // Uppercase to match the index, since OCR sometimes flips case.
     let matchedLead = null;
     for (const pid of d.policyNumbers) {
-      if (leadsByPolicy.has(pid)) {
-        matchedLead = leadsByPolicy.get(pid);
+      const norm = String(pid || '').trim().toUpperCase();
+      if (leadsByPolicy.has(norm)) {
+        matchedLead = leadsByPolicy.get(norm);
         break;
       }
     }
