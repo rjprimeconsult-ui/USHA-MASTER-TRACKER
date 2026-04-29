@@ -29,6 +29,9 @@ export default function SmartLeadImportWizard({ open, onClose, onImport, existin
     owner: 'You',
     leadCost: '',
   });
+  // Conflict mode: 'skip' = leave existing untouched (default, safe).
+  // 'merge' = patch matching existing leads with extra fields from this import.
+  const [conflictMode, setConflictMode] = useState('skip');
   const fileRef = useRef(null);
 
   useEffect(() => {
@@ -111,16 +114,20 @@ export default function SmartLeadImportWizard({ open, onClose, onImport, existin
       })];
     });
     // Dedup against existing tracker leads + within the batch itself.
-    // Note: importLeads() in LeadTracker also re-runs dedup as a backstop,
-    // but doing it here too gives the user explicit visibility before import.
+    // Note: importLeads() in LeadTracker re-runs dedup as a backstop and
+    // applies the chosen conflict mode (skip vs merge).
     const { fresh, duplicates } = dedupLeads(candidates, existingLeads);
     if (duplicates.length > 0) {
+      const action = conflictMode === 'merge'
+        ? `Merge their non-empty fields into the existing leads (lead cost, CRM, notes, etc.) and add ${fresh.length} brand-new leads?`
+        : `Skip the duplicates and import only the ${fresh.length} new leads?`;
       const proceed = window.confirm(
-        `${duplicates.length} of these ${candidates.length} leads already exist in your tracker (matched by policy number, or by name + phone). Skip duplicates and import only the ${fresh.length} new leads?`
+        `${duplicates.length} of these ${candidates.length} leads already exist in your tracker (matched by policy number, or by name + phone).\n\n${action}`
       );
       if (!proceed) return;
     }
-    onImport(fresh, { batchId, duplicatesSkipped: duplicates.length });
+    // Pass ALL candidates through — importLeads() handles skip vs merge
+    onImport(candidates, { batchId, mode: conflictMode });
     onClose();
   };
 
@@ -232,6 +239,30 @@ export default function SmartLeadImportWizard({ open, onClose, onImport, existin
                   {counts.skipped > 0 && (
                     <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-500">{counts.skipped} skipped</span>
                   )}
+                </div>
+              )}
+
+              {/* Conflict-mode toggle: how to handle leads that already exist */}
+              {existingLeads.length > 0 && (
+                <div className="bg-white border border-slate-200 rounded-xl p-3 flex items-center justify-between gap-3 flex-wrap">
+                  <div className="text-xs">
+                    <span className="font-bold text-slate-700">If a lead already exists:</span>
+                    <span className="text-slate-500 ml-2">
+                      {conflictMode === 'merge'
+                        ? 'Fill in any empty fields on the existing lead from this file (lead cost, CRM, notes, etc.). Original ID + add date preserved.'
+                        : 'Skip — leave the existing lead untouched.'}
+                    </span>
+                  </div>
+                  <div className="flex border border-slate-200 rounded-lg overflow-hidden text-xs">
+                    <button onClick={() => setConflictMode('skip')}
+                      className={`px-3 py-1.5 font-semibold ${conflictMode === 'skip' ? 'bg-slate-700 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>
+                      Skip duplicates
+                    </button>
+                    <button onClick={() => setConflictMode('merge')}
+                      className={`px-3 py-1.5 font-semibold ${conflictMode === 'merge' ? 'bg-emerald-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>
+                      Merge into existing
+                    </button>
+                  </div>
                 </div>
               )}
 

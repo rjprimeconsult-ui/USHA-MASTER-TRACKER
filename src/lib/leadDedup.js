@@ -70,23 +70,49 @@ export function buildLeadIndex(existingLeads) {
   return {
     /**
      * Find an existing lead matching the candidate. Returns null if none.
-     * Tries every available signal in priority order.
+     *
+     * Tier 1: policy ID match (strongest — same policy = same lead)
+     * Tier 2: name+phone match — BUT only if neither side has policy IDs
+     *         OR the candidate has no policy ID. If both sides have
+     *         policy IDs that didn't match in tier 1, the leads are
+     *         the SAME PERSON with DIFFERENT POLICIES (e.g. someone
+     *         with both PREMIER ADVANTAGE and SECURE DENTAL) — those
+     *         are intentionally separate leads, not duplicates.
+     * Tier 3: name+state+closedDate (very weak fallback)
      */
     findExisting(candidate) {
-      for (const pid of policyIdsOf(candidate)) {
+      const candidatePids = policyIdsOf(candidate);
+
+      // Tier 1
+      for (const pid of candidatePids) {
         const hit = byPolicy.get(pid);
         if (hit) return hit;
       }
+
       const n = normName(candidate?.name);
       const t = phoneTail(candidate?.phone);
+
+      // Tier 2 — name+phone, with the policy-mismatch carve-out
       if (n && t) {
         const hit = byNamePhone.get(`${n}:${t}`);
-        if (hit) return hit;
+        if (hit) {
+          const hitHasPolicy = policyIdsOf(hit).length > 0;
+          // Both sides have policies that DIDN'T match in tier 1?
+          // → different policies for the same customer → separate leads.
+          if (candidatePids.length > 0 && hitHasPolicy) return null;
+          return hit;
+        }
       }
+
+      // Tier 3 — same carve-out
       if (n && candidate?.state) {
         const k = `${n}:${String(candidate.state).toUpperCase()}:${candidate.closedDate || ''}`;
         const hit = byNameState.get(k);
-        if (hit) return hit;
+        if (hit) {
+          const hitHasPolicy = policyIdsOf(hit).length > 0;
+          if (candidatePids.length > 0 && hitHasPolicy) return null;
+          return hit;
+        }
       }
       return null;
     },
@@ -107,24 +133,94 @@ export function buildLeadIndex(existingLeads) {
 }
 
 /**
+ * Patch an existing lead with non-empty fields from a candidate. Used for
+ * "merge mode" imports — when a re-upload of a different file has extra
+ * info (lead cost, CRM, notes, etc.) that the original import didn't.
+ *
+ * Rules:
+ *   - Existing values are preserved when they're non-empty.
+ *   - Empty / missing fields on the existing lead get filled from the candidate.
+ *   - Notes are CONCATENATED (existing · candidate) when both have content.
+ *   - id, dateAdded, _batchId, closedDate are ALWAYS preserved from existing.
+ *   - Stage is preserved from existing UNLESS existing is "Pending" and
+ *     candidate has a more-final stage (Issued/Declined/etc.) — promote.
+ */
+export function mergeLeadFields(existing, candidate) {
+  if (!existing) return candidate;
+  if (!candidate) return existing;
+
+  const isEmpty = (v) =>
+    v === null || v === undefined || v === '' ||
+    (Array.isArray(v) && v.length === 0) ||
+    (typeof v === 'number' && v === 0);
+
+  const merged = { ...existing };
+
+  for (const key of Object.keys(candidate)) {
+    // Always preserved from existing — never overwrite these
+    if (['id', 'dateAdded', '_batchId', 'createdAt'].includes(key)) continue;
+    // Stage handled below
+    if (key === 'stage') continue;
+    // Notes: concat instead of replace
+    if (key === 'notes') continue;
+
+    if (isEmpty(merged[key]) && !isEmpty(candidate[key])) {
+      merged[key] = candidate[key];
+    }
+  }
+
+  // Stage: promote from Pending if candidate has a final outcome
+  const FINAL_STAGES = ['Issued', 'Declined', 'Not taken', 'Withdrawn'];
+  if (existing.stage === 'Pending' && FINAL_STAGES.includes(candidate.stage)) {
+    merged.stage = candidate.stage;
+    if (candidate.closedDate && !existing.closedDate) {
+      merged.closedDate = candidate.closedDate;
+    }
+  }
+
+  // Notes: concatenate, dedup-style
+  const existingNotes = String(existing.notes || '').trim();
+  const candNotes = String(candidate.notes || '').trim();
+  if (existingNotes && candNotes && !existingNotes.includes(candNotes)) {
+    merged.notes = `${existingNotes} · ${candNotes}`;
+  } else if (candNotes && !existingNotes) {
+    merged.notes = candNotes;
+  }
+
+  return merged;
+}
+
+/**
  * Split a candidate batch into fresh + duplicates against `existingLeads`.
  * Also dedupes within the batch itself (so the same Excel listing the same
  * customer twice only gets one lead).
+ *
+ * Options:
+ *   merge: when true, instead of just returning duplicates as a separate
+ *          list, returns a `merges` array of { existingId, patched } that
+ *          the caller can apply via setLeads(prev => prev.map(l =>
+ *          mergeMap.get(l.id) || l)). Default false (skip duplicates).
  */
-export function dedupLeads(candidateLeads, existingLeads) {
+export function dedupLeads(candidateLeads, existingLeads, opts = {}) {
+  const merge = opts.merge === true;
   const idx = buildLeadIndex(existingLeads);
   const fresh = [];
   const duplicates = [];
+  const merges = [];
   for (const cand of candidateLeads || []) {
     const existing = idx.findExisting(cand);
     if (existing) {
       duplicates.push({ candidate: cand, existing });
+      if (merge) {
+        const patched = mergeLeadFields(existing, cand);
+        merges.push({ existingId: existing.id, patched });
+      }
     } else {
       fresh.push(cand);
       idx.absorb(cand);
     }
   }
-  return { fresh, duplicates };
+  return { fresh, duplicates, merges };
 }
 
 /**

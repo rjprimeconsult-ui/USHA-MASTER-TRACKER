@@ -344,29 +344,38 @@ export default function LeadTracker() {
   }, [showToast]);
 
   // Import handlers — append imported leads to existing data, track batchId for undo
-  const importLeads = useCallback((newLeads, { batchId, stats } = {}) => {
+  const importLeads = useCallback((newLeads, { batchId, stats, mode = 'skip' } = {}) => {
     if (!newLeads || newLeads.length === 0) return;
-    // Universal dedup gate: every lead-creation path runs through here, so
-    // any importer (USHA preset, generic mapper, AI Smart, SalesReport gap
-    // detector) automatically gets dedup against existing leads. Matches by
-    // policyNumber first (split on commas), then name+phone-tail.
+    // Universal dedup gate: every lead-creation path runs through here.
+    //
+    // mode = 'skip'  (default) — drop candidates that match existing leads
+    // mode = 'merge'           — patch the matching existing lead with
+    //                            non-empty fields from the candidate
+    //                            (preserves the original lead's id +
+    //                            dateAdded, fills empty fields, concats
+    //                            notes, promotes Pending -> final stage).
     setLeads(prev => {
-      const { fresh, duplicates } = dedupLeads(newLeads, prev);
-      if (duplicates.length > 0) {
-        // Toast appears after the state update — non-blocking
-        setTimeout(() => {
-          showToast(`Imported ${fresh.length} leads · skipped ${duplicates.length} duplicate${duplicates.length !== 1 ? 's' : ''}`);
-        }, 0);
-      } else {
-        setTimeout(() => showToast(`Imported ${fresh.length} leads`), 0);
-      }
+      const { fresh, duplicates, merges } = dedupLeads(newLeads, prev, { merge: mode === 'merge' });
+      const mergeById = new Map(merges.map(m => [m.existingId, m.patched]));
+      // Apply merges to the existing list, then prepend fresh
+      const updated = prev.map(l => mergeById.get(l.id) || l);
+      const mergedCount = mergeById.size;
+      const skippedCount = duplicates.length - mergedCount;
+
+      setTimeout(() => {
+        const bits = [`Imported ${fresh.length} lead${fresh.length !== 1 ? 's' : ''}`];
+        if (mergedCount > 0) bits.push(`merged ${mergedCount} into existing`);
+        if (skippedCount > 0) bits.push(`skipped ${skippedCount} duplicate${skippedCount !== 1 ? 's' : ''}`);
+        showToast(bits.join(' · '));
+      }, 0);
+
       setLastImportBatch({
         batchId,
         count: fresh.length,
         at: new Date().toISOString(),
-        stats: { ...(stats || {}), duplicatesSkipped: duplicates.length },
+        stats: { ...(stats || {}), duplicatesSkipped: skippedCount, merged: mergedCount },
       });
-      return [...fresh, ...prev];
+      return [...fresh, ...updated];
     });
   }, [showToast]);
 
