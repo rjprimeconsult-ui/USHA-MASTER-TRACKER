@@ -26,6 +26,13 @@
 
 export const ANNOUNCEMENTS = [
   {
+    id: '2026-04-29-chatbot',
+    date: '2026-04-29',
+    emoji: '💬',
+    title: 'New: PRIM Assistant — built-in AI help',
+    body: 'Look for the gradient chat bubble in the bottom-right corner. Ask anything: "How do I import my book of business?", "Why is my Earned KPI different from my statement?", "Show me my YTD numbers." It knows the app inside-out and can read your data to give specific answers.',
+  },
+  {
     id: '2026-04-29-lead-dedup',
     date: '2026-04-29',
     emoji: '🔁',

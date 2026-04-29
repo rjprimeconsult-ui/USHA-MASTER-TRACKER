@@ -28,6 +28,7 @@ import ConfirmDialog from './ConfirmDialog';
 import NoPhiBanner from './NoPhiBanner';
 import ImpersonationBanner from './ImpersonationBanner';
 import AnnouncementBanner from './AnnouncementBanner';
+import AgentChatbot from './AgentChatbot';
 import ScreenshotImport from './ScreenshotImport';
 import Toast from './Toast';
 import AdvanceMonthsHistoryEditor from './AdvanceMonthsHistoryEditor';
@@ -112,6 +113,7 @@ function ViewMount({ visible, viewKey, children }) {
 }
 
 export default function LeadTracker() {
+  const { user: authUser } = useAuth();
   const [loaded, setLoaded] = useState(false);
   const [view, setView] = useState('cpa');
   const [showScreenshotImport, setShowScreenshotImport] = useState(false);
@@ -1125,6 +1127,57 @@ export default function LeadTracker() {
 
       {/* What's-new announcements (top of app, dismissed per-user via cloud sync) */}
       <AnnouncementBanner onNavigate={(v) => setView(v)} />
+
+      {/* In-app PRIM assistant (floating chat bubble, bottom right) */}
+      <AgentChatbot
+        onNavigate={(v) => setView(v)}
+        buildContext={() => {
+          const issuedYTD = leads.filter(l => l.stage === 'Issued' && (l.closedDate || '').startsWith(new Date().getFullYear().toString()));
+          const earnedYTD = ownAdvances
+            .filter(a => (a.period || '').startsWith(new Date().getFullYear().toString().slice(-2)) || (a.period || '').includes(new Date().getFullYear().toString()))
+            .reduce((s, a) => s + Number(a.amount || 0), 0)
+            || issuedYTD.reduce((s, l) => s + Number(l.dealValue || 0), 0);
+          const overrideYTD = overrides
+            .filter(o => (o.period || '').includes(new Date().getFullYear().toString()))
+            .reduce((s, o) => s + Number(o.amount || 0), 0);
+          const yr = new Date().getFullYear().toString();
+          const expensesYTD = businessExpenses
+            .filter(e => (e.date || '').startsWith(yr))
+            .reduce((s, e) => s + Number(e.amount || 0), 0);
+          const booksIncomeYTD = businessIncome
+            .filter(e => (e.date || '').startsWith(yr))
+            .reduce((s, e) => s + Number(e.amount || 0), 0);
+          return {
+            email: authUser?.email,
+            tier,
+            currentView: view,
+            leadsCount: leads.length,
+            leadsByStage: leads.reduce((acc, l) => {
+              acc[l.stage] = (acc[l.stage] || 0) + 1;
+              return acc;
+            }, {}),
+            prospectsCount: prospects.filter(p => !p.archivedAt && !['SOLD', 'LOST'].includes(p.stage)).length,
+            kpis: {
+              earnedYTD: Math.round(earnedYTD + overrideYTD),
+              totalRevenueYTD: Math.round(earnedYTD + overrideYTD + booksIncomeYTD),
+              expensesYTD: Math.round(expensesYTD),
+              netYTD: Math.round((earnedYTD + overrideYTD + booksIncomeYTD) - expensesYTD),
+            },
+            recentLeads: leads.slice(0, 8).map(l => ({
+              name: l.name,
+              stage: l.stage,
+              mainProduct: l.mainProduct,
+              dealValue: l.dealValue,
+            })),
+            recentBooksExpenses: businessExpenses.slice(0, 5).map(e => ({
+              date: e.date,
+              category: e.category,
+              amount: e.amount,
+              vendor: e.vendor,
+            })),
+          };
+        }}
+      />
 
       {/* One-time no-PHI acknowledgement (gates the app on first sign-in) */}
       <NoPhiBanner />
