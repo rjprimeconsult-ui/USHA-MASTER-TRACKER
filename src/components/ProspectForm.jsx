@@ -95,6 +95,8 @@ export default function ProspectForm({ open, prospect, stages, customFields = []
               <select className={inp} value={form.indvOrFamily || 'Indv'} onChange={e => set({ indvOrFamily: e.target.value })}>
                 <option value="Indv">Individual</option>
                 <option value="Family">Family</option>
+                <option value="Small Bizz">Small Bizz</option>
+                <option value="Employer 5-10">Employer 5-10</option>
               </select>
             </Field>
           </div>

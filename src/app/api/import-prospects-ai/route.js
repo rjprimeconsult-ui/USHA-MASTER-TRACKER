@@ -77,8 +77,11 @@ POLICY TYPE (prospect.policyType — pick exactly one of these canonical product
 - SUPPY: matches "Suppy" exactly
 Leave policyType empty when the file's product field is something generic ("Health", "Life", "Medicare", "Individual Health", "Dental") that does not map to one of the six codes above. Do NOT invent values outside this list.
 
-INDV/FAMILY (prospect.indvOrFamily — pick exactly one):
-- "Indv" or "Family" — infer from prospect's profile (single person -> Indv, has spouse/kids/dependents listed -> Family)
+INDV/FAMILY (prospect.indvOrFamily — pick exactly one of: "Indv", "Family", "Small Bizz", "Employer 5-10"):
+- "Indv" — single person, no spouse / dependents listed
+- "Family" — has spouse / kids / dependents listed (also infer from family-of-N notes)
+- "Small Bizz" — small-business owner buying coverage for themselves (often LLC, S-corp, sole proprietor mentioned in notes); fewer than ~5 employees
+- "Employer 5-10" — employer-group coverage for a business with roughly 5-10 employees (notes might say "group plan", "5 employees", "small group")
 
 CRITICAL RULES:
 1. Skip section header rows. Spreadsheets often group prospects under headers like "APPOINTMENT SET", "WEBBY CONFIRMED", "GHOSTED/PENDING DECISIONS", "REFERRALS", "GOOGLE ADS LEADS", "MAJOR LEAGUE ONLY". These are CATEGORY HEADERS, not prospects — skip them.
@@ -110,7 +113,7 @@ const PROSPECT_SCHEMA = {
           state: { type: 'string' },
           zip: { type: 'string' },
           timezone: { type: 'string' },
-          indvOrFamily: { type: 'string', enum: ['Indv', 'Family'] },
+          indvOrFamily: { type: 'string', enum: ['Indv', 'Family', 'Small Bizz', 'Employer 5-10'] },
           dobs: { type: 'string', description: 'DOB or comma-separated DOBs for family' },
           income: { type: 'string' },
           quoteSize: { type: 'string' },
