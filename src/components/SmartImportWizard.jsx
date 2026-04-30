@@ -20,8 +20,12 @@ function fmtMoney(v) {
 }
 
 export default function SmartImportWizard({ open, onClose, onImport, defaultAccount = '' }) {
-  const [file, setFile] = useState(null);
+  // Bulk-mode: array of files queued for extraction. The wizard processes
+  // them one at a time and merges transactions/platforms across all of
+  // them into a single review table.
+  const [files, setFiles] = useState([]);
   const [busy, setBusy] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState({ done: 0, total: 0, currentName: '' });
   const [error, setError] = useState('');
   const [result, setResult] = useState(null); // { transactions, summary, extractedHint, usage }
   const [edits, setEdits] = useState([]); // editable copy of transactions
@@ -58,10 +62,11 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
 
   useEffect(() => {
     if (!open) {
-      setFile(null); setBusy(false); setError(''); setResult(null);
+      setFiles([]); setBusy(false); setError(''); setResult(null);
       setEdits([]); setSkipMask(new Set()); setPlatformEdits([]); setPlatformSkipMask(new Set());
       setRememberedSet(new Set()); setRememberedPlatformSet(new Set());
       setEditedRows(new Set()); setEditedPlatformRows(new Set());
+      setBulkProgress({ done: 0, total: 0, currentName: '' });
       setAccount(defaultAccount);
     }
   }, [open, defaultAccount]);
@@ -80,123 +85,184 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
   if (!open) return null;
 
   const onPick = (e) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    setFile(f); setError(''); setResult(null);
+    const fs = Array.from(e.target.files || []);
+    if (fs.length === 0) return;
+    // Append to existing queue so users can pick from multiple folders
+    setFiles(prev => [...prev, ...fs]);
+    setError(''); setResult(null);
+    // Reset the input so picking the same file twice still triggers onChange
+    if (fileRef.current) fileRef.current.value = '';
   };
   const onDrop = (e) => {
     e.preventDefault();
-    const f = e.dataTransfer.files?.[0];
-    if (f) { setFile(f); setError(''); setResult(null); }
+    const fs = Array.from(e.dataTransfer.files || []);
+    if (fs.length > 0) {
+      setFiles(prev => [...prev, ...fs]);
+      setError(''); setResult(null);
+    }
+  };
+  const removeFile = (idx) => {
+    setFiles(prev => prev.filter((_, i) => i !== idx));
   };
 
   const runExtract = async () => {
-    if (!file) return;
+    if (files.length === 0) return;
     setBusy(true); setError('');
+    setBulkProgress({ done: 0, total: files.length, currentName: files[0].name });
+
+    // Pre-render shared form fields ONCE — they're identical across files
+    const hints = vendorMemoryToHints(vendorMemory, 60);
+    const customCats = [
+      ...(customMap.expense || []).map(c => ({ id: c.id, label: c.label, direction: 'expense' })),
+      ...(customMap.income  || []).map(c => ({ id: c.id, label: c.label, direction: 'income' })),
+    ];
+
+    // Aggregate results across every file. Each row gets a unique id so
+    // editing one doesn't ripple to another. Original-file annotation in
+    // notes helps the user trace which file a charge came from.
+    const allTxs = [];
+    const allPlats = [];
+    const remembered = new Set();
+    const rememberedPlat = new Set();
+    const perFileSummaries = [];
+    const perFileErrors = [];
+    let aggInputTokens = 0, aggCachedRead = 0, aggOutput = 0;
+
     try {
-      const form = new FormData();
-      form.append('file', file);
-      // Send the user's confirmed vendor->category map so the AI mimics their
-      // bookkeeping style on similar new vendors.
-      const hints = vendorMemoryToHints(vendorMemory, 60);
-      if (hints.length > 0) form.append('vendorHints', JSON.stringify(hints));
-      // Send custom categories so the AI can route into them when a vendor
-      // matches a user-defined bucket. Only id + label needed server-side.
-      const customCats = [
-        ...(customMap.expense || []).map(c => ({ id: c.id, label: c.label, direction: 'expense' })),
-        ...(customMap.income  || []).map(c => ({ id: c.id, label: c.label, direction: 'income' })),
-      ];
-      if (customCats.length > 0) form.append('customCategories', JSON.stringify(customCats));
-      // Send the agent's free-form rubric overlay so AI bias matches their style
-      if (userRubric && userRubric.trim()) form.append('userRubric', userRubric.trim());
+      for (let fi = 0; fi < files.length; fi++) {
+        const file = files[fi];
+        setBulkProgress({ done: fi, total: files.length, currentName: file.name });
 
-      const res = await fetch('/api/import-expenses-ai', { method: 'POST', body: form });
+        const form = new FormData();
+        form.append('file', file);
+        if (hints.length > 0) form.append('vendorHints', JSON.stringify(hints));
+        if (customCats.length > 0) form.append('customCategories', JSON.stringify(customCats));
+        if (userRubric && userRubric.trim()) form.append('userRubric', userRubric.trim());
 
-      // Resilient response parsing — when Vercel itself times out / returns
-      // a 504 gateway error, the body is a plain HTML/text page, not JSON.
-      // Reading it as text first and surfacing the real reason keeps the
-      // user from seeing a confusing "Unexpected token 'A'" parse error.
-      const rawText = await res.text();
-      let data;
-      try {
-        data = JSON.parse(rawText);
-      } catch {
-        // Not JSON. Most common cause: Vercel function exceeded maxDuration.
-        if (res.status === 504 || /timeout|gateway/i.test(rawText)) {
-          throw new Error(
-            `Server timed out processing this file (took longer than 5 minutes). ` +
-            `This usually means the PDF is image-based with many pages. Try splitting ` +
-            `the statement into one page per file, or export it as CSV from your bank instead.`
-          );
+        let data;
+        try {
+          const res = await fetch('/api/import-expenses-ai', { method: 'POST', body: form });
+          const rawText = await res.text();
+          try { data = JSON.parse(rawText); }
+          catch {
+            if (res.status === 504 || /timeout|gateway/i.test(rawText)) {
+              throw new Error('Server timed out (file took longer than 5 minutes).');
+            }
+            throw new Error(`Non-JSON response (HTTP ${res.status}): ${rawText.slice(0, 150)}`);
+          }
+          if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+        } catch (fileErr) {
+          // One file's failure shouldn't kill the whole batch. Record it
+          // and keep going.
+          perFileErrors.push({ filename: file.name, error: fileErr.message || String(fileErr) });
+          try {
+            await recordImport({
+              kind: 'expenses-error',
+              filename: file.name, size: file.size || 0,
+              counts: {}, error: fileErr.message || String(fileErr),
+            });
+          } catch {}
+          continue;
         }
-        throw new Error(
-          `Server returned a non-JSON response (HTTP ${res.status}). ` +
-          `Snippet: ${rawText.slice(0, 200)}`
-        );
+
+        // Tag rows with the source file so user knows where each came from
+        const sourceTag = files.length > 1 ? `[${file.name}]` : '';
+
+        (data.transactions || []).forEach((t) => {
+          const id = uid();
+          const mem = lookupVendor(vendorMemory, t.vendor);
+          let row;
+          if (mem && mem.direction !== 'platform') {
+            remembered.add(allTxs.length);
+            row = { ...t, id, direction: mem.direction || t.direction, category: mem.category || t.category };
+          } else {
+            row = { ...t, id };
+          }
+          if (sourceTag) row.notes = [row.notes, sourceTag].filter(Boolean).join(' ');
+          allTxs.push(row);
+        });
+
+        (data.platformExpenses || []).forEach((p) => {
+          const id = uid();
+          const mem = lookupVendor(vendorMemory, p.vendor || p.notes);
+          let row;
+          if (mem && mem.direction === 'platform' && mem.platformId) {
+            rememberedPlat.add(allPlats.length);
+            row = { ...p, id, platformId: mem.platformId };
+          } else {
+            row = { ...p, id };
+          }
+          if (sourceTag) row.notes = [row.notes, sourceTag].filter(Boolean).join(' ');
+          allPlats.push(row);
+        });
+
+        if (data.usage) {
+          aggInputTokens += data.usage.inputTokens || 0;
+          aggCachedRead  += data.usage.cachedReadTokens || 0;
+          aggOutput      += data.usage.outputTokens || 0;
+        }
+        perFileSummaries.push({
+          filename: file.name,
+          transactions: data.transactions?.length || 0,
+          platforms: data.platformExpenses?.length || 0,
+          summary: data.summary,
+        });
+
+        // Audit trail per file
+        try {
+          await recordImport({
+            kind: previewMode ? 'expenses-preview' : 'expenses',
+            filename: file.name, size: file.size || 0,
+            counts: {
+              transactions: data.transactions?.length || 0,
+              platforms: data.platformExpenses?.length || 0,
+            },
+            usage: data.usage,
+            fingerprint: data.fingerprint,
+            durationMs: data.durationMs,
+            raw: { transactions: data.transactions, platformExpenses: data.platformExpenses, summary: data.summary },
+          });
+        } catch {}
       }
-      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
 
-      // Pre-fill rows from vendor memory: when a row's vendor was previously
-      // confirmed by the user, override the AI's guess with the user's pick.
-      const remembered = new Set();
-      const rememberedPlat = new Set();
-      const txs = (data.transactions || []).map((t, i) => {
-        const id = uid();
-        const mem = lookupVendor(vendorMemory, t.vendor);
-        if (mem && mem.direction !== 'platform') {
-          remembered.add(i);
-          return { ...t, id, direction: mem.direction || t.direction, category: mem.category || t.category };
-        }
-        return { ...t, id };
-      });
-      const plats = (data.platformExpenses || []).map((p, i) => {
-        const id = uid();
-        const mem = lookupVendor(vendorMemory, p.vendor || p.notes);
-        if (mem && mem.direction === 'platform' && mem.platformId) {
-          rememberedPlat.add(i);
-          return { ...p, id, platformId: mem.platformId };
-        }
-        return { ...p, id };
-      });
+      setBulkProgress({ done: files.length, total: files.length, currentName: '' });
 
-      setResult(data);
-      setEdits(txs);
-      setPlatformEdits(plats);
+      // If every single file failed, surface a single error. Otherwise we
+      // continue with whatever did extract.
+      if (allTxs.length === 0 && allPlats.length === 0 && perFileErrors.length === files.length) {
+        const firstErr = perFileErrors[0];
+        throw new Error(`All ${files.length} file${files.length !== 1 ? 's' : ''} failed. First error: ${firstErr.error}`);
+      }
+
+      const aggregateResult = {
+        transactions: allTxs,
+        platformExpenses: allPlats,
+        summary: {
+          format: files.length > 1 ? `bulk (${files.length} files)` : (perFileSummaries[0]?.summary?.format || 'unknown'),
+          totalExpenses: 0,
+          totalIncome: 0,
+        },
+        extractedHint: files.length > 1
+          ? `Processed ${perFileSummaries.length} of ${files.length} file${files.length !== 1 ? 's' : ''}` +
+            (perFileErrors.length > 0 ? ` · ${perFileErrors.length} failed (see import history)` : '')
+          : (perFileSummaries[0] ? `Processed ${perFileSummaries[0].filename}` : ''),
+        usage: {
+          inputTokens: aggInputTokens,
+          cachedReadTokens: aggCachedRead,
+          outputTokens: aggOutput,
+        },
+        perFileErrors,
+      };
+
+      setResult(aggregateResult);
+      setEdits(allTxs);
+      setPlatformEdits(allPlats);
       setRememberedSet(remembered);
       setRememberedPlatformSet(rememberedPlat);
       setSkipMask(new Set());
       setPlatformSkipMask(new Set());
-
-      // Log every extraction to import history (audit trail). We log here
-      // so even Preview-mode runs are remembered — useful for debugging
-      // misclassifications without polluting the user's books.
-      try {
-        await recordImport({
-          kind: previewMode ? 'expenses-preview' : 'expenses',
-          filename: file?.name || 'upload',
-          size: file?.size || 0,
-          counts: {
-            transactions: data.transactions?.length || 0,
-            platforms: data.platformExpenses?.length || 0,
-          },
-          usage: data.usage,
-          fingerprint: data.fingerprint,
-          durationMs: data.durationMs,
-          raw: { transactions: data.transactions, platformExpenses: data.platformExpenses, summary: data.summary },
-        });
-      } catch { /* don't block the user on history-write failures */ }
     } catch (e) {
       setError(e.message || String(e));
-      // Log failures too so users can see what went wrong later
-      try {
-        await recordImport({
-          kind: 'expenses-error',
-          filename: file?.name || 'upload',
-          size: file?.size || 0,
-          counts: {},
-          error: e.message || String(e),
-        });
-      } catch {}
     } finally {
       setBusy(false);
     }
@@ -347,11 +413,11 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
-          {/* Step 1: Drop file */}
+          {/* Step 1: Drop file(s) — supports multi-file bulk uploads */}
           {!result && (
             <div>
-              <input type="file" ref={fileRef} accept=".xlsx,.xls,.csv,.pdf" onChange={onPick} className="hidden" />
-              {!file ? (
+              <input type="file" ref={fileRef} accept=".xlsx,.xls,.csv,.pdf" multiple onChange={onPick} className="hidden" />
+              {files.length === 0 ? (
                 <div onDragOver={(e) => e.preventDefault()} onDrop={onDrop}
                   onClick={() => fileRef.current?.click()}
                   className="border-2 border-dashed border-slate-300 hover:border-indigo-400 hover:bg-indigo-50/30 rounded-xl p-12 text-center cursor-pointer transition">
@@ -360,24 +426,39 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
                     <FileText size={32} className="text-slate-300" />
                     <ImageIcon size={32} className="text-slate-300" />
                   </div>
-                  <div className="text-sm font-semibold text-slate-700">Drop a file here</div>
+                  <div className="text-sm font-semibold text-slate-700">Drop one or more files here</div>
                   <div className="text-xs text-slate-500 mt-1">or click to browse</div>
-                  <div className="text-[11px] text-slate-400 mt-3">XLSX · CSV · PDF (text or scanned image)</div>
+                  <div className="text-[11px] text-slate-400 mt-3">XLSX · CSV · PDF (text or scanned image) — drag multiple bank statements at once</div>
                 </div>
               ) : (
                 <div className="space-y-3">
-                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex items-center gap-3">
-                    {file.name.toLowerCase().endsWith('.pdf') ? <FileText size={20} className="text-red-500" /> : <FileSpreadsheet size={20} className="text-emerald-500" />}
-                    <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-sm text-slate-900 truncate">{file.name}</div>
-                      <div className="text-xs text-slate-500">{(file.size / 1024).toFixed(0)} KB</div>
-                    </div>
-                    <button onClick={() => { setFile(null); }} className="text-slate-400 hover:text-slate-700 text-xs underline">Change</button>
+                  <div className="space-y-1.5">
+                    {files.map((f, idx) => (
+                      <div key={`${f.name}-${idx}`} className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 flex items-center gap-3">
+                        {f.name.toLowerCase().endsWith('.pdf') ? <FileText size={18} className="text-red-500 flex-shrink-0" /> : <FileSpreadsheet size={18} className="text-emerald-500 flex-shrink-0" />}
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold text-sm text-slate-900 truncate">{f.name}</div>
+                          <div className="text-[11px] text-slate-500">{(f.size / 1024).toFixed(0)} KB</div>
+                        </div>
+                        <button onClick={() => removeFile(idx)} disabled={busy} className="text-slate-400 hover:text-red-600 disabled:opacity-30 p-1"><X size={14} /></button>
+                      </div>
+                    ))}
                   </div>
+                  <button onClick={() => fileRef.current?.click()} disabled={busy}
+                    onDragOver={(e) => e.preventDefault()} onDrop={onDrop}
+                    className="w-full border border-dashed border-slate-300 hover:border-indigo-400 hover:bg-indigo-50/40 disabled:opacity-50 rounded-lg py-2 text-xs text-slate-600 font-semibold transition">
+                    + Add more files (or drop here)
+                  </button>
                   <div className="flex gap-2">
                     <button onClick={() => { setPreviewMode(false); runExtract(); }} disabled={busy}
                       className="flex-1 bg-gradient-to-br from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 disabled:from-slate-300 disabled:to-slate-300 text-white rounded-xl py-3 font-semibold flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/30">
-                      {busy && !previewMode ? <><Loader2 size={16} className="animate-spin" /> Extracting...</> : <><Sparkles size={16} /> Extract with AI</>}
+                      {busy && !previewMode
+                        ? <><Loader2 size={16} className="animate-spin" />
+                            {bulkProgress.total > 1
+                              ? `Extracting ${bulkProgress.done + 1}/${bulkProgress.total}…`
+                              : 'Extracting...'}
+                          </>
+                        : <><Sparkles size={16} /> Extract {files.length > 1 ? `${files.length} files` : 'with AI'}</>}
                     </button>
                     <button onClick={() => { setPreviewMode(true); runExtract(); }} disabled={busy}
                       title="Run extraction without committing — useful to test if a file parses cleanly before you import it"
@@ -386,7 +467,16 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
                       Preview
                     </button>
                   </div>
-                  <p className="text-[11px] text-slate-400 text-center">First call usually takes 5-15 seconds. Use <b>Preview</b> to test extraction without importing.</p>
+                  {busy && bulkProgress.total > 1 && bulkProgress.currentName && (
+                    <div className="text-[11px] text-slate-500 text-center truncate">
+                      Currently processing: <span className="font-semibold">{bulkProgress.currentName}</span>
+                    </div>
+                  )}
+                  <p className="text-[11px] text-slate-400 text-center">
+                    {files.length > 1
+                      ? `${files.length} files queued — they'll be processed sequentially (5-15s each). All transactions merge into one review table.`
+                      : 'First call usually takes 5-15 seconds. Use Preview to test extraction without importing.'}
+                  </p>
                 </div>
               )}
               {error && (
@@ -419,6 +509,21 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
                     className="text-xs text-emerald-700 hover:text-emerald-900 underline">Try again</button>
                 </div>
               </div>
+
+              {/* Per-file failures during bulk extraction */}
+              {result.perFileErrors?.length > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900">
+                  <div className="font-semibold flex items-center gap-1.5 mb-1">
+                    <AlertCircle size={13} /> {result.perFileErrors.length} file{result.perFileErrors.length !== 1 ? 's' : ''} failed during bulk extraction
+                  </div>
+                  <ul className="ml-5 list-disc space-y-0.5">
+                    {result.perFileErrors.map((e, i) => (
+                      <li key={i}><span className="font-semibold">{e.filename}</span>: {e.error}</li>
+                    ))}
+                  </ul>
+                  <div className="mt-2 text-[10px] text-amber-700">The other files extracted successfully — review and import the rest below.</div>
+                </div>
+              )}
 
               {/* Live totals */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
