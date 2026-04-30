@@ -253,14 +253,31 @@ export default function LeadTracker() {
       const prInitial = prRaw ? JSON.parse(prRaw) : [];
       // One-shot migration: NEW stage was retired. Move any prospect still
       // sitting in NEW to Pending Decision so they land in a real bucket.
+      // Also remap legacy free-form policyType strings to the new canonical
+      // product codes (PA / PC / SA / HA / WRAP / SUPPY) so the dropdown
+      // doesn't render blank.
+      const POLICY_TYPE_MIGRATION = {
+        'Individual Health': '',  // generic — no canonical match
+        'Family Health': '',
+        'Short-Term': '',
+        'Medicare': '',
+        'Dental/Vision': '',
+        'Life': '',
+        'Other': '',
+      };
       let prMigrated = prInitial;
-      let movedFromNew = 0;
+      let migrationCount = 0;
       if (Array.isArray(prInitial)) {
         prMigrated = prInitial.map(p => {
-          if (p.stage === 'NEW') { movedFromNew++; return { ...p, stage: 'PENDING_DECISION' }; }
-          return p;
+          let next = p;
+          if (p.stage === 'NEW') { migrationCount++; next = { ...next, stage: 'PENDING_DECISION' }; }
+          if (p.policyType && Object.prototype.hasOwnProperty.call(POLICY_TYPE_MIGRATION, p.policyType)) {
+            migrationCount++;
+            next = { ...next, policyType: POLICY_TYPE_MIGRATION[p.policyType] };
+          }
+          return next;
         });
-        if (movedFromNew > 0) {
+        if (migrationCount > 0) {
           await storage.setItem(PROSPECTS_KEY, JSON.stringify(prMigrated));
         }
       }
@@ -898,6 +915,15 @@ export default function LeadTracker() {
   // Convert a Sold prospect into a new Lead. Pre-fills lead fields from the
   // prospect so the user only has to fill in product/premium details.
   const onConvertProspectToLead = useCallback((p) => {
+    // Map prospect policyType (PA/PC/SA/HA/WRAP/SUPPY) to lead mainProduct
+    const POLICY_TO_PRODUCT = {
+      PA: 'PREMIER ADVANTAGE',
+      PC: 'PREMIER CHOICE',
+      SA: 'SECURE ADVANTAGE',
+      HA: 'HEALTH ACCESS III',
+      WRAP: 'ACA WRAP',
+      SUPPY: 'SUPPY',
+    };
     const newLead = mkLead({
       name: p.name || '',
       phone: p.phone || '',
@@ -906,6 +932,7 @@ export default function LeadTracker() {
       source: 'Referral',  // closest match — will be editable
       stage: 'Pending',
       closedDate: today(),
+      mainProduct: POLICY_TO_PRODUCT[p.policyType] || '',
       notes: [p.situation, p.meds && `Meds: ${p.meds}`].filter(Boolean).join(' · '),
     });
     setLeads(prev => [newLead, ...prev]);

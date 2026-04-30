@@ -221,14 +221,21 @@ export const PROSPECT_SOURCES = [
 
 export const PROSPECT_CRMS = ['TextDrip', 'Ringy', 'VanillaSoft', 'None'];
 
+// Aligned with MAIN_PRODUCTS so a prospect's policy type maps cleanly
+// to a lead's mainProduct when the prospect is converted to a Lead.
+//   PA    = PREMIER ADVANTAGE
+//   PC    = PREMIER CHOICE
+//   SA    = SECURE ADVANTAGE
+//   HA    = HEALTH ACCESS III
+//   WRAP  = ACA WRAP
+//   SUPPY = SUPPY
 export const PROSPECT_POLICY_TYPES = [
-  'Individual Health',
-  'Family Health',
-  'Short-Term',
-  'Medicare',
-  'Dental/Vision',
-  'Life',
-  'Other',
+  'PA',
+  'PC',
+  'SA',
+  'HA',
+  'WRAP',
+  'SUPPY',
 ];
 
 // Business Books — expense categories (money OUT beyond lead spend / platforms)

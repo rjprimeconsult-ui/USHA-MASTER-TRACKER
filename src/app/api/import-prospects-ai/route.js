@@ -68,10 +68,14 @@ LEAD SOURCES (prospect.source — pick exactly one or empty string):
 CRM (prospect.crm — pick exactly one):
 - TextDrip / Ringy / VanillaSoft / None
 
-POLICY TYPE (prospect.policyType — pick one or empty):
-- Individual Health / Family Health / Short-Term / Medicare / Dental/Vision / Life / Other
-- "Indv" / "Individual" -> Individual Health
-- "Fam" / "Family" -> Family Health (also infer from family-of-N notes, dependents listed)
+POLICY TYPE (prospect.policyType — pick exactly one of these canonical product codes, or leave empty):
+- PA: matches "PA", "Prem Adv", "Premier Advantage", "PremierAdvantage"
+- PC: matches "PC", "Prem Choice", "Premier Choice", "PremierChoice"
+- SA: matches "SA", "Sec Adv", "Secure Advantage", "SecureAdvantage"
+- HA: matches "HA", "HA III", "Health Access", "Health Access III", "HealthAccess"
+- WRAP: matches "ACA", "ACA Wrap", "Wrap"
+- SUPPY: matches "Suppy" exactly
+Leave policyType empty when the file's product field is something generic ("Health", "Life", "Medicare", "Individual Health", "Dental") that does not map to one of the six codes above. Do NOT invent values outside this list.
 
 INDV/FAMILY (prospect.indvOrFamily — pick exactly one):
 - "Indv" or "Family" — infer from prospect's profile (single person -> Indv, has spouse/kids/dependents listed -> Family)
