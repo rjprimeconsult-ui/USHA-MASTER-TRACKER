@@ -117,55 +117,90 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
       ...(customMap.income  || []).map(c => ({ id: c.id, label: c.label, direction: 'income' })),
     ];
 
-    // Aggregate results across every file. Each row gets a unique id so
-    // editing one doesn't ripple to another. Original-file annotation in
-    // notes helps the user trace which file a charge came from.
-    const allTxs = [];
-    const allPlats = [];
-    const remembered = new Set();
-    const rememberedPlat = new Set();
-    const perFileSummaries = [];
-    const perFileErrors = [];
-    let aggInputTokens = 0, aggCachedRead = 0, aggOutput = 0;
+    // Per-file extraction — runs one fetch + parse and records the result.
+    // Pure function (no shared mutable state), so concurrent calls are safe.
+    const extractOne = async (file) => {
+      const form = new FormData();
+      form.append('file', file);
+      if (hints.length > 0) form.append('vendorHints', JSON.stringify(hints));
+      if (customCats.length > 0) form.append('customCategories', JSON.stringify(customCats));
+      if (userRubric && userRubric.trim()) form.append('userRubric', userRubric.trim());
+
+      try {
+        const res = await fetch('/api/import-expenses-ai', { method: 'POST', body: form });
+        const rawText = await res.text();
+        let data;
+        try { data = JSON.parse(rawText); }
+        catch {
+          if (res.status === 504 || /timeout|gateway/i.test(rawText)) {
+            throw new Error('Server timed out (file took longer than 5 minutes).');
+          }
+          throw new Error(`Non-JSON response (HTTP ${res.status}): ${rawText.slice(0, 150)}`);
+        }
+        if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+        return { ok: true, file, data };
+      } catch (e) {
+        return { ok: false, file, error: e.message || String(e) };
+      }
+    };
+
+    // Worker-pool concurrency. Anthropic Tier 1 handles ~50 RPM easily, so
+    // 4 concurrent extractions is comfortable while giving a 4x speedup
+    // over sequential. Bigger pools risk rate-limit churn for marginal gain.
+    // Results array is index-aligned with `files` so we preserve upload order.
+    const CONCURRENCY = 4;
+    const results = new Array(files.length);
+    let nextIdx = 0;
+    let completed = 0;
+
+    const runWorker = async () => {
+      while (true) {
+        const idx = nextIdx++;
+        if (idx >= files.length) return;
+        const r = await extractOne(files[idx]);
+        results[idx] = r;
+        completed++;
+        // Show whichever file is currently next-to-claim as a hint
+        setBulkProgress({
+          done: completed,
+          total: files.length,
+          currentName: nextIdx < files.length ? files[nextIdx].name : '',
+        });
+      }
+    };
 
     try {
-      for (let fi = 0; fi < files.length; fi++) {
-        const file = files[fi];
-        setBulkProgress({ done: fi, total: files.length, currentName: file.name });
+      // Launch the pool. Promise.all resolves once every worker drains the
+      // queue. If a worker throws we still want the others to finish, but
+      // extractOne already swallows per-file errors into { ok: false }.
+      await Promise.all(
+        Array.from({ length: Math.min(CONCURRENCY, files.length) }, () => runWorker())
+      );
 
-        const form = new FormData();
-        form.append('file', file);
-        if (hints.length > 0) form.append('vendorHints', JSON.stringify(hints));
-        if (customCats.length > 0) form.append('customCategories', JSON.stringify(customCats));
-        if (userRubric && userRubric.trim()) form.append('userRubric', userRubric.trim());
+      // Aggregate in original upload order so the review table matches
+      // the queue the user dropped.
+      const allTxs = [];
+      const allPlats = [];
+      const remembered = new Set();
+      const rememberedPlat = new Set();
+      const perFileSummaries = [];
+      const perFileErrors = [];
+      let aggInputTokens = 0, aggCachedRead = 0, aggOutput = 0;
 
-        let data;
-        try {
-          const res = await fetch('/api/import-expenses-ai', { method: 'POST', body: form });
-          const rawText = await res.text();
-          try { data = JSON.parse(rawText); }
-          catch {
-            if (res.status === 504 || /timeout|gateway/i.test(rawText)) {
-              throw new Error('Server timed out (file took longer than 5 minutes).');
-            }
-            throw new Error(`Non-JSON response (HTTP ${res.status}): ${rawText.slice(0, 150)}`);
-          }
-          if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-        } catch (fileErr) {
-          // One file's failure shouldn't kill the whole batch. Record it
-          // and keep going.
-          perFileErrors.push({ filename: file.name, error: fileErr.message || String(fileErr) });
+      for (const r of results) {
+        if (!r) continue; // guard — shouldn't happen
+        if (!r.ok) {
+          perFileErrors.push({ filename: r.file.name, error: r.error });
           try {
             await recordImport({
               kind: 'expenses-error',
-              filename: file.name, size: file.size || 0,
-              counts: {}, error: fileErr.message || String(fileErr),
+              filename: r.file.name, size: r.file.size || 0,
+              counts: {}, error: r.error,
             });
           } catch {}
           continue;
         }
-
-        // Tag rows with the source file so user knows where each came from
+        const { file, data } = r;
         const sourceTag = files.length > 1 ? `[${file.name}]` : '';
 
         (data.transactions || []).forEach((t) => {
@@ -208,7 +243,6 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
           summary: data.summary,
         });
 
-        // Audit trail per file
         try {
           await recordImport({
             kind: previewMode ? 'expenses-preview' : 'expenses',
