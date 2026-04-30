@@ -2,13 +2,15 @@
 import { useEffect, useState, useMemo } from 'react';
 import {
   X, Settings, BookOpen, History, Brain, DollarSign, Trash2, AlertCircle,
-  CheckCircle2, Loader2, FileText, Eye, ChevronDown, ChevronRight, Save,
+  CheckCircle2, Loader2, FileText, Eye, ChevronDown, ChevronRight, Save, Plus,
 } from 'lucide-react';
 import { loadUserRubric, saveUserRubric, MAX_RUBRIC_LENGTH } from '@/lib/userRubric';
 import {
   loadImportHistory, deleteImportHistoryEntry, clearImportHistory, summarizeUsage,
 } from '@/lib/importHistory';
-import { loadVendorMemory, saveVendorMemory } from '@/lib/vendorMemory';
+import { loadVendorMemory, saveVendorMemory, recordVendor, normalizeVendor } from '@/lib/vendorMemory';
+import { useCategoriesAll } from '@/lib/customCategories';
+import { PLATFORMS } from '@/lib/constants';
 
 /**
  * Per-agent settings hub.
@@ -159,14 +161,23 @@ export default function AgentSettingsPanel({ open, onClose }) {
           )}
 
           {tab === 'memory' && (
-            <div className="space-y-2">
+            <div className="space-y-3">
               <div className="bg-violet-50 border border-violet-200 rounded-xl p-4 text-sm text-slate-700">
                 <p className="font-semibold text-slate-900 mb-1">Vendor memory ({vendorMemoryCount})</p>
-                <p>Confirmed mappings the AI applies automatically on future imports. Delete a mapping to let the AI re-decide next time, or clear all to reset.</p>
+                <p>Confirmed mappings the AI applies automatically on future imports. Delete a mapping to let the AI re-decide next time, or add a new rule below to set one up before your next import.</p>
               </div>
+
+              <ManualRuleForm
+                onAdd={async (rule) => {
+                  const next = recordVendor({ ...vendorMemory }, rule);
+                  setVendorMemory(next);
+                  await saveVendorMemory(next);
+                }}
+              />
+
               {vendorMemoryCount === 0 ? (
                 <div className="text-center py-8 text-slate-400 text-sm">
-                  No vendor memory yet — every category you confirm in Smart Import gets remembered here.
+                  No vendor memory yet — add a rule above, or every category you confirm in Smart Import gets remembered here.
                 </div>
               ) : (
                 <>
@@ -353,6 +364,129 @@ function HistoryRow({ entry, expanded, onToggle, onDelete }) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Manual rule entry — lets the user pre-seed a vendor → category mapping
+ * without needing to do an import first. Useful for "I know I'm starting
+ * to use Costco for office supplies, set the rule now."
+ *
+ * Direction selector switches between Books (expense / income with category
+ * dropdown) and Platforms (platformId dropdown). All categories pull from
+ * the merged built-in + custom list so user-defined buckets work too.
+ */
+function ManualRuleForm({ onAdd }) {
+  const { expense: EXPENSE_CATEGORIES, income: INCOME_CATEGORIES } = useCategoriesAll();
+  const [vendor, setVendor] = useState('');
+  const [direction, setDirection] = useState('expense');
+  const [category, setCategory] = useState('OTHER_EXPENSE');
+  const [platformId, setPlatformId] = useState('RINGY');
+  const [error, setError] = useState('');
+  const [savedFlash, setSavedFlash] = useState('');
+
+  // Reset category when direction flips so the dropdown matches
+  const onChangeDirection = (d) => {
+    setDirection(d);
+    if (d === 'expense') setCategory('OTHER_EXPENSE');
+    else if (d === 'income') setCategory('OTHER_INCOME');
+  };
+
+  const submit = async () => {
+    const v = vendor.trim();
+    setError('');
+    if (v.length < 2) { setError('Vendor must be at least 2 characters.'); return; }
+    const normalized = normalizeVendor(v);
+    if (!normalized) { setError('That vendor name normalizes to empty. Try a different name.'); return; }
+
+    if (direction === 'platform') {
+      await onAdd({ vendor: v, direction: 'platform', platformId });
+    } else {
+      await onAdd({ vendor: v, direction, category });
+    }
+    setSavedFlash(`Saved: "${v}" → ${direction === 'platform' ? `Platform / ${platformId}` : `${direction} / ${category}`}`);
+    setVendor('');
+    setTimeout(() => setSavedFlash(''), 2500);
+  };
+
+  const cats = direction === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
+
+  return (
+    <div className="bg-gradient-to-br from-emerald-50/70 to-violet-50/70 border border-emerald-200 rounded-xl p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <Plus size={14} className="text-emerald-700" />
+        <h3 className="text-sm font-semibold text-slate-900">Add a rule manually</h3>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end">
+        <div className="md:col-span-4">
+          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Vendor / description</label>
+          <input
+            value={vendor}
+            onChange={e => setVendor(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') submit(); }}
+            placeholder="e.g. Costco, Comcast Xfinity, AT&amp;T"
+            className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          />
+        </div>
+        <div className="md:col-span-3">
+          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Route to</label>
+          <select
+            value={direction}
+            onChange={e => onChangeDirection(e.target.value)}
+            className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm bg-white"
+          >
+            <option value="expense">Books expense</option>
+            <option value="income">Books income</option>
+            <option value="platform">Platform (Ringy/TextDrip/VanillaSoft)</option>
+          </select>
+        </div>
+        <div className="md:col-span-3">
+          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+            {direction === 'platform' ? 'Platform' : 'Category'}
+          </label>
+          {direction === 'platform' ? (
+            <select
+              value={platformId}
+              onChange={e => setPlatformId(e.target.value)}
+              className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm bg-white"
+            >
+              {PLATFORMS.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+            </select>
+          ) : (
+            <select
+              value={category}
+              onChange={e => setCategory(e.target.value)}
+              className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm bg-white"
+            >
+              {cats.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+            </select>
+          )}
+        </div>
+        <div className="md:col-span-2">
+          <button
+            type="button"
+            onClick={submit}
+            disabled={!vendor.trim()}
+            className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-lg px-3 py-1.5 text-sm font-semibold flex items-center justify-center gap-1"
+          >
+            <Plus size={14} /> Add rule
+          </button>
+        </div>
+      </div>
+      {error && (
+        <div className="mt-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-2 py-1.5 flex items-center gap-1.5">
+          <AlertCircle size={12} /> {error}
+        </div>
+      )}
+      {savedFlash && (
+        <div className="mt-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1.5 flex items-center gap-1.5">
+          <CheckCircle2 size={12} /> {savedFlash}
+        </div>
+      )}
+      <p className="text-[11px] text-slate-500 mt-2">
+        Rules apply on the next import. Vendor names are normalized (lowercased, store numbers stripped) — &quot;AT&amp;T&quot; will match &quot;AT&amp;T MOBILITY 12345&quot; and similar variants.
+      </p>
     </div>
   );
 }

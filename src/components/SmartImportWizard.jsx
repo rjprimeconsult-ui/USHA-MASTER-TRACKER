@@ -35,6 +35,12 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
   const [previewMode, setPreviewMode] = useState(false); // true = "Test extract" without committing
   const [showLowConfFirst, setShowLowConfFirst] = useState(false);
   const [userRubric, setUserRubric] = useState('');
+  // Tracks which row indices have had their category/direction edited by
+  // the user during this session — drives the green "Will remember" hint
+  // so the user sees at-a-glance which corrections will get saved to
+  // vendor memory on Import.
+  const [editedRows, setEditedRows] = useState(new Set());
+  const [editedPlatformRows, setEditedPlatformRows] = useState(new Set());
   const fileRef = useRef(null);
 
   // Merged categories (built-in + user customs) — stays in sync with the
@@ -55,6 +61,7 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
       setFile(null); setBusy(false); setError(''); setResult(null);
       setEdits([]); setSkipMask(new Set()); setPlatformEdits([]); setPlatformSkipMask(new Set());
       setRememberedSet(new Set()); setRememberedPlatformSet(new Set());
+      setEditedRows(new Set()); setEditedPlatformRows(new Set());
       setAccount(defaultAccount);
     }
   }, [open, defaultAccount]);
@@ -195,7 +202,13 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
     }
   };
 
-  const setEdit = (idx, patch) => setEdits(prev => prev.map((t, i) => i === idx ? { ...t, ...patch } : t));
+  const setEdit = (idx, patch) => {
+    setEdits(prev => prev.map((t, i) => i === idx ? { ...t, ...patch } : t));
+    // Track manual category/direction edits so we can show "Will remember"
+    if ('category' in patch || 'direction' in patch) {
+      setEditedRows(prev => { const next = new Set(prev); next.add(idx); return next; });
+    }
+  };
   const toggleSkip = (idx) => setSkipMask(prev => {
     const next = new Set(prev);
     if (next.has(idx)) next.delete(idx); else next.add(idx);
@@ -205,7 +218,12 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
   const skipNone = () => setSkipMask(new Set());
 
   // Platform-row equivalents
-  const setPlatformEdit = (idx, patch) => setPlatformEdits(prev => prev.map((t, i) => i === idx ? { ...t, ...patch } : t));
+  const setPlatformEdit = (idx, patch) => {
+    setPlatformEdits(prev => prev.map((t, i) => i === idx ? { ...t, ...patch } : t));
+    if ('platformId' in patch || 'reason' in patch) {
+      setEditedPlatformRows(prev => { const next = new Set(prev); next.add(idx); return next; });
+    }
+  };
   const togglePlatformSkip = (idx) => setPlatformSkipMask(prev => {
     const next = new Set(prev);
     if (next.has(idx)) next.delete(idx); else next.add(idx);
@@ -474,11 +492,16 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
                               </select>
                             </td>
                             <td className="px-2 py-1.5">
-                              <div className="flex items-center gap-1">
-                                <input className={inp + ' flex-1'} value={p.vendor || ''} onChange={e => setPlatformEdit(i, { vendor: e.target.value })} disabled={skipped} />
+                              <div className="flex items-center gap-1 flex-wrap">
+                                <input className={inp + ' flex-1 min-w-[120px]'} value={p.vendor || ''} onChange={e => setPlatformEdit(i, { vendor: e.target.value })} disabled={skipped} />
                                 {rememberedPlatformSet.has(i) && (
                                   <span title="Routed to this platform from your past corrections" className="text-[9px] font-bold uppercase bg-violet-100 text-violet-700 border border-violet-300 rounded px-1 py-0.5 flex items-center gap-0.5 whitespace-nowrap">
                                     <Brain size={9} /> Remembered
+                                  </span>
+                                )}
+                                {editedPlatformRows.has(i) && !skipped && (
+                                  <span title="Your platform routing will be saved to vendor memory on Import" className="text-[9px] font-bold uppercase bg-emerald-100 text-emerald-800 border border-emerald-300 rounded px-1 py-0.5 whitespace-nowrap">
+                                    ✓ Will remember
                                   </span>
                                 )}
                               </div>
@@ -558,6 +581,11 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
                               {!rememberedSet.has(i) && t.confidence === 'medium' && (
                                 <span title="AI confidence: medium" className="text-[9px] font-bold uppercase bg-sky-100 text-sky-800 border border-sky-300 rounded px-1 py-0.5 whitespace-nowrap">
                                   Medium
+                                </span>
+                              )}
+                              {editedRows.has(i) && !skipped && (
+                                <span title="Your correction will be saved to vendor memory on Import — next month's file with the same vendor gets this category automatically" className="text-[9px] font-bold uppercase bg-emerald-100 text-emerald-800 border border-emerald-300 rounded px-1 py-0.5 whitespace-nowrap">
+                                  ✓ Will remember
                                 </span>
                               )}
                             </div>
