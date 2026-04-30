@@ -66,6 +66,19 @@ You are extracting transactions from financial documents for an insurance agent'
        • CREDIT REFILL/RENEWAL — combo line items that mention both refill and renewal in one charge.
        • OTHER — reserved for genuinely ambiguous platform charges (rare). Do NOT use OTHER as a lazy fallback for platform rows.
 
+     KNOWN FORMAT — RINGY BILLING HISTORY EXPORT
+     Recognize this format by ANY of these signals (the file rarely says "Ringy" by name):
+       - Filename matches "BillingHistory_*.csv" or "BillingHistory*.csv"
+       - Header row exactly: Item, Amount, Status, Paid On
+       - Item column contains values like "Fund account balance", "Fund team accounts for [Name]", "Transfer funds to agent for [Name]", "30-day subscription"
+     EVERY row in this format is a Ringy platform charge — output them as platformExpenses[] with platformId=RINGY. Specifically:
+       - "Fund account balance" → reason=CREDIT REFILL, vendor="Fund account balance"
+       - "Fund team accounts for [Name]" → reason=CREDIT REFILL, vendor="Fund team accounts for [Name]" (keep the name in the vendor)
+       - "Transfer funds to agent for [Name]" → reason=CREDIT REFILL, vendor="Transfer funds to agent for [Name]" (these stay Ringy platform credits — NOT AGENT_PAYOUT, since the money never leaves Ringy's wallet)
+       - "30-day subscription" → reason=MONTHLY SUBSCRIPTION, vendor="30-day subscription" (the canonical Ringy monthly fee, typically $99 or $119)
+       - Any other Ringy billing-history row → reason=CREDIT REFILL by default
+     Skip rows where Status is anything other than "Paid" (e.g. "Refunded", "Failed", "Pending"). Date format is "MM-DD-YYYY h:mm am/pm" — normalize to YYYY-MM-DD.
+
   2) BOOKS expenses — every other money-out item. Goes into "transactions[]" with direction = "expense" and one of the EXPENSE CATEGORIES below.
 
   3) BOOKS income — money-in items. Goes into "transactions[]" with direction = "income" and one of the INCOME CATEGORIES below.
