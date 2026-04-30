@@ -270,7 +270,8 @@ export async function POST(req) {
 
   let resp;
   try {
-    resp = await client.messages.create({
+    // Streaming required at 32K max_tokens to avoid the SDK's 10-min cap.
+    const stream = client.messages.stream({
       model: 'claude-haiku-4-5',
       // 32K so multi-page payout/advance statements don't truncate
       max_tokens: 32000,
@@ -282,6 +283,7 @@ export async function POST(req) {
       },
       messages: [{ role: 'user', content: userContent }],
     });
+    resp = await stream.finalMessage();
   } catch (e) {
     console.error('[parse-statement-ai] Anthropic call failed:', e);
     const status = e?.status || 500;

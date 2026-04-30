@@ -323,7 +323,9 @@ export async function POST(req) {
 
   let resp;
   try {
-    resp = await client.messages.create({
+    // Streaming required when max_tokens is large enough that latency could
+    // exceed the SDK's 10-min non-stream cap.
+    const stream = client.messages.stream({
       model: 'claude-haiku-4-5',
       // 32K so book-of-business files with 200+ leads don't truncate
       max_tokens: 32000,
@@ -335,6 +337,7 @@ export async function POST(req) {
       },
       messages: [{ role: 'user', content: userContent }],
     });
+    resp = await stream.finalMessage();
   } catch (e) {
     console.error('[import-leads-ai] Anthropic call failed:', e);
     const status = e?.status || 500;

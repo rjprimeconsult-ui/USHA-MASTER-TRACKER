@@ -410,11 +410,14 @@ async function handlePOST(req) {
 
   let resp;
   try {
-    resp = await client.messages.create({
+    // Streaming is required by the SDK whenever max_tokens is high enough
+    // that the worst-case latency could exceed 10 minutes. We don't need
+    // per-event handling — `.finalMessage()` waits for completion and
+    // returns the same shape as a non-stream `.create()` response.
+    const stream = client.messages.stream({
       model: 'claude-haiku-4-5',
-      // Bumped to 32K so multi-month bank statements (200+ transactions ≈
-      // 25K output tokens) don't get truncated mid-JSON. Haiku 4.5 supports
-      // up to 64K output; 32K balances headroom against latency.
+      // 32K so multi-month bank statements don't truncate. Haiku 4.5
+      // supports up to 64K output.
       max_tokens: 32000,
       // Cache the (large, stable) rubric so repeat calls on multi-file
       // imports cost ~0.1× on the system prompt.
@@ -429,6 +432,7 @@ async function handlePOST(req) {
       },
       messages: [{ role: 'user', content: userContent }],
     });
+    resp = await stream.finalMessage();
   } catch (e) {
     console.error('[import-expenses-ai] Anthropic call failed:', e);
     const status = e?.status || 500;
