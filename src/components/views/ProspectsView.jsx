@@ -3,7 +3,7 @@ import { useState, useMemo, useRef, useCallback, useEffect, useLayoutEffect } fr
 import {
   Plus, Search, LayoutGrid, List as ListIcon, Settings as SettingsIcon, Upload,
   Calendar, Phone, Mail, MapPin, ArrowRight, Trash2, X, AlertCircle, Clock, GripVertical,
-  User, Home, Briefcase, FileText, Pencil, Pill, Activity, DollarSign, Tag,
+  User, Home, Briefcase, FileText, Pencil, Pill, Activity, DollarSign, Tag, Palette,
 } from 'lucide-react';
 import { TiltCard, FadeIn, Stagger, StaggerItem } from '../motion/MotionPrimitives';
 import { fmt2, today } from '@/lib/utils';
@@ -12,6 +12,8 @@ import { DEFAULT_PROSPECT_STAGES } from '@/lib/constants';
 import * as XLSX from 'xlsx';
 import ProspectForm from '../ProspectForm';
 import SmartProspectImportWizard from '../SmartProspectImportWizard';
+import SourceColorManager from '../SourceColorManager';
+import { useSourceColors, colorForSource } from '@/lib/sourceColors';
 
 const inp = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500';
 
@@ -166,14 +168,21 @@ function TodayPanel({ prospects, onEdit }) {
 }
 
 // ---------- Kanban Card ----------
-function KanbanCard({ prospect, onEdit, onDragStart, isSelected, onToggleSelect }) {
+function KanbanCard({ prospect, onEdit, onDragStart, isSelected, onToggleSelect, sourceColor }) {
   const tu = timeUntil(prospect.appointmentTime);
   const apptStr = formatAppt(prospect.appointmentTime);
+  // When the user has assigned a color to this prospect's source, use it
+  // as a left-border accent stripe + a slight fill on the source label.
+  // Falls back to neutral slate when uncolored.
+  const accentStyle = sourceColor
+    ? { borderLeftColor: sourceColor, borderLeftWidth: '4px' }
+    : undefined;
   return (
     <div
       draggable
       onDragStart={(e) => onDragStart(e, prospect.id)}
       onClick={() => onEdit(prospect)}
+      style={accentStyle}
       className={`bg-white border rounded-lg p-3 cursor-pointer transition-all relative group ${
         isSelected ? 'border-indigo-500 ring-2 ring-indigo-300 shadow-md' : 'border-slate-200 hover:shadow-md hover:border-indigo-300'
       }`}
@@ -213,14 +222,27 @@ function KanbanCard({ prospect, onEdit, onDragStart, isSelected, onToggleSelect 
         <div className="mt-1 text-[11px] font-semibold text-emerald-700">{prospect.quoteSize}</div>
       )}
       {prospect.source && (
-        <div className="mt-1 text-[10px] text-slate-400">{prospect.source}</div>
+        sourceColor ? (
+          <div
+            className="mt-1.5 text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded inline-block"
+            style={{
+              background: sourceColor + '22',
+              color: sourceColor,
+              border: `1px solid ${sourceColor}55`,
+            }}
+          >
+            {prospect.source}
+          </div>
+        ) : (
+          <div className="mt-1 text-[10px] text-slate-400">{prospect.source}</div>
+        )
       )}
     </div>
   );
 }
 
 // ---------- Kanban Column ----------
-function KanbanColumn({ stage, prospects, onEdit, onDragStart, onDrop, selected, onToggleSelect, onSelectAllInStage }) {
+function KanbanColumn({ stage, prospects, onEdit, onDragStart, onDrop, selected, onToggleSelect, onSelectAllInStage, sourceColors }) {
   const [over, setOver] = useState(false);
   const allSelectedInCol = prospects.length > 0 && prospects.every(p => selected.has(p.id));
   const someSelectedInCol = prospects.some(p => selected.has(p.id));
@@ -258,6 +280,7 @@ function KanbanColumn({ stage, prospects, onEdit, onDragStart, onDrop, selected,
             onDragStart={onDragStart}
             isSelected={selected.has(p.id)}
             onToggleSelect={onToggleSelect}
+            sourceColor={colorForSource(sourceColors, p.source)}
           />
         ))}
       </div>
@@ -751,9 +774,13 @@ export default function ProspectsView({
   const [editing, setEditing] = useState(null);
   const [viewing, setViewing] = useState(null);  // read-only detail bubble
   const [showSettings, setShowSettings] = useState(false);
+  const [showSourceColors, setShowSourceColors] = useState(false);
   const [importFile, setImportFile] = useState(null);
   const [showSmartImport, setShowSmartImport] = useState(false);
   const [selected, setSelected] = useState(() => new Set());
+
+  // Per-agent source-color map; reloaded after the manager modal saves.
+  const { colors: sourceColors, reload: reloadSourceColors } = useSourceColors();
   const fileRef = useRef(null);
   const dragId = useRef(null);
   // Refs for the dual-scrollbar Kanban (top mirror + body)
@@ -932,6 +959,11 @@ export default function ProspectsView({
             className="border border-slate-200 hover:bg-slate-50 rounded-lg px-3 py-2 text-sm font-semibold flex items-center gap-1.5">
             <Upload size={14} /> Classic
           </button>
+          <button onClick={() => setShowSourceColors(true)}
+            className="border border-violet-200 hover:border-violet-400 hover:bg-violet-50 text-violet-700 rounded-lg px-3 py-2 text-sm font-semibold flex items-center gap-1.5"
+            title="Color-code prospect cards by lead source">
+            <Palette size={14} /> Color sources
+          </button>
           <button onClick={() => setShowSettings(true)}
             className="border border-slate-200 hover:bg-slate-50 rounded-lg px-3 py-2 text-sm font-semibold flex items-center gap-1.5">
             <SettingsIcon size={14} /> Settings
@@ -1036,6 +1068,7 @@ export default function ProspectsView({
                 selected={selected}
                 onToggleSelect={(id) => toggleOne(id)}
                 onSelectAllInStage={toggleAllInStage}
+                sourceColors={sourceColors}
               />
             ))}
           </div>
@@ -1167,6 +1200,12 @@ export default function ProspectsView({
           const dupNote = opts?.duplicatesSkipped ? ` · ${opts.duplicatesSkipped} duplicate${opts.duplicatesSkipped !== 1 ? 's' : ''} skipped` : '';
           alert(`Imported ${newProspects.length} prospect${newProspects.length !== 1 ? 's' : ''}${dupNote}.`);
         }}
+      />
+      <SourceColorManager
+        open={showSourceColors}
+        onClose={() => setShowSourceColors(false)}
+        prospects={prospects}
+        onChanged={() => reloadSourceColors()}
       />
     </div>
   );
