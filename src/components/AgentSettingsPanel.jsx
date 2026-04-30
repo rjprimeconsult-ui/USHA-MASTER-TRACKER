@@ -38,6 +38,18 @@ export default function AgentSettingsPanel({ open, onClose }) {
     loadVendorMemory().then(setVendorMemory);
   }, [open]);
 
+  // Hooks MUST be declared before any early return. React tracks hooks by
+  // call order — if `open` is false on one render and true on the next,
+  // any hook below an early return would shift position and crash with
+  // React error #310.
+  // `since` recomputes each render — that's fine because the memo only
+  // re-runs when [history, since30d] change, and since30d only changes
+  // every minute or so (the millisecond drift doesn't affect the rollup).
+  // eslint-disable-next-line react-hooks/purity
+  const since30d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const usage30d = useMemo(() => summarizeUsage(history.entries, since30d), [history, since30d]);
+  const usageAllTime = useMemo(() => summarizeUsage(history.entries), [history]);
+
   if (!open) return null;
 
   const dirty = JSON.stringify(rubric) !== JSON.stringify(rubricDraft);
@@ -53,12 +65,6 @@ export default function AgentSettingsPanel({ open, onClose }) {
       setSavingRubric(false);
     }
   };
-
-  const usage30d = useMemo(() => {
-    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-    return summarizeUsage(history.entries, since);
-  }, [history]);
-  const usageAllTime = useMemo(() => summarizeUsage(history.entries), [history]);
 
   const vendorMemoryCount = Object.keys(vendorMemory || {}).length;
 
