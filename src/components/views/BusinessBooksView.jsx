@@ -78,6 +78,10 @@ function BusinessBooksView({
   const [aiRescanning, setAiRescanning] = useState(false);
   const [aiRescanProgress, setAiRescanProgress] = useState({ done: 0, total: 0 });
   const [aiRescanPreview, setAiRescanPreview] = useState(null); // [{ id, vendor, amount, from, to, picked, confidence, reason }]
+  // Bulk-select state — IDs of rows the user has checked. Cleared when
+  // the user switches tabs / months so a stale Set never deletes the
+  // wrong row in a different view.
+  const [selectedIds, setSelectedIds] = useState(new Set());
 
   // Merged categories (built-in + user customs). Reloads automatically when
   // the manager modal saves changes.
@@ -419,9 +423,11 @@ function BusinessBooksView({
     setDraft(d => ({ ...d, amount: '', vendor: '', notes: '', attachment: null }));
   };
 
-  // When tab flips, reset category default to a valid one for that tab
+  // When tab flips, reset category default to a valid one for that tab.
+  // Also clear bulk-select so a stale Set from the other tab can't bulk-delete.
   const flipTab = (t) => {
     setTab(t);
+    setSelectedIds(new Set());
     setDraft(d => ({
       ...d,
       category: t === 'expenses' ? 'OFFICE' : 'BONUS',
@@ -543,6 +549,52 @@ function BusinessBooksView({
   const cats = tab === 'expenses' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
   const vendorKey = tab === 'expenses' ? 'vendor' : 'source';
   const monthTotal = tab === 'expenses' ? monthExpTotal : monthIncTotal;
+
+  // Bulk-select: visible rows that are checked, plus convenience helpers.
+  // selectedIds may also contain IDs from other months/filters that were
+  // checked and then filtered out — we count and act on the visible-and-
+  // checked intersection so "Select all" never silently bulk-deletes
+  // hidden rows.
+  const visibleIds = list.map(e => e.id);
+  const visibleSelectedCount = visibleIds.filter(id => selectedIds.has(id)).length;
+  const allVisibleSelected = visibleIds.length > 0 && visibleSelectedCount === visibleIds.length;
+  const someVisibleSelected = visibleSelectedCount > 0 && !allVisibleSelected;
+
+  const toggleRowSelected = (id) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const toggleSelectAllVisible = () => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (allVisibleSelected) {
+        // Uncheck all visible (preserve any from other views)
+        for (const id of visibleIds) next.delete(id);
+      } else {
+        for (const id of visibleIds) next.add(id);
+      }
+      return next;
+    });
+  };
+  const clearSelection = () => setSelectedIds(new Set());
+  const bulkDeleteSelected = () => {
+    const toDelete = visibleIds.filter(id => selectedIds.has(id));
+    if (toDelete.length === 0) return;
+    const noun = tab === 'expenses' ? 'expense' : 'income entry';
+    const ok = window.confirm(
+      `Delete ${toDelete.length} ${noun}${toDelete.length !== 1 ? (tab === 'expenses' ? 's' : 'ies').replace('ys', 'ies') : ''}? This can't be undone.`
+    );
+    if (!ok) return;
+    for (const id of toDelete) onDelete(id);
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      for (const id of toDelete) next.delete(id);
+      return next;
+    });
+  };
 
   return (
     <div className="space-y-5">
@@ -917,6 +969,28 @@ function BusinessBooksView({
             </span>
           )}
         </div>
+        {/* Bulk-action bar — shows when any visible row is checked */}
+        {visibleSelectedCount > 0 && (
+          <div className="mb-3 bg-gradient-to-r from-rose-50 to-amber-50 border border-rose-200 rounded-lg px-3 py-2 flex items-center justify-between gap-2 flex-wrap">
+            <div className="text-xs text-slate-700">
+              <span className="font-bold text-slate-900">{visibleSelectedCount}</span> {tab === 'expenses' ? 'expense' : 'income entry'}{visibleSelectedCount !== 1 ? (tab === 'expenses' ? 's' : 'ies').replace('ys', 'ies') : ''} selected
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={clearSelection}
+                className="text-xs text-slate-600 hover:text-slate-900 underline-offset-2 hover:underline"
+              >
+                Clear
+              </button>
+              <button
+                onClick={bulkDeleteSelected}
+                className="bg-red-600 hover:bg-red-700 text-white rounded-lg px-3 py-1 text-xs font-semibold flex items-center gap-1.5 transition"
+              >
+                <Trash2 size={12} /> Delete {visibleSelectedCount} selected
+              </button>
+            </div>
+          </div>
+        )}
         {list.length === 0 ? (
           <div className="text-center py-8 text-slate-400 text-sm">
             <AlertCircle className="mx-auto mb-2" size={20} />
@@ -927,6 +1001,16 @@ function BusinessBooksView({
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-200 text-left">
+                  <th className="py-2 px-2 w-8 text-center">
+                    <input
+                      type="checkbox"
+                      checked={allVisibleSelected}
+                      ref={el => { if (el) el.indeterminate = someVisibleSelected; }}
+                      onChange={toggleSelectAllVisible}
+                      title={allVisibleSelected ? 'Unselect all visible' : 'Select all visible'}
+                      className="accent-indigo-600 w-4 h-4 cursor-pointer"
+                    />
+                  </th>
                   <th className="py-2 px-2 text-xs font-bold text-slate-500 uppercase tracking-wider">Date</th>
                   <th className="py-2 px-2 text-xs font-bold text-slate-500 uppercase tracking-wider">Category</th>
                   <th className="py-2 px-2 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Amount</th>
@@ -940,8 +1024,17 @@ function BusinessBooksView({
               <tbody>
                 {list.map(e => {
                   const c = tab === 'expenses' ? expCat(e.category) : incCat(e.category);
+                  const isSelected = selectedIds.has(e.id);
                   return (
-                    <tr key={e.id} className="border-b border-slate-100 hover:bg-slate-50">
+                    <tr key={e.id} className={`border-b border-slate-100 ${isSelected ? 'bg-rose-50/40' : 'hover:bg-slate-50'}`}>
+                      <td className="py-2 px-2 text-center">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleRowSelected(e.id)}
+                          className="accent-indigo-600 w-4 h-4 cursor-pointer"
+                        />
+                      </td>
                       <td className="py-2 px-2">
                         <input
                           type="date"
@@ -1025,7 +1118,7 @@ function BusinessBooksView({
               </tbody>
               <tfoot>
                 <tr className="border-t-2 border-slate-300 font-bold">
-                  <td className="py-2 px-2 text-xs text-slate-500 uppercase tracking-wider" colSpan={2}>Month total</td>
+                  <td className="py-2 px-2 text-xs text-slate-500 uppercase tracking-wider" colSpan={3}>Month total</td>
                   <td className="py-2 px-2 text-right text-slate-900">{fmt2(monthTotal)}</td>
                   <td colSpan={5}></td>
                 </tr>
