@@ -34,7 +34,7 @@ export const CRMS = [
   { id: 'TEXTDRIP', badge: 'bg-red-900 text-white',     color: '#7f1d1d' },
   { id: 'VANILLA',  badge: 'bg-blue-900 text-white',    color: '#1e3a8a' },
   { id: 'GOOGLE',   badge: 'bg-amber-500 text-white',   color: '#f59e0b' },
-  { id: 'BENNEPATH', badge: 'bg-teal-600 text-white',   color: '#0d9488' },
+  { id: 'BENEPATH', badge: 'bg-teal-600 text-white',   color: '#0d9488' },
 ];
 
 export const CAMPAIGNS = [
