@@ -175,12 +175,12 @@ export function effectiveLeadCategory(lead) {
 
 export const NAV_TABS = [
   { id: 'cpa',          label: 'CPA Dashboard', icon: 'Calculator' },
-  { id: 'prospects',    label: 'Prospects',     icon: 'UserPlus' },
-  { id: 'associations', label: 'Associations',  icon: 'Repeat' },
   { id: 'closed',       label: 'Closed Deals',  icon: 'CheckSquare' },
   { id: 'dashboard',    label: 'Overview',      icon: 'LayoutDashboard' },
+  { id: 'associations', label: 'Associations',  icon: 'Repeat' },
   { id: 'leads',        label: 'Leads',         icon: 'Users' },
   { id: 'pipeline',     label: 'Pipeline',      icon: 'Columns' },
+  { id: 'prospects',    label: 'Prospects',     icon: 'UserPlus' },
   { id: 'platforms',    label: 'Platforms',     icon: 'DollarSign' },
   { id: 'books',        label: 'Books',         icon: 'BookOpen' },
   { id: 'calculator',   label: 'Calculator',    icon: 'Calculator' },
