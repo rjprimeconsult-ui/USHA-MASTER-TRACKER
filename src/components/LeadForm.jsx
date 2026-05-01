@@ -308,74 +308,9 @@ export default function LeadForm({ open, lead, tier = 'WA', onSave, onClose, onD
               </div>
             </div>
 
-            {/* Commission projection */}
-            {projection.breakdown.length > 0 && (
-              <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3 space-y-2">
-                <div className="flex items-center gap-2 text-xs font-bold text-indigo-900 tracking-wider">
-                  <Calculator size={13} /> PROJECTED COMMISSION — TIER: {tier} · {form.payType === 'as_earned' ? 'AS EARNED' : 'ADVANCE'}
-                </div>
-                <div className="space-y-1">
-                  {projection.breakdown.map((b, i) => (
-                    <div key={i} className="grid grid-cols-[1fr_auto_auto_auto] gap-3 text-xs items-center">
-                      <span className="text-slate-700 truncate">{b.label}</span>
-                      <span className="text-slate-500">{fmt2(b.premium)}/mo × {(b.rate * 100).toFixed(2)}%</span>
-                      <span className="text-slate-500">= {fmt2(b.monthly)}/mo</span>
-                      <span className="text-emerald-700 font-semibold">
-                        {form.payType === 'as_earned' ? `→ ${fmt2(b.monthly * 12)} / yr` : `→ ${fmt2(b.advance)}`}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-                {form.payType === 'advance' ? (
-                  <>
-                    <div className="grid grid-cols-2 gap-3 pt-2 border-t border-indigo-200 text-xs">
-                      <div>
-                        <div className="text-slate-500">Monthly commission</div>
-                        <div className="font-bold text-slate-900">{fmt2(projection.monthlyCommission)}</div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-slate-500">Advance payout ({form.advanceMonths ?? DEFAULT_ADVANCE_MONTHS} mo)</div>
-                        <div className="font-bold text-emerald-700">{fmt2(projection.advancePayout)}</div>
-                      </div>
-                    </div>
-                    {projection.advancePayout > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => set({ dealValue: Math.round(projection.advancePayout * 100) / 100 })}
-                        className="w-full mt-1 bg-white border border-indigo-300 text-indigo-700 rounded-lg px-3 py-1.5 text-xs font-medium hover:bg-indigo-100 flex items-center justify-center gap-1"
-                      >
-                        <Wand2 size={12} /> Use projection as Advance ({fmt2(projection.advancePayout)})
-                      </button>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <div className="grid grid-cols-2 gap-3 pt-2 border-t border-indigo-200 text-xs">
-                      <div>
-                        <div className="text-slate-500">Monthly residual</div>
-                        <div className="font-bold text-slate-900">{fmt2(projection.monthlyCommission)}</div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-slate-500">Projected annual</div>
-                        <div className="font-bold text-emerald-700">{fmt2(projection.monthlyCommission * 12)}</div>
-                      </div>
-                    </div>
-                    <div className="text-[11px] text-slate-500 italic pt-1">
-                      No upfront. Paid monthly as long as the client keeps paying their premium.
-                    </div>
-                    {projection.monthlyCommission > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => set({ dealValue: Math.round(projection.monthlyCommission * 100) / 100 })}
-                        className="w-full mt-1 bg-white border border-indigo-300 text-indigo-700 rounded-lg px-3 py-1.5 text-xs font-medium hover:bg-indigo-100 flex items-center justify-center gap-1"
-                      >
-                        <Wand2 size={12} /> Use monthly residual ({fmt2(projection.monthlyCommission)}/mo)
-                      </button>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
+            {/* Commission projection moved to its own tab — your weekly/monthly
+                statements remain the source of truth for actual income. Use the
+                Calculator tab to explore tier comparisons + commission splits. */}
           </div>
 
           {/* Price / Advance-or-Monthly */}

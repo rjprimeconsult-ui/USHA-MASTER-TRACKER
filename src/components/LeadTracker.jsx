@@ -21,6 +21,7 @@ import UploadView from './views/UploadView';
 import PlatformExpensesView from './views/PlatformExpensesView';
 import BusinessBooksView from './views/BusinessBooksView';
 import ProspectsView from './views/ProspectsView';
+import CommissionCalculator from './views/CommissionCalculator';
 import LeadForm from './LeadForm';
 import InvestmentForm from './InvestmentForm';
 import ActivityForm from './ActivityForm';
@@ -1142,6 +1143,9 @@ export default function LeadTracker() {
             }}
             onBulkAddPlatforms={onBulkAddPlatformExpenses}
           />
+        </ViewMount>
+        <ViewMount visible={view === 'calculator'} viewKey="calculator">
+          <CommissionCalculator defaultTier={tier} />
         </ViewMount>
         <ViewMount visible={view === 'upload'} viewKey="upload">
           <UploadView

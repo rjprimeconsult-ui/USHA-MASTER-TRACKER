@@ -183,6 +183,7 @@ export const NAV_TABS = [
   { id: 'pipeline',     label: 'Pipeline',      icon: 'Columns' },
   { id: 'platforms',    label: 'Platforms',     icon: 'DollarSign' },
   { id: 'books',        label: 'Books',         icon: 'BookOpen' },
+  { id: 'calculator',   label: 'Calculator',    icon: 'Calculator' },
   { id: 'upload',       label: 'Upload',        icon: 'Upload' },
 ];
 
