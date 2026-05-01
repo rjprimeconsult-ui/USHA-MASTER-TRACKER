@@ -1112,6 +1112,7 @@ export default function LeadTracker() {
           <BusinessBooksView
             expenses={businessExpenses}
             income={businessIncome}
+            platformExpenses={platformExpenses}
             leads={leads}
             overrides={overrides}
             ownAdvances={ownAdvances}

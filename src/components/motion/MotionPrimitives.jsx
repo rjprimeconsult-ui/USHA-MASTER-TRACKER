@@ -377,7 +377,7 @@ export function GlassModal({ open, onClose, children, maxWidth = 'max-w-2xl', cl
 // so the user can freely type "17." (decimal point) without it being stripped
 // out by Number() conversion mid-keystroke. Calls onChange with the parsed
 // number on blur (and live during typing for keystroke-by-keystroke updates).
-export function MoneyCell({ value, onChange, className = '', width = 'w-28', placeholder = '$0.00' }) {
+export function MoneyCell({ value, onChange, className = '', width = 'w-28', placeholder = '$0.00', disabled = false }) {
   const [focused, setFocused] = useState(false);
   const [draft, setDraft] = useState('');
   const num = Number(value || 0);
@@ -423,10 +423,11 @@ export function MoneyCell({ value, onChange, className = '', width = 'w-28', pla
       inputMode="decimal"
       value={display}
       placeholder={placeholder}
-      onFocus={handleFocus}
-      onBlur={handleBlur}
-      onChange={handleChange}
-      className={`${width} text-right border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded px-2 py-1 text-sm font-semibold bg-white outline-none transition ${className}`}
+      onFocus={disabled ? undefined : handleFocus}
+      onBlur={disabled ? undefined : handleBlur}
+      onChange={disabled ? undefined : handleChange}
+      readOnly={disabled}
+      className={`${width} text-right border border-slate-200 ${disabled ? 'text-slate-400 cursor-not-allowed bg-slate-50' : 'hover:border-slate-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500'} rounded px-2 py-1 text-sm font-semibold bg-white outline-none transition ${className}`}
     />
   );
 }

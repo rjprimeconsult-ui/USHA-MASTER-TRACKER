@@ -2,7 +2,7 @@
 import { useMemo, useRef, useState, useEffect, memo } from 'react';
 import {
   Plus, Trash2, DollarSign, TrendingUp, TrendingDown, AlertCircle, Calendar,
-  Upload, X, Check, Paperclip, Eye, ChevronLeft, ChevronRight, ArrowDownCircle, ArrowUpCircle, Wallet, Tag, Settings, Sparkles,
+  Upload, X, Check, Paperclip, Eye, ChevronLeft, ChevronRight, ArrowDownCircle, ArrowUpCircle, Wallet, Tag, Settings, Sparkles, Lock, Unlock,
 } from 'lucide-react';
 import { fmt, fmt2, today, uid } from '@/lib/utils';
 import { parseBusinessFile, dedupEntries, classifyExpense } from '@/lib/businessImport';
@@ -12,6 +12,7 @@ import { saveAttachment, getAttachment, deleteAttachment } from '@/lib/attachmen
 import { useCategoriesAll } from '@/lib/customCategories';
 import { vendorMemoryToHints, loadVendorMemory } from '@/lib/vendorMemory';
 import { loadUserRubric } from '@/lib/userRubric';
+import { useClosedPeriods } from '@/lib/closedPeriods';
 import { TiltCard, CountUp, Stagger, StaggerItem, MoneyCell } from '../motion/MotionPrimitives';
 import SmartImportWizard from '../SmartImportWizard';
 import CustomCategoryManager from '../CustomCategoryManager';
@@ -61,6 +62,7 @@ const loadAttachmentForView = async (attachment) => {
 
 function BusinessBooksView({
   expenses, income,
+  platformExpenses = [],
   leads = [], overrides = [], ownAdvances = [],
   onAddExpense, onUpdateExpense, onDeleteExpense, onBulkAddExpenses,
   onAddIncome,  onUpdateIncome,  onDeleteIncome,  onBulkAddIncome,
@@ -88,6 +90,10 @@ function BusinessBooksView({
   const { expense: EXPENSE_CATEGORIES, income: INCOME_CATEGORIES, customMap, reload: reloadCustomCats } = useCategoriesAll();
   const expCat = (id) => EXPENSE_CATEGORIES.find(c => c.id === id) || EXPENSE_CATEGORIES[EXPENSE_CATEGORIES.length - 1];
   const incCat = (id) => INCOME_CATEGORIES.find(c => c.id === id) || INCOME_CATEGORIES[INCOME_CATEGORIES.length - 1];
+
+  // Closed-period state — books-side only here; PlatformExpensesView owns
+  // its own platforms close/reopen UI.
+  const { isClosed: isPeriodClosed, close: closeBookMonth, reopen: reopenBookMonth } = useClosedPeriods();
 
   // Re-scan all current expense entries through the auto-classifier and find
   // any whose category should change based on the new keyword rules
@@ -316,6 +322,21 @@ function BusinessBooksView({
   const ytdExpenses = yrExpenses.reduce((s, e) => s + Number(e.amount || 0), 0);
   const ytdBooksIncome = yrIncome.reduce((s, e) => s + Number(e.amount || 0), 0);
 
+  // Platforms totals for visibility — Platforms is its own store (feeds True
+  // CPA), but agents need to see the full expense picture from Books. We
+  // surface "+ Platforms: $X" alongside the Books-only YTD/month totals
+  // without changing any underlying math.
+  const yrPlatformExpenses = useMemo(
+    () => platformExpenses.filter(e => (e.date || '').startsWith(yr)),
+    [platformExpenses, yr]
+  );
+  const ytdPlatformExpenses = yrPlatformExpenses.reduce((s, e) => s + Number(e.amount || 0), 0);
+  const monthPlatformExpenses = useMemo(
+    () => platformExpenses.filter(e => ymOf(e.date) === activeMonth),
+    [platformExpenses, activeMonth]
+  );
+  const monthPlatformTotal = monthPlatformExpenses.reduce((s, e) => s + Number(e.amount || 0), 0);
+
   // Commission income for the year — sum statement-derived own advances +
   // overrides for the year. Falls back to leads' dealValue (issued in YR) when
   // there are no ownAdvances entries (e.g., statements not yet imported).
@@ -404,6 +425,12 @@ function BusinessBooksView({
   const submitDraft = () => {
     const amt = Number(draft.amount || 0);
     if (!draft.date || amt <= 0) return;
+    // Block adds whose date falls in a closed period — same rule that applies
+    // to Smart Import and per-row edits.
+    if (isPeriodClosed('books', draft.date)) {
+      alert(`${ymLabel(ymOf(draft.date))} is closed for editing. Reopen it before adding entries.`);
+      return;
+    }
     const base = {
       id: uid(),
       date: draft.date,
@@ -581,11 +608,29 @@ function BusinessBooksView({
   };
   const clearSelection = () => setSelectedIds(new Set());
   const bulkDeleteSelected = () => {
-    const toDelete = visibleIds.filter(id => selectedIds.has(id));
-    if (toDelete.length === 0) return;
+    // Skip rows in closed months — they're read-only by design.
+    const toDelete = visibleIds.filter(id => {
+      if (!selectedIds.has(id)) return false;
+      const row = list.find(e => e.id === id);
+      return row && !isPeriodClosed('books', row.date);
+    });
+    const skippedClosed = visibleIds.filter(id => {
+      if (!selectedIds.has(id)) return false;
+      const row = list.find(e => e.id === id);
+      return row && isPeriodClosed('books', row.date);
+    }).length;
+
+    if (toDelete.length === 0) {
+      if (skippedClosed > 0) {
+        alert(`All selected rows are in closed months. Reopen the month first.`);
+      }
+      return;
+    }
     const noun = tab === 'expenses' ? 'expense' : 'income entry';
     const ok = window.confirm(
-      `Delete ${toDelete.length} ${noun}${toDelete.length !== 1 ? (tab === 'expenses' ? 's' : 'ies').replace('ys', 'ies') : ''}? This can't be undone.`
+      `Delete ${toDelete.length} ${noun}${toDelete.length !== 1 ? (tab === 'expenses' ? 's' : 'ies').replace('ys', 'ies') : ''}?` +
+      (skippedClosed > 0 ? ` (${skippedClosed} row${skippedClosed !== 1 ? 's' : ''} in closed months will be skipped.)` : '') +
+      ` This can't be undone.`
     );
     if (!ok) return;
     for (const id of toDelete) onDelete(id);
@@ -625,7 +670,14 @@ function BusinessBooksView({
             <div className="mt-2 text-lg font-bold text-slate-900" style={{ transform: 'translateZ(10px)' }}>
               <CountUp value={ytdExpenses} format={(v) => '$' + v.toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: 2 })} />
             </div>
-            <div className="text-[11px] text-slate-500">deductible business out</div>
+            <div className="text-[11px] text-slate-500">
+              deductible business out
+              {ytdPlatformExpenses > 0 && (
+                <span title="Platforms (Ringy/TextDrip/VanillaSoft) are tracked separately and feed True CPA. Total YTD spend = Books + Platforms.">
+                  {' '}· <span className="text-indigo-600 font-semibold">+ {fmt2(ytdPlatformExpenses)} Platforms</span>
+                </span>
+              )}
+            </div>
           </TiltCard>
         </StaggerItem>
         <StaggerItem>
@@ -653,7 +705,14 @@ function BusinessBooksView({
               <span className="text-slate-300">·</span>
               <span className="font-bold text-red-500">−{fmt2(monthExpTotal)}</span>
             </div>
-            <div className="text-[11px] text-slate-500 mt-0.5">in vs out this month</div>
+            <div className="text-[11px] text-slate-500 mt-0.5">
+              in vs out this month
+              {monthPlatformTotal > 0 && (
+                <span title="Platforms expenses for this month (tracked separately, feeds True CPA)">
+                  {' '}· <span className="text-indigo-600 font-semibold">+ {fmt2(monthPlatformTotal)} Platforms</span>
+                </span>
+              )}
+            </div>
           </TiltCard>
         </StaggerItem>
       </Stagger>
@@ -699,13 +758,34 @@ function BusinessBooksView({
         onClose={() => setShowSmartImport(false)}
         defaultAccount={knownAccounts[0] || ''}
         onImport={({ expenses, income, platforms }) => {
-          if (expenses.length) onBulkAddExpenses(expenses);
-          if (income.length) onBulkAddIncome(income);
-          if (platforms?.length && onBulkAddPlatforms) onBulkAddPlatforms(platforms);
-          const all = [...(expenses || []), ...(income || []), ...(platforms || [])];
+          // Filter out rows whose date falls in a closed period — books vs
+          // platforms checked against their own kind.
+          const skip = { books: 0, platforms: 0 };
+          const okExpenses = (expenses || []).filter(r => {
+            if (isPeriodClosed('books', r.date)) { skip.books++; return false; }
+            return true;
+          });
+          const okIncome = (income || []).filter(r => {
+            if (isPeriodClosed('books', r.date)) { skip.books++; return false; }
+            return true;
+          });
+          const okPlatforms = (platforms || []).filter(r => {
+            if (isPeriodClosed('platforms', r.date)) { skip.platforms++; return false; }
+            return true;
+          });
+          if (okExpenses.length) onBulkAddExpenses(okExpenses);
+          if (okIncome.length) onBulkAddIncome(okIncome);
+          if (okPlatforms.length && onBulkAddPlatforms) onBulkAddPlatforms(okPlatforms);
+          const all = [...okExpenses, ...okIncome, ...okPlatforms];
           if (all.length > 0) {
             const newest = all.reduce((max, e) => e.date > max ? e.date : max, '');
             if (newest) setActiveMonth(newest.slice(0, 7));
+          }
+          if (skip.books + skip.platforms > 0) {
+            const parts = [];
+            if (skip.books) parts.push(`${skip.books} books row${skip.books !== 1 ? 's' : ''}`);
+            if (skip.platforms) parts.push(`${skip.platforms} platforms row${skip.platforms !== 1 ? 's' : ''}`);
+            alert(`Skipped ${parts.join(' + ')} that fell in closed months. Reopen those months and re-import if needed.`);
           }
         }}
       />
@@ -904,10 +984,11 @@ function BusinessBooksView({
           <div className="flex items-end">
             <button
               onClick={submitDraft}
-              disabled={!draft.amount || Number(draft.amount) <= 0}
-              className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white rounded-lg px-3 py-1.5 text-sm font-semibold transition"
+              disabled={!draft.amount || Number(draft.amount) <= 0 || isPeriodClosed('books', draft.date)}
+              title={isPeriodClosed('books', draft.date) ? `${ymLabel(ymOf(draft.date))} is closed — reopen to add` : ''}
+              className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white rounded-lg px-3 py-1.5 text-sm font-semibold transition flex items-center justify-center gap-1"
             >
-              Add
+              {isPeriodClosed('books', draft.date) ? <><Lock size={12} /> Locked</> : 'Add'}
             </button>
           </div>
         </div>
@@ -916,7 +997,14 @@ function BusinessBooksView({
       {/* Daily entries table */}
       <div className="bg-white rounded-xl border border-slate-200 p-4">
         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-          <h3 className="font-semibold text-slate-900">{ymLabel(activeMonth)} — {tab === 'expenses' ? 'Expenses' : 'Income'}</h3>
+          <h3 className="font-semibold text-slate-900 flex items-center gap-2">
+            {ymLabel(activeMonth)} — {tab === 'expenses' ? 'Expenses' : 'Income'}
+            {isPeriodClosed('books', activeMonth) && (
+              <span title="This month is closed for editing" className="inline-flex items-center gap-1 text-[10px] font-bold uppercase bg-amber-100 text-amber-800 border border-amber-300 rounded px-1.5 py-0.5">
+                <Lock size={10} /> Closed
+              </span>
+            )}
+          </h3>
           <div className="flex items-center gap-2">
             <select
               value={activeMonth}
@@ -928,8 +1016,43 @@ function BusinessBooksView({
             <span className="text-xs text-slate-500">
               {list.length} entr{list.length === 1 ? 'y' : 'ies'} · {fmt2(monthTotal)}
             </span>
+            {isPeriodClosed('books', activeMonth) ? (
+              <button
+                onClick={async () => {
+                  if (window.confirm(`Reopen ${ymLabel(activeMonth)} for editing? You'll be able to add/edit/delete entries again.`)) {
+                    await reopenBookMonth('books', activeMonth);
+                  }
+                }}
+                title="Reopen this month for editing"
+                className="text-xs flex items-center gap-1 border border-amber-300 hover:border-amber-500 hover:bg-amber-50 text-amber-800 rounded-lg px-2.5 py-1 transition"
+              >
+                <Unlock size={12} /> Reopen month
+              </button>
+            ) : (
+              <button
+                onClick={async () => {
+                  if (window.confirm(`Close ${ymLabel(activeMonth)}? Adds, edits, deletes, and Smart Imports for this month will be blocked. You can reopen it any time.`)) {
+                    await closeBookMonth('books', activeMonth);
+                  }
+                }}
+                title="Lock this month so Smart Imports and edits can't change it"
+                className="text-xs flex items-center gap-1 border border-slate-200 hover:border-slate-400 hover:bg-slate-50 text-slate-700 rounded-lg px-2.5 py-1 transition"
+              >
+                <Lock size={12} /> Close month
+              </button>
+            )}
           </div>
         </div>
+
+        {/* Closed-month banner */}
+        {isPeriodClosed('books', activeMonth) && (
+          <div className="mb-3 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-900 flex items-center gap-2">
+            <Lock size={13} className="flex-shrink-0" />
+            <div className="flex-1">
+              <span className="font-semibold">{ymLabel(activeMonth)} is closed for editing.</span> Smart Import will skip rows with dates in this month, and per-row edit / delete / bulk-delete are disabled. Click <span className="font-semibold">Reopen month</span> above to make changes.
+            </div>
+          </div>
+        )}
 
         {/* Filter row */}
         <div className="flex items-center gap-2 mb-3 flex-wrap text-xs">
@@ -1025,29 +1148,42 @@ function BusinessBooksView({
                 {list.map(e => {
                   const c = tab === 'expenses' ? expCat(e.category) : incCat(e.category);
                   const isSelected = selectedIds.has(e.id);
+                  // Per-row read-only when this entry's date falls in a closed period
+                  const rowLocked = isPeriodClosed('books', e.date);
+                  const lockedUpdate = (patch) => {
+                    if (rowLocked) {
+                      alert(`This row is in a closed month. Reopen it before editing.`);
+                      return;
+                    }
+                    onUpdate(patch);
+                  };
                   return (
-                    <tr key={e.id} className={`border-b border-slate-100 ${isSelected ? 'bg-rose-50/40' : 'hover:bg-slate-50'}`}>
+                    <tr key={e.id} className={`border-b border-slate-100 ${rowLocked ? 'bg-amber-50/30' : isSelected ? 'bg-rose-50/40' : 'hover:bg-slate-50'}`}>
                       <td className="py-2 px-2 text-center">
                         <input
                           type="checkbox"
                           checked={isSelected}
                           onChange={() => toggleRowSelected(e.id)}
-                          className="accent-indigo-600 w-4 h-4 cursor-pointer"
+                          disabled={rowLocked}
+                          className="accent-indigo-600 w-4 h-4 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                          title={rowLocked ? 'Closed month — reopen to select' : ''}
                         />
                       </td>
                       <td className="py-2 px-2">
                         <input
                           type="date"
                           value={e.date}
-                          onChange={(ev) => onUpdate({ ...e, date: ev.target.value })}
-                          className="border border-transparent hover:border-slate-200 rounded px-1 py-0.5 text-sm bg-transparent"
+                          onChange={(ev) => lockedUpdate({ ...e, date: ev.target.value })}
+                          readOnly={rowLocked}
+                          className={`border border-transparent rounded px-1 py-0.5 text-sm bg-transparent ${rowLocked ? 'text-slate-400 cursor-not-allowed' : 'hover:border-slate-200'}`}
                         />
                       </td>
                       <td className="py-2 px-2">
                         <select
                           value={e.category}
-                          onChange={(ev) => onUpdate({ ...e, category: ev.target.value })}
-                          className={`text-xs px-2 py-1 rounded font-semibold ${c.badge} border-0`}
+                          onChange={(ev) => lockedUpdate({ ...e, category: ev.target.value })}
+                          disabled={rowLocked}
+                          className={`text-xs px-2 py-1 rounded font-semibold ${c.badge} border-0 ${rowLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
                         >
                           {cats.map(x => <option key={x.id} value={x.id}>{x.label}</option>)}
                         </select>
@@ -1055,16 +1191,18 @@ function BusinessBooksView({
                       <td className="py-2 px-2 text-right">
                         <MoneyCell
                           value={e.amount}
-                          onChange={(v) => onUpdate({ ...e, amount: v })}
+                          onChange={(v) => lockedUpdate({ ...e, amount: v })}
+                          disabled={rowLocked}
                         />
                       </td>
                       <td className="py-2 px-2">
                         <input
                           type="text"
                           value={e[vendorKey] || ''}
-                          onChange={(ev) => onUpdate({ ...e, [vendorKey]: ev.target.value })}
+                          onChange={(ev) => lockedUpdate({ ...e, [vendorKey]: ev.target.value })}
+                          readOnly={rowLocked}
                           placeholder="—"
-                          className="w-full border border-transparent hover:border-slate-200 rounded px-1 py-0.5 text-sm bg-transparent"
+                          className={`w-full border border-transparent rounded px-1 py-0.5 text-sm bg-transparent ${rowLocked ? 'text-slate-400 cursor-not-allowed' : 'hover:border-slate-200'}`}
                         />
                       </td>
                       <td className="py-2 px-2">
@@ -1072,10 +1210,11 @@ function BusinessBooksView({
                           type="text"
                           list="known-accounts"
                           value={e.account || ''}
-                          onChange={(ev) => onUpdate({ ...e, account: ev.target.value })}
+                          onChange={(ev) => lockedUpdate({ ...e, account: ev.target.value })}
+                          readOnly={rowLocked}
                           placeholder="—"
-                          title={e.paymentMethod ? `Payment method: ${e.paymentMethod}` : ''}
-                          className="w-28 border border-transparent hover:border-slate-200 rounded px-1 py-0.5 text-xs text-slate-700 bg-transparent"
+                          title={rowLocked ? 'Closed month — reopen to edit' : (e.paymentMethod ? `Payment method: ${e.paymentMethod}` : '')}
+                          className={`w-28 border border-transparent rounded px-1 py-0.5 text-xs bg-transparent ${rowLocked ? 'text-slate-400 cursor-not-allowed' : 'text-slate-700 hover:border-slate-200'}`}
                         />
                         {e.paymentMethod && (
                           <div className="text-[9px] text-slate-400 leading-none mt-0.5">{e.paymentMethod}</div>
@@ -1085,9 +1224,10 @@ function BusinessBooksView({
                         <input
                           type="text"
                           value={e.notes || ''}
-                          onChange={(ev) => onUpdate({ ...e, notes: ev.target.value })}
+                          onChange={(ev) => lockedUpdate({ ...e, notes: ev.target.value })}
+                          readOnly={rowLocked}
                           placeholder="—"
-                          className="w-full border border-transparent hover:border-slate-200 rounded px-1 py-0.5 text-xs text-slate-600 bg-transparent"
+                          className={`w-full border border-transparent rounded px-1 py-0.5 text-xs bg-transparent ${rowLocked ? 'text-slate-400 cursor-not-allowed' : 'text-slate-600 hover:border-slate-200'}`}
                         />
                       </td>
                       <td className="py-2 px-2">
@@ -1100,17 +1240,21 @@ function BusinessBooksView({
                             <Eye size={14} />
                           </button>
                         ) : (
-                          <RowAttachmentButton entry={e} onUpdate={onUpdate} />
+                          !rowLocked && <RowAttachmentButton entry={e} onUpdate={onUpdate} />
                         )}
                       </td>
                       <td className="py-2 px-2 text-right">
-                        <button
-                          onClick={() => onDelete(e.id)}
-                          className="text-slate-400 hover:text-red-600 transition"
-                          title="Delete"
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                        {rowLocked ? (
+                          <Lock size={12} className="text-amber-500 inline" title="Closed month — reopen to delete" />
+                        ) : (
+                          <button
+                            onClick={() => onDelete(e.id)}
+                            className="text-slate-400 hover:text-red-600 transition"
+                            title="Delete"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );

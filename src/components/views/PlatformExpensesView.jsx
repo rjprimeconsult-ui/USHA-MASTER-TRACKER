@@ -1,10 +1,11 @@
 'use client';
 import { useMemo, useRef, useState, useEffect, memo } from 'react';
-import { Plus, Trash2, DollarSign, TrendingUp, AlertCircle, Calendar, Upload, X, Check, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
+import { Plus, Trash2, DollarSign, TrendingUp, AlertCircle, Calendar, Upload, X, Check, ChevronLeft, ChevronRight, Sparkles, Lock, Unlock } from 'lucide-react';
 import { PLATFORMS, PLATFORM_REASONS } from '@/lib/constants';
 import { fmt, fmt2, today, uid } from '@/lib/utils';
 import { storage } from '@/lib/storage';
 import { parsePlatformFile, dedupAgainst } from '@/lib/platformImport';
+import { useClosedPeriods } from '@/lib/closedPeriods';
 import { TiltCard, CountUp, Stagger, StaggerItem, MoneyCell } from '../motion/MotionPrimitives';
 import SmartImportWizard from '../SmartImportWizard';
 
@@ -33,6 +34,7 @@ function PlatformExpensesView({ expenses, onAdd, onUpdate, onDelete, onBulkAdd, 
   const [importPreview, setImportPreview] = useState(null); // { format, entries, fresh, duplicate, error }
   const [importing, setImporting] = useState(false);
   const [showSmartImport, setShowSmartImport] = useState(false);
+  const { isClosed: isPeriodClosed, close: closePlatformMonth, reopen: reopenPlatformMonth } = useClosedPeriods();
 
   const handleFileSelect = async (e) => {
     const file = e.target.files?.[0];
@@ -206,6 +208,10 @@ function PlatformExpensesView({ expenses, onAdd, onUpdate, onDelete, onBulkAdd, 
   const submitDraft = () => {
     const amt = Number(draft.amount || 0);
     if (!draft.date || amt <= 0) return;
+    if (isPeriodClosed('platforms', draft.date)) {
+      alert(`${ymLabel(ymOf(draft.date))} is closed. Reopen it before adding entries.`);
+      return;
+    }
     onAdd({
       id: uid(),
       date: draft.date,
@@ -419,15 +425,35 @@ function PlatformExpensesView({ expenses, onAdd, onUpdate, onDelete, onBulkAdd, 
         open={showSmartImport}
         onClose={() => setShowSmartImport(false)}
         onImport={({ expenses: bookExp, income: bookInc, platforms }) => {
-          if (platforms?.length) {
-            onBulkAdd?.(platforms);
-            const newest = platforms.reduce((max, e) => e.date > max ? e.date : max, '');
+          // Filter rows whose dates fall in closed months (per kind)
+          const skip = { books: 0, platforms: 0 };
+          const okPlatforms = (platforms || []).filter(r => {
+            if (isPeriodClosed('platforms', r.date)) { skip.platforms++; return false; }
+            return true;
+          });
+          const okBookExp = (bookExp || []).filter(r => {
+            if (isPeriodClosed('books', r.date)) { skip.books++; return false; }
+            return true;
+          });
+          const okBookInc = (bookInc || []).filter(r => {
+            if (isPeriodClosed('books', r.date)) { skip.books++; return false; }
+            return true;
+          });
+          if (okPlatforms.length) {
+            onBulkAdd?.(okPlatforms);
+            const newest = okPlatforms.reduce((max, e) => e.date > max ? e.date : max, '');
             if (newest) setActiveMonth(newest.slice(0, 7));
           }
           // Any non-platform rows extracted from the file get routed to Books
           // automatically — so a PDF with mixed charges Just Works.
-          if (bookExp?.length && onBulkAddBooksExpenses) onBulkAddBooksExpenses(bookExp);
-          if (bookInc?.length && onBulkAddBooksIncome) onBulkAddBooksIncome(bookInc);
+          if (okBookExp.length && onBulkAddBooksExpenses) onBulkAddBooksExpenses(okBookExp);
+          if (okBookInc.length && onBulkAddBooksIncome) onBulkAddBooksIncome(okBookInc);
+          if (skip.books + skip.platforms > 0) {
+            const parts = [];
+            if (skip.books) parts.push(`${skip.books} books row${skip.books !== 1 ? 's' : ''}`);
+            if (skip.platforms) parts.push(`${skip.platforms} platforms row${skip.platforms !== 1 ? 's' : ''}`);
+            alert(`Skipped ${parts.join(' + ')} that fell in closed months. Reopen those months and re-import if needed.`);
+          }
         }}
       />
 
@@ -488,10 +514,11 @@ function PlatformExpensesView({ expenses, onAdd, onUpdate, onDelete, onBulkAdd, 
           <div className="flex items-end">
             <button
               onClick={submitDraft}
-              disabled={!draft.amount || Number(draft.amount) <= 0}
-              className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white rounded-lg px-3 py-1.5 text-sm font-semibold transition"
+              disabled={!draft.amount || Number(draft.amount) <= 0 || isPeriodClosed('platforms', draft.date)}
+              title={isPeriodClosed('platforms', draft.date) ? `${ymLabel(ymOf(draft.date))} is closed — reopen to add` : ''}
+              className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white rounded-lg px-3 py-1.5 text-sm font-semibold transition flex items-center justify-center gap-1"
             >
-              Add
+              {isPeriodClosed('platforms', draft.date) ? <><Lock size={12} /> Locked</> : 'Add'}
             </button>
           </div>
         </div>
@@ -499,12 +526,56 @@ function PlatformExpensesView({ expenses, onAdd, onUpdate, onDelete, onBulkAdd, 
 
       {/* Daily entries table */}
       <div className="bg-white rounded-xl border border-slate-200 p-4">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="font-semibold text-slate-900">{ymLabel(activeMonth)} — Daily entries</h3>
-          <span className="text-xs text-slate-500">
-            {monthExpenses.length} entr{monthExpenses.length === 1 ? 'y' : 'ies'} · {fmt2(monthTotal)} total
-          </span>
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <h3 className="font-semibold text-slate-900 flex items-center gap-2">
+            {ymLabel(activeMonth)} — Daily entries
+            {isPeriodClosed('platforms', activeMonth) && (
+              <span title="This month is closed for editing" className="inline-flex items-center gap-1 text-[10px] font-bold uppercase bg-amber-100 text-amber-800 border border-amber-300 rounded px-1.5 py-0.5">
+                <Lock size={10} /> Closed
+              </span>
+            )}
+          </h3>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-500">
+              {monthExpenses.length} entr{monthExpenses.length === 1 ? 'y' : 'ies'} · {fmt2(monthTotal)} total
+            </span>
+            {isPeriodClosed('platforms', activeMonth) ? (
+              <button
+                onClick={async () => {
+                  if (window.confirm(`Reopen ${ymLabel(activeMonth)} (Platforms) for editing?`)) {
+                    await reopenPlatformMonth('platforms', activeMonth);
+                  }
+                }}
+                title="Reopen this month for editing"
+                className="text-xs flex items-center gap-1 border border-amber-300 hover:border-amber-500 hover:bg-amber-50 text-amber-800 rounded-lg px-2.5 py-1 transition"
+              >
+                <Unlock size={12} /> Reopen month
+              </button>
+            ) : (
+              <button
+                onClick={async () => {
+                  if (window.confirm(`Close ${ymLabel(activeMonth)} (Platforms)? Adds, edits, deletes, and Smart Imports for this month will be blocked. You can reopen it any time.`)) {
+                    await closePlatformMonth('platforms', activeMonth);
+                  }
+                }}
+                title="Lock this month so Smart Imports and edits can't change it"
+                className="text-xs flex items-center gap-1 border border-slate-200 hover:border-slate-400 hover:bg-slate-50 text-slate-700 rounded-lg px-2.5 py-1 transition"
+              >
+                <Lock size={12} /> Close month
+              </button>
+            )}
+          </div>
         </div>
+
+        {/* Closed-month banner */}
+        {isPeriodClosed('platforms', activeMonth) && (
+          <div className="mb-3 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-900 flex items-center gap-2">
+            <Lock size={13} className="flex-shrink-0" />
+            <div className="flex-1">
+              <span className="font-semibold">{ymLabel(activeMonth)} (Platforms) is closed.</span> Smart Import skips this month, and per-row edit/delete is disabled. Click <span className="font-semibold">Reopen month</span> to make changes.
+            </div>
+          </div>
+        )}
         {monthExpenses.length === 0 ? (
           <div className="text-center py-8 text-slate-400 text-sm">
             <AlertCircle className="mx-auto mb-2" size={20} />
@@ -524,60 +595,79 @@ function PlatformExpensesView({ expenses, onAdd, onUpdate, onDelete, onBulkAdd, 
                 </tr>
               </thead>
               <tbody>
-                {monthExpenses.map(e => (
-                  <tr key={e.id} className="border-b border-slate-100 hover:bg-slate-50">
-                    <td className="py-2 px-2">
-                      <input
-                        type="date"
-                        value={e.date}
-                        onChange={(ev) => onUpdate({ ...e, date: ev.target.value })}
-                        className="border border-transparent hover:border-slate-200 rounded px-1 py-0.5 text-sm bg-transparent"
-                      />
-                    </td>
-                    <td className="py-2 px-2">
-                      <select
-                        value={e.platform}
-                        onChange={(ev) => onUpdate({ ...e, platform: ev.target.value })}
-                        className={`text-xs px-2 py-1 rounded font-bold ${platformBadge(e.platform)} border-0`}
-                      >
-                        {PLATFORMS.map(p => <option key={p.id} value={p.id}>{p.id}</option>)}
-                      </select>
-                    </td>
-                    <td className="py-2 px-2 text-right">
-                      <MoneyCell
-                        value={e.amount}
-                        onChange={(v) => onUpdate({ ...e, amount: v })}
-                      />
-                    </td>
-                    <td className="py-2 px-2">
-                      <select
-                        value={e.reason}
-                        onChange={(ev) => onUpdate({ ...e, reason: ev.target.value })}
-                        className="text-xs border border-transparent hover:border-slate-200 rounded px-1 py-0.5 bg-transparent"
-                      >
-                        {PLATFORM_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
-                      </select>
-                    </td>
-                    <td className="py-2 px-2">
-                      <input
-                        type="text"
-                        value={e.notes || ''}
-                        onChange={(ev) => onUpdate({ ...e, notes: ev.target.value })}
-                        placeholder="—"
-                        className="w-full border border-transparent hover:border-slate-200 rounded px-1 py-0.5 text-xs text-slate-600 bg-transparent"
-                      />
-                    </td>
-                    <td className="py-2 px-2 text-right">
-                      <button
-                        onClick={() => onDelete(e.id)}
-                        className="text-slate-400 hover:text-red-600 transition"
-                        title="Delete"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {monthExpenses.map(e => {
+                  const rowLocked = isPeriodClosed('platforms', e.date);
+                  const lockedUpdate = (patch) => {
+                    if (rowLocked) {
+                      alert('This row is in a closed month. Reopen it before editing.');
+                      return;
+                    }
+                    onUpdate(patch);
+                  };
+                  return (
+                    <tr key={e.id} className={`border-b border-slate-100 ${rowLocked ? 'bg-amber-50/30' : 'hover:bg-slate-50'}`}>
+                      <td className="py-2 px-2">
+                        <input
+                          type="date"
+                          value={e.date}
+                          onChange={(ev) => lockedUpdate({ ...e, date: ev.target.value })}
+                          readOnly={rowLocked}
+                          className={`border border-transparent rounded px-1 py-0.5 text-sm bg-transparent ${rowLocked ? 'text-slate-400 cursor-not-allowed' : 'hover:border-slate-200'}`}
+                        />
+                      </td>
+                      <td className="py-2 px-2">
+                        <select
+                          value={e.platform}
+                          onChange={(ev) => lockedUpdate({ ...e, platform: ev.target.value })}
+                          disabled={rowLocked}
+                          className={`text-xs px-2 py-1 rounded font-bold ${platformBadge(e.platform)} border-0 ${rowLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
+                        >
+                          {PLATFORMS.map(p => <option key={p.id} value={p.id}>{p.id}</option>)}
+                        </select>
+                      </td>
+                      <td className="py-2 px-2 text-right">
+                        <MoneyCell
+                          value={e.amount}
+                          onChange={(v) => lockedUpdate({ ...e, amount: v })}
+                          disabled={rowLocked}
+                        />
+                      </td>
+                      <td className="py-2 px-2">
+                        <select
+                          value={e.reason}
+                          onChange={(ev) => lockedUpdate({ ...e, reason: ev.target.value })}
+                          disabled={rowLocked}
+                          className={`text-xs border border-transparent rounded px-1 py-0.5 bg-transparent ${rowLocked ? 'opacity-60 cursor-not-allowed' : 'hover:border-slate-200'}`}
+                        >
+                          {PLATFORM_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
+                        </select>
+                      </td>
+                      <td className="py-2 px-2">
+                        <input
+                          type="text"
+                          value={e.notes || ''}
+                          onChange={(ev) => lockedUpdate({ ...e, notes: ev.target.value })}
+                          readOnly={rowLocked}
+                          placeholder="—"
+                          className={`w-full border border-transparent rounded px-1 py-0.5 text-xs bg-transparent ${rowLocked ? 'text-slate-400 cursor-not-allowed' : 'text-slate-600 hover:border-slate-200'}`}
+                        />
+                      </td>
+                      <td className="py-2 px-2 text-right">
+                        {rowLocked ? (
+                          <Lock size={12} className="text-amber-500 inline" title="Closed — reopen to delete" />
+                        ) : (
+                          <button
+                            onClick={() => onDelete(e.id)}
+                            className="text-slate-400 hover:text-red-600 transition"
+                            title="Delete"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
               <tfoot>
                 <tr className="border-t-2 border-slate-300 font-bold">
