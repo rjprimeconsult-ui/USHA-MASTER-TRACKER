@@ -94,6 +94,9 @@ export const migrateLead = (l) => {
   // Ensure dependents is always an array (was added later — older leads have no field)
   if (!Array.isArray(migrated.dependents)) migrated.dependents = [];
 
+  // CRM rename: BENNEPATH (typo, lived <1hr) → BENEPATH. Idempotent.
+  if (migrated.crm === 'BENNEPATH') migrated.crm = 'BENEPATH';
+
   // Set association start date retroactively to the close/submission date
   // (Juan's rule: association counts retroactive to the month it was submitted,
   //  but only pays out once the deal is Issued.)

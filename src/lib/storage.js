@@ -155,12 +155,20 @@ export const storage = {
  * Used by the AuthGate's "Upload your local data to cloud" prompt.
  */
 const APP_KEYS = [
+  // Core data
   'leads_v5', 'investments_v2', 'activities_v1', 'agent_tier_v1',
   'chargebacks_v1', 'overrides_v1', 'own_advances_v1', 'advance_months_history_v1',
   'platform_expenses_v1', 'business_expenses_v1', 'business_income_v1',
   'business_accounts_v1', 'platform_budget_v1',
   'prospects_v1', 'prospect_settings_v1',
   'announcement_acks_v1', 'no_phi_ack_v1',
+  // Per-agent learning + customization (PRIM v3+)
+  'vendor_memory_v1',
+  'custom_categories_v1',
+  'closed_periods_v1',
+  'prospect_source_colors_v1',
+  'user_rubric_v1',
+  'import_history_v1',
 ];
 export async function migrateLocalToCloud() {
   if (!useCloud()) throw new Error('Not signed in');
