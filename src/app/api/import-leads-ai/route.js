@@ -56,7 +56,9 @@ MAIN PRODUCTS (lead.mainProduct — pick exactly one of these canonical IDs, or 
 - PREMIER ADVANTAGE: matches "PA", "Prem Adv", "Premier Adv", "Premier Advantage", "PremierAdvantage", "PremierAdvantage Fixed Indemnity"
 - PREMIER CHOICE: matches "PC", "Prem Choice", "Premier Choice", "PremierChoice"
 - SECURE ADVANTAGE: matches "SA", "Sec Adv", "Secure Adv", "Secure Advantage", "SecureAdvantage"
+- SECUREADVANTAGE CONVERSION: matches "SA Conversion", "SecureAdvantage Conversion", "SA Conv", "Conversion Plan"
 - HEALTH ACCESS III: matches "HA", "HA III", "Health Access", "Health Access III", "HealthAccess"
+- LIFE PROTECTOR II: matches "Life Protector", "Life Protector II", "LP", "LP II", "LifeProtector"
 - ACA WRAP: matches "ACA", "ACA Wrap"
 - SUPPY: matches "Suppy" exactly
 
@@ -64,6 +66,8 @@ ADD-ON PRODUCTS (lead.products array — these are supplemental, not main):
 - MEDGUARD III: matches "MedGuard", "Med Guard", "MedGuard III", "MedGuard II"
 - PREMIERVISION: matches "PremierVision", "Premier Vision"
 - DENTAL / SECUREDENTAL: matches "Secure Dental", "Secure Dental Plus", "SecureDental", "Dental", "Dental Plus", "ASSO/DENTAL/VISION" (the dental component)
+- ACCIDENT PROTECTOR: matches "Accident Protector", "AccidentProtector", "AP" (note: distinct from "SECURE ADV ACCIDENT" / "SECUREADVANTAGE ACCIDENT" which is a Secure Advantage variant, NOT this standalone product)
+- INCOME PROTECTOR: matches "Income Protector", "IncomeProtector", "IP"
 
 ASSOCIATION PLANS (lead.associationPlan — pick one of these or leave empty):
 EXECUTIVE DIAMOND, DIAMOND, EMERALD, SAPPHIRE, RUBY, PEARL, NO ASS., ABC ELITE, ABC EXECUTIVE, ABC ENTREPRENEUR, SUPPY, PRO WRAP

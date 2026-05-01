@@ -68,12 +68,14 @@ export const LEAD_CATEGORIES = [
 ];
 
 export const MAIN_PRODUCTS = [
-  { id: 'PREMIER ADVANTAGE',    premium: 0 },
-  { id: 'PREMIER CHOICE',       premium: 0 },
-  { id: 'SECURE ADVANTAGE',     premium: 0 },
-  { id: 'HEALTH ACCESS III',    premium: 0 },
-  { id: 'SUPPY',                premium: 0 },
-  { id: 'ACA WRAP',             premium: 0 },
+  { id: 'PREMIER ADVANTAGE',          premium: 0 },
+  { id: 'PREMIER CHOICE',             premium: 0 },
+  { id: 'SECURE ADVANTAGE',           premium: 0 },
+  { id: 'SECUREADVANTAGE CONVERSION', premium: 0 },
+  { id: 'HEALTH ACCESS III',          premium: 0 },
+  { id: 'LIFE PROTECTOR II',          premium: 0 },
+  { id: 'SUPPY',                      premium: 0 },
+  { id: 'ACA WRAP',                   premium: 0 },
 ];
 
 export const ASSOCIATION_PLANS = [
@@ -92,9 +94,11 @@ export const ASSOCIATION_PLANS = [
 ];
 
 export const ADDON_PRODUCTS = [
-  { id: 'MEDGUARD III',         premium: 65.00 },
-  { id: 'PREMIERVISION',        premium: 0 },
+  { id: 'MEDGUARD III',          premium: 65.00 },
+  { id: 'PREMIERVISION',         premium: 0 },
   { id: 'DENTAL / SECUREDENTAL', premium: 0 },
+  { id: 'ACCIDENT PROTECTOR',    premium: 0 },
+  { id: 'INCOME PROTECTOR',      premium: 0 },
 ];
 
 export const ALL_PRODUCTS = [

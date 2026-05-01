@@ -53,6 +53,10 @@ export const US_STATES = [
 
 // States where HealthAccess Suite has reduced rates
 const HEALTH_ACCESS_REDUCED_STATES = new Set(['CO', 'MD', 'SD']);
+// States where Accident Protector has reduced rates
+const ACCIDENT_PROTECTOR_REDUCED_STATES = new Set(['CO', 'SD']);
+// States where Income Protector has reduced rates
+const INCOME_PROTECTOR_REDUCED_STATES = new Set(['CO', 'DE', 'IN', 'KS', 'OH', 'UT', 'WV']);
 
 /**
  * Rate tables — keyed by internal product key, then tier, then variant.
@@ -84,22 +88,45 @@ const RATES = {
   DENTAL: {
     default: { WA: 0.1800, CA: 0.2000, FTA: 0.2200, FSL: 0.2400 },
   },
+  // Underwritten add-ons / standalone supplemental products
+  ACCIDENT_PROTECTOR: {
+    default:       { WA: 0.5700, CA: 0.6000, FTA: 0.6300, FSL: 0.6600 },
+    reducedStates: { WA: 0.4300, CA: 0.4600, FTA: 0.4825, FSL: 0.5050 },
+  },
+  INCOME_PROTECTOR: {
+    default:       { WA: 0.5700, CA: 0.6000, FTA: 0.6300, FSL: 0.6600 },
+    reducedStates: { WA: 0.4200, CA: 0.4500, FTA: 0.4700, FSL: 0.4900 },
+  },
+  // Main underwritten products
+  LIFE_PROTECTOR_II: {
+    // Note: $2.12/mo policy fee is non-commissionable — agent enters the
+    // commissionable portion (premium minus $2.12).
+    default: { WA: 0.7500, CA: 0.8000, FTA: 0.8400, FSL: 0.8800 },
+  },
+  SECURE_ADVANTAGE_CONVERSION: {
+    // Note: $30/mo non-commissionable policy fee when sold standalone.
+    default: { WA: 0.0200, CA: 0.0200, FTA: 0.0260, FSL: 0.0320 },
+  },
 };
 
 // Map UI product id → rate-table key. null means non-commissionable / exempt.
 const MAIN_PRODUCT_RATE_KEY = {
-  'PREMIER ADVANTAGE':  'PREMIER_ADVANTAGE',
-  'PREMIER CHOICE':     'PREMIER_CHOICE',
-  'SECURE ADVANTAGE':   'SECURE_ADVANTAGE',
-  'HEALTH ACCESS III':  'HEALTH_ACCESS',
-  'SUPPY':              null, // no main policy — deal is add-on only
-  'ACA WRAP':           null, // non-commissionable
+  'PREMIER ADVANTAGE':           'PREMIER_ADVANTAGE',
+  'PREMIER CHOICE':              'PREMIER_CHOICE',
+  'SECURE ADVANTAGE':            'SECURE_ADVANTAGE',
+  'SECUREADVANTAGE CONVERSION':  'SECURE_ADVANTAGE_CONVERSION',
+  'HEALTH ACCESS III':           'HEALTH_ACCESS',
+  'LIFE PROTECTOR II':           'LIFE_PROTECTOR_II',
+  'SUPPY':                       null, // no main policy — deal is add-on only
+  'ACA WRAP':                    null, // non-commissionable
 };
 
 const ADDON_RATE_KEY = {
-  'MEDGUARD III':         'MEDGUARD',
-  'PREMIERVISION':        'PREMIER_VISION',
-  'DENTAL / SECUREDENTAL': 'DENTAL',
+  'MEDGUARD III':           'MEDGUARD',
+  'PREMIERVISION':          'PREMIER_VISION',
+  'DENTAL / SECUREDENTAL':  'DENTAL',
+  'ACCIDENT PROTECTOR':     'ACCIDENT_PROTECTOR',
+  'INCOME PROTECTOR':       'INCOME_PROTECTOR',
 };
 
 /**
@@ -113,6 +140,12 @@ export function resolveRate(productRateKey, tier, state) {
 
   // Product-specific state handling
   if (productRateKey === 'HEALTH_ACCESS' && state && HEALTH_ACCESS_REDUCED_STATES.has(state)) {
+    return table.reducedStates?.[tier] ?? 0;
+  }
+  if (productRateKey === 'ACCIDENT_PROTECTOR' && state && ACCIDENT_PROTECTOR_REDUCED_STATES.has(state)) {
+    return table.reducedStates?.[tier] ?? 0;
+  }
+  if (productRateKey === 'INCOME_PROTECTOR' && state && INCOME_PROTECTOR_REDUCED_STATES.has(state)) {
     return table.reducedStates?.[tier] ?? 0;
   }
 

@@ -60,6 +60,10 @@ const PATTERNS = {
 // the FIRST in this list wins.
 const PRODUCT_CATALOG = [
   // ----- MAIN PRODUCTS -----
+  // ORDER MATTERS — the more-specific variants must come first so the
+  // generic "Secure Advantage" doesn't swallow "Secure Advantage Conversion"
+  { canonical: 'SECUREADVANTAGE CONVERSION', bucket: 'main',
+    patterns: [/\bSecure\s*Advantage\s*Conversion\b/i, /\bSecureAdvantage\s*Conversion\b/i, /\bSA\s*Conversion\b/i] },
   { canonical: 'PREMIER ADVANTAGE', bucket: 'main',
     patterns: [/\bPremier\s*Advantage\s*Fixed\s*Indemnity\b/i, /\bPremierAdvantage\b/i, /\bPremier\s*Advantage\b/i] },
   { canonical: 'PREMIER CHOICE', bucket: 'main',
@@ -68,6 +72,8 @@ const PRODUCT_CATALOG = [
     patterns: [/\bSecure\s*Advantage\b/i, /\bSecureAdvantage\b/i] },
   { canonical: 'HEALTH ACCESS III', bucket: 'main',
     patterns: [/\bHealth\s*Access\s*III\b/i, /\bHealth\s*Access\s*3\b/i, /\bHA\s*III\b/i, /\bHealthAccess\b/i] },
+  { canonical: 'LIFE PROTECTOR II', bucket: 'main',
+    patterns: [/\bLife\s*Protector\s*II\b/i, /\bLifeProtector\s*II\b/i, /\bLife\s*Protector\b/i, /\bLifeProtector\b/i] },
   { canonical: 'SUPPY', bucket: 'main',
     patterns: [/\bSuppy\b/i] },
   { canonical: 'ACA WRAP', bucket: 'main',
@@ -80,6 +86,10 @@ const PRODUCT_CATALOG = [
     patterns: [/\bPremier\s*Vision\b/i, /\bPremierVision\b/i] },
   { canonical: 'DENTAL / SECUREDENTAL', bucket: 'addon',
     patterns: [/\bSecure\s*Dental\s*Plus\b/i, /\bSecureDental\b/i, /\bSecure\s*Dental\b/i, /\bDental\s*Plus\b/i, /\bDental\b/i] },
+  { canonical: 'ACCIDENT PROTECTOR', bucket: 'addon',
+    patterns: [/\bAccident\s*Protector\b/i, /\bAccidentProtector\b/i] },
+  { canonical: 'INCOME PROTECTOR', bucket: 'addon',
+    patterns: [/\bIncome\s*Protector\b/i, /\bIncomeProtector\b/i] },
 ];
 
 // Find every product mentioned. Each canonical product matches at most
