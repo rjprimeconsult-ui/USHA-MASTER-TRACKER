@@ -30,10 +30,11 @@ export const SOURCES = ['Website', 'Referral', 'Facebook', 'Google', 'LinkedIn',
 export const OWNERS = ['You', 'Maria', 'Carlos', 'Jess'];
 
 export const CRMS = [
-  { id: 'RINGY',    badge: 'bg-red-500 text-white',   color: '#ef4444' },
-  { id: 'TEXTDRIP', badge: 'bg-red-900 text-white',   color: '#7f1d1d' },
-  { id: 'VANILLA',  badge: 'bg-blue-900 text-white',  color: '#1e3a8a' },
-  { id: 'GOOGLE',   badge: 'bg-amber-500 text-white', color: '#f59e0b' },
+  { id: 'RINGY',    badge: 'bg-red-500 text-white',     color: '#ef4444' },
+  { id: 'TEXTDRIP', badge: 'bg-red-900 text-white',     color: '#7f1d1d' },
+  { id: 'VANILLA',  badge: 'bg-blue-900 text-white',    color: '#1e3a8a' },
+  { id: 'GOOGLE',   badge: 'bg-amber-500 text-white',   color: '#f59e0b' },
+  { id: 'BENNEPATH', badge: 'bg-teal-600 text-white',   color: '#0d9488' },
 ];
 
 export const CAMPAIGNS = [
@@ -50,6 +51,7 @@ export const CAMPAIGNS = [
   { id: 'ELITE EXCLUSIVE',   badge: 'bg-green-500 text-white',      color: '#22c55e' },
   { id: 'D7 BIZZ LEAD',      badge: 'bg-fuchsia-600 text-white',    color: '#c026d3' },
   { id: 'JESUS BURGA LEADS', badge: 'bg-yellow-800 text-white',     color: '#854d0e' },
+  { id: 'BENEPATH (BENNYS)', badge: 'bg-teal-600 text-white',       color: '#0d9488' },
   { id: 'REFERRAL',          badge: 'bg-purple-500 text-white',     color: '#a855f7' },
 ];
 
@@ -62,6 +64,7 @@ export const LEAD_CATEGORIES = [
   { id: 'JACKPOT',       badge: 'bg-yellow-300 text-slate-800', color: '#fde047' },
   { id: 'D7',            badge: 'bg-pink-500 text-white',       color: '#ec4899' },
   { id: 'GOOGLE LEADS',  badge: 'bg-slate-300 text-slate-800',  color: '#cbd5e1' },
+  { id: 'BENEPATH',      badge: 'bg-teal-600 text-white',       color: '#0d9488' },
 ];
 
 export const MAIN_PRODUCTS = [
