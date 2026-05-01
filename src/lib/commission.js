@@ -116,7 +116,6 @@ const MAIN_PRODUCT_RATE_KEY = {
   'SECURE ADVANTAGE':            'SECURE_ADVANTAGE',
   'SECUREADVANTAGE CONVERSION':  'SECURE_ADVANTAGE_CONVERSION',
   'HEALTH ACCESS III':           'HEALTH_ACCESS',
-  'LIFE PROTECTOR II':           'LIFE_PROTECTOR_II',
   'SUPPY':                       null, // no main policy — deal is add-on only
   'ACA WRAP':                    null, // non-commissionable
 };
@@ -127,6 +126,7 @@ const ADDON_RATE_KEY = {
   'DENTAL / SECUREDENTAL':  'DENTAL',
   'ACCIDENT PROTECTOR':     'ACCIDENT_PROTECTOR',
   'INCOME PROTECTOR':       'INCOME_PROTECTOR',
+  'LIFE PROTECTOR II':      'LIFE_PROTECTOR_II',
 };
 
 /**

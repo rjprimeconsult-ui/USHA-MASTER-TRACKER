@@ -72,8 +72,6 @@ const PRODUCT_CATALOG = [
     patterns: [/\bSecure\s*Advantage\b/i, /\bSecureAdvantage\b/i] },
   { canonical: 'HEALTH ACCESS III', bucket: 'main',
     patterns: [/\bHealth\s*Access\s*III\b/i, /\bHealth\s*Access\s*3\b/i, /\bHA\s*III\b/i, /\bHealthAccess\b/i] },
-  { canonical: 'LIFE PROTECTOR II', bucket: 'main',
-    patterns: [/\bLife\s*Protector\s*II\b/i, /\bLifeProtector\s*II\b/i, /\bLife\s*Protector\b/i, /\bLifeProtector\b/i] },
   { canonical: 'SUPPY', bucket: 'main',
     patterns: [/\bSuppy\b/i] },
   { canonical: 'ACA WRAP', bucket: 'main',
@@ -90,6 +88,8 @@ const PRODUCT_CATALOG = [
     patterns: [/\bAccident\s*Protector\b/i, /\bAccidentProtector\b/i] },
   { canonical: 'INCOME PROTECTOR', bucket: 'addon',
     patterns: [/\bIncome\s*Protector\b/i, /\bIncomeProtector\b/i] },
+  { canonical: 'LIFE PROTECTOR II', bucket: 'addon',
+    patterns: [/\bLife\s*Protector\s*II\b/i, /\bLifeProtector\s*II\b/i, /\bLife\s*Protector\b/i, /\bLifeProtector\b/i] },
 ];
 
 // Find every product mentioned. Each canonical product matches at most

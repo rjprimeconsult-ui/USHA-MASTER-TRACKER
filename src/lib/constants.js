@@ -73,7 +73,6 @@ export const MAIN_PRODUCTS = [
   { id: 'SECURE ADVANTAGE',           premium: 0 },
   { id: 'SECUREADVANTAGE CONVERSION', premium: 0 },
   { id: 'HEALTH ACCESS III',          premium: 0 },
-  { id: 'LIFE PROTECTOR II',          premium: 0 },
   { id: 'SUPPY',                      premium: 0 },
   { id: 'ACA WRAP',                   premium: 0 },
 ];
@@ -99,6 +98,7 @@ export const ADDON_PRODUCTS = [
   { id: 'DENTAL / SECUREDENTAL', premium: 0 },
   { id: 'ACCIDENT PROTECTOR',    premium: 0 },
   { id: 'INCOME PROTECTOR',      premium: 0 },
+  { id: 'LIFE PROTECTOR II',     premium: 0 },
 ];
 
 export const ALL_PRODUCTS = [
