@@ -358,8 +358,10 @@ function BusinessBooksView({
 
   // Total YTD income shown on the dashboard card = books income + commissions.
   const ytdIncome   = ytdBooksIncome + ytdCommissions;
-  // True YTD Net = all income (commissions + books) − all expenses.
-  const ytdNet      = ytdIncome - ytdExpenses;
+  // True YTD Net = all income (commissions + books) − all expenses (Books +
+  // Platforms). Platforms is a real cash outflow even though it's stored
+  // separately for True-CPA purposes — leaving it out overstated NET.
+  const ytdNet      = ytdIncome - ytdExpenses - ytdPlatformExpenses;
 
   // Filters for the daily entries table — per-tab so switching keeps each one
   const [filterCategory, setFilterCategory] = useState('');
@@ -397,7 +399,28 @@ function BusinessBooksView({
     [income, activeMonth, filterCategory, filterVendor, filterAccount]
   );
   const monthExpTotal = monthExpenses.reduce((s, e) => s + Number(e.amount || 0), 0);
-  const monthIncTotal = monthIncome.reduce((s, e) => s + Number(e.amount || 0), 0);
+  const monthBooksIncTotal = monthIncome.reduce((s, e) => s + Number(e.amount || 0), 0);
+
+  // True monthly P&L pieces — same definition as YTD but scoped to the
+  // active month, so the "in vs out this month" card matches the YTD card.
+  const monthOwnFromStmts = useMemo(
+    () => ownAdvances.filter(a => ymOf(a.period) === activeMonth).reduce((s, a) => s + Number(a.amount || 0), 0),
+    [ownAdvances, activeMonth]
+  );
+  const monthOwnFromLeads = useMemo(
+    () => leads.filter(l => l.stage === 'Issued' && ymOf(l.closedDate) === activeMonth).reduce((s, l) => s + Number(l.dealValue || 0), 0),
+    [leads, activeMonth]
+  );
+  const monthOwnCommissions = monthOwnFromStmts > 0 ? monthOwnFromStmts : monthOwnFromLeads;
+  const monthOverrideIncome = useMemo(
+    () => overrides.filter(o => ymOf(o.period) === activeMonth).reduce((s, o) => s + Number(o.amount || 0), 0),
+    [overrides, activeMonth]
+  );
+  const monthCommissions = monthOwnCommissions + monthOverrideIncome;
+  // True monthly income = books income + statement advances + overrides
+  const monthIncTotal = monthBooksIncTotal + monthCommissions;
+  // True monthly net = income − books expenses − platforms expenses
+  const monthNet = monthIncTotal - monthExpTotal - monthPlatformTotal;
 
   // Per-category breakdown for active month (current tab)
   const monthByCategory = useMemo(() => {
@@ -575,7 +598,10 @@ function BusinessBooksView({
   const onDelete = tab === 'expenses' ? onDeleteExpense : onDeleteIncome;
   const cats = tab === 'expenses' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
   const vendorKey = tab === 'expenses' ? 'vendor' : 'source';
-  const monthTotal = tab === 'expenses' ? monthExpTotal : monthIncTotal;
+  // Table-footer total reflects the rows ACTUALLY in the table (Books income
+  // entries only). The "in vs out this month" card uses monthIncTotal which
+  // includes statement advances + overrides — those don't live in this table.
+  const monthTotal = tab === 'expenses' ? monthExpTotal : monthBooksIncTotal;
 
   // Bulk-select: visible rows that are checked, plus convenience helpers.
   // selectedIds may also contain IDs from other months/filters that were
@@ -701,17 +727,23 @@ function BusinessBooksView({
               <div className="text-xs font-bold text-slate-500 tracking-wider">{ymLabel(activeMonth)}</div>
             </div>
             <div className="mt-1 flex items-baseline gap-2 text-sm" style={{ transform: 'translateZ(10px)' }}>
-              <span className="font-bold text-emerald-600">+{fmt2(monthIncTotal)}</span>
+              <span className="font-bold text-emerald-600" title={
+                `Books income: ${fmt2(monthBooksIncTotal)}` +
+                (monthOwnCommissions > 0 ? ` · Advances: ${fmt2(monthOwnCommissions)}` : '') +
+                (monthOverrideIncome > 0 ? ` · Overrides: ${fmt2(monthOverrideIncome)}` : '')
+              }>+{fmt2(monthIncTotal)}</span>
               <span className="text-slate-300">·</span>
-              <span className="font-bold text-red-500">−{fmt2(monthExpTotal)}</span>
+              <span className="font-bold text-red-500" title={
+                `Books expenses: ${fmt2(monthExpTotal)}` +
+                (monthPlatformTotal > 0 ? ` · Platforms: ${fmt2(monthPlatformTotal)}` : '')
+              }>−{fmt2(monthExpTotal + monthPlatformTotal)}</span>
+              <span className="text-slate-300">=</span>
+              <span className={`font-bold ${monthNet >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
+                {monthNet >= 0 ? '+' : '−'}{fmt2(Math.abs(monthNet))}
+              </span>
             </div>
             <div className="text-[11px] text-slate-500 mt-0.5">
-              in vs out this month
-              {monthPlatformTotal > 0 && (
-                <span title="Platforms expenses for this month (tracked separately, feeds True CPA)">
-                  {' '}· <span className="text-indigo-600 font-semibold">+ {fmt2(monthPlatformTotal)} Platforms</span>
-                </span>
-              )}
+              in − out this month (incl. advances + platforms)
             </div>
           </TiltCard>
         </StaggerItem>
