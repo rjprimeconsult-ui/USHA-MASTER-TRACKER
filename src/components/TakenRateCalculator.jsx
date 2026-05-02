@@ -1,26 +1,43 @@
 'use client';
 import { useMemo, useState } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import { Target, TrendingUp, Info } from 'lucide-react';
+import { Target, TrendingUp, Info, ChevronLeft, ChevronRight } from 'lucide-react';
 import { TAKEN_STAGES, PENDING_STAGES, NOT_TAKEN_STAGES } from '@/lib/constants';
 
 const PERIODS = [
-  { id: 'month', label: 'Monthly',  desc: 'Current month' },
+  { id: 'month', label: 'Monthly',  desc: 'Pick any month — historical or current' },
   { id: 'qtd',   label: 'QTD',      desc: 'Quarter to date' },
   { id: 'ytd',   label: 'YTD',      desc: 'Year to date' },
 ];
 
-/** Does leadDate fall inside the chosen period relative to today? */
-function inPeriod(iso, period, now = new Date()) {
+// "2026-05-15" -> "2026-05"
+const ymOf = (iso) => String(iso || '').slice(0, 7);
+const todayYm = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+};
+const ymLabel = (ym) => {
+  if (!ym || ym.length < 7) return ym || '';
+  const [y, m] = ym.split('-').map(Number);
+  return new Date(y, m - 1, 1).toLocaleString(undefined, { month: 'long', year: 'numeric' });
+};
+const shiftYm = (ym, delta) => {
+  const [y, m] = ym.split('-').map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+};
+
+/** Does leadDate fall inside the chosen period? `selectedMonth` only used for 'month' mode. */
+function inPeriod(iso, period, selectedMonth, now = new Date()) {
   if (!iso) return false;
+  if (period === 'month') return ymOf(iso) === selectedMonth;
   const d = new Date(iso + 'T00:00:00');
-  if (d.getFullYear() !== now.getFullYear()) return period === 'ytd' ? false : false;
+  if (d.getFullYear() !== now.getFullYear()) return false;
   if (period === 'ytd') return true;
   if (period === 'qtd') {
     const startMonth = Math.floor(now.getMonth() / 3) * 3;
     return d.getMonth() >= startMonth && d.getMonth() <= now.getMonth();
   }
-  if (period === 'month') return d.getMonth() === now.getMonth();
   return false;
 }
 
@@ -40,13 +57,24 @@ export default function TakenRateCalculator({
   applyOver50Rule = true, // USHA senior-market rule — applies to UW products; GI has no such exclusion
 }) {
   const [period, setPeriod] = useState('month');
+  const [selectedMonth, setSelectedMonth] = useState(todayYm());
   const [target, setTarget] = useState(defaultTarget);
+
+  // Months that have any closed-date lead, plus current month (always).
+  // Sorted newest-first so the dropdown defaults to recent activity.
+  const availableMonths = useMemo(() => {
+    const set = new Set([todayYm()]);
+    for (const l of leads) {
+      if (l.closedDate) set.add(ymOf(l.closedDate));
+    }
+    return Array.from(set).filter(Boolean).sort().reverse();
+  }, [leads]);
 
   const { issued, pending, notTaken, total, rate, breakdown, excludedOver50 } = useMemo(() => {
     const filterSet = productFilter ? new Set(productFilter) : null;
     const scoped = leads.filter(l => {
       if (!l.closedDate) return false;
-      if (!inPeriod(l.closedDate, period)) return false;
+      if (!inPeriod(l.closedDate, period, selectedMonth)) return false;
       if (filterSet && !filterSet.has(l.mainProduct)) return false;
       return true;
     });
@@ -74,7 +102,7 @@ export default function TakenRateCalculator({
     const rate = total > 0 ? (issued / total) * 100 : 0;
 
     return { issued, pending, notTaken, total, rate, breakdown, excludedOver50 };
-  }, [leads, period, productFilter, applyOver50Rule]);
+  }, [leads, period, selectedMonth, productFilter, applyOver50Rule]);
 
   const colors = rateColor(rate);
 
@@ -139,6 +167,49 @@ export default function TakenRateCalculator({
             </button>
           ))}
         </div>
+
+        {/* Month picker — only visible in Monthly mode. Lets agents look at any
+            past month, not just the current one, for historical taken-rate review. */}
+        {period === 'month' && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => setSelectedMonth(shiftYm(selectedMonth, -1))}
+              className="p-1 rounded border border-slate-200 hover:bg-slate-50 text-slate-600"
+              title="Previous month"
+            >
+              <ChevronLeft size={14} />
+            </button>
+            <select
+              value={selectedMonth}
+              onChange={e => setSelectedMonth(e.target.value)}
+              className="border border-slate-200 rounded-lg px-2 py-1 text-sm font-semibold min-w-[150px]"
+            >
+              {availableMonths.map(m => (
+                <option key={m} value={m}>{ymLabel(m)}{m === todayYm() ? ' (current)' : ''}</option>
+              ))}
+              {/* Edge case: selectedMonth has no leads AND isn't current — keep it visible */}
+              {!availableMonths.includes(selectedMonth) && (
+                <option value={selectedMonth}>{ymLabel(selectedMonth)}</option>
+              )}
+            </select>
+            <button
+              onClick={() => setSelectedMonth(shiftYm(selectedMonth, 1))}
+              disabled={selectedMonth >= todayYm()}
+              className="p-1 rounded border border-slate-200 hover:bg-slate-50 text-slate-600 disabled:opacity-40 disabled:cursor-not-allowed"
+              title="Next month"
+            >
+              <ChevronRight size={14} />
+            </button>
+            {selectedMonth !== todayYm() && (
+              <button
+                onClick={() => setSelectedMonth(todayYm())}
+                className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+              >
+                Jump to current
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
