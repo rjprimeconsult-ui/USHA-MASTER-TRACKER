@@ -37,6 +37,7 @@ function LeadsView({ leads, onNew, onEdit, onDelete, onBulkDelete, onBulkStage }
   const [monthF, setMonthF] = useState('');           // 'YYYY-MM' format, or '' for all
   const [issuedNoCommissionOnly, setIssuedNoCommissionOnly] = useState(false);
   const [missingStateOnly, setMissingStateOnly] = useState(false);
+  const [ageF, setAgeF] = useState(''); // '', 'over50', 'under50', 'missing'
   const [sortBy, setSortBy] = useState('closedDate');
   const [sortDir, setSortDir] = useState('desc');
 
@@ -75,6 +76,14 @@ function LeadsView({ leads, onNew, onEdit, onDelete, onBulkDelete, onBulkStage }
       if (missingStateOnly) {
         if (l.state && l.state.trim() !== '') return false;
       }
+      // Age bucket filter — over/under 50 mirrors the USHA senior-market line.
+      // "missing" surfaces leads where age was never entered (common gap).
+      if (ageF) {
+        const age = Number(l.age) || 0;
+        if (ageF === 'over50' && age <= 50) return false;
+        if (ageF === 'under50' && (age === 0 || age > 50)) return false;
+        if (ageF === 'missing' && age > 0) return false;
+      }
       if (q) {
         const needle = q.toLowerCase();
         const hay = `${l.name} ${l.email} ${l.phone} ${l.notes} ${l.mainProduct || ''}`.toLowerCase();
@@ -90,7 +99,7 @@ function LeadsView({ leads, onNew, onEdit, onDelete, onBulkDelete, onBulkStage }
       return sortDir === 'asc' ? cmp : -cmp;
     });
     return out;
-  }, [leads, q, stageF, productF, monthF, issuedNoCommissionOnly, missingStateOnly, sortBy, sortDir]);
+  }, [leads, q, stageF, productF, monthF, issuedNoCommissionOnly, missingStateOnly, ageF, sortBy, sortDir]);
 
   const issuedNoCommissionCount = useMemo(
     () => leads.filter(l => l.stage === 'Issued' && (l.dealValue || 0) === 0).length,
@@ -100,6 +109,16 @@ function LeadsView({ leads, onNew, onEdit, onDelete, onBulkDelete, onBulkStage }
     () => leads.filter(l => !l.state || l.state.trim() === '').length,
     [leads]
   );
+  const ageCounts = useMemo(() => {
+    let over = 0, under = 0, missing = 0;
+    for (const l of leads) {
+      const a = Number(l.age) || 0;
+      if (a === 0) missing++;
+      else if (a > 50) over++;
+      else under++;
+    }
+    return { over, under, missing };
+  }, [leads]);
 
   const sortBtn = (key, label) => (
     <button onClick={() => {
@@ -148,9 +167,9 @@ function LeadsView({ leads, onNew, onEdit, onDelete, onBulkDelete, onBulkStage }
   };
 
   const exportCsv = () => {
-    const headers = ['Name','Email','Phone','Source','Stage','Category','Advance','Lead Cost','CRM','Campaign','Main Product','Main Premium','Association','Assoc Status','Start Date','State','Advance Mo','Day Purchased','Closed Date','Notes'];
+    const headers = ['Name','Email','Phone','Age','Source','Stage','Category','Advance','Lead Cost','CRM','Campaign','Main Product','Main Premium','Association','Assoc Status','Start Date','State','Advance Mo','Day Purchased','Closed Date','Notes'];
     const rows = filtered.map(l => [
-      l.name, l.email, l.phone, l.source, l.stage, l.leadCategory, l.dealValue, l.leadCost,
+      l.name, l.email, l.phone, l.age || '', l.source, l.stage, l.leadCategory, l.dealValue, l.leadCost,
       l.crm, l.campaign, l.mainProduct, l.mainProductPremium, l.associationPlan,
       l.associationStatus, l.associationStartDate || '', l.state || '', l.advanceMonths ?? '',
       l.dateAdded, l.closedDate || '', l.notes,
@@ -193,6 +212,17 @@ function LeadsView({ leads, onNew, onEdit, onDelete, onBulkDelete, onBulkStage }
             const label = new Date(+y, +mo - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
             return <option key={m} value={m}>{label}</option>;
           })}
+        </select>
+        <select
+          value={ageF}
+          onChange={e => setAgeF(e.target.value)}
+          className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+          title="Filter by applicant age — over/under 50 mirrors the USHA senior-market line"
+        >
+          <option value="">All ages</option>
+          <option value="over50">Over 50 ({ageCounts.over})</option>
+          <option value="under50">Under 50 ({ageCounts.under})</option>
+          <option value="missing">Age missing ({ageCounts.missing})</option>
         </select>
         <button
           onClick={() => setIssuedNoCommissionOnly(v => !v)}
@@ -265,6 +295,7 @@ function LeadsView({ leads, onNew, onEdit, onDelete, onBulkDelete, onBulkStage }
               </th>
               <th className="text-left p-2">{sortBtn('name', 'Name')}</th>
               <th className="text-left p-2">Contact</th>
+              <th className="text-center p-2">{sortBtn('age', 'Age')}</th>
               <th className="text-left p-2">{sortBtn('source', 'Source')}</th>
               <th className="text-left p-2">{sortBtn('stage', 'Stage')}</th>
               <th className="text-left p-2">Category</th>
@@ -298,6 +329,22 @@ function LeadsView({ leads, onNew, onEdit, onDelete, onBulkDelete, onBulkStage }
                     {l.email && <div>{l.email}</div>}
                     {l.phone && <div className="text-slate-500">{l.phone}</div>}
                   </td>
+                  <td className="p-2 text-center cursor-pointer" onClick={() => onEdit(l)}>
+                    {l.age > 0 ? (
+                      <span
+                        className={`inline-block px-1.5 py-0.5 rounded text-xs font-bold tracking-wide ${
+                          l.age > 50
+                            ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                            : 'bg-slate-100 text-slate-700 border border-slate-200'
+                        }`}
+                        title={l.age > 50 ? 'Over 50 — USHA senior-market rule applies' : 'Under 50'}
+                      >
+                        {l.age}
+                      </span>
+                    ) : (
+                      <span className="text-slate-300 text-xs">—</span>
+                    )}
+                  </td>
                   <td className="p-2 text-slate-700 cursor-pointer" onClick={() => onEdit(l)}>{l.source}</td>
                   <td className="p-2 cursor-pointer" onClick={() => onEdit(l)}><StageBadge stage={l.stage} /></td>
                   <td className="p-2 cursor-pointer" onClick={() => onEdit(l)}><CategoryBadge id={l.leadCategory} /></td>
@@ -315,7 +362,7 @@ function LeadsView({ leads, onNew, onEdit, onDelete, onBulkDelete, onBulkStage }
               );
             })}
             {filtered.length === 0 && (
-              <tr><td colSpan="11" className="text-center p-8 text-slate-400">No leads match your filters.</td></tr>
+              <tr><td colSpan="12" className="text-center p-8 text-slate-400">No leads match your filters.</td></tr>
             )}
           </tbody>
         </table>
