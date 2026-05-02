@@ -290,20 +290,17 @@ function KanbanColumn({ stage, prospects, onEdit, onDragStart, onDrop, selected,
 }
 
 // ---------- Calendar Panel ----------
-// Month grid (visual heatmap of appointment density) + upcoming appointments
-// list grouped by day. Reads from `prospects` (already filtered by the view's
-// search/stage/appt filters), so the calendar respects whatever filtering the
-// user has applied at the top.
+// Compact month-grid widget that lives above the Kanban/List on the main
+// Prospects page. Click a day with appointments to drop down that day's
+// list inline. No verbose 14-day list — agents click only the days they
+// care about.
 function CalendarPanel({ prospects, stages, onView }) {
-  // Anchor month: defaults to current month, navigable with prev/next arrows.
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const [anchor, setAnchor] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
-  // When user clicks a day in the grid, scroll the upcoming list to that day.
-  // null = no anchor day, just show today + next 14.
   const [focusedDay, setFocusedDay] = useState(null); // 'YYYY-MM-DD' or null
+  const [collapsed, setCollapsed] = useState(false);
 
-  // Group every prospect with an appointmentTime by 'YYYY-MM-DD'
   const byDay = useMemo(() => {
     const m = new Map();
     for (const p of prospects) {
@@ -313,22 +310,17 @@ function CalendarPanel({ prospects, stages, onView }) {
       if (!m.has(key)) m.set(key, []);
       m.get(key).push(p);
     }
-    // Sort each day's appointments by time so the list is chronological
     for (const list of m.values()) {
       list.sort((a, b) => apptDate(a.appointmentTime).getTime() - apptDate(b.appointmentTime).getTime());
     }
     return m;
   }, [prospects]);
 
-  // Build the cells for the displayed month grid (with leading + trailing
-  // blank cells so weeks align Sunday-first).
   const cells = useMemo(() => {
     const first = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
     const last  = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0);
     const out = [];
-    // Leading blanks (Sunday=0)
     for (let i = 0; i < first.getDay(); i++) out.push(null);
-    // Days of the month
     for (let d = 1; d <= last.getDate(); d++) {
       const date = new Date(anchor.getFullYear(), anchor.getMonth(), d);
       const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -337,31 +329,14 @@ function CalendarPanel({ prospects, stages, onView }) {
     return out;
   }, [anchor, byDay]);
 
-  // Upcoming appointments — today + next 14 days. If a focusedDay is set,
-  // start from that day instead.
-  const upcomingDays = useMemo(() => {
-    const start = focusedDay
-      ? new Date(focusedDay + 'T00:00:00')
-      : new Date(today.getFullYear(), today.getMonth(), today.getDate());
-    const days = [];
-    for (let i = 0; i < 14; i++) {
-      const d = new Date(start);
-      d.setDate(start.getDate() + i);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      days.push({ date: d, key, items: byDay.get(key) || [] });
-    }
-    return days;
-  // today is locally derived; eslint won't catch but it's intentional
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [byDay, focusedDay]);
-
   const monthLabel = anchor.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
   const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   const totalThisMonth = cells.reduce((s, c) => s + (c?.count || 0), 0);
+  const focusedItems = focusedDay ? (byDay.get(focusedDay) || []) : [];
+  const focusedDate = focusedDay ? new Date(focusedDay + 'T00:00:00') : null;
 
-  // Heatmap intensity classes based on count
   const dayCellClass = (count, isToday, isFocused) => {
-    let base = 'aspect-square flex flex-col items-center justify-center rounded-lg border text-xs cursor-pointer transition select-none';
+    let base = 'aspect-square flex flex-col items-center justify-center rounded-md border text-xs cursor-pointer transition select-none';
     if (isFocused) return base + ' border-indigo-600 bg-indigo-100 ring-2 ring-indigo-400';
     if (isToday)   return base + ' border-indigo-300 bg-indigo-50 hover:bg-indigo-100';
     if (count >= 4) return base + ' border-violet-400 bg-violet-200 hover:bg-violet-300 text-violet-900 font-bold';
@@ -370,173 +345,163 @@ function CalendarPanel({ prospects, stages, onView }) {
     return base + ' border-slate-200 bg-white hover:bg-slate-50 text-slate-700';
   };
 
-  const dayLabel = (d, isToday) => {
-    if (isToday) return 'Today · ' + d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
-    const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
-    if (d.toDateString() === tomorrow.toDateString())
-      return 'Tomorrow · ' + d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
-    return d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
-  };
+  const focusedDateLabel = focusedDate ? (
+    focusedDate.toDateString() === today.toDateString()
+      ? 'Today · ' + focusedDate.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
+      : focusedDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
+  ) : '';
 
   return (
-    <div className="space-y-4">
-      {/* Month grid */}
-      <div className="bg-white border border-slate-200 rounded-xl p-4">
-        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-          <div className="flex items-center gap-2">
+    <div className="bg-white border border-slate-200 rounded-xl p-3">
+      {/* Header — collapsible */}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <button
+          onClick={() => setCollapsed(c => !c)}
+          className="flex items-center gap-2 text-slate-900 hover:text-indigo-700 font-bold text-sm"
+        >
+          <CalendarDays size={14} className="text-indigo-600" />
+          {monthLabel}
+          <span className="text-xs font-normal text-slate-500">
+            · {totalThisMonth} appointment{totalThisMonth !== 1 ? 's' : ''}
+          </span>
+          {collapsed ? <ChevronRight size={14} className="text-slate-400" /> : <ChevronLeft size={14} className="text-slate-400 rotate-90" />}
+        </button>
+        {!collapsed && (
+          <div className="flex items-center gap-1">
             <button
               onClick={() => setAnchor(new Date(anchor.getFullYear(), anchor.getMonth() - 1, 1))}
-              className="p-1.5 rounded border border-slate-200 hover:bg-slate-50 text-slate-600"
+              className="p-1 rounded border border-slate-200 hover:bg-slate-50 text-slate-600"
               title="Previous month"
             >
-              <ChevronLeft size={14} />
-            </button>
-            <h3 className="font-bold text-slate-900 min-w-[160px] text-center">{monthLabel}</h3>
-            <button
-              onClick={() => setAnchor(new Date(anchor.getFullYear(), anchor.getMonth() + 1, 1))}
-              className="p-1.5 rounded border border-slate-200 hover:bg-slate-50 text-slate-600"
-              title="Next month"
-            >
-              <ChevronRight size={14} />
+              <ChevronLeft size={12} />
             </button>
             <button
               onClick={() => { setAnchor(new Date(today.getFullYear(), today.getMonth(), 1)); setFocusedDay(null); }}
-              className="text-xs text-indigo-600 hover:text-indigo-800 font-medium ml-1"
+              className="text-xs text-indigo-600 hover:text-indigo-800 font-medium px-2"
             >
               Today
             </button>
+            <button
+              onClick={() => setAnchor(new Date(anchor.getFullYear(), anchor.getMonth() + 1, 1))}
+              className="p-1 rounded border border-slate-200 hover:bg-slate-50 text-slate-600"
+              title="Next month"
+            >
+              <ChevronRight size={12} />
+            </button>
           </div>
-          <div className="text-xs text-slate-500">
-            <span className="font-bold text-slate-900">{totalThisMonth}</span> appointment{totalThisMonth !== 1 ? 's' : ''} this month
-            {focusedDay && (
-              <button
-                onClick={() => setFocusedDay(null)}
-                className="ml-3 text-indigo-600 hover:text-indigo-800 underline-offset-2 hover:underline"
-              >
-                Clear day filter
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Weekday header */}
-        <div className="grid grid-cols-7 gap-1 mb-1">
-          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
-            <div key={d} className="text-[10px] font-bold text-slate-500 uppercase tracking-wider text-center py-1">{d}</div>
-          ))}
-        </div>
-
-        {/* Day grid */}
-        <div className="grid grid-cols-7 gap-1">
-          {cells.map((c, i) => {
-            if (!c) return <div key={`blank-${i}`} className="aspect-square" />;
-            const isToday = c.key === todayKey;
-            const isFocused = c.key === focusedDay;
-            return (
-              <button
-                key={c.key}
-                onClick={() => setFocusedDay(focusedDay === c.key ? null : c.key)}
-                className={dayCellClass(c.count, isToday, isFocused)}
-                title={c.count > 0 ? `${c.count} appointment${c.count !== 1 ? 's' : ''}` : 'No appointments'}
-              >
-                <span>{c.date.getDate()}</span>
-                {c.count > 0 && (
-                  <span className="text-[10px] mt-0.5">{c.count}</span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Legend */}
-        <div className="flex items-center gap-3 mt-3 text-[10px] text-slate-500">
-          <div className="flex items-center gap-1">
-            <div className="w-3 h-3 rounded border border-violet-200 bg-violet-50" /> 1
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="w-3 h-3 rounded border border-violet-300 bg-violet-100" /> 2-3
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="w-3 h-3 rounded border border-violet-400 bg-violet-200" /> 4+
-          </div>
-          <div className="flex items-center gap-1 ml-auto">
-            <div className="w-3 h-3 rounded border border-indigo-300 bg-indigo-50" /> Today
-          </div>
-        </div>
+        )}
       </div>
 
-      {/* Upcoming appointments */}
-      <div className="bg-white border border-slate-200 rounded-xl p-4">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="font-bold text-slate-900 flex items-center gap-2">
-            <Clock size={14} className="text-indigo-600" />
-            {focusedDay ? 'From selected day' : 'Upcoming — next 14 days'}
-          </h3>
-        </div>
-        <div className="space-y-3">
-          {upcomingDays.map(d => {
-            const isToday = d.key === todayKey;
-            return (
-              <div key={d.key} className={`border-l-4 pl-3 py-1 ${isToday ? 'border-indigo-500' : d.items.length > 0 ? 'border-violet-300' : 'border-slate-200'}`}>
-                <div className={`text-xs font-bold uppercase tracking-wider mb-1.5 ${isToday ? 'text-indigo-700' : 'text-slate-600'}`}>
-                  {dayLabel(d.date, isToday)}
-                  <span className="ml-2 text-slate-400 font-normal normal-case">
-                    {d.items.length === 0 ? 'No appointments' : `${d.items.length} appointment${d.items.length !== 1 ? 's' : ''}`}
+      {!collapsed && (
+        <>
+          {/* Weekday header */}
+          <div className="grid grid-cols-7 gap-1 mt-3 mb-1">
+            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
+              <div key={d} className="text-[9px] font-bold text-slate-500 uppercase tracking-wider text-center">{d}</div>
+            ))}
+          </div>
+
+          {/* Day grid — compact (smaller cells than the standalone calendar) */}
+          <div className="grid grid-cols-7 gap-1">
+            {cells.map((c, i) => {
+              if (!c) return <div key={`blank-${i}`} className="aspect-square" />;
+              const isToday = c.key === todayKey;
+              const isFocused = c.key === focusedDay;
+              return (
+                <button
+                  key={c.key}
+                  onClick={() => {
+                    if (c.count === 0) {
+                      // No appointments — still allow toggling focus to show "no appointments" panel
+                      setFocusedDay(focusedDay === c.key ? null : c.key);
+                    } else {
+                      setFocusedDay(focusedDay === c.key ? null : c.key);
+                    }
+                  }}
+                  className={dayCellClass(c.count, isToday, isFocused)}
+                  title={c.count > 0 ? `${c.count} appointment${c.count !== 1 ? 's' : ''}` : 'No appointments'}
+                >
+                  <span>{c.date.getDate()}</span>
+                  {c.count > 0 && <span className="text-[9px] mt-0.5 leading-none">{c.count}</span>}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Click-to-expand: appointments for the focused day appear as a
+              dropdown panel right below the grid. Replaces the old verbose
+              14-day list. */}
+          {focusedDay && (
+            <div className="mt-3 pt-3 border-t border-slate-200">
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                  <Clock size={11} className="text-indigo-600" />
+                  {focusedDateLabel}
+                  <span className="text-slate-400 font-normal normal-case">
+                    · {focusedItems.length === 0 ? 'No appointments' : `${focusedItems.length} appointment${focusedItems.length !== 1 ? 's' : ''}`}
                   </span>
                 </div>
-                {d.items.length > 0 && (
-                  <div className="space-y-1.5">
-                    {d.items.map(p => {
-                      const apptD = apptDate(p.appointmentTime);
-                      const stage = stages.find(s => s.id === p.stage);
-                      const tu = timeUntil(p.appointmentTime);
-                      return (
-                        <button
-                          key={p.id}
-                          onClick={() => onView(p)}
-                          className="w-full text-left flex items-center gap-3 px-3 py-2 bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 rounded-lg transition group"
-                        >
-                          <div className={`text-xs font-bold whitespace-nowrap min-w-[70px] ${tu?.soon ? 'text-amber-700' : tu?.past ? 'text-slate-400' : 'text-slate-700'}`}>
-                            {apptD.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="font-semibold text-slate-900 truncate flex items-center gap-1.5">
-                              {p.name || '(no name)'}
-                              {p.indvOrFamily === 'Family' && (
-                                <span className="text-[9px] font-bold text-violet-700 bg-violet-100 px-1 py-0.5 rounded">FAM</span>
-                              )}
-                            </div>
-                            <div className="text-[11px] text-slate-500 truncate">
-                              {p.phone && <span>{p.phone}</span>}
-                              {p.phone && p.state && <span className="mx-1">·</span>}
-                              {p.state && <span>{p.state}</span>}
-                              {p.source && <span className="mx-1">·</span>}
-                              {p.source && <span>{p.source}</span>}
-                            </div>
-                          </div>
-                          {stage && (
-                            <span
-                              className="text-[10px] font-bold px-2 py-0.5 rounded whitespace-nowrap"
-                              style={{
-                                background: (stage.color || '#64748b') + '22',
-                                color: stage.color || '#64748b',
-                                border: `1px solid ${(stage.color || '#64748b')}44`,
-                              }}
-                            >
-                              {stage.label}
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
+                <button
+                  onClick={() => setFocusedDay(null)}
+                  className="text-slate-400 hover:text-slate-700 p-1"
+                  title="Close"
+                >
+                  <X size={12} />
+                </button>
               </div>
-            );
-          })}
-        </div>
-      </div>
+              {focusedItems.length === 0 ? (
+                <div className="text-xs text-slate-500 italic py-2">Nothing scheduled for this day.</div>
+              ) : (
+                <div className="space-y-1.5">
+                  {focusedItems.map(p => {
+                    const apptD = apptDate(p.appointmentTime);
+                    const stage = stages.find(s => s.id === p.stage);
+                    const tu = timeUntil(p.appointmentTime);
+                    return (
+                      <button
+                        key={p.id}
+                        onClick={() => onView(p)}
+                        className="w-full text-left flex items-center gap-3 px-3 py-2 bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 rounded-lg transition"
+                      >
+                        <div className={`text-xs font-bold whitespace-nowrap min-w-[70px] ${tu?.soon ? 'text-amber-700' : tu?.past ? 'text-slate-400' : 'text-slate-700'}`}>
+                          {apptD.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold text-slate-900 truncate flex items-center gap-1.5">
+                            {p.name || '(no name)'}
+                            {p.indvOrFamily === 'Family' && (
+                              <span className="text-[9px] font-bold text-violet-700 bg-violet-100 px-1 py-0.5 rounded">FAM</span>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-slate-500 truncate">
+                            {p.phone && <span>{p.phone}</span>}
+                            {p.phone && p.state && <span className="mx-1">·</span>}
+                            {p.state && <span>{p.state}</span>}
+                            {p.source && <span className="mx-1">·</span>}
+                            {p.source && <span>{p.source}</span>}
+                          </div>
+                        </div>
+                        {stage && (
+                          <span
+                            className="text-[10px] font-bold px-2 py-0.5 rounded whitespace-nowrap"
+                            style={{
+                              background: (stage.color || '#64748b') + '22',
+                              color: stage.color || '#64748b',
+                              border: `1px solid ${(stage.color || '#64748b')}44`,
+                            }}
+                          >
+                            {stage.label}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -1285,10 +1250,6 @@ export default function ProspectsView({
             className={`px-3 py-1.5 text-xs font-semibold rounded flex items-center gap-1.5 ${view === 'list' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'}`}>
             <ListIcon size={12} /> List
           </button>
-          <button onClick={() => setView('calendar')}
-            className={`px-3 py-1.5 text-xs font-semibold rounded flex items-center gap-1.5 ${view === 'calendar' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'}`}>
-            <CalendarDays size={12} /> Calendar
-          </button>
         </div>
       </div>
 
@@ -1302,6 +1263,13 @@ export default function ProspectsView({
             <button onClick={() => fileRef.current?.click()} className="border border-slate-200 hover:bg-slate-50 rounded-lg px-4 py-2 text-sm font-semibold">Import file</button>
           </div>
         </div>
+      )}
+
+      {/* Calendar widget — compact month grid above Kanban/List. Click any
+          day to dropdown that day's appointments. Collapsible so it's out of
+          the way when not needed. */}
+      {prospects.length > 0 && (
+        <CalendarPanel prospects={visible} stages={cfg.stages} onView={onView} />
       )}
 
       {/* Kanban — dual scrollbar (top + bottom) so users can scroll from
@@ -1422,11 +1390,6 @@ export default function ProspectsView({
             </tbody>
           </table>
         </div>
-      )}
-
-      {/* Calendar — month grid + upcoming appointments list */}
-      {prospects.length > 0 && view === 'calendar' && (
-        <CalendarPanel prospects={visible} stages={cfg.stages} onView={onView} />
       )}
 
       {/* Modals */}
