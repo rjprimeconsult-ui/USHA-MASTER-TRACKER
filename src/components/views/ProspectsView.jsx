@@ -299,7 +299,9 @@ function CalendarPanel({ prospects, stages, onView }) {
   today.setHours(0, 0, 0, 0);
   const [anchor, setAnchor] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
   const [focusedDay, setFocusedDay] = useState(null); // 'YYYY-MM-DD' or null
-  const [collapsed, setCollapsed] = useState(false);
+  // Collapsed by default — first impression is a single line, agents expand
+  // only when they want to see the grid.
+  const [collapsed, setCollapsed] = useState(true);
 
   const byDay = useMemo(() => {
     const m = new Map();
@@ -336,13 +338,15 @@ function CalendarPanel({ prospects, stages, onView }) {
   const focusedDate = focusedDay ? new Date(focusedDay + 'T00:00:00') : null;
 
   const dayCellClass = (count, isToday, isFocused) => {
-    let base = 'aspect-square flex flex-col items-center justify-center rounded-md border text-xs cursor-pointer transition select-none';
-    if (isFocused) return base + ' border-indigo-600 bg-indigo-100 ring-2 ring-indigo-400';
-    if (isToday)   return base + ' border-indigo-300 bg-indigo-50 hover:bg-indigo-100';
-    if (count >= 4) return base + ' border-violet-400 bg-violet-200 hover:bg-violet-300 text-violet-900 font-bold';
-    if (count >= 2) return base + ' border-violet-300 bg-violet-100 hover:bg-violet-200 text-violet-800 font-semibold';
-    if (count >= 1) return base + ' border-violet-200 bg-violet-50 hover:bg-violet-100 text-violet-700';
-    return base + ' border-slate-200 bg-white hover:bg-slate-50 text-slate-700';
+    // Fixed-height (28px) cells instead of aspect-square — keeps the widget
+    // compact even on wide containers.
+    let base = 'h-7 flex items-center justify-center gap-0.5 rounded text-[11px] cursor-pointer transition select-none';
+    if (isFocused) return base + ' border border-indigo-600 bg-indigo-100 ring-1 ring-indigo-400';
+    if (isToday)   return base + ' border border-indigo-300 bg-indigo-50 hover:bg-indigo-100';
+    if (count >= 4) return base + ' border border-violet-400 bg-violet-200 hover:bg-violet-300 text-violet-900 font-bold';
+    if (count >= 2) return base + ' border border-violet-300 bg-violet-100 hover:bg-violet-200 text-violet-800 font-semibold';
+    if (count >= 1) return base + ' border border-violet-200 bg-violet-50 hover:bg-violet-100 text-violet-700';
+    return base + ' border border-slate-200 bg-white hover:bg-slate-50 text-slate-700';
   };
 
   const focusedDateLabel = focusedDate ? (
@@ -352,7 +356,7 @@ function CalendarPanel({ prospects, stages, onView }) {
   ) : '';
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl p-3">
+    <div className={`bg-white border border-slate-200 rounded-xl p-2.5 ${collapsed ? '' : 'max-w-md'}`}>
       {/* Header — collapsible */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <button
@@ -410,19 +414,12 @@ function CalendarPanel({ prospects, stages, onView }) {
               return (
                 <button
                   key={c.key}
-                  onClick={() => {
-                    if (c.count === 0) {
-                      // No appointments — still allow toggling focus to show "no appointments" panel
-                      setFocusedDay(focusedDay === c.key ? null : c.key);
-                    } else {
-                      setFocusedDay(focusedDay === c.key ? null : c.key);
-                    }
-                  }}
+                  onClick={() => setFocusedDay(focusedDay === c.key ? null : c.key)}
                   className={dayCellClass(c.count, isToday, isFocused)}
                   title={c.count > 0 ? `${c.count} appointment${c.count !== 1 ? 's' : ''}` : 'No appointments'}
                 >
                   <span>{c.date.getDate()}</span>
-                  {c.count > 0 && <span className="text-[9px] mt-0.5 leading-none">{c.count}</span>}
+                  {c.count > 0 && <span className="text-[8px] font-bold opacity-70">·{c.count}</span>}
                 </button>
               );
             })}
