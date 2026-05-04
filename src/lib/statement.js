@@ -422,6 +422,9 @@ export function parseBonuses(text) {
       type: 'RENEWAL_BONUS',
       transactionDate: releaseDate || periodEnd,
       breakdown: breakdownParts.join(' · '),
+      // associationAmount lets the income router route to "Monthlies +
+      // Association" (quarter-end months) vs plain "Monthlies".
+      associationAmount: association,
     });
   }
 
@@ -509,6 +512,7 @@ export function parseBonuses(text) {
       type: 'RENEWAL_BONUS',
       transactionDate: releaseDate,
       breakdown: breakdownParts.join(' · '),
+      associationAmount: association ?? 0,
     });
   }
 
@@ -539,12 +543,15 @@ export function parseBonuses(text) {
     if (seen.has(key)) continue;
     seen.add(key);
 
+    // Parse Association amount for routing into "Monthlies + Association"
+    const assocAmt = m3 ? Number(String(m3[1]).replace(/,/g, '')) || 0 : 0;
     out.push({
       label: 'Monthly Payout (residual + association)',
       amount: total,
       type: 'RENEWAL_BONUS',
       transactionDate: releaseDate,
       breakdown,
+      associationAmount: assocAmt,
     });
   }
 

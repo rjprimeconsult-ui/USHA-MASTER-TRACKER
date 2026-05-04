@@ -275,6 +275,8 @@ export const TRUE_CPA_BOOK_CATEGORIES = ['LEAD_INVESTMENT', 'SOFTWARE'];
 
 // Business Books — income categories (money IN beyond commissions)
 export const INCOME_CATEGORIES = [
+  { id: 'MONTHLIES',           label: 'Monthlies',                color: '#0d9488', badge: 'bg-teal-100 text-teal-800' },
+  { id: 'MONTHLIES_PLUS_ASSOC', label: 'Monthlies + Association', color: '#7c3aed', badge: 'bg-violet-100 text-violet-800' },
   { id: 'BONUS',      label: 'Bonus',         color: '#10b981', badge: 'bg-emerald-100 text-emerald-700' },
   { id: 'OVERRIDE',   label: 'Override',      color: '#3b82f6', badge: 'bg-blue-100 text-blue-700' },
   { id: 'RENEWAL',    label: 'Renewal',       color: '#f59e0b', badge: 'bg-amber-100 text-amber-700' },

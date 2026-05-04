@@ -625,7 +625,17 @@ export default function LeadTracker() {
           // statements) stay on their original date.
           const isMonthlyResidual = b.type === 'RENEWAL_BONUS';
           const periodIso = isMonthlyResidual ? shiftIsoBackOneMonth(rawIso) : rawIso;
-          const incomeCategory = isMonthlyResidual ? 'RENEWAL' : 'BONUS';
+          // Monthly Account Summary residuals get their own category. When
+          // the Association Bonus column has a value (quarter-end months
+          // only) we route to "Monthlies + Association" so the agent can
+          // see the quarterly bump separately.
+          const assocAmt = Number(b.associationAmount || 0);
+          let incomeCategory;
+          if (isMonthlyResidual) {
+            incomeCategory = assocAmt > 0 ? 'MONTHLIES_PLUS_ASSOC' : 'MONTHLIES';
+          } else {
+            incomeCategory = 'BONUS';
+          }
           const noteParts = [`Auto-imported from statement (${b.type || 'BONUS'})`];
           if (isMonthlyResidual && rawIso !== periodIso) {
             noteParts.push(`Filed against production month (statement period ${rawIso.slice(0, 7)})`);

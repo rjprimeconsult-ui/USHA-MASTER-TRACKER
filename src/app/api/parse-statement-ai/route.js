@@ -92,6 +92,10 @@ CRITICAL RULES:
    "RENEWAL_BONUS", label "Monthly Payout — <Primary>+<Secondary>+<Association>
    breakdown", amount = Total, transactionDate = 5th of the month following
    periodEnd (e.g. period ends 1/31/2026 -> transactionDate "2/5/2026").
+   ALSO populate associationAmount with the Association Bonus column value
+   (0 if not paid this period, >0 only on quarter-end months). This lets
+   the app route the income into "Monthlies" (assoc=0) vs "Monthlies +
+   Association" (assoc>0).
    advanceRows / chargebackRows / reinstatementRows are empty for Format B.
 6. If you can't find a section (no chargebacks this week, no bonuses, etc.),
    return an empty array. Don't invent data.
@@ -180,6 +184,7 @@ const STATEMENT_SCHEMA = {
           amount: { type: 'number' },
           transactionDate: { type: 'string' },
           breakdown: { type: 'string', description: 'Optional: dollar breakdown like \'$X primary + $Y secondary\' for monthly payouts' },
+          associationAmount: { type: 'number', description: 'For RENEWAL_BONUS rows from Account Summary PDFs: the Association Bonus column value. 0 if not paid this period (most months); >0 only on quarter-end months. Used to route between "Monthlies" and "Monthlies + Association" categories.' },
         },
         required: ['type', 'label', 'amount', 'transactionDate'],
         additionalProperties: false,
