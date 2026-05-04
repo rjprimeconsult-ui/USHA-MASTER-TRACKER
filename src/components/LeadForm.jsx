@@ -133,7 +133,47 @@ export default function LeadForm({ open, lead, tier = 'WA', onSave, onClose, onD
               <input className={inp} value={form.phone} onChange={e => set({ phone: e.target.value })} placeholder="(555) 555-5555" />
             </Field>
             <Field label="Age">
-              <input type="number" min="0" max="120" className={inp} value={form.age || 0} onChange={e => set({ age: parseInt(e.target.value, 10) || 0 })} />
+              <div className="flex items-stretch gap-1">
+                <input
+                  type="number"
+                  min="0"
+                  max="120"
+                  className={inp + ' flex-1 min-w-0'}
+                  value={form.age || 0}
+                  onChange={e => {
+                    const n = parseInt(e.target.value, 10) || 0;
+                    // When agent enters an exact age, auto-derive the bucket
+                    // so taken-rate math stays consistent and the picker UI
+                    // reflects the entered value.
+                    set({ age: n, ageBucket: n > 0 ? (n > 50 ? 'OVER_50' : 'UNDER_50') : (form.ageBucket || null) });
+                  }}
+                  title="Enter the exact age, or skip and use the buckets below."
+                />
+                <button
+                  type="button"
+                  onClick={() => set({ age: 0, ageBucket: form.ageBucket === 'UNDER_50' ? null : 'UNDER_50' })}
+                  className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider transition border ${
+                    form.ageBucket === 'UNDER_50' || ((form.age || 0) > 0 && (form.age || 0) <= 50)
+                      ? 'bg-slate-100 border-slate-300 text-slate-700'
+                      : 'bg-white border-slate-200 text-slate-400 hover:text-slate-700'
+                  }`}
+                  title="Quick pick — use when you don't track exact age. Counts as under 50 for taken-rate math."
+                >
+                  &lt;50
+                </button>
+                <button
+                  type="button"
+                  onClick={() => set({ age: 0, ageBucket: form.ageBucket === 'OVER_50' ? null : 'OVER_50' })}
+                  className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider transition border ${
+                    form.ageBucket === 'OVER_50' || (form.age || 0) > 50
+                      ? 'bg-amber-100 border-amber-300 text-amber-800'
+                      : 'bg-white border-slate-200 text-slate-400 hover:text-slate-700'
+                  }`}
+                  title="Quick pick — use when you don't track exact age. Excluded from taken-rate denominator on UW products (USHA senior-market rule)."
+                >
+                  &gt;50
+                </button>
+              </div>
             </Field>
           </div>
 

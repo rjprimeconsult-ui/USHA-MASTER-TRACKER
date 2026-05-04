@@ -5,6 +5,9 @@ export const mkLead = (o = {}) => ({
   id: uid(),
   name: '',
   age: 0,
+  // 'OVER_50' | 'UNDER_50' | null — quick bucket for agents who don't
+  // track exact age. Auto-derived from `age` when age > 0.
+  ageBucket: null,
   email: '',
   phone: '',
   source: 'Website',

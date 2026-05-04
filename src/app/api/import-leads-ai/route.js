@@ -81,6 +81,13 @@ PAY TYPE (lead.payType — pick one): "advance" (default — paid upfront as adv
 - "ADVANCED", "ADV" -> "advance"
 - "AS EARNED", "AS-EARNED" -> "as_earned"
 
+AGE / AGE BUCKET:
+- If the file has an exact age column, set lead.age to that integer and leave ageBucket empty.
+- If exact age is not in the file but context suggests over-50 ("senior", "Medicare-eligible", "65+ plan", "retirees", "spouse 67", "born 1955"), set ageBucket = "OVER_50" and leave age = 0.
+- If context suggests under-50 ("young family", "millennial plan", "born 1990"), set ageBucket = "UNDER_50" and leave age = 0.
+- If neither signal exists, leave both empty (age = 0, ageBucket = '').
+- Do NOT guess an exact age from "senior" or similar phrases — the bucket exists for that case.
+
 FAMILY MEMBERS — capture spouse + dependents:
 When a row indicates a family policy (Indv/Family = "Family", or notes mention "spouse", "wife", "husband", "dependent", "fam 2", "family of 3", "+ kids", etc.), populate the dependents array. Each entry has:
   - name (full name as printed)
@@ -122,6 +129,11 @@ const LEAD_SCHEMA = {
         properties: {
           name: { type: 'string' },
           age: { type: 'integer' },
+          ageBucket: {
+            type: 'string',
+            enum: ['', 'OVER_50', 'UNDER_50'],
+            description: 'Use ONLY when exact age is unknown. Set OVER_50 for "senior", "Medicare-eligible", "65+", and similar cues. Set UNDER_50 for "young family", "under 50", and similar cues. Leave empty when age is provided as an exact number or no age signal exists.',
+          },
           phone: { type: 'string' },
           email: { type: 'string' },
           state: { type: 'string', description: '2-letter US state code' },

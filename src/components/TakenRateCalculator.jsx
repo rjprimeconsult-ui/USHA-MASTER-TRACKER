@@ -87,7 +87,10 @@ export default function TakenRateCalculator({
       // USHA senior-market rule applies to UW products only. When enabled,
       // applicants over age 50 are excluded entirely — no numerator/denominator.
       // GI (Health Access III) has no such rule, so this flag is false there.
-      if (applyOver50Rule && (l.age || 0) > 50) {
+      // Recognizes both exact age (l.age > 50) and bucket-only entries
+      // (l.ageBucket === 'OVER_50') for agents who don't track exact age.
+      const isOverFifty = (l.age || 0) > 50 || l.ageBucket === 'OVER_50';
+      if (applyOver50Rule && isOverFifty) {
         excludedOver50 += 1;
         return;
       }

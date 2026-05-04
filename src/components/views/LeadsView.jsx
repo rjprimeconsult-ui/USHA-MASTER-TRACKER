@@ -77,12 +77,17 @@ function LeadsView({ leads, onNew, onEdit, onDelete, onBulkDelete, onBulkStage }
         if (l.state && l.state.trim() !== '') return false;
       }
       // Age bucket filter — over/under 50 mirrors the USHA senior-market line.
-      // "missing" surfaces leads where age was never entered (common gap).
+      // Recognizes both exact age (l.age) and bucket-only entries
+      // (l.ageBucket) so agents who don't track exact age aren't penalized.
       if (ageF) {
         const age = Number(l.age) || 0;
-        if (ageF === 'over50' && age <= 50) return false;
-        if (ageF === 'under50' && (age === 0 || age > 50)) return false;
-        if (ageF === 'missing' && age > 0) return false;
+        const bucket = l.ageBucket || null;
+        const isOver50 = age > 50 || bucket === 'OVER_50';
+        const isUnder50 = (age > 0 && age <= 50) || bucket === 'UNDER_50';
+        const isMissing = age === 0 && !bucket;
+        if (ageF === 'over50' && !isOver50) return false;
+        if (ageF === 'under50' && !isUnder50) return false;
+        if (ageF === 'missing' && !isMissing) return false;
       }
       if (q) {
         const needle = q.toLowerCase();
@@ -113,9 +118,10 @@ function LeadsView({ leads, onNew, onEdit, onDelete, onBulkDelete, onBulkStage }
     let over = 0, under = 0, missing = 0;
     for (const l of leads) {
       const a = Number(l.age) || 0;
-      if (a === 0) missing++;
-      else if (a > 50) over++;
-      else under++;
+      const b = l.ageBucket || null;
+      if (a > 50 || b === 'OVER_50') over++;
+      else if ((a > 0 && a <= 50) || b === 'UNDER_50') under++;
+      else missing++;
     }
     return { over, under, missing };
   }, [leads]);
@@ -340,6 +346,20 @@ function LeadsView({ leads, onNew, onEdit, onDelete, onBulkDelete, onBulkStage }
                         title={l.age > 50 ? 'Over 50 — USHA senior-market rule applies' : 'Under 50'}
                       >
                         {l.age}
+                      </span>
+                    ) : l.ageBucket === 'OVER_50' ? (
+                      <span
+                        className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wide bg-amber-100 text-amber-800 border border-amber-200"
+                        title="Over 50 (bucket — exact age not tracked). USHA senior-market rule applies."
+                      >
+                        &gt;50
+                      </span>
+                    ) : l.ageBucket === 'UNDER_50' ? (
+                      <span
+                        className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wide bg-slate-100 text-slate-700 border border-slate-200"
+                        title="Under 50 (bucket — exact age not tracked)."
+                      >
+                        &lt;50
                       </span>
                     ) : (
                       <span className="text-slate-300 text-xs">—</span>
