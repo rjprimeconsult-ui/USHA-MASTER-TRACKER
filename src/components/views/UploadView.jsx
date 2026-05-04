@@ -1588,14 +1588,25 @@ function MonthlyPayoutUpload({ onApply }) {
     }
     setFiles(fArr); setStatus('parsing'); setError('');
     try {
+      const { isPreliminaryAccountSummary, getAccountSummaryPeriod } = await import('@/lib/statement');
       const out = [];
       const parser = aiMode ? parseStatementWithAI : parseStatementPdf;
       for (const f of fArr) {
         try {
           const parsed = await parser(f);
-          // For this mode we only care about Account Summary bonuses (RENEWAL_BONUS-typed).
-          // But we also accept any bonusRows that show a Total > 0 in case of variants.
-          out.push({ file: f, bonusRows: parsed.bonusRows || [], rawText: parsed._rawText || '' });
+          const rawText = parsed._rawText || '';
+          // Distinguish PRELIMINARY (still pending USHA finalization on
+          // the 5th) from genuinely unparseable. Preliminary statements
+          // shouldn't be imported because amounts can change.
+          const isPrelim = rawText && isPreliminaryAccountSummary(rawText);
+          const period = rawText ? getAccountSummaryPeriod(rawText) : null;
+          out.push({
+            file: f,
+            bonusRows: parsed.bonusRows || [],
+            rawText,
+            isPreliminary: isPrelim,
+            period,
+          });
         } catch (e) {
           out.push({ file: f, bonusRows: [], rawText: '', error: e.message || String(e) });
         }
@@ -1618,7 +1629,23 @@ function MonthlyPayoutUpload({ onApply }) {
   }, [results]);
 
   const totalAmount = allBonuses.reduce((s, b) => s + Number(b.amount || 0), 0);
-  const filesWithoutBonuses = results.filter(r => r.bonusRows.length === 0);
+  // Split files-with-no-bonuses into two buckets so the UI can give
+  // accurate guidance: preliminary statements aren't really errors, they
+  // just can't be imported yet.
+  const filesPreliminary = results.filter(r => r.bonusRows.length === 0 && r.isPreliminary);
+  const filesWithoutBonuses = results.filter(r => r.bonusRows.length === 0 && !r.isPreliminary);
+
+  // Format "MM/DD/YYYY" -> "May 5, 2026" for the preliminary release-date hint
+  const formatReleaseDate = (periodEnd) => {
+    if (!periodEnd) return null;
+    const m = periodEnd.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+    if (!m) return null;
+    let yr = Number(m[3]); if (yr < 100) yr += 2000;
+    const mo = Number(m[1]);
+    // Final payout released on the 5th of the next month
+    const next = new Date(yr, mo, 5);
+    return next.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
+  };
 
   const apply = () => {
     if (allBonuses.length === 0) return;
@@ -1752,6 +1779,28 @@ function MonthlyPayoutUpload({ onApply }) {
               </tr>
             </tfoot>
           </table>
+        </div>
+      )}
+
+      {filesPreliminary.length > 0 && (
+        <div className="bg-sky-50 border border-sky-200 rounded-xl p-4">
+          <div className="flex items-center gap-2 font-semibold text-sky-900 mb-2">
+            <AlertCircle size={14} /> {filesPreliminary.length} file{filesPreliminary.length !== 1 ? 's' : ''} {filesPreliminary.length === 1 ? 'is' : 'are'} still preliminary — not imported
+          </div>
+          <p className="text-sm text-sky-900 mb-2">
+            USHA hasn&apos;t finalized {filesPreliminary.length === 1 ? 'this payout' : 'these payouts'} yet. Final payouts release on the <b>5th of the following month</b> — re-upload after that and PRIM will record the residual.
+          </p>
+          <ul className="text-sm text-sky-900 space-y-1">
+            {filesPreliminary.map((r, i) => {
+              const releaseLabel = formatReleaseDate(r.period?.periodEnd);
+              return (
+                <li key={i} className="font-mono text-xs">
+                  · {r.file.name}
+                  {releaseLabel && <span className="text-sky-700"> — final by {releaseLabel}</span>}
+                </li>
+              );
+            })}
+          </ul>
         </div>
       )}
 

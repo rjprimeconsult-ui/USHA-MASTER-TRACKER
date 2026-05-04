@@ -569,6 +569,28 @@ export function isCommissionDetailPdf(text) {
   return hasSectionTotals && !hasAccountSummary;
 }
 
+// Detect a PRELIMINARY-status Account Summary. USHA only finalizes the
+// monthly payout on the 5th of the following month — until then the PDF
+// shows "Payout Status: PRELIMINARY" and amounts can still change. We
+// don't want to record preliminary amounts as income (could later not
+// match what's actually paid), so we surface a clear message in the UI
+// instead of treating it as a parse failure.
+export function isPreliminaryAccountSummary(text) {
+  const flat = String(text || '').replace(/\s+/g, ' ');
+  const hasFactors = /Factors\s+Affecting\s+Payouts/i.test(flat);
+  const isPrelim = /Payout\s+Status:?\s*PRELIMINARY/i.test(flat);
+  return hasFactors && isPrelim;
+}
+
+// Pull the period from an Account Summary so we can tell the user when
+// the final payout is expected to be released.
+export function getAccountSummaryPeriod(text) {
+  const flat = String(text || '').replace(/\s+/g, ' ');
+  const m = flat.match(/Period:\s*(\d{1,2}\/\d{1,2}\/\d{2,4})\s*-\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/);
+  if (!m) return null;
+  return { periodStart: m[1], periodEnd: m[2] };
+}
+
 /** Full public API: parse a PDF into a clean structured statement object. */
 export async function parseStatementPdf(file) {
   const text = await getPdfText(file);

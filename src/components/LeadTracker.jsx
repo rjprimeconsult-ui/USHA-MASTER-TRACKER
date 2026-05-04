@@ -593,7 +593,27 @@ export default function LeadTracker() {
         return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
       };
 
-      const seenExisting = new Set(businessIncome.map(i => `${i.source || ''}|${Number(i.amount).toFixed(2)}|${i.date || ''}`));
+      // Build an index of existing income for fuzzy dedup. Plain key
+      // catches exact matches; the date-flexible index catches the case
+      // where a previous import landed at a different month (e.g. before
+      // the production-month shift was applied) but the source + amount
+      // match. Tolerates ±35 days so a Jan-period entry and a Dec-shifted
+      // entry of the same statement are treated as duplicates.
+      const seenExistingExact = new Set(businessIncome.map(i => `${i.source || ''}|${Number(i.amount).toFixed(2)}|${i.date || ''}`));
+      const existingByKey = new Map(); // "source|amount" -> [iso dates]
+      for (const i of businessIncome) {
+        const k = `${i.source || ''}|${Number(i.amount).toFixed(2)}`;
+        if (!existingByKey.has(k)) existingByKey.set(k, []);
+        if (i.date) existingByKey.get(k).push(i.date);
+      }
+      const within35Days = (iso1, iso2) => {
+        if (!iso1 || !iso2) return false;
+        const d1 = new Date(iso1).getTime();
+        const d2 = new Date(iso2).getTime();
+        if (!Number.isFinite(d1) || !Number.isFinite(d2)) return false;
+        return Math.abs(d1 - d2) <= 35 * 24 * 60 * 60 * 1000;
+      };
+
       const incomingSeen = new Set();
       const candidates = bonusRows
         .filter(b => Number.isFinite(b.amount) && b.amount > 0)
@@ -624,9 +644,15 @@ export default function LeadTracker() {
           };
         })
         .filter(e => {
-          const k = `${e.source}|${Number(e.amount).toFixed(2)}|${e.date}`;
-          if (seenExisting.has(k) || incomingSeen.has(k)) return false;
-          incomingSeen.add(k);
+          const exactKey = `${e.source}|${Number(e.amount).toFixed(2)}|${e.date}`;
+          if (seenExistingExact.has(exactKey) || incomingSeen.has(exactKey)) return false;
+          // Fuzzy: same source + amount within 35 days = duplicate. Catches
+          // re-imports of statements that previously landed on a different
+          // attribution date (e.g. before the production-month shift).
+          const fuzzyKey = `${e.source}|${Number(e.amount).toFixed(2)}`;
+          const existingDates = existingByKey.get(fuzzyKey) || [];
+          if (existingDates.some(d => within35Days(d, e.date))) return false;
+          incomingSeen.add(exactKey);
           return true;
         });
       bonusAdded = candidates.length;
