@@ -19,7 +19,7 @@ function fmtMoney(v) {
   return '$' + Number(v || 0).toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: 2 });
 }
 
-export default function SmartImportWizard({ open, onClose, onImport, defaultAccount = '' }) {
+export default function SmartImportWizard({ open, onClose, onImport, defaultAccount = '', initialFiles = null }) {
   // Bulk-mode: array of files queued for extraction. The wizard processes
   // them one at a time and merges transactions/platforms across all of
   // them into a single review table.
@@ -59,6 +59,15 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
       loadUserRubric().then(r => setUserRubric(r?.expense || '')).catch(() => setUserRubric(''));
     }
   }, [open]);
+
+  // Pre-load files when the wizard is opened with `initialFiles` set.
+  // Used by classic importers to hand off PDF uploads to AI mode without
+  // forcing the user to re-pick the file.
+  useEffect(() => {
+    if (open && initialFiles && initialFiles.length > 0) {
+      setFiles(Array.from(initialFiles));
+    }
+  }, [open, initialFiles]);
 
   useEffect(() => {
     if (!open) {

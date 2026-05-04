@@ -114,8 +114,15 @@ function HistoryImport({ onImport, onUndoImport, lastImportBatch, leads = [], on
     setFile(f); setStatus('parsing'); setError('');
     try {
       const ln = f.name.toLowerCase();
+      // PDFs route to Smart Lead Import (AI). Classic mode reads
+      // structured spreadsheets only.
+      if (ln.endsWith('.pdf')) {
+        setStatus('error');
+        setError('PDF detected — please use the "Smart Lead Import (AI)" button at the top of the Upload tab. AI mode parses PDFs perfectly; classic mode is for Excel / CSV only.');
+        return;
+      }
       if (!ln.endsWith('.xlsx') && !ln.endsWith('.xls') && !ln.endsWith('.csv')) {
-        throw new Error('Please upload a .xlsx, .xls, or .csv file.');
+        throw new Error('Please upload a .xlsx, .xls, or .csv file. PDFs work with Smart Lead Import (AI) instead.');
       }
       const workbook = await readWorkbook(f);
       setWb(workbook);
@@ -227,7 +234,7 @@ function HistoryImport({ onImport, onUndoImport, lastImportBatch, leads = [], on
             Tabs named <code className="bg-slate-100 rounded px-1 text-xs">{USHA_SHEET_PORTAL}</code> + <code className="bg-slate-100 rounded px-1 text-xs">{USHA_SHEET_BOUGHT}</code>.
           </p>
           <label className="mt-5 inline-block">
-            <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(e) => handleFile(e.target.files?.[0])} />
+            <input type="file" accept=".xlsx,.xls,.csv,.pdf" className="hidden" onChange={(e) => handleFile(e.target.files?.[0])} />
             <span className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium cursor-pointer inline-flex items-center gap-2">
               <FileSpreadsheet size={16} /> Choose File
             </span>

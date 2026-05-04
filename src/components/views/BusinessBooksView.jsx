@@ -506,10 +506,25 @@ function BusinessBooksView({
     e.target.value = '';
   };
 
+  // Files queued for handoff to the Smart Import wizard when classic
+  // mode receives a PDF (or other AI-only format).
+  const [pendingAiFiles, setPendingAiFiles] = useState(null);
+
   // ---------- Bank statement upload ----------
   const handleFileSelect = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    // PDFs go straight to Smart Import (AI) — classic XLSX/CSV parsing
+    // can't read them. Handoff is automatic so the agent doesn't have
+    // to know which mode handles which format.
+    const isPdf = file.name.toLowerCase().endsWith('.pdf') ||
+                  (file.type === 'application/pdf');
+    if (isPdf) {
+      setPendingAiFiles([file]);
+      setShowSmartImport(true);
+      e.target.value = '';
+      return;
+    }
     setImporting(true);
     try {
       const { format, expenses: parsedExp, income: parsedInc, detectedAccount } = await parseBusinessFile(file);
@@ -787,15 +802,16 @@ function BusinessBooksView({
               {importing ? 'Reading…' : 'Classic Import'}
             </button>
           </div>
-          <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" onChange={handleFileSelect} className="hidden" />
+          <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls,.pdf" onChange={handleFileSelect} className="hidden" />
         </div>
       </div>
 
       {/* Smart import (AI-powered) modal */}
       <SmartImportWizard
         open={showSmartImport}
-        onClose={() => setShowSmartImport(false)}
+        onClose={() => { setShowSmartImport(false); setPendingAiFiles(null); }}
         defaultAccount={knownAccounts[0] || ''}
+        initialFiles={pendingAiFiles}
         onImport={({ expenses, income, platforms }) => {
           // Filter out rows whose date falls in a closed period — books vs
           // platforms checked against their own kind.

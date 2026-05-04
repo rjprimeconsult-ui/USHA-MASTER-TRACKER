@@ -579,14 +579,37 @@ export default function LeadTracker() {
     const bonusRows = plan.bonusRows || [];
     let bonusAdded = 0;
     if (bonusRows.length > 0) {
+      // USHA monthly Account Summary payouts run a month behind: the
+      // statement covering 01/01-01/31 (released 02/05) represents
+      // DECEMBER's production. We file the income against the production
+      // month so the agent's books reflect when the work actually happened
+      // — not when the statement was published. Applies to all agents.
+      const shiftIsoBackOneMonth = (iso) => {
+        if (!iso || typeof iso !== 'string' || iso.length < 10) return iso;
+        const [y, m, d] = iso.split('-').map(Number);
+        if (!y || !m || !d) return iso;
+        const dt = new Date(y, m - 1, d);
+        dt.setMonth(dt.getMonth() - 1);
+        return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+      };
+
       const seenExisting = new Set(businessIncome.map(i => `${i.source || ''}|${Number(i.amount).toFixed(2)}|${i.date || ''}`));
       const incomingSeen = new Set();
       const candidates = bonusRows
         .filter(b => Number.isFinite(b.amount) && b.amount > 0)
         .map(b => {
-          const periodIso = toIso(b.transactionDate || b._statementPeriod || fallbackPeriod);
-          const incomeCategory = b.type === 'RENEWAL_BONUS' ? 'RENEWAL' : 'BONUS';
+          const rawIso = toIso(b.transactionDate || b._statementPeriod || fallbackPeriod);
+          // RENEWAL_BONUS = monthly residual (Account Summary payouts);
+          // these get shifted back one month for production-month filing.
+          // Other bonus types (e.g. one-off contest spiffs from weekly
+          // statements) stay on their original date.
+          const isMonthlyResidual = b.type === 'RENEWAL_BONUS';
+          const periodIso = isMonthlyResidual ? shiftIsoBackOneMonth(rawIso) : rawIso;
+          const incomeCategory = isMonthlyResidual ? 'RENEWAL' : 'BONUS';
           const noteParts = [`Auto-imported from statement (${b.type || 'BONUS'})`];
+          if (isMonthlyResidual && rawIso !== periodIso) {
+            noteParts.push(`Filed against production month (statement period ${rawIso.slice(0, 7)})`);
+          }
           if (b.breakdown) noteParts.push(b.breakdown);
           return {
             id: uid(),

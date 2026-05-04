@@ -34,11 +34,24 @@ function PlatformExpensesView({ expenses, onAdd, onUpdate, onDelete, onBulkAdd, 
   const [importPreview, setImportPreview] = useState(null); // { format, entries, fresh, duplicate, error }
   const [importing, setImporting] = useState(false);
   const [showSmartImport, setShowSmartImport] = useState(false);
+  // Files queued for handoff to Smart Import wizard when classic mode
+  // gets a PDF.
+  const [pendingAiFiles, setPendingAiFiles] = useState(null);
   const { isClosed: isPeriodClosed, close: closePlatformMonth, reopen: reopenPlatformMonth } = useClosedPeriods();
 
   const handleFileSelect = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    // PDFs route to Smart Import (AI) — classic CSV/XLSX parser can't
+    // read them.
+    const isPdf = file.name.toLowerCase().endsWith('.pdf') ||
+                  file.type === 'application/pdf';
+    if (isPdf) {
+      setPendingAiFiles([file]);
+      setShowSmartImport(true);
+      e.target.value = '';
+      return;
+    }
     setImporting(true);
     try {
       const { format, entries } = await parsePlatformFile(file);
@@ -413,7 +426,7 @@ function PlatformExpensesView({ expenses, onAdd, onUpdate, onDelete, onBulkAdd, 
           <input
             ref={fileInputRef}
             type="file"
-            accept=".csv,.xlsx,.xls"
+            accept=".csv,.xlsx,.xls,.pdf"
             onChange={handleFileSelect}
             className="hidden"
           />
@@ -423,7 +436,8 @@ function PlatformExpensesView({ expenses, onAdd, onUpdate, onDelete, onBulkAdd, 
       {/* Smart Import (AI) wizard — same as Books, but rows route correctly */}
       <SmartImportWizard
         open={showSmartImport}
-        onClose={() => setShowSmartImport(false)}
+        onClose={() => { setShowSmartImport(false); setPendingAiFiles(null); }}
+        initialFiles={pendingAiFiles}
         onImport={({ expenses: bookExp, income: bookInc, platforms }) => {
           // Filter rows whose dates fall in closed months (per kind)
           const skip = { books: 0, platforms: 0 };

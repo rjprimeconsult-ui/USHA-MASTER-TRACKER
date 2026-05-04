@@ -32,15 +32,19 @@
  */
 
 export const ANNOUNCEMENTS = [
-  // ── ACTIVE BANNER (latest release roll-up) ─────────────────────────────
-  // One meta-announcement covers the whole April 28-29 release so users
-  // get a single banner instead of a 12-card waterfall on first load.
-  // Individual feature entries below are marked `silent: true` — they
-  // remain visible in the "What's New" panel/changelog as a reference,
-  // they just don't pop as banners.
+  {
+    id: '2026-05-04-monthly-residual-lag',
+    date: '2026-05-04',
+    emoji: '📅',
+    title: 'Monthly residuals now file against production month',
+    body: 'USHA Account Summary payouts run a month behind — the January PDF (released Feb 5) represents December\'s production. PRIM now files those payouts against the production month so your books reflect when the work happened. NEW uploads will use this convention; if you have past Account Summary entries already in Books, delete and re-upload them to apply the shift. PDFs now also work in classic Books / Platforms / Lead imports — they auto-route to Smart Import (AI).',
+    cta: { label: 'Open Books', view: 'books' },
+  },
+  // ── PREVIOUS RELEASE BANNER (silent — kept for reference) ──────────────
   {
     id: '2026-04-29-prim-v2-meta',
     date: '2026-04-29',
+    silent: true,
     emoji: '🚀',
     title: 'PRIM v2 — Smart Import everywhere, plus a built-in AI assistant',
     body: 'Big release: Smart Import (AI) now handles leads, prospects, expenses, platforms, and statements — drop any PDF, screenshot, Excel, or CSV and PRIM extracts it. The wizard learns from your corrections (vendor memory). New PRIM Assistant chat bubble in the bottom-right answers questions about your data. New Prospects tab + family-members on a policy + smarter dedup + KPI math fixes. Open "What\'s New" for the full changelog.',
