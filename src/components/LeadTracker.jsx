@@ -30,6 +30,7 @@ import NoPhiBanner from './NoPhiBanner';
 import ImpersonationBanner from './ImpersonationBanner';
 import AnnouncementBanner from './AnnouncementBanner';
 import AgentChatbot from './AgentChatbot';
+import OnboardingWalkthrough from './OnboardingWalkthrough';
 import ScreenshotImport from './ScreenshotImport';
 import Toast from './Toast';
 import AdvanceMonthsHistoryEditor from './AdvanceMonthsHistoryEditor';
@@ -118,6 +119,14 @@ export default function LeadTracker() {
   const [loaded, setLoaded] = useState(false);
   const [view, setView] = useState('cpa');
   const [showScreenshotImport, setShowScreenshotImport] = useState(false);
+  // Onboarding walkthrough — auto-launches on first sign-in for genuinely
+  // new agents (no progress record). Re-launchable from Settings.
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  // Bridge for the chatbot's open state — used by the onboarding step
+  // "Meet the PRIM Assistant" to pop the chat after closing the tour.
+  const [chatOpenSignal, setChatOpenSignal] = useState(0);
+  // Bridge to open the Books Smart Import wizard after the final step.
+  const [smartImportOpenSignal, setSmartImportOpenSignal] = useState(0);
   const [leads, setLeads] = useState([]);
   const [investments, setInvestments] = useState([]);
   const [activities, setActivities] = useState([]);
@@ -294,6 +303,19 @@ export default function LeadTracker() {
       setProspectSettings(psInitial);
 
       setLoaded(true);
+
+      // Auto-launch onboarding tour for genuinely new agents (no progress
+      // record). Existing agents who already skipped/completed never get
+      // re-prompted — they can still trigger via Settings → Replay tour.
+      try {
+        const { loadOnboardingProgress, shouldAutoLaunch } = await import('@/lib/onboarding');
+        const progress = await loadOnboardingProgress();
+        if (shouldAutoLaunch(progress)) {
+          // Slight delay so the app paints first; tour appears over a
+          // populated UI, not a blank screen.
+          setTimeout(() => setShowOnboarding(true), 800);
+        }
+      } catch { /* tour is optional — never block app load on it */ }
     })();
   }, []);
 
@@ -1142,6 +1164,7 @@ export default function LeadTracker() {
               showToast(`Imported ${rows.length} income entr${rows.length !== 1 ? 'ies' : 'y'}`);
             }}
             onBulkAddPlatforms={onBulkAddPlatformExpenses}
+            smartImportOpenSignal={smartImportOpenSignal}
           />
         </ViewMount>
         <ViewMount visible={view === 'calculator'} viewKey="calculator">
@@ -1182,6 +1205,7 @@ export default function LeadTracker() {
       {/* In-app PRIM assistant (floating chat bubble, bottom right) */}
       <AgentChatbot
         onNavigate={(v) => setView(v)}
+        openSignal={chatOpenSignal}
         buildContext={() => {
           const issuedYTD = leads.filter(l => l.stage === 'Issued' && (l.closedDate || '').startsWith(new Date().getFullYear().toString()));
           const earnedYTD = ownAdvances
@@ -1327,6 +1351,19 @@ export default function LeadTracker() {
       )}
 
       <Toast toast={toast} />
+
+      {/* In-app onboarding walkthrough — auto-launches first sign-in,
+          re-launchable from Settings → Replay tour. */}
+      <OnboardingWalkthrough
+        open={showOnboarding}
+        onClose={() => setShowOnboarding(false)}
+        onNavigate={(v) => setView(v)}
+        onOpenChat={() => setChatOpenSignal(s => s + 1)}
+        onOpenSmartImport={() => {
+          setView('books');
+          setSmartImportOpenSignal(s => s + 1);
+        }}
+      />
     </div>
   );
 }

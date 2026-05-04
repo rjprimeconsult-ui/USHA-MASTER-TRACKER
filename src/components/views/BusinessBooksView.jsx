@@ -67,6 +67,7 @@ function BusinessBooksView({
   onAddExpense, onUpdateExpense, onDeleteExpense, onBulkAddExpenses,
   onAddIncome,  onUpdateIncome,  onDeleteIncome,  onBulkAddIncome,
   onBulkAddPlatforms,
+  smartImportOpenSignal = 0,
 }) {
   const [tab, setTab] = useState('expenses'); // 'expenses' | 'income'
   const fileInputRef = useRef(null);
@@ -75,6 +76,12 @@ function BusinessBooksView({
   const [viewAttachment, setViewAttachment] = useState(null);
   const [rescanPreview, setRescanPreview] = useState(null);
   const [showSmartImport, setShowSmartImport] = useState(false);
+
+  // External "open" trigger from the onboarding walkthrough's final step.
+  // Each increment of smartImportOpenSignal pops the wizard.
+  useEffect(() => {
+    if (smartImportOpenSignal > 0) setShowSmartImport(true);
+  }, [smartImportOpenSignal]);
   const [showCategoryManager, setShowCategoryManager] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [aiRescanning, setAiRescanning] = useState(false);

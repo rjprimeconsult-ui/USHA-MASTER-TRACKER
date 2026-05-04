@@ -92,7 +92,7 @@ function renderInline(s) {
   return out;
 }
 
-export default function AgentChatbot({ onNavigate, buildContext }) {
+export default function AgentChatbot({ onNavigate, buildContext, openSignal }) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([]); // [{ role, content }]
   const [input, setInput] = useState('');
@@ -100,6 +100,13 @@ export default function AgentChatbot({ onNavigate, buildContext }) {
   const [error, setError] = useState('');
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
+
+  // External "open" trigger — bumped by the onboarding walkthrough so
+  // the assistant can pop on cue. Each increment of openSignal opens
+  // the panel; ignored when component first mounts (signal === 0).
+  useEffect(() => {
+    if (openSignal && openSignal > 0) setOpen(true);
+  }, [openSignal]);
 
   // Load chat history
   useEffect(() => {
