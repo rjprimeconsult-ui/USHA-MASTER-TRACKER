@@ -263,24 +263,38 @@ export default function AgentSettingsPanel({ open, onClose }) {
 
         {/* Footer */}
         <div className="flex justify-between items-center gap-2 p-4 border-t border-slate-200 bg-slate-50">
-          <button
-            onClick={async () => {
-              try {
-                const { resetOnboarding } = await import('@/lib/onboarding');
-                await resetOnboarding();
-                // Trigger a full reload so the auto-launch effect fires
-                // and the tour appears immediately. Cleaner than threading
-                // another open-signal through three components.
-                window.location.reload();
-              } catch (e) {
-                alert('Couldn\'t replay the tour: ' + (e?.message || e));
-              }
-            }}
-            className="text-xs text-indigo-700 hover:text-indigo-900 underline-offset-2 hover:underline"
-            title="Re-run the onboarding tour from the beginning"
-          >
-            Replay tour
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={async () => {
+                try {
+                  const { resetOnboarding } = await import('@/lib/onboarding');
+                  await resetOnboarding();
+                  window.location.reload();
+                } catch (e) {
+                  alert('Couldn\'t replay the tour: ' + (e?.message || e));
+                }
+              }}
+              className="text-xs text-indigo-700 hover:text-indigo-900 underline-offset-2 hover:underline"
+              title="Re-run the onboarding tour from the beginning"
+            >
+              Replay tour
+            </button>
+            <span className="text-slate-300">·</span>
+            <button
+              onClick={async () => {
+                try {
+                  const { openCustomerPortal } = await import('@/lib/subscription');
+                  await openCustomerPortal();
+                } catch (e) {
+                  alert('Couldn\'t open billing portal: ' + (e?.message || e));
+                }
+              }}
+              className="text-xs text-indigo-700 hover:text-indigo-900 underline-offset-2 hover:underline"
+              title="Open Stripe Customer Portal — change plan, update card, cancel"
+            >
+              Manage subscription
+            </button>
+          </div>
           <button onClick={onClose} className="bg-slate-700 hover:bg-slate-800 text-white px-5 py-2 rounded-lg text-sm font-semibold">
             Close
           </button>

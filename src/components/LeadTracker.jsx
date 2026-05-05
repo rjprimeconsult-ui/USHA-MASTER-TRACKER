@@ -31,6 +31,7 @@ import ImpersonationBanner from './ImpersonationBanner';
 import AnnouncementBanner from './AnnouncementBanner';
 import AgentChatbot from './AgentChatbot';
 import OnboardingWalkthrough from './OnboardingWalkthrough';
+import PaywallGate, { TrialBanner } from './PaywallGate';
 import ScreenshotImport from './ScreenshotImport';
 import Toast from './Toast';
 import AdvanceMonthsHistoryEditor from './AdvanceMonthsHistoryEditor';
@@ -1051,8 +1052,11 @@ export default function LeadTracker() {
   }
 
   return (
+    <PaywallGate>
     <div className="min-h-screen bg-slate-50 text-slate-900 relative">
       <OrbBackdrop />
+      {/* Trial countdown banner (auto-hides for active paid subs) */}
+      <TrialBanner />
       {/* Header */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-20 relative">
         {/* Mesh gradient backdrop — bounded by overflow-hidden on this child wrapper
@@ -1424,5 +1428,6 @@ export default function LeadTracker() {
         }}
       />
     </div>
+    </PaywallGate>
   );
 }
