@@ -55,8 +55,11 @@ export async function POST(req) {
       email: userData.user.email,
     });
 
-    const origin = req.headers.get('origin') || 'https://primtracker.com';
-    const successUrl = body.successUrl || `${origin}/?subscription=success`;
+    const origin = req.headers.get('origin') || 'https://www.primtracker.com';
+    // Include the session_id in the success URL so the client can call
+    // /api/stripe/sync-after-checkout synchronously instead of waiting
+    // for the webhook. {CHECKOUT_SESSION_ID} is a Stripe template var.
+    const successUrl = body.successUrl || `${origin}/?subscription=success&session_id={CHECKOUT_SESSION_ID}`;
     const cancelUrl  = body.cancelUrl  || `${origin}/pricing?canceled=1`;
 
     const stripe = getStripe();

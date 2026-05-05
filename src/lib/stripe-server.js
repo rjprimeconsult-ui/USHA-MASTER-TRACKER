@@ -39,14 +39,25 @@ export function getSupabaseAdmin() {
 }
 
 /**
- * Find or create a Stripe Customer for a Supabase user. Idempotent —
- * looks up profiles.stripe_customer_id first, only creates a new
- * Customer when there isn't one yet.
+ * Find or create a Stripe Customer for a Supabase user. Idempotent and
+ * resilient to test↔live key swaps:
+ *
+ *   1. Looks up profiles.stripe_customer_id
+ *   2. If present, verifies the customer still exists in CURRENT Stripe
+ *      mode (i.e. test customers don't exist when using live keys, and
+ *      vice versa). When the lookup returns 'resource_missing', the
+ *      stored ID is treated as stale and we create a fresh customer.
+ *      Other Stripe errors propagate.
+ *   3. If absent or stale, creates a new Customer and saves the new ID.
+ *
+ * This means the only manual recovery needed when swapping modes is
+ * nothing — the next checkout attempt heals itself.
  */
 export async function ensureStripeCustomer({ userId, email }) {
   const supabase = getSupabaseAdmin();
+  const stripe = getStripe();
 
-  // Look up existing
+  // Look up existing profile
   const { data: profile, error: profileErr } = await supabase
     .from('profiles')
     .select('stripe_customer_id, email')
@@ -54,26 +65,45 @@ export async function ensureStripeCustomer({ userId, email }) {
     .single();
 
   if (profileErr) {
-    // If profile doesn't exist yet (rare, depends on auth flow), create it
     if (profileErr.code === 'PGRST116') {
+      // Profile doesn't exist yet (rare, depends on auth flow) — create it
       await supabase.from('profiles').insert({ id: userId, email });
     } else {
       throw profileErr;
     }
   }
 
+  // If we have a saved customer ID, verify it still resolves in the
+  // current Stripe mode. A stale ID returns 'resource_missing' — that's
+  // the cue to drop it and create a fresh customer.
   if (profile?.stripe_customer_id) {
-    return profile.stripe_customer_id;
+    try {
+      const existing = await stripe.customers.retrieve(profile.stripe_customer_id);
+      // Stripe returns the customer object even when "deleted" (with
+      // .deleted === true). Treat deleted as stale too.
+      if (existing && !existing.deleted) {
+        return profile.stripe_customer_id;
+      }
+      // fall through to recreate
+    } catch (e) {
+      const code = e?.code || e?.raw?.code;
+      const status = e?.statusCode;
+      if (code === 'resource_missing' || status === 404) {
+        // Stale customer ID (likely from a test/live key swap). Drop it.
+        console.warn(`[stripe] stale customer ${profile.stripe_customer_id} for user ${userId} — recreating`);
+      } else {
+        throw e;
+      }
+    }
   }
 
   // Create new Stripe customer
-  const stripe = getStripe();
   const customer = await stripe.customers.create({
     email: email || profile?.email || undefined,
     metadata: { supabase_user_id: userId },
   });
 
-  // Save back to profile
+  // Save back to profile (overwrites any stale value)
   await supabase
     .from('profiles')
     .update({ stripe_customer_id: customer.id })
