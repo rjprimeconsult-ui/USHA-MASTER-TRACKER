@@ -8,7 +8,8 @@ import { Chart3DCard, Pie3D } from '../motion/MotionPrimitives';
 
 // Tailwind utility for the bare-style inline-edit input. Borderless
 // until hover, indigo ring on focus. Same pattern Books table uses.
-const inlineCell = 'border border-transparent hover:border-slate-200 focus:border-indigo-400 focus:ring-1 focus:ring-indigo-200 rounded px-1 py-0.5 bg-transparent w-full text-xs';
+// `truncate` keeps long content from blowing out fixed-width cells.
+const inlineCell = 'border border-transparent hover:border-slate-200 focus:border-indigo-400 focus:ring-1 focus:ring-indigo-200 rounded px-1 py-0.5 bg-transparent w-full text-xs truncate';
 
 const DealPie = ({ data, title }) => (
   <Chart3DCard fadeIn={false} className="!p-3">
@@ -170,20 +171,29 @@ function ClosedDeals({ leads, onEdit, onUpdate, onDelete, onImportFromScreenshot
               )}
               {totCommission > 0 && <> · {fmt(totCommission)} ADVANCE</>}
             </div>
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 p-4">
-              <div className="lg:col-span-3 overflow-auto">
-                <table className="w-full text-sm">
+            <div className="p-4 space-y-4">
+              {/* Charts moved ABOVE the table so the table can use full width.
+                  Editable columns need real estate to render dropdowns + dates
+                  without clipping. */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <DealPie data={crmData} title="CRM SOURCE" />
+                <DealPie data={catData} title="LEAD TYPE" />
+              </div>
+              <div className="overflow-x-auto">
+                {/* min-w forces horizontal scroll when needed instead of
+                    squeezing columns into illegible slivers. */}
+                <table className="text-sm" style={{ minWidth: '1180px', width: '100%' }}>
                   <thead className="bg-slate-50 text-slate-600 text-xs">
                     <tr>
-                      <th className="text-left p-2">Name</th>
-                      <th className="text-left p-2">Stage</th>
-                      <th className="text-left p-2">Products</th>
-                      <th className="text-left p-2">Day Purchased</th>
-                      <th className="text-left p-2">Date Sold</th>
-                      <th className="text-left p-2">CRM</th>
-                      <th className="text-left p-2">Campaign</th>
-                      <th className="text-right p-2">Lead Cost</th>
-                      <th className="text-right p-2">Advance</th>
+                      <th className="text-left p-2 sticky left-0 bg-slate-50 z-10" style={{ minWidth: '160px' }}>Name</th>
+                      <th className="text-left p-2" style={{ minWidth: '110px' }}>Stage</th>
+                      <th className="text-left p-2" style={{ minWidth: '180px' }}>Products</th>
+                      <th className="text-left p-2" style={{ minWidth: '120px' }}>Day Purchased</th>
+                      <th className="text-left p-2" style={{ minWidth: '120px' }}>Date Sold</th>
+                      <th className="text-left p-2" style={{ minWidth: '110px' }}>CRM</th>
+                      <th className="text-left p-2" style={{ minWidth: '160px' }}>Campaign</th>
+                      <th className="text-right p-2" style={{ minWidth: '90px' }}>Lead Cost</th>
+                      <th className="text-right p-2" style={{ minWidth: '100px' }}>Advance</th>
                       <th className="text-right p-2">Profit</th>
                       <th className="text-right p-2"></th>
                     </tr>
@@ -195,7 +205,7 @@ function ClosedDeals({ leads, onEdit, onUpdate, onDelete, onImportFromScreenshot
                       const prods = [l.mainProduct, l.associationPlan, ...(l.products || []).map(p => p.id)].filter(Boolean).join(', ') || '—';
                       return (
                         <tr key={l.id} className={`border-t border-slate-100 ${isIssued ? 'hover:bg-slate-50' : 'bg-amber-50/30 hover:bg-amber-50'}`}>
-                          <td className="p-2 font-medium">
+                          <td className={`p-2 font-medium sticky left-0 z-10 ${isIssued ? 'bg-white' : 'bg-amber-50/30'}`}>
                             <input
                               className={inlineCell + ' font-medium text-sm'}
                               value={l.name || ''}
@@ -318,10 +328,6 @@ function ClosedDeals({ leads, onEdit, onUpdate, onDelete, onImportFromScreenshot
                     </tr>
                   </tfoot>
                 </table>
-              </div>
-              <div className="grid grid-cols-2 gap-3 lg:grid-cols-1">
-                <DealPie data={crmData} title="CRM SOURCE" />
-                <DealPie data={catData} title="LEAD TYPE" />
               </div>
             </div>
           </div>
