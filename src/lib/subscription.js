@@ -20,6 +20,9 @@ export const SUB_STATUS = {
 
 /**
  * Returns true when the user has full access. That's:
+ *   - is_complimentary = true (hand-picked free access, e.g. early
+ *     test users / partners — flip in SQL when you want to convert
+ *     them to paying)
  *   - status='trialing' AND trial hasn't ended
  *   - status='active'
  *   - status='past_due' AND we're inside a grace period (kept generous so
@@ -27,6 +30,7 @@ export const SUB_STATUS = {
  */
 export function hasActiveSubscription(profile) {
   if (!profile) return false;
+  if (profile.is_complimentary === true) return true;
   const s = profile.subscription_status;
   if (s === SUB_STATUS.ACTIVE) return true;
   if (s === SUB_STATUS.TRIALING) {
@@ -35,6 +39,15 @@ export function hasActiveSubscription(profile) {
   }
   if (s === SUB_STATUS.PAST_DUE) return true; // grace period — gate elsewhere if needed
   return false;
+}
+
+/**
+ * True when the user has complimentary access (no Stripe sub, no trial).
+ * Used to suppress the trial countdown banner since it's not meaningful
+ * for these users.
+ */
+export function isComplimentary(profile) {
+  return profile?.is_complimentary === true;
 }
 
 export function isInTrial(profile) {
@@ -77,7 +90,7 @@ export function useSubscription() {
     }
     const { data, error } = await supabase
       .from('profiles')
-      .select('id, email, subscription_status, subscription_tier, subscription_period, trial_ends_at, current_period_end, cancel_at_period_end, stripe_customer_id')
+      .select('id, email, subscription_status, subscription_tier, subscription_period, trial_ends_at, current_period_end, cancel_at_period_end, stripe_customer_id, is_complimentary')
       .eq('id', userId)
       .maybeSingle();
     if (error) {

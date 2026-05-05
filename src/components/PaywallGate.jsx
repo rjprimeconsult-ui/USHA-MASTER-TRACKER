@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { Lock, Sparkles, ArrowRight, Loader2 } from 'lucide-react';
-import { useSubscription, hasActiveSubscription, isInTrial, trialDaysLeft, syncAfterCheckout } from '@/lib/subscription';
+import { useSubscription, hasActiveSubscription, isInTrial, trialDaysLeft, isComplimentary, syncAfterCheckout } from '@/lib/subscription';
 
 /**
  * Wraps the app's main content. Shows a soft-paywall screen when the
@@ -128,6 +128,9 @@ export function TrialBanner() {
   const { profile } = useSubscription();
 
   if (!profile) return null;
+  // Complimentary users get full access without a trial — no countdown
+  // banner to show.
+  if (isComplimentary(profile)) return null;
   if (!isInTrial(profile)) return null;
   const days = trialDaysLeft(profile);
   if (days == null) return null;
