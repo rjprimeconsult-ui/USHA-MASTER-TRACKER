@@ -2,9 +2,13 @@
 import { useMemo, memo } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { Edit2, Trash2, CheckCircle2, Clock, ImageUp } from 'lucide-react';
-import { CRMS, LEAD_CATEGORIES, STAGES, effectiveLeadCategory } from '@/lib/constants';
+import { CRMS, CAMPAIGNS, LEAD_CATEGORIES, STAGES, effectiveLeadCategory } from '@/lib/constants';
 import { fmt, fmt2, usDate, monthLabel } from '@/lib/utils';
 import { Chart3DCard, Pie3D } from '../motion/MotionPrimitives';
+
+// Tailwind utility for the bare-style inline-edit input. Borderless
+// until hover, indigo ring on focus. Same pattern Books table uses.
+const inlineCell = 'border border-transparent hover:border-slate-200 focus:border-indigo-400 focus:ring-1 focus:ring-indigo-200 rounded px-1 py-0.5 bg-transparent w-full text-xs';
 
 const DealPie = ({ data, title }) => (
   <Chart3DCard fadeIn={false} className="!p-3">
@@ -42,7 +46,14 @@ const StageBadge = ({ stage }) => {
   );
 };
 
-function ClosedDeals({ leads, onEdit, onDelete, onImportFromScreenshot }) {
+function ClosedDeals({ leads, onEdit, onUpdate, onDelete, onImportFromScreenshot }) {
+  // Inline edit helper — patches a single field on a lead and saves via
+  // the parent's onUpdate. No-ops when onUpdate isn't passed (defensive
+  // fallback for any caller that doesn't wire it up).
+  const patch = (lead, field, value) => {
+    if (!onUpdate) return;
+    onUpdate({ ...lead, [field]: value });
+  };
   // Show Submitted + Issued (pending + paid deals)
   const visible = useMemo(() =>
     leads.filter(l => (l.stage === 'Issued' || l.stage === 'Pending') && l.closedDate)
@@ -184,23 +195,106 @@ function ClosedDeals({ leads, onEdit, onDelete, onImportFromScreenshot }) {
                       const prods = [l.mainProduct, l.associationPlan, ...(l.products || []).map(p => p.id)].filter(Boolean).join(', ') || '—';
                       return (
                         <tr key={l.id} className={`border-t border-slate-100 ${isIssued ? 'hover:bg-slate-50' : 'bg-amber-50/30 hover:bg-amber-50'}`}>
-                          <td className="p-2 font-medium">{l.name}</td>
-                          <td className="p-2"><StageBadge stage={l.stage} /></td>
-                          <td className="p-2 text-xs text-slate-600 max-w-xs truncate" title={prods}>{prods}</td>
-                          <td className="p-2 text-xs">{usDate(l.dateAdded)}</td>
-                          <td className="p-2 text-xs">{usDate(l.closedDate)}</td>
-                          <td className="p-2 text-xs">{l.crm}</td>
-                          <td className="p-2 text-xs">{l.campaign}</td>
-                          <td className="text-right p-2 text-red-600">{fmt2(l.leadCost)}</td>
-                          <td className={`text-right p-2 font-medium ${isIssued ? 'text-emerald-700' : 'text-slate-300'}`}>
-                            {isIssued ? fmt(l.dealValue) : <span className="italic text-xs">pending</span>}
+                          <td className="p-2 font-medium">
+                            <input
+                              className={inlineCell + ' font-medium text-sm'}
+                              value={l.name || ''}
+                              onChange={(e) => patch(l, 'name', e.target.value)}
+                              placeholder="—"
+                              title="Click to edit"
+                            />
+                          </td>
+                          <td className="p-2">
+                            {/* Stage uses StageBadge for non-edit display, switches
+                                to a select on click. Keeping the badge as a select
+                                styled to match keeps the table compact. */}
+                            <select
+                              value={l.stage}
+                              onChange={(e) => patch(l, 'stage', e.target.value)}
+                              className={`text-xs font-medium px-2 py-0.5 rounded border-transparent hover:border-slate-300 focus:border-indigo-400 cursor-pointer ${(STAGES.find(s => s.id === l.stage) || STAGES[0]).bg} ${(STAGES.find(s => s.id === l.stage) || STAGES[0]).text}`}
+                              title="Change stage"
+                            >
+                              {STAGES.map(s => <option key={s.id} value={s.id}>{s.id}</option>)}
+                            </select>
+                          </td>
+                          <td className="p-2 text-xs text-slate-600 max-w-xs truncate" title={prods}>
+                            {/* Products stay read-only here — pencil icon opens
+                                the full LeadForm modal where the product picker
+                                with premiums lives. */}
+                            {prods}
+                          </td>
+                          <td className="p-2">
+                            <input
+                              type="date"
+                              className={inlineCell}
+                              value={l.dateAdded || ''}
+                              onChange={(e) => patch(l, 'dateAdded', e.target.value)}
+                              title="When the lead was purchased"
+                            />
+                          </td>
+                          <td className="p-2">
+                            <input
+                              type="date"
+                              className={inlineCell}
+                              value={l.closedDate || ''}
+                              onChange={(e) => patch(l, 'closedDate', e.target.value)}
+                              title="When the deal was sold / submitted"
+                            />
+                          </td>
+                          <td className="p-2">
+                            <select
+                              className={inlineCell}
+                              value={l.crm || ''}
+                              onChange={(e) => patch(l, 'crm', e.target.value)}
+                              title="CRM source"
+                            >
+                              <option value="">—</option>
+                              {CRMS.map(c => <option key={c.id} value={c.id}>{c.id}</option>)}
+                            </select>
+                          </td>
+                          <td className="p-2">
+                            <select
+                              className={inlineCell}
+                              value={l.campaign || ''}
+                              onChange={(e) => patch(l, 'campaign', e.target.value)}
+                              title="Campaign"
+                            >
+                              <option value="">—</option>
+                              {CAMPAIGNS.map(c => <option key={c.id} value={c.id}>{c.id}</option>)}
+                            </select>
+                          </td>
+                          <td className="text-right p-2">
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              className={inlineCell + ' text-right text-red-600'}
+                              value={l.leadCost ?? 0}
+                              onChange={(e) => patch(l, 'leadCost', parseFloat(e.target.value) || 0)}
+                              title="Lead cost"
+                            />
+                          </td>
+                          <td className={`text-right p-2 font-medium`}>
+                            {isIssued ? (
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                className={inlineCell + ' text-right text-emerald-700 font-medium'}
+                                value={l.dealValue ?? 0}
+                                onChange={(e) => patch(l, 'dealValue', parseFloat(e.target.value) || 0)}
+                                title="Advance amount"
+                              />
+                            ) : (
+                              <span className="italic text-xs text-slate-300">pending</span>
+                            )}
                           </td>
                           <td className={`text-right p-2 font-medium ${isIssued ? (profit >= 0 ? 'text-emerald-700' : 'text-red-600') : 'text-slate-300'}`}>
                             {isIssued ? fmt(profit) : '—'}
                           </td>
                           <td className="text-right p-2">
                             <div className="flex items-center justify-end gap-1">
-                              <button onClick={() => onEdit(l)} title="Edit" className="text-slate-400 hover:text-indigo-600 p-1 rounded hover:bg-indigo-50"><Edit2 size={14} /></button>
+                              <button onClick={() => onEdit(l)} title="Open full editor (products, association, notes, etc.)" className="text-slate-400 hover:text-indigo-600 p-1 rounded hover:bg-indigo-50"><Edit2 size={14} /></button>
                               {onDelete && (
                                 <button
                                   onClick={() => { if (confirm(`Delete deal for ${l.name || '(unnamed)'}? This can't be undone.`)) onDelete(l.id); }}

@@ -1148,7 +1148,19 @@ export default function LeadTracker() {
           />
         </ViewMount>
         <ViewMount visible={view === 'closed'} viewKey="closed">
-          <ClosedDeals leads={leads} onEdit={editLead} onDelete={deleteLead} onImportFromScreenshot={() => setShowScreenshotImport(true)} />
+          <ClosedDeals
+            leads={leads}
+            onEdit={editLead}
+            onUpdate={(l) => {
+              // Inline edit handler — merges the patched fields into the
+              // matching lead without the modal-save toast/confetti, so
+              // typing in the table doesn't spam notifications. The leads
+              // state effect persists to storage automatically.
+              setLeads(prev => prev.map(x => x.id === l.id ? { ...x, ...l, lastTouch: today() } : x));
+            }}
+            onDelete={deleteLead}
+            onImportFromScreenshot={() => setShowScreenshotImport(true)}
+          />
         </ViewMount>
         <ViewMount visible={view === 'dashboard'} viewKey="dashboard">
           <Dashboard leads={leads} />

@@ -19,8 +19,11 @@ export const mkLead = (o = {}) => ({
   dateAdded: today(),
   closedDate: null,
   lastTouch: today(),
-  crm: 'RINGY',
-  campaign: 'AGED.25',
+  // Default to empty so imports that don't carry CRM/Campaign data
+  // don't silently inherit fabricated values. Users fill these in
+  // either through the lead form or via inline edit on Closed Deals.
+  crm: '',
+  campaign: '',
   leadCategory: 'AGED',
   products: [],
   mainProduct: '',

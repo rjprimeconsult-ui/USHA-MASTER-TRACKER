@@ -350,9 +350,13 @@ export function dealToLead(deal, mkLead, boughtCostMap = null) {
     dateAdded: deal.submitDate || deal.closedDate,
     closedDate: deal.closedDate,
     lastTouch: deal.closedDate,
-    crm: 'RINGY',
-    campaign: 'AGED.25',
-    leadCategory: 'AGED',
+    // SalesReport (USHA portal export) doesn't carry CRM / Campaign
+    // info, so leave these blank instead of fabricating defaults the
+    // user didn't pick. They can fill these in via Closed Deals
+    // inline edit or the lead form.
+    crm: '',
+    campaign: '',
+    leadCategory: '',
     leadCost: 0,
     dealValue: 0,
     mainProduct: deal.mainProduct,
