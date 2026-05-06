@@ -408,17 +408,17 @@ function CommissionDetailPanel({
         />
         <MiniStat
           label="Monthly run-rate"
-          value={`$${fmt2(carrierBook.monthly)}`}
-          sub={`$${fmt2(carrierBook.monthly * 12)}/yr`}
+          value={fmt2(carrierBook.monthly)}
+          sub={`${fmt2(carrierBook.monthly * 12)}/yr`}
         />
         <MiniStat
           label={`${carrierYtd.year || '—'} YTD paid`}
-          value={`$${fmt2(carrierYtd.total)}`}
+          value={fmt2(carrierYtd.total)}
           sub="net of reversals"
         />
         <MiniStat
           label="All-time imported"
-          value={`$${fmt2(carrierTotal)}`}
+          value={fmt2(carrierTotal)}
           sub={`${abDetail.length.toLocaleString()} rows`}
         />
       </div>
@@ -432,7 +432,7 @@ function CommissionDetailPanel({
               .map(([planId, info]) => (
                 <div key={planId} className="flex items-center justify-between border-b border-indigo-100 pb-1 last:border-0">
                   <span className="text-indigo-900 font-medium">{planId}</span>
-                  <span className="font-mono text-emerald-700 font-semibold">${fmt2(info.currentRate)}/mo</span>
+                  <span className="font-mono text-emerald-700 font-semibold">{fmt2(info.currentRate)}/mo</span>
                 </div>
               ))}
           </div>

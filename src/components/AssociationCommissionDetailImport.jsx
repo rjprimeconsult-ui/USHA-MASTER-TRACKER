@@ -183,7 +183,7 @@ function PreviewPanel({ preview, onCancel, onCommit, committing }) {
 
       <div className="grid grid-cols-2 gap-3">
         <Stat label="Rows in file" value={parse.rows.length} />
-        <Stat label="Net total in this file" value={`$${fmt2(incomingNet)}`} />
+        <Stat label="Net total in this file" value={fmt2(incomingNet)} />
         <Stat label="New rows (will be added)" value={merge.added} highlight />
         <Stat label="Already imported (skipped)" value={merge.skipped} muted />
       </div>
@@ -199,7 +199,7 @@ function PreviewPanel({ preview, onCancel, onCommit, committing }) {
                 .map(([planId, info]) => (
                   <div key={planId} className="flex justify-between border-b border-indigo-100 pb-0.5 last:border-0">
                     <span className="font-medium">{planId}</span>
-                    <span className="font-mono">${fmt2(info.currentRate)}/mo</span>
+                    <span className="font-mono">{fmt2(info.currentRate)}/mo</span>
                   </div>
                 ))}
             </div>
@@ -219,7 +219,7 @@ function PreviewPanel({ preview, onCancel, onCommit, committing }) {
 
       <div className="bg-slate-50 rounded-lg p-3 text-xs text-slate-600">
         After import: <span className="font-semibold">{mergedActive.count}</span> active subscribers paying
-        you <span className="font-semibold">${fmt2(mergedActive.monthly)}/mo</span>
+        you <span className="font-semibold">{fmt2(mergedActive.monthly)}/mo</span>
         {mergedActive.period && <> as of <span className="font-mono">{mergedActive.period}</span></>}.
       </div>
 
