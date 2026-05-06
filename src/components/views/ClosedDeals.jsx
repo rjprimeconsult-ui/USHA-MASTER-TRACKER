@@ -1,10 +1,9 @@
 'use client';
-import { useMemo, memo } from 'react';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import { Edit2, Trash2, CheckCircle2, Clock, ImageUp } from 'lucide-react';
+import { useMemo, memo, useState } from 'react';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Sector } from 'recharts';
+import { Edit2, Trash2, CheckCircle2, Clock, ImageUp, ArrowLeft, MousePointer2 } from 'lucide-react';
 import { CRMS, CAMPAIGNS, LEAD_CATEGORIES, STAGES, effectiveLeadCategory } from '@/lib/constants';
 import { fmt, fmt2, usDate, monthLabel } from '@/lib/utils';
-import { Chart3DCard, Pie3D } from '../motion/MotionPrimitives';
 import { useLeadOptionsAll, addCustomLeadOption, ADD_CUSTOM_VALUE } from '@/lib/customLeadOptions';
 
 // Tailwind utility for the bare-style inline-edit input. Borderless
@@ -12,30 +11,200 @@ import { useLeadOptionsAll, addCustomLeadOption, ADD_CUSTOM_VALUE } from '@/lib/
 // `truncate` keeps long content from blowing out fixed-width cells.
 const inlineCell = 'border border-transparent hover:border-slate-200 focus:border-indigo-400 focus:ring-1 focus:ring-indigo-200 rounded px-1 py-0.5 bg-transparent w-full text-xs truncate';
 
-const DealPie = ({ data, title }) => (
-  <Chart3DCard fadeIn={false} className="!p-3">
-    <div className="text-xs font-semibold text-slate-600 mb-1">{title}</div>
-    <Pie3D
-      data={data}
-      outerRadius={55}
-      innerRadius={24}
-      height={200}
-      depth={10}
-      tilt={45}
-      showLabels
-      fontSize={13}
-    />
-    <div className="text-[10px] space-y-0.5 mt-1">
-      {data.map(d => (
-        <div key={d.name} className="flex items-center gap-1">
-          <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: d.color }}></span>
-          <span className="text-slate-600 flex-1 truncate">{d.name}</span>
-          <span className="text-slate-900 font-medium">{d.value}</span>
+// Lighten a hex color toward white by a percentage. Used to build the
+// per-slice radial gradients so each slice has subtle depth without the
+// dated 3D-extrusion look.
+function lighten(hex, pct = 0.25) {
+  const h = String(hex || '#94a3b8').replace('#', '');
+  const r = parseInt(h.length === 3 ? h[0] + h[0] : h.slice(0, 2), 16);
+  const g = parseInt(h.length === 3 ? h[1] + h[1] : h.slice(2, 4), 16);
+  const b = parseInt(h.length === 3 ? h[2] + h[2] : h.slice(4, 6), 16);
+  const lr = Math.round(r + (255 - r) * pct);
+  const lg = Math.round(g + (255 - g) * pct);
+  const lb = Math.round(b + (255 - b) * pct);
+  return `#${lr.toString(16).padStart(2, '0')}${lg.toString(16).padStart(2, '0')}${lb.toString(16).padStart(2, '0')}`;
+}
+
+// activeShape renderer: when a slice is hovered, render an enlarged
+// version with a subtle outer ring so the focused slice pops without
+// distorting the whole chart layout.
+function renderActiveSlice(props) {
+  const { cx, cy, innerRadius, outerRadius, startAngle, endAngle, fill, payload } = props;
+  return (
+    <g>
+      <Sector
+        cx={cx}
+        cy={cy}
+        innerRadius={innerRadius}
+        outerRadius={outerRadius + 6}
+        startAngle={startAngle}
+        endAngle={endAngle}
+        fill={fill}
+        stroke="#fff"
+        strokeWidth={2}
+      />
+      <Sector
+        cx={cx}
+        cy={cy}
+        innerRadius={outerRadius + 8}
+        outerRadius={outerRadius + 11}
+        startAngle={startAngle}
+        endAngle={endAngle}
+        fill={payload?.color || fill}
+        opacity={0.35}
+      />
+    </g>
+  );
+}
+
+// Modern donut chart — flat 2D, gradient slices, center total, side
+// legend with bars + percentages. Optional onSliceClick enables
+// drill-down (used by the LEAD TYPE chart to drop into campaigns).
+function LeadAnalyticsDonut({
+  data,
+  title,
+  subtitle,
+  totalLabel = 'TOTAL',
+  onSliceClick,
+  onBack,
+  emptyMessage = 'No data yet',
+}) {
+  const [hovered, setHovered] = useState(null);
+  const total = useMemo(() => data.reduce((s, d) => s + (d.value || 0), 0), [data]);
+  const id = useMemo(() => `donut-${Math.random().toString(36).slice(2, 9)}`, []);
+  const isClickable = !!onSliceClick;
+
+  if (!data.length || total === 0) {
+    return (
+      <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm h-full">
+        <div className="flex items-center justify-between mb-1">
+          <div>
+            <div className="text-xs font-bold uppercase tracking-wider text-slate-500">{title}</div>
+            {subtitle && <div className="text-[10px] text-slate-400 mt-0.5">{subtitle}</div>}
+          </div>
+          {onBack && (
+            <button onClick={onBack} className="text-xs text-indigo-600 hover:text-indigo-800 flex items-center gap-1 font-semibold">
+              <ArrowLeft size={11} /> Back
+            </button>
+          )}
         </div>
-      ))}
+        <div className="text-center py-8 text-slate-400 text-xs">{emptyMessage}</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm h-full flex flex-col">
+      {/* Header */}
+      <div className="flex items-start justify-between mb-2 gap-2">
+        <div className="min-w-0">
+          <div className="text-xs font-bold uppercase tracking-wider text-slate-500">{title}</div>
+          {subtitle && <div className="text-[10px] text-slate-400 mt-0.5 truncate">{subtitle}</div>}
+        </div>
+        {onBack && (
+          <button onClick={onBack} className="text-xs text-indigo-600 hover:text-indigo-800 flex items-center gap-1 font-semibold flex-shrink-0">
+            <ArrowLeft size={11} /> Back
+          </button>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-[170px_1fr] gap-3 flex-1">
+        {/* Donut */}
+        <div className="relative flex items-center justify-center">
+          <ResponsiveContainer width="100%" height={170}>
+            <PieChart>
+              <defs>
+                {data.map((d, i) => (
+                  <radialGradient key={i} id={`${id}-grad-${i}`} cx="50%" cy="50%" r="65%" fx="35%" fy="35%">
+                    <stop offset="0%" stopColor={lighten(d.color, 0.35)} />
+                    <stop offset="100%" stopColor={d.color} />
+                  </radialGradient>
+                ))}
+              </defs>
+              <Pie
+                data={data}
+                dataKey="value"
+                nameKey="name"
+                cx="50%"
+                cy="50%"
+                innerRadius={48}
+                outerRadius={72}
+                paddingAngle={2}
+                cornerRadius={4}
+                stroke="#fff"
+                strokeWidth={2}
+                activeIndex={hovered ?? undefined}
+                activeShape={renderActiveSlice}
+                onMouseEnter={(_, i) => setHovered(i)}
+                onMouseLeave={() => setHovered(null)}
+                onClick={isClickable ? ((entry) => onSliceClick(entry?.payload || entry)) : undefined}
+                style={isClickable ? { cursor: 'pointer' } : undefined}
+                isAnimationActive
+                animationDuration={650}
+              >
+                {data.map((d, i) => (
+                  <Cell key={i} fill={`url(#${id}-grad-${i})`} />
+                ))}
+              </Pie>
+              <Tooltip
+                contentStyle={{
+                  background: 'rgba(15,23,42,0.95)',
+                  border: 'none',
+                  borderRadius: 8,
+                  fontSize: 11,
+                  padding: '6px 10px',
+                  color: '#fff',
+                }}
+                itemStyle={{ color: '#fff' }}
+                formatter={(value, name) => [`${value} (${total ? Math.round((value / total) * 100) : 0}%)`, name]}
+              />
+            </PieChart>
+          </ResponsiveContainer>
+          {/* Center label */}
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+            <div className="text-2xl font-bold text-slate-900 leading-none">{total}</div>
+            <div className="text-[9px] font-bold uppercase tracking-wider text-slate-500 mt-0.5">{totalLabel}</div>
+          </div>
+        </div>
+
+        {/* Legend */}
+        <div className="space-y-1.5 self-center w-full overflow-hidden">
+          {data.map((d, i) => {
+            const pct = total ? (d.value / total) * 100 : 0;
+            const isHovered = hovered === i;
+            return (
+              <button
+                key={d.name}
+                onMouseEnter={() => setHovered(i)}
+                onMouseLeave={() => setHovered(null)}
+                onClick={isClickable ? () => onSliceClick(d) : undefined}
+                disabled={!isClickable}
+                className={`w-full text-left flex items-center gap-2 rounded-md px-1.5 py-1 transition ${
+                  isClickable ? 'cursor-pointer hover:bg-slate-50' : 'cursor-default'
+                } ${isHovered ? 'bg-slate-50' : ''}`}
+                title={isClickable ? `Click to see ${d.name} campaigns` : undefined}
+              >
+                <span
+                  className="w-2.5 h-2.5 rounded-sm flex-shrink-0"
+                  style={{ background: d.color, boxShadow: `0 0 0 2px ${d.color}22` }}
+                />
+                <span className="text-[11px] text-slate-700 font-medium flex-1 truncate">{d.name}</span>
+                <span className="text-[11px] text-slate-900 font-bold tabular-nums">{d.value}</span>
+                <span className="text-[10px] text-slate-400 tabular-nums w-8 text-right">{pct.toFixed(0)}%</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {isClickable && (
+        <div className="mt-2 pt-2 border-t border-slate-100 text-[10px] text-slate-400 flex items-center justify-center gap-1">
+          <MousePointer2 size={10} /> Click any slice to drill into campaigns
+        </div>
+      )}
     </div>
-  </Chart3DCard>
-);
+  );
+}
 
 const StageBadge = ({ stage }) => {
   const s = STAGES.find(x => x.id === stage) || STAGES[0];
@@ -51,6 +220,14 @@ const StageBadge = ({ stage }) => {
 function ClosedDeals({ leads, onEdit, onUpdate, onDelete, onImportFromScreenshot }) {
   // Per-agent custom options for CRM + Campaign (inline editable here).
   const { crms: ALL_CRMS, campaigns: ALL_CAMPAIGNS, reload: reloadLeadOptions } = useLeadOptionsAll();
+
+  // Drill-down state for the LEAD TYPE chart, keyed by month (YM string).
+  // Click a category slice → store the category here so that month's pie
+  // swaps to the campaign breakdown for those leads. Click "Back" to
+  // clear it for that month.
+  const [drillByMonth, setDrillByMonth] = useState({});
+  const drillInto = (ym, category) => setDrillByMonth(p => ({ ...p, [ym]: category }));
+  const drillOut  = (ym) => setDrillByMonth(p => { const n = { ...p }; delete n[ym]; return n; });
 
   // Inline edit helper — patches a single field on a lead and saves via
   // the parent's onUpdate. No-ops when onUpdate isn't passed (defensive
@@ -164,19 +341,58 @@ function ClosedDeals({ leads, onEdit, onUpdate, onDelete, onImportFromScreenshot
         const totLeadCost = items.reduce((s, l) => s + (l.leadCost || 0), 0);
         const totProfit = totCommission - totLeadCost;
 
+        // CRM source breakdown — counts per CRM. Items without a CRM
+        // ("—") get bucketed as Unassigned so they don't disappear.
         const crmMap = {};
-        items.forEach(l => { crmMap[l.crm] = (crmMap[l.crm] || 0) + 1; });
-        const crmData = Object.entries(crmMap).map(([k, v]) => ({
-          name: k, value: v, color: CRMS.find(c => c.id === k)?.color || '#94a3b8',
-        }));
+        items.forEach(l => {
+          const k = l.crm || '— Unassigned';
+          crmMap[k] = (crmMap[k] || 0) + 1;
+        });
+        const crmData = Object.entries(crmMap)
+          .sort((a, b) => b[1] - a[1])
+          .map(([k, v]) => ({
+            name: k, value: v,
+            color: CRMS.find(c => c.id === k)?.color || '#94a3b8',
+          }));
+
+        // LEAD TYPE breakdown by category (top-level grouping like AGED,
+        // SHARED, REFERRAL). The chart drills into campaigns when clicked.
         const catMap = {};
         items.forEach(l => {
           const cat = effectiveLeadCategory(l);
           catMap[cat] = (catMap[cat] || 0) + 1;
         });
-        const catData = Object.entries(catMap).map(([k, v]) => ({
-          name: k, value: v, color: LEAD_CATEGORIES.find(c => c.id === k)?.color || '#94a3b8',
-        }));
+        const catData = Object.entries(catMap)
+          .sort((a, b) => b[1] - a[1])
+          .map(([k, v]) => ({
+            name: k, value: v,
+            color: LEAD_CATEGORIES.find(c => c.id === k)?.color || '#94a3b8',
+          }));
+
+        // When a category is drilled into for THIS month, build the
+        // campaign breakdown for just those leads. Inherit the parent
+        // category's color as a base, lightened across slices so the
+        // sub-pie reads as part of the same family.
+        const drilledCategory = drillByMonth[ym] || null;
+        const drilledItems = drilledCategory
+          ? items.filter(l => effectiveLeadCategory(l) === drilledCategory)
+          : [];
+        const campaignMap = {};
+        drilledItems.forEach(l => {
+          const k = l.campaign || '— No campaign';
+          campaignMap[k] = (campaignMap[k] || 0) + 1;
+        });
+        const baseColor = LEAD_CATEGORIES.find(c => c.id === drilledCategory)?.color || '#6366f1';
+        const campaignData = Object.entries(campaignMap)
+          .sort((a, b) => b[1] - a[1])
+          .map(([k, v], i, arr) => {
+            // Pull the campaign's own color when defined; otherwise
+            // shade a tint of the parent category color so all sub-slices
+            // visually belong together.
+            const campaignDef = CAMPAIGNS.find(c => c.id === k);
+            const fallback = lighten(baseColor, 0.15 + (i / Math.max(arr.length - 1, 1)) * 0.45);
+            return { name: k, value: v, color: campaignDef?.color || fallback };
+          });
 
         return (
           <div key={ym} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
@@ -192,8 +408,30 @@ function ClosedDeals({ leads, onEdit, onUpdate, onDelete, onImportFromScreenshot
                   Editable columns need real estate to render dropdowns + dates
                   without clipping. */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <DealPie data={crmData} title="CRM SOURCE" />
-                <DealPie data={catData} title="LEAD TYPE" />
+                <LeadAnalyticsDonut
+                  title="CRM Source"
+                  subtitle={`${items.length} deal${items.length !== 1 ? 's' : ''} this month`}
+                  totalLabel="Deals"
+                  data={crmData}
+                />
+                {drilledCategory ? (
+                  <LeadAnalyticsDonut
+                    title={`${drilledCategory} Campaigns`}
+                    subtitle={`${drilledItems.length} ${drilledCategory} deal${drilledItems.length !== 1 ? 's' : ''} broken down by campaign`}
+                    totalLabel={drilledCategory}
+                    data={campaignData}
+                    onBack={() => drillOut(ym)}
+                    emptyMessage="No campaign data for these leads"
+                  />
+                ) : (
+                  <LeadAnalyticsDonut
+                    title="Lead Type"
+                    subtitle="Click any slice to drill into campaigns"
+                    totalLabel="Deals"
+                    data={catData}
+                    onSliceClick={(slice) => drillInto(ym, slice.name)}
+                  />
+                )}
               </div>
               <div className="overflow-x-auto">
                 {/* min-w forces horizontal scroll when needed instead of
