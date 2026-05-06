@@ -173,7 +173,7 @@ function AssociationsView({
 
   const year = new Date().getFullYear();
   const quarterData = QUARTERS.map(q => {
-    const total = clients.reduce((s, c) => s + (ASSOCIATION_PRICING[c.associationPlan]?.commission || 0) * monthsActiveInQuarter(c, q, year), 0);
+    const total = clients.reduce((s, c) => s + clientResidual(c).monthly * monthsActiveInQuarter(c, q, year), 0);
     return { name: q.label, value: total, desc: q.desc };
   });
 
@@ -181,7 +181,7 @@ function AssociationsView({
   activeClients.forEach(c => {
     byPlan[c.associationPlan] ||= { count: 0, commission: 0 };
     byPlan[c.associationPlan].count += 1;
-    byPlan[c.associationPlan].commission += monthlyCommission(c);
+    byPlan[c.associationPlan].commission += clientResidual(c).monthly;
   });
 
   return (
