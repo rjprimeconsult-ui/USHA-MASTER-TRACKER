@@ -1280,6 +1280,31 @@ export default function LeadTracker() {
       {/* In-app PRIM assistant (floating chat bubble, bottom right) */}
       <AgentChatbot
         onNavigate={(v) => setView(v)}
+        onAction={(action) => {
+          // Map chatbot action sentinels onto local UI state.
+          switch (action) {
+            case 'openSmartImportBooks':
+              setView('books');
+              setSmartImportOpenSignal(s => s + 1);
+              break;
+            case 'openSmartImportLeads':
+              setView('upload');
+              break;
+            case 'openScreenshotImport':
+              setView('closed');
+              setShowScreenshotImport(true);
+              break;
+            case 'openSettings':
+              setShowSettings(true);
+              break;
+            case 'openPricing':
+              if (typeof window !== 'undefined') window.location.href = '/pricing';
+              break;
+            default:
+              // Unknown action — no-op so chatbot CTAs never crash the app.
+              break;
+          }
+        }}
         openSignal={chatOpenSignal}
         buildContext={() => {
           const issuedYTD = leads.filter(l => l.stage === 'Issued' && (l.closedDate || '').startsWith(new Date().getFullYear().toString()));
