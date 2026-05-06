@@ -1175,6 +1175,14 @@ export default function LeadTracker() {
             abDetail={abDetail}
             agentRates={agentRates}
             onOpenImport={() => setShowAbImport(true)}
+            onClearResidualBook={() => {
+              // Reset the residual book to a clean state. Save effects fire
+              // automatically when state changes — both keys get cleared in
+              // cloud + local. Leads / advances / Books are untouched.
+              setAbDetail([]);
+              setAgentRates({});
+              showToast('Residual book cleared');
+            }}
           />
         </ViewMount>
         <ViewMount visible={view === 'closed'} viewKey="closed">

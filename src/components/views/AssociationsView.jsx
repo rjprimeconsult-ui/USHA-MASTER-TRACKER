@@ -1,7 +1,7 @@
 'use client';
 import { useMemo, memo } from 'react';
 import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LabelList } from 'recharts';
-import { Users, Repeat, TrendingUp, Award, Calendar, Pause, Play, Ban, Edit2, Upload, Database, FileText } from 'lucide-react';
+import { Users, Repeat, TrendingUp, Award, Calendar, Pause, Play, Ban, Edit2, Upload, Database, FileText, Trash2 } from 'lucide-react';
 import { ASSOCIATION_PRICING, QUARTERS, isPricedAssociation } from '@/lib/constants';
 import { fmt, fmt2, usDate, monthsActiveTotal, monthsActiveInQuarter, getCurrentQuarter, getNextQuarter } from '@/lib/utils';
 import {
@@ -86,6 +86,7 @@ function AssociationsView({
   abDetail = [],          // imported residual rows (isolated storage)
   agentRates = {},        // derived per-plan effective rates
   onOpenImport,           // opens the CommissionDetail uploader
+  onClearResidualBook,    // resets the residual book + agent rates
 }) {
   const clients = useMemo(() =>
     leads.filter(l => l.stage === 'Issued' && l.associationPlan && isPricedAssociation(l.associationPlan))
@@ -215,6 +216,7 @@ function AssociationsView({
         hasAgentRates={hasAgentRates}
         matchStats={matchStats}
         onOpenImport={onOpenImport}
+        onClearResidualBook={onClearResidualBook}
       />
 
       {abDetail.length > 0 && carrierTrend.length > 0 && (
@@ -375,6 +377,7 @@ function CommissionDetailPanel({
   hasAgentRates,
   matchStats,
   onOpenImport,
+  onClearResidualBook,
 }) {
   const hasData = abDetail && abDetail.length > 0;
 
@@ -412,12 +415,27 @@ function CommissionDetailPanel({
           <Database size={16} className="text-indigo-600" />
           <h3 className="font-semibold text-slate-900">Residual book (from CommissionDetail)</h3>
         </div>
-        <button
-          onClick={onOpenImport}
-          className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium px-3 py-1.5 rounded-lg flex items-center gap-1.5"
-        >
-          <Upload size={12} /> Add another month
-        </button>
+        <div className="flex items-center gap-1.5">
+          {onClearResidualBook && abDetail && abDetail.length > 0 && (
+            <button
+              onClick={() => {
+                if (confirm(`Clear all ${abDetail.length} residual rows and derived rates? You'll need to re-upload your CommissionDetail.csv. Leads, advances, and Books are NOT affected.`)) {
+                  onClearResidualBook();
+                }
+              }}
+              className="text-xs bg-rose-50 hover:bg-rose-100 text-rose-700 font-medium px-3 py-1.5 rounded-lg flex items-center gap-1.5"
+              title="Reset the residual book — useful if duplicates accumulated from multiple imports"
+            >
+              <Trash2 size={12} /> Clear
+            </button>
+          )}
+          <button
+            onClick={onOpenImport}
+            className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium px-3 py-1.5 rounded-lg flex items-center gap-1.5"
+          >
+            <Upload size={12} /> Add another month
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">

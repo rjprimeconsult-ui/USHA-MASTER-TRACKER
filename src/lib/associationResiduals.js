@@ -212,11 +212,17 @@ export function parseCommissionDetail(csvText) {
 /**
  * Composite dedup key. Same policy can appear twice within one production
  * month (one negative reversal + one corrected positive — Cecilia Baxter
- * pattern in Julio's April file). Keying on policyId + appliedDate keeps
- * both rows distinct so the period total nets correctly.
+ * pattern in Julio's April file) — those have different appliedDates so
+ * they stay distinct.
+ *
+ * We deliberately do NOT include asEarned. If USHA regenerates the same
+ * file with a tiny rounding difference on some rows, the asEarned drifts
+ * and the row would look "new" to dedup, inflating the imported count
+ * without changing the per-policy net. Without asEarned in the key, the
+ * second import correctly recognizes the row as a duplicate and skips it.
  */
 function rowKey(r) {
-  return `${r.policyId}|${r.appliedDate || ''}|${r.period || ''}|${r.asEarned}`;
+  return `${r.policyId}|${r.appliedDate || ''}|${r.period || ''}`;
 }
 
 /**
