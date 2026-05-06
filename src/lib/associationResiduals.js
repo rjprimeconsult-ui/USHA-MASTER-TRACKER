@@ -317,6 +317,125 @@ export function getAgentResidualRateTagged(planId, agentRates) {
   return { rate: baseline, source: baseline > 0 ? 'baseline' : 'unknown' };
 }
 
+// ---------- Name-match helpers (lead ↔ residual book) ----------
+
+/**
+ * Canonical name key for matching a PRIM lead against CommissionDetail rows.
+ * Lowercased, punctuation stripped, suffix (Jr/Sr/II/III/IV) trimmed, then
+ * reduced to "first-word last-word". Drops middle names and middle initials
+ * so `"Sean H Catto"` and `"Sean Catto"` collide on the same key.
+ *
+ * Returns null if the input has no usable name content.
+ *
+ * Examples:
+ *   "Matthew Adam Robertson Sr"   → "matthew robertson"
+ *   "Kate L Coltman-Woodrich"     → "kate coltman woodrich" → "kate woodrich"
+ *   "Donatello Dolcimascolo"      → "donatello dolcimascolo"
+ *
+ * Known limitation: typos in the surname (Dolcimascolo vs Dolcimascollo)
+ * won't match — we'd need fuzzy matching to handle that, which adds risk
+ * of false positives. We err on the side of "no match → projection" which
+ * is honest, not wrong.
+ */
+export function normalizeNameKey(name) {
+  if (!name || typeof name !== 'string') return null;
+  let s = name.toLowerCase().trim();
+  // Smart quotes / curly apostrophes / common punctuation → empty
+  s = s.replace(/['’`.,]/g, '');
+  // Hyphens, slashes, underscores → spaces (so hyphenated last names split)
+  s = s.replace(/[-_/]/g, ' ');
+  s = s.replace(/\s+/g, ' ').trim();
+  if (!s) return null;
+  // Strip trailing suffix
+  s = s.replace(/\s+(jr|sr|ii|iii|iv|2nd|3rd|4th)$/i, '').trim();
+  if (!s) return null;
+  const parts = s.split(' ');
+  if (parts.length === 1) return parts[0];
+  return `${parts[0]} ${parts[parts.length - 1]}`;
+}
+
+/**
+ * Build an index of residual rows keyed by normalized customer name.
+ * Each entry holds every row for that name across all imported periods.
+ */
+export function buildBookIndex(rows) {
+  const idx = new Map();
+  for (const r of rows) {
+    const key = normalizeNameKey(r.customer);
+    if (!key) continue;
+    if (!idx.has(key)) idx.set(key, []);
+    idx.get(key).push(r);
+  }
+  return idx;
+}
+
+/**
+ * Find the latest period across all residual rows ("YYYY-MM" or null).
+ * Used to decide whether a matched policy is still active or has churned.
+ */
+export function latestPeriodOf(rows) {
+  if (!rows || rows.length === 0) return null;
+  const periods = [...new Set(rows.map(r => r.period).filter(Boolean))].sort();
+  return periods.length ? periods[periods.length - 1] : null;
+}
+
+/**
+ * Match a PRIM lead to its residual rows by normalized name.
+ *
+ * Returns one of three outcomes:
+ *
+ *   { matched: false }
+ *     — name didn't appear in the imported book at all.
+ *
+ *   { matched: false, ambiguous: true, candidates }
+ *     — the name matches multiple distinct policy IDs in the book. We
+ *       refuse to auto-resolve so we never show wrong data; UI should
+ *       fall back to projection and flag for the user.
+ *
+ *   { matched: true, currentMonthly, totalPaid, active, policyId, rowCount }
+ *     — name maps to exactly one policy. `currentMonthly` is the NET
+ *       AsEarned in the latest period (handles reversal+correction
+ *       pairs like Cecilia Baxter cleanly), or null if the policy
+ *       didn't appear in the latest period (likely churned). `totalPaid`
+ *       is NET across every imported period.
+ */
+export function matchLeadToBook(lead, index, latestPeriod) {
+  if (!lead || !index || index.size === 0) return { matched: false };
+  const key = normalizeNameKey(lead.name);
+  if (!key) return { matched: false };
+  const rows = index.get(key);
+  if (!rows || rows.length === 0) return { matched: false };
+
+  const policyIds = new Set(rows.map(r => r.policyId).filter(Boolean));
+  if (policyIds.size > 1) {
+    return { matched: false, ambiguous: true, candidates: [...policyIds] };
+  }
+
+  const totalPaid = rows.reduce((s, r) => s + (Number(r.asEarned) || 0), 0);
+
+  let currentMonthly = null;
+  let active = false;
+  if (latestPeriod) {
+    const latestRows = rows.filter(r => r.period === latestPeriod);
+    if (latestRows.length > 0) {
+      const net = latestRows.reduce((s, r) => s + (Number(r.asEarned) || 0), 0);
+      // Treat any non-zero net as "active" (negative = chargeback-this-month
+      // but the policy is still on file). Truly churned = no rows in latest period.
+      active = true;
+      currentMonthly = net > 0 ? net : 0;
+    }
+  }
+
+  return {
+    matched: true,
+    currentMonthly,
+    totalPaid: Math.round(totalPaid * 100) / 100,
+    active,
+    policyId: [...policyIds][0] || null,
+    rowCount: rows.length,
+  };
+}
+
 // ---------- Aggregations for the Associations dashboard ----------
 
 /**

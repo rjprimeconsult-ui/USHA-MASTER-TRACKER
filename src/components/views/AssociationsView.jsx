@@ -10,6 +10,9 @@ import {
   activeBook,
   periodTotals,
   ytdTotal,
+  buildBookIndex,
+  latestPeriodOf,
+  matchLeadToBook,
 } from '@/lib/associationResiduals';
 import { TiltCard, CountUp, Stagger, StaggerItem, Chart3DCard } from '../motion/MotionPrimitives';
 
@@ -91,10 +94,55 @@ function AssociationsView({
   const pausedClients = clients.filter(c => c.associationStatus === 'paused');
   const cancelledClients = clients.filter(c => c.associationStatus === 'cancelled');
 
-  // Use agent-derived rates when available; fall back to baseline pricing.
+  // Build the name index ONCE per render-cycle. Lookups are O(1) afterward,
+  // so per-client matching during the table render stays cheap even with
+  // 200+ clients.
+  const bookIndex   = useMemo(() => buildBookIndex(abDetail), [abDetail]);
+  const latestPer   = useMemo(() => latestPeriodOf(abDetail), [abDetail]);
+  const hasBookData = abDetail && abDetail.length > 0;
+
+  // Per-client lookup that returns BOTH the truth (when the name matched a
+  // CommissionDetail row) AND a projection fallback. The UI uses `source`
+  // to badge each row honestly:
+  //   exact      — pulled from CSV, real rate Julio currently earns
+  //   projected  — agent-tier rate (most recent contract bump applied)
+  //   baseline   — no agent data, USHA default contract rate
+  //   ambiguous  — duplicate name in the book; falls back to projection
   const rateInfo = (planId) => getAgentResidualRateTagged(planId, agentRates);
-  const monthlyCommission = (c) => rateInfo(c.associationPlan).rate;
-  const activeMonthly = activeClients.reduce((s, c) => s + monthlyCommission(c), 0);
+  const clientResidual = (c) => {
+    const m = hasBookData ? matchLeadToBook(c, bookIndex, latestPer) : { matched: false };
+    const ri = rateInfo(c.associationPlan);
+    if (m.matched && m.currentMonthly != null) {
+      return {
+        monthly: m.currentMonthly,
+        totalPaid: m.totalPaid,
+        source: 'exact',
+        active: m.active,
+        policyId: m.policyId,
+      };
+    }
+    if (m.ambiguous) {
+      return {
+        monthly: ri.rate,
+        totalPaid: null,
+        source: 'ambiguous',
+        active: null,
+        policyId: null,
+      };
+    }
+    return {
+      monthly: ri.rate,
+      totalPaid: null,
+      source: ri.source, // 'agent' | 'baseline' | 'unknown'
+      active: null,
+      policyId: null,
+    };
+  };
+
+  // Active monthly is the sum of: exact-truth monthly for matched clients,
+  // projection-rate for unmatched ones. Run-rate is now as accurate as the
+  // available data lets it be — no inflated grandfathered customers.
+  const activeMonthly = activeClients.reduce((s, c) => s + clientResidual(c).monthly, 0);
   const yearly = activeMonthly * 12;
   const hasAgentRates = Object.keys(agentRates || {}).length > 0;
 
@@ -103,6 +151,20 @@ function AssociationsView({
   const carrierTrend  = useMemo(() => periodTotals(abDetail), [abDetail]);
   const carrierYtd    = useMemo(() => ytdTotal(abDetail), [abDetail]);
   const carrierTotal  = useMemo(() => netEarned(abDetail), [abDetail]);
+
+  // Reconciliation badge: how many clients matched to the book?
+  const matchStats = useMemo(() => {
+    if (!hasBookData) return null;
+    let exact = 0, ambiguous = 0, unmatched = 0;
+    for (const c of clients) {
+      const r = clientResidual(c);
+      if (r.source === 'exact') exact++;
+      else if (r.source === 'ambiguous') ambiguous++;
+      else unmatched++;
+    }
+    return { exact, ambiguous, unmatched, total: clients.length };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clients, hasBookData, abDetail, agentRates]);
 
   const curQ = getCurrentQuarter();
   const nextQ = getNextQuarter();
@@ -133,6 +195,7 @@ function AssociationsView({
         carrierYtd={carrierYtd}
         carrierTotal={carrierTotal}
         hasAgentRates={hasAgentRates}
+        matchStats={matchStats}
         onOpenImport={onOpenImport}
       />
 
@@ -224,10 +287,11 @@ function AssociationsView({
             <tbody>
               {clients.map(c => {
                 const p = ASSOCIATION_PRICING[c.associationPlan];
-                const ri = rateInfo(c.associationPlan);
+                const r = clientResidual(c);
                 const months = monthsActiveTotal(c);
-                const paid = months * ri.rate;
-                const projAnnual = (c.associationStatus === 'active' ? ri.rate * 12 : 0);
+                // Total Paid: prefer real sum from CSV; fall back to months × projection rate.
+                const paid = r.totalPaid != null ? r.totalPaid : months * r.monthly;
+                const projAnnual = (c.associationStatus === 'active' ? r.monthly * 12 : 0);
                 return (
                   <tr key={c.id} className="border-t border-slate-100 hover:bg-slate-50">
                     <td className="p-2 font-medium text-slate-900">{c.name}</td>
@@ -235,8 +299,8 @@ function AssociationsView({
                     <td className="p-2"><span className={`tier-text ${tierClass(c.associationPlan)} text-xs`}>{c.associationPlan}</span></td>
                     <td className="text-right p-2">{fmt2(p?.premium || 0)}</td>
                     <td className="text-right p-2 text-emerald-700 font-medium">
-                      {fmt2(ri.rate)}
-                      {ri.source === 'agent' && <span className="ml-1 text-[9px] uppercase tracking-wide bg-indigo-100 text-indigo-700 px-1 rounded" title="From your CommissionDetail upload">YOU</span>}
+                      {fmt2(r.monthly)}
+                      <ResidualSourceBadge source={r.source} />
                     </td>
                     <td className="p-2">{usDate(c.associationStartDate)}</td>
                     <td className="text-center p-2"><StatusBadge s={c.associationStatus} /></td>
@@ -289,6 +353,7 @@ function CommissionDetailPanel({
   carrierYtd,
   carrierTotal,
   hasAgentRates,
+  matchStats,
   onOpenImport,
 }) {
   const hasData = abDetail && abDetail.length > 0;
@@ -373,7 +438,66 @@ function CommissionDetailPanel({
           </div>
         </div>
       )}
+
+      {/* Reconciliation strip — what % of PRIM clients lined up with the CSV.
+          Helps agents spot their data quality (typos, missing leads, churned
+          customers still marked Active) at a glance. */}
+      {matchStats && matchStats.total > 0 && (
+        <div className="mt-3 flex items-center gap-3 text-xs flex-wrap">
+          <span className="text-slate-500 font-semibold">Reconciliation:</span>
+          <span className="inline-flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 text-emerald-800 px-2 py-1 rounded">
+            <span className="font-bold">{matchStats.exact}</span> exact match
+            <span className="text-emerald-600">({matchStats.total > 0 ? Math.round(matchStats.exact / matchStats.total * 100) : 0}%)</span>
+          </span>
+          {matchStats.unmatched > 0 && (
+            <span className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-200 text-slate-700 px-2 py-1 rounded" title="In your tracker but not found in the imported CommissionDetail. Either: (1) you haven't imported the period that covers them, (2) they churned, or (3) the lead's name doesn't match the carrier's spelling.">
+              <span className="font-bold">{matchStats.unmatched}</span> projected
+            </span>
+          )}
+          {matchStats.ambiguous > 0 && (
+            <span className="inline-flex items-center gap-1.5 bg-amber-50 border border-amber-200 text-amber-800 px-2 py-1 rounded" title="Same name appears multiple times in your residual book. Auto-match would risk pulling the wrong rate, so we fall back to projection.">
+              <span className="font-bold">{matchStats.ambiguous}</span> ambiguous
+            </span>
+          )}
+        </div>
+      )}
     </div>
+  );
+}
+
+/**
+ * Tiny source-of-truth badge shown next to each per-client monthly rate.
+ * Tells the user at a glance whether the dollar figure is exact (pulled
+ * from their CommissionDetail upload) or estimated (projection from the
+ * agent's contract rate or USHA baseline).
+ */
+function ResidualSourceBadge({ source }) {
+  if (source === 'exact') {
+    return (
+      <span className="ml-1 text-[9px] uppercase tracking-wide bg-emerald-100 text-emerald-700 px-1 rounded" title="Pulled directly from your CommissionDetail upload — exact rate this customer pays you">
+        EXACT
+      </span>
+    );
+  }
+  if (source === 'agent') {
+    return (
+      <span className="ml-1 text-[9px] uppercase tracking-wide bg-indigo-100 text-indigo-700 px-1 rounded" title="Estimated from your current contract rate. Upload a CommissionDetail with this customer in it to see their exact rate.">
+        PROJECTED
+      </span>
+    );
+  }
+  if (source === 'ambiguous') {
+    return (
+      <span className="ml-1 text-[9px] uppercase tracking-wide bg-amber-100 text-amber-700 px-1 rounded" title="Multiple customers with this name in your residual book — couldn't auto-resolve. Showing projection instead.">
+        AMBIGUOUS
+      </span>
+    );
+  }
+  // baseline / unknown
+  return (
+    <span className="ml-1 text-[9px] uppercase tracking-wide bg-slate-100 text-slate-600 px-1 rounded" title="USHA baseline contract rate. Upload your CommissionDetail to enable agent-tier-aware rates.">
+      BASELINE
+    </span>
   );
 }
 
