@@ -5,6 +5,7 @@ import { Edit2, Trash2, CheckCircle2, Clock, ImageUp } from 'lucide-react';
 import { CRMS, CAMPAIGNS, LEAD_CATEGORIES, STAGES, effectiveLeadCategory } from '@/lib/constants';
 import { fmt, fmt2, usDate, monthLabel } from '@/lib/utils';
 import { Chart3DCard, Pie3D } from '../motion/MotionPrimitives';
+import { useLeadOptionsAll, addCustomLeadOption, ADD_CUSTOM_VALUE } from '@/lib/customLeadOptions';
 
 // Tailwind utility for the bare-style inline-edit input. Borderless
 // until hover, indigo ring on focus. Same pattern Books table uses.
@@ -48,12 +49,27 @@ const StageBadge = ({ stage }) => {
 };
 
 function ClosedDeals({ leads, onEdit, onUpdate, onDelete, onImportFromScreenshot }) {
+  // Per-agent custom options for CRM + Campaign (inline editable here).
+  const { crms: ALL_CRMS, campaigns: ALL_CAMPAIGNS, reload: reloadLeadOptions } = useLeadOptionsAll();
+
   // Inline edit helper — patches a single field on a lead and saves via
   // the parent's onUpdate. No-ops when onUpdate isn't passed (defensive
   // fallback for any caller that doesn't wire it up).
   const patch = (lead, field, value) => {
     if (!onUpdate) return;
     onUpdate({ ...lead, [field]: value });
+  };
+
+  // When the user picks "+ Add custom..." in a dropdown, prompt for a
+  // value, save to their custom-options list, then patch the row.
+  const promptCustom = async (lead, field, fieldOnLead) => {
+    const label = field === 'crms' ? 'CRM' : 'Campaign';
+    const v = window.prompt(`Add custom ${label}:`);
+    const trimmed = String(v || '').trim();
+    if (!trimmed) return;
+    await addCustomLeadOption(field, trimmed);
+    await reloadLeadOptions();
+    patch(lead, fieldOnLead, trimmed);
   };
   // Show Submitted + Issued (pending + paid deals)
   const visible = useMemo(() =>
@@ -255,22 +271,40 @@ function ClosedDeals({ leads, onEdit, onUpdate, onDelete, onImportFromScreenshot
                             <select
                               className={inlineCell}
                               value={l.crm || ''}
-                              onChange={(e) => patch(l, 'crm', e.target.value)}
+                              onChange={(e) => {
+                                if (e.target.value === ADD_CUSTOM_VALUE) {
+                                  promptCustom(l, 'crms', 'crm');
+                                  return;
+                                }
+                                patch(l, 'crm', e.target.value);
+                              }}
                               title="CRM source"
                             >
                               <option value="">—</option>
-                              {CRMS.map(c => <option key={c.id} value={c.id}>{c.id}</option>)}
+                              {ALL_CRMS.map(c => (
+                                <option key={c.id} value={c.id}>{c.id}{c.custom ? ' ★' : ''}</option>
+                              ))}
+                              <option value={ADD_CUSTOM_VALUE}>+ Add custom…</option>
                             </select>
                           </td>
                           <td className="p-2">
                             <select
                               className={inlineCell}
                               value={l.campaign || ''}
-                              onChange={(e) => patch(l, 'campaign', e.target.value)}
+                              onChange={(e) => {
+                                if (e.target.value === ADD_CUSTOM_VALUE) {
+                                  promptCustom(l, 'campaigns', 'campaign');
+                                  return;
+                                }
+                                patch(l, 'campaign', e.target.value);
+                              }}
                               title="Campaign"
                             >
                               <option value="">—</option>
-                              {CAMPAIGNS.map(c => <option key={c.id} value={c.id}>{c.id}</option>)}
+                              {ALL_CAMPAIGNS.map(c => (
+                                <option key={c.id} value={c.id}>{c.id}{c.custom ? ' ★' : ''}</option>
+                              ))}
+                              <option value={ADD_CUSTOM_VALUE}>+ Add custom…</option>
                             </select>
                           </td>
                           <td className="text-right p-2">

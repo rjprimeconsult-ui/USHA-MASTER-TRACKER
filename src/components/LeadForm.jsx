@@ -2,13 +2,14 @@
 import { useState, useEffect, useMemo } from 'react';
 import { X, Plus, Trash2, Package, Calculator, Wand2 } from 'lucide-react';
 import {
-  SOURCES, OWNERS, STAGES, CRMS, CAMPAIGNS, LEAD_CATEGORIES,
+  SOURCES, OWNERS, STAGES,
   MAIN_PRODUCTS, ASSOCIATION_PLANS, ADDON_PRODUCTS,
   compatibleAssociations, isPricedAssociation, ASSOCIATION_PRICING,
   productPremium,
 } from '@/lib/constants';
 import { US_STATES, projectCommission, DEFAULT_ADVANCE_MONTHS } from '@/lib/commission';
 import { today, fmt2 } from '@/lib/utils';
+import { useLeadOptionsAll, addCustomLeadOption, ADD_CUSTOM_VALUE } from '@/lib/customLeadOptions';
 
 const Field = ({ label, children, required }) => (
   <div>
@@ -25,10 +26,30 @@ export default function LeadForm({ open, lead, tier = 'WA', onSave, onClose, onD
   const [form, setForm] = useState(lead);
   const [addonPick, setAddonPick] = useState('');
 
+  // Merged dropdown options (built-in + per-agent custom). reload() runs
+  // after a successful add so the new value appears immediately.
+  const { leadCategories, crms, campaigns, reload: reloadLeadOptions } = useLeadOptionsAll();
+
   useEffect(() => {
     setForm(lead);
     setAddonPick('');
   }, [lead]);
+
+  // When the user picks "+ Add custom..." in any of the three dropdowns,
+  // prompt for a value, save to the user's custom-options list, then
+  // set the field to the new value. Idempotent — duplicates of built-in
+  // or existing custom values are silently ignored.
+  const handleCustomDropdown = async (field, fieldOnLead) => {
+    const label = field === 'leadCategories' ? 'Lead Category'
+                : field === 'crms'           ? 'CRM'
+                :                              'Campaign';
+    const v = window.prompt(`Add custom ${label}:`);
+    const trimmed = String(v || '').trim();
+    if (!trimmed) return;
+    await addCustomLeadOption(field, trimmed);
+    await reloadLeadOptions();
+    set({ [fieldOnLead]: trimmed });
+  };
 
   // Live commission projection — must run every render (hooks rule)
   const projection = useMemo(() => projectCommission({
@@ -196,21 +217,64 @@ export default function LeadForm({ open, lead, tier = 'WA', onSave, onClose, onD
             </Field>
           </div>
 
-          {/* Category / CRM / Campaign */}
+          {/* Category / CRM / Campaign — each supports custom values
+              via the "+ Add custom..." sentinel option at the bottom. */}
           <div className="grid grid-cols-3 gap-4">
             <Field label="Lead Category">
-              <select className={inp} value={form.leadCategory} onChange={e => set({ leadCategory: e.target.value })}>
-                {LEAD_CATEGORIES.map(o => <option key={o.id}>{o.id}</option>)}
+              <select
+                className={inp}
+                value={form.leadCategory || ''}
+                onChange={e => {
+                  if (e.target.value === ADD_CUSTOM_VALUE) {
+                    handleCustomDropdown('leadCategories', 'leadCategory');
+                    return;
+                  }
+                  set({ leadCategory: e.target.value });
+                }}
+              >
+                <option value="">—</option>
+                {leadCategories.map(o => (
+                  <option key={o.id} value={o.id}>{o.id}{o.custom ? ' ★' : ''}</option>
+                ))}
+                <option value={ADD_CUSTOM_VALUE}>+ Add custom…</option>
               </select>
             </Field>
             <Field label="CRM">
-              <select className={inp} value={form.crm} onChange={e => set({ crm: e.target.value })}>
-                {CRMS.map(o => <option key={o.id}>{o.id}</option>)}
+              <select
+                className={inp}
+                value={form.crm || ''}
+                onChange={e => {
+                  if (e.target.value === ADD_CUSTOM_VALUE) {
+                    handleCustomDropdown('crms', 'crm');
+                    return;
+                  }
+                  set({ crm: e.target.value });
+                }}
+              >
+                <option value="">—</option>
+                {crms.map(o => (
+                  <option key={o.id} value={o.id}>{o.id}{o.custom ? ' ★' : ''}</option>
+                ))}
+                <option value={ADD_CUSTOM_VALUE}>+ Add custom…</option>
               </select>
             </Field>
             <Field label="Campaign">
-              <select className={inp} value={form.campaign} onChange={e => set({ campaign: e.target.value })}>
-                {CAMPAIGNS.map(o => <option key={o.id}>{o.id}</option>)}
+              <select
+                className={inp}
+                value={form.campaign || ''}
+                onChange={e => {
+                  if (e.target.value === ADD_CUSTOM_VALUE) {
+                    handleCustomDropdown('campaigns', 'campaign');
+                    return;
+                  }
+                  set({ campaign: e.target.value });
+                }}
+              >
+                <option value="">—</option>
+                {campaigns.map(o => (
+                  <option key={o.id} value={o.id}>{o.id}{o.custom ? ' ★' : ''}</option>
+                ))}
+                <option value={ADD_CUSTOM_VALUE}>+ Add custom…</option>
               </select>
             </Field>
           </div>
