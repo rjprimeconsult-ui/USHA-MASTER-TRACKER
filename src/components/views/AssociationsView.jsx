@@ -1,5 +1,5 @@
 'use client';
-import { useMemo, memo } from 'react';
+import { useMemo, useState, memo } from 'react';
 import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LabelList } from 'recharts';
 import { Users, Repeat, TrendingUp, Award, Calendar, Pause, Play, Ban, Edit2, Upload, Database, FileText, Trash2 } from 'lucide-react';
 import { ASSOCIATION_PRICING, QUARTERS, isPricedAssociation } from '@/lib/constants';
@@ -14,6 +14,7 @@ import {
   buildBookIndex,
   latestPeriodOf,
   matchLeadToBook,
+  aggregateByPolicy,
 } from '@/lib/associationResiduals';
 import { TiltCard, CountUp, Stagger, StaggerItem, Chart3DCard } from '../motion/MotionPrimitives';
 
@@ -141,19 +142,22 @@ function AssociationsView({
     };
   };
 
-  // Active monthly is the sum of: exact-truth monthly for matched clients,
-  // projection-rate for unmatched ones. Run-rate is now as accurate as the
-  // available data lets it be — no inflated grandfathered customers.
-  const activeMonthly = activeClients.reduce((s, c) => s + clientResidual(c).monthly, 0);
-  const yearly = activeMonthly * 12;
-  const hasAgentRates = Object.keys(agentRates || {}).length > 0;
-
   // Aggregations derived from imported CommissionDetail rows.
   const carrierBook   = useMemo(() => activeBook(abDetail), [abDetail]);
   const carrierTrend  = useMemo(() => periodTotals(abDetail), [abDetail]);
   const carrierYtd    = useMemo(() => ytdTotal(abDetail), [abDetail]);
   const carrierTotal  = useMemo(() => netEarned(abDetail), [abDetail]);
   const carrierYtdEst = useMemo(() => estimateYtdFromSnapshot(abDetail), [abDetail]);
+  const fullBook      = useMemo(() => aggregateByPolicy(abDetail), [abDetail]);
+
+  // Run-rate: when CSV is imported, the carrier book is the truth (every
+  // customer regardless of whether they're tracked as a PRIM lead). Otherwise
+  // fall back to summing PRIM-tracked leads.
+  const leadsActiveMonthly = activeClients.reduce((s, c) => s + clientResidual(c).monthly, 0);
+  const activeMonthly = hasBookData ? carrierBook.monthly : leadsActiveMonthly;
+  const activeCount = hasBookData ? carrierBook.count : activeClients.length;
+  const yearly = activeMonthly * 12;
+  const hasAgentRates = Object.keys(agentRates || {}).length > 0;
   // We have "actual YTD" when the agent has uploaded every month from
   // January through the latest period. Otherwise we fall back to the
   // one-snapshot estimate so they always see a YTD-ish number.
@@ -189,17 +193,31 @@ function AssociationsView({
   const nextQPayout = activeMonthly * nextQ.earningMonths.length;
 
   const year = new Date().getFullYear();
-  const quarterData = QUARTERS.map(q => {
-    const total = clients.reduce((s, c) => s + clientResidual(c).monthly * monthsActiveInQuarter(c, q, year), 0);
-    return { name: q.label, value: total, desc: q.desc };
-  });
+  // When CSV is imported, all charts use the full carrier book (every active
+  // subscriber, not just PRIM-tracked leads). Without CSV we fall back to the
+  // PRIM-leads-only computation so the page still renders meaningfully.
+  const quarterData = hasBookData
+    ? QUARTERS.map(q => ({ name: q.label, value: activeMonthly * q.earningMonths.length, desc: q.desc }))
+    : QUARTERS.map(q => ({
+        name: q.label,
+        value: clients.reduce((s, c) => s + clientResidual(c).monthly * monthsActiveInQuarter(c, q, year), 0),
+        desc: q.desc,
+      }));
 
   const byPlan = {};
-  activeClients.forEach(c => {
-    byPlan[c.associationPlan] ||= { count: 0, commission: 0 };
-    byPlan[c.associationPlan].count += 1;
-    byPlan[c.associationPlan].commission += clientResidual(c).monthly;
-  });
+  if (hasBookData) {
+    // From the carrier book — every active subscriber, accurate per-tier.
+    for (const [planId, info] of Object.entries(carrierBook.byPlan || {})) {
+      byPlan[planId] = { count: info.count, commission: info.monthly };
+    }
+  } else {
+    // Fallback: PRIM-tracked leads only.
+    activeClients.forEach(c => {
+      byPlan[c.associationPlan] ||= { count: 0, commission: 0 };
+      byPlan[c.associationPlan].count += 1;
+      byPlan[c.associationPlan].commission += clientResidual(c).monthly;
+    });
+  }
 
   return (
     <div className="space-y-5">
@@ -243,10 +261,36 @@ function AssociationsView({
       )}
 
       <Stagger className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-        <StaggerItem><Kpi label="Active Clients" numeric={activeClients.length} isCurrency={false} sub={`${pausedClients.length} paused · ${cancelledClients.length} cancelled`} grad="from-emerald-500 to-green-500" Icon={Users} /></StaggerItem>
+        <StaggerItem>
+          <Kpi
+            label="Active Clients"
+            numeric={activeCount}
+            isCurrency={false}
+            sub={hasBookData
+              ? (carrierBook.period ? `as of ${carrierBook.period}` : 'from CommissionDetail')
+              : `${pausedClients.length} paused · ${cancelledClients.length} cancelled`}
+            grad="from-emerald-500 to-green-500"
+            Icon={Users}
+          />
+        </StaggerItem>
         <StaggerItem><Kpi label="Monthly Recurring" numeric={activeMonthly} decimals={2} grad="from-indigo-500 to-blue-500" Icon={Repeat} /></StaggerItem>
         <StaggerItem><Kpi label="Projected Yearly" numeric={yearly} grad="from-violet-500 to-purple-500" Icon={TrendingUp} /></StaggerItem>
-        <StaggerItem><Kpi label={`Current ${curQ.label} Payout`} numeric={curQPayout} sub={curQ.desc} grad="from-amber-500 to-orange-500" Icon={Award} /></StaggerItem>
+        <StaggerItem>
+          <Kpi
+            label={hasBookData
+              ? (hasFullYtd ? `${carrierYtd.year} YTD Earned` : `${carrierYtdEst.year || carrierYtd.year || ''} YTD Est.`)
+              : `Current ${curQ.label} Payout`}
+            numeric={hasBookData
+              ? (hasFullYtd ? carrierYtd.total : carrierYtdEst.estimatedTotal)
+              : curQPayout}
+            decimals={2}
+            sub={hasBookData
+              ? (hasFullYtd ? 'actual · net of reversals' : `est. · ${carrierYtdEst.monthsCovered} mo × current rates`)
+              : curQ.desc}
+            grad="from-amber-500 to-orange-500"
+            Icon={Award}
+          />
+        </StaggerItem>
         <StaggerItem><Kpi label={`Next ${nextQ.label} Projected`} numeric={nextQPayout} sub={nextQ.desc} grad="from-cyan-500 to-teal-500" Icon={Calendar} /></StaggerItem>
       </Stagger>
 
@@ -283,6 +327,16 @@ function AssociationsView({
         </Chart3DCard>
       </div>
 
+      {hasBookData ? (
+        <ResidualBookTable
+          fullBook={fullBook}
+          leads={leads}
+          onEdit={onEdit}
+          onPause={onPause}
+          onResume={onResume}
+          onCancel={onCancel}
+        />
+      ) : (
       <div className="bg-white rounded-xl border border-slate-200">
         <div className="p-4 border-b border-slate-200">
           <h3 className="font-semibold text-slate-900">All Association Clients</h3>
@@ -351,8 +405,170 @@ function AssociationsView({
           </table>
         </div>
       </div>
+      )}
     </div>
   );
+}
+
+/**
+ * Unified Residual Book table — shown only when CSV is imported.
+ *
+ * Rows: every customer in the carrier book (full 187, not just the 34
+ * tracked as PRIM leads). Each row carries a "Tracked in PRIM" flag
+ * derived from a name match against the leads array. When matched, the
+ * action buttons (Pause/Resume/Cancel/Edit) appear; otherwise they're
+ * hidden because there's no lead object to act on.
+ *
+ * Filter dropdown lets the agent narrow to: All / Tracked in PRIM /
+ * Not tracked yet — handy for spotting which CSV customers should be
+ * created as leads in PRIM.
+ */
+function ResidualBookTable({ fullBook, leads, onEdit, onPause, onResume, onCancel }) {
+  const [filter, setFilter] = useState('all'); // 'all' | 'tracked' | 'untracked'
+  const [search, setSearch] = useState('');
+
+  // Build a name → lead map for "Tracked in PRIM" detection. Keyed
+  // identically to how the residual matcher normalizes names.
+  const leadByName = useMemo(() => {
+    const m = new Map();
+    for (const l of leads) {
+      const k = normalizeNameKeyForRow(l.name);
+      if (k && !m.has(k)) m.set(k, l);
+    }
+    return m;
+  }, [leads]);
+
+  const enriched = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return fullBook
+      .map(p => {
+        const lead = leadByName.get(normalizeNameKeyForRow(p.customer)) || null;
+        return { ...p, lead };
+      })
+      .filter(p => {
+        if (filter === 'tracked' && !p.lead) return false;
+        if (filter === 'untracked' && p.lead) return false;
+        if (q && !p.customer.toLowerCase().includes(q) && !(p.planId || '').toLowerCase().includes(q)) return false;
+        return true;
+      });
+  }, [fullBook, leadByName, filter, search]);
+
+  const totalMonthly = enriched.reduce((s, p) => s + (p.currentMonthly || 0), 0);
+  const totalPaidAll = enriched.reduce((s, p) => s + (p.totalPaid || 0), 0);
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200">
+      <div className="p-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="font-semibold text-slate-900">Full Residual Book</h3>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Every active subscriber from your CommissionDetail — including customers not tracked as leads in PRIM.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search name or plan…"
+            className="text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 w-40"
+          />
+          <select
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            className="text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          >
+            <option value="all">All ({fullBook.length})</option>
+            <option value="tracked">Tracked in PRIM</option>
+            <option value="untracked">Not tracked yet</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="overflow-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50 text-slate-600 text-xs">
+            <tr>
+              <th className="text-left p-2">Customer</th>
+              <th className="text-left p-2">Plan / Product</th>
+              <th className="text-left p-2">Sign-up</th>
+              <th className="text-right p-2">Months in book</th>
+              <th className="text-right p-2">Monthly</th>
+              <th className="text-right p-2">Total paid</th>
+              <th className="text-center p-2">Status</th>
+              <th className="text-right p-2">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {enriched.map(p => (
+              <tr key={p.policyId} className="border-t border-slate-100 hover:bg-slate-50">
+                <td className="p-2 font-medium text-slate-900">{p.customer || '—'}</td>
+                <td className="p-2">
+                  {p.planId
+                    ? <span className={`tier-text ${tierClass(p.planId)} text-xs`}>{p.planId}</span>
+                    : <span className="text-xs text-slate-400" title={p.productLabel}>{p.productLabel || 'unknown'}</span>}
+                </td>
+                <td className="p-2">{usDate(p.effectiveDate)}</td>
+                <td className="text-right p-2">{p.monthsInBook}</td>
+                <td className="text-right p-2 text-emerald-700 font-medium">{p.active ? fmt2(p.currentMonthly) : <span className="text-slate-400">—</span>}</td>
+                <td className="text-right p-2">{fmt2(p.totalPaid)}</td>
+                <td className="text-center p-2">
+                  {p.lead
+                    ? <span className="inline-block px-2 py-0.5 rounded text-[10px] font-medium bg-indigo-100 text-indigo-700">In PRIM</span>
+                    : <span className="inline-block px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-500">Not tracked</span>}
+                </td>
+                <td className="text-right p-2">
+                  {p.lead ? (
+                    <div className="flex justify-end gap-1">
+                      {p.lead.associationStatus === 'active' && (
+                        <button onClick={() => onPause(p.lead.id)} title="Pause" className="text-amber-600 hover:bg-amber-50 p-1 rounded"><Pause size={14} /></button>
+                      )}
+                      {p.lead.associationStatus === 'paused' && (
+                        <button onClick={() => onResume(p.lead.id)} title="Resume" className="text-emerald-600 hover:bg-emerald-50 p-1 rounded"><Play size={14} /></button>
+                      )}
+                      {p.lead.associationStatus !== 'cancelled' && (
+                        <button onClick={() => onCancel(p.lead.id)} title="Cancel" className="text-red-600 hover:bg-red-50 p-1 rounded"><Ban size={14} /></button>
+                      )}
+                      <button onClick={() => onEdit(p.lead)} title="Edit" className="text-slate-500 hover:bg-slate-100 p-1 rounded"><Edit2 size={14} /></button>
+                    </div>
+                  ) : (
+                    <span className="text-[10px] text-slate-400">—</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {enriched.length === 0 && (
+              <tr><td colSpan="8" className="text-center p-8 text-slate-400">No customers match this filter.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="p-3 border-t border-slate-200 bg-slate-50 text-xs text-slate-600 flex items-center justify-between">
+        <span>{enriched.length} of {fullBook.length} customer{fullBook.length !== 1 ? 's' : ''}</span>
+        <span>
+          Monthly: <span className="font-semibold text-slate-900">{fmt2(totalMonthly)}</span> ·
+          Total paid: <span className="font-semibold text-slate-900">{fmt2(totalPaidAll)}</span>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// Inline name-key helper used by the residual book table — duplicated from
+// associationResiduals to avoid an import cycle in the React module graph.
+function normalizeNameKeyForRow(name) {
+  if (!name || typeof name !== 'string') return null;
+  let s = name.toLowerCase().trim();
+  s = s.replace(/['’`.,]/g, '');
+  s = s.replace(/[-_/]/g, ' ');
+  s = s.replace(/\s+/g, ' ').trim();
+  if (!s) return null;
+  s = s.replace(/\s+(jr|sr|ii|iii|iv|2nd|3rd|4th)$/i, '').trim();
+  if (!s) return null;
+  const parts = s.split(' ');
+  if (parts.length === 1) return parts[0];
+  return `${parts[0]} ${parts[parts.length - 1]}`;
 }
 
 /**
@@ -407,7 +623,6 @@ function CommissionDetailPanel({
     );
   }
 
-  const latestPeriod = carrierBook.period;
   return (
     <div className="bg-white border border-slate-200 rounded-xl p-4">
       <div className="flex items-start justify-between gap-3 mb-3">
@@ -438,35 +653,8 @@ function CommissionDetailPanel({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-        <MiniStat
-          label="Active subscribers"
-          value={carrierBook.count.toLocaleString()}
-          sub={latestPeriod ? `as of ${latestPeriod}` : ''}
-        />
-        <MiniStat
-          label="Monthly run-rate"
-          value={fmt2(carrierBook.monthly)}
-          sub={`${fmt2(carrierBook.monthly * 12)}/yr`}
-        />
-        {hasFullYtd ? (
-          <MiniStat
-            label={`${carrierYtd.year || '—'} YTD paid`}
-            value={fmt2(carrierYtd.total)}
-            sub="actual · net of reversals"
-          />
-        ) : (
-          <MiniStat
-            label={`${carrierYtdEst.year || carrierYtd.year || '—'} YTD est.`}
-            value={fmt2(carrierYtdEst.estimatedTotal)}
-            sub={`based on ${carrierYtdEst.monthsCovered} mo × current rates`}
-          />
-        )}
-        <MiniStat
-          label="Imported actual"
-          value={fmt2(carrierTotal)}
-          sub={`${abDetail.length.toLocaleString()} rows · ${periodsCovered(abDetail)}`}
-        />
+      <div className="text-[11px] text-slate-500 mb-3">
+        Imported {abDetail.length.toLocaleString()} rows · {periodsCovered(abDetail)} · all-time net <span className="font-semibold text-slate-700">{fmt2(carrierTotal)}</span>
       </div>
 
       {hasAgentRates && (

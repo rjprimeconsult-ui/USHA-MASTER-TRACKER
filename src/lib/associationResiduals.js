@@ -442,6 +442,81 @@ export function matchLeadToBook(lead, index, latestPeriod) {
   };
 }
 
+// ---------- Per-policy aggregation (full residual book table) ----------
+
+/**
+ * Roll the residual rows up to one entry per policy. This is what the
+ * full "Residual Book" table on the Associations tab renders — every
+ * customer the agent earns from, regardless of whether they're tracked
+ * as a PRIM lead.
+ *
+ * Per policy, returns:
+ *   { policyId, customer, planId, productLabel, effectiveDate,
+ *     currentMonthly,  // NET asEarned in the latest imported period (0 if churned)
+ *     totalPaid,       // NET asEarned summed across every imported period
+ *     monthsInBook,    // count of distinct periods this policy appears in
+ *     periodsActive,   // sorted array of period strings
+ *     active,          // bool — appeared in the latest period
+ *   }
+ *
+ * Sorted by sign-up date ascending so the oldest customers appear first
+ * (visually, "your book started here and grew to today"). The caller is
+ * free to re-sort.
+ */
+export function aggregateByPolicy(rows) {
+  if (!rows || rows.length === 0) return [];
+  const latest = latestPeriodOf(rows);
+
+  const byPolicy = new Map();
+  for (const r of rows) {
+    if (!r.policyId) continue;
+    let entry = byPolicy.get(r.policyId);
+    if (!entry) {
+      entry = {
+        policyId: r.policyId,
+        customer: r.customer || '',
+        planId: r.planId || null,
+        productLabel: r.productLabel || '',
+        effectiveDate: r.effectiveDate || null,
+        currentMonthly: 0,
+        totalPaid: 0,
+        periodsSet: new Set(),
+        latestRate: 0, // NET asEarned in the latest period
+        active: false,
+      };
+      byPolicy.set(r.policyId, entry);
+    }
+    // Most recent customer/plan/effectiveDate wins (USHA can re-issue rows)
+    if (r.customer && !entry.customer) entry.customer = r.customer;
+    if (r.planId && !entry.planId) entry.planId = r.planId;
+    if (r.effectiveDate && (!entry.effectiveDate || r.effectiveDate < entry.effectiveDate)) {
+      // Use the EARLIEST effective date — that's when the policy started.
+      entry.effectiveDate = r.effectiveDate;
+    }
+    entry.totalPaid += Number(r.asEarned) || 0;
+    if (r.period) entry.periodsSet.add(r.period);
+    if (latest && r.period === latest) {
+      entry.latestRate += Number(r.asEarned) || 0;
+      entry.active = true;
+    }
+  }
+
+  return [...byPolicy.values()]
+    .map(e => ({
+      policyId: e.policyId,
+      customer: e.customer,
+      planId: e.planId,
+      productLabel: e.productLabel,
+      effectiveDate: e.effectiveDate,
+      currentMonthly: e.active ? Math.round(e.latestRate * 100) / 100 : 0,
+      totalPaid: Math.round(e.totalPaid * 100) / 100,
+      monthsInBook: e.periodsSet.size,
+      periodsActive: [...e.periodsSet].sort(),
+      active: e.active,
+    }))
+    .sort((a, b) => String(a.effectiveDate || '').localeCompare(String(b.effectiveDate || '')));
+}
+
 // ---------- Aggregations for the Associations dashboard ----------
 
 /**
