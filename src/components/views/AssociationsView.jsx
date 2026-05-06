@@ -1,9 +1,16 @@
 'use client';
 import { useMemo, memo } from 'react';
 import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LabelList } from 'recharts';
-import { Users, Repeat, TrendingUp, Award, Calendar, Pause, Play, Ban, Edit2 } from 'lucide-react';
+import { Users, Repeat, TrendingUp, Award, Calendar, Pause, Play, Ban, Edit2, Upload, Database, FileText } from 'lucide-react';
 import { ASSOCIATION_PRICING, QUARTERS, isPricedAssociation } from '@/lib/constants';
 import { fmt, fmt2, usDate, monthsActiveTotal, monthsActiveInQuarter, getCurrentQuarter, getNextQuarter } from '@/lib/utils';
+import {
+  getAgentResidualRateTagged,
+  netEarned,
+  activeBook,
+  periodTotals,
+  ytdTotal,
+} from '@/lib/associationResiduals';
 import { TiltCard, CountUp, Stagger, StaggerItem, Chart3DCard } from '../motion/MotionPrimitives';
 
 // Canonical display order — highest tier first. Any plan not in this list
@@ -65,7 +72,17 @@ const StatusBadge = ({ s }) => {
   return <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${cls}`}>{s.charAt(0).toUpperCase() + s.slice(1)}</span>;
 };
 
-function AssociationsView({ leads, onEdit, onPause, onResume, onCancel }) {
+function AssociationsView({
+  leads,
+  onEdit,
+  onPause,
+  onResume,
+  onCancel,
+  // New: residual tracking from CommissionDetail.csv
+  abDetail = [],          // imported residual rows (isolated storage)
+  agentRates = {},        // derived per-plan effective rates
+  onOpenImport,           // opens the CommissionDetail uploader
+}) {
   const clients = useMemo(() =>
     leads.filter(l => l.stage === 'Issued' && l.associationPlan && isPricedAssociation(l.associationPlan))
   , [leads]);
@@ -74,9 +91,18 @@ function AssociationsView({ leads, onEdit, onPause, onResume, onCancel }) {
   const pausedClients = clients.filter(c => c.associationStatus === 'paused');
   const cancelledClients = clients.filter(c => c.associationStatus === 'cancelled');
 
-  const monthlyCommission = (c) => ASSOCIATION_PRICING[c.associationPlan]?.commission || 0;
+  // Use agent-derived rates when available; fall back to baseline pricing.
+  const rateInfo = (planId) => getAgentResidualRateTagged(planId, agentRates);
+  const monthlyCommission = (c) => rateInfo(c.associationPlan).rate;
   const activeMonthly = activeClients.reduce((s, c) => s + monthlyCommission(c), 0);
   const yearly = activeMonthly * 12;
+  const hasAgentRates = Object.keys(agentRates || {}).length > 0;
+
+  // Aggregations derived from imported CommissionDetail rows.
+  const carrierBook   = useMemo(() => activeBook(abDetail), [abDetail]);
+  const carrierTrend  = useMemo(() => periodTotals(abDetail), [abDetail]);
+  const carrierYtd    = useMemo(() => ytdTotal(abDetail), [abDetail]);
+  const carrierTotal  = useMemo(() => netEarned(abDetail), [abDetail]);
 
   const curQ = getCurrentQuarter();
   const nextQ = getNextQuarter();
@@ -98,6 +124,41 @@ function AssociationsView({ leads, onEdit, onPause, onResume, onCancel }) {
 
   return (
     <div className="space-y-5">
+      {/* CommissionDetail import + agent-rate banner. Always visible at the top
+          so the agent always has a one-click path to refresh their residual book. */}
+      <CommissionDetailPanel
+        abDetail={abDetail}
+        agentRates={agentRates}
+        carrierBook={carrierBook}
+        carrierYtd={carrierYtd}
+        carrierTotal={carrierTotal}
+        hasAgentRates={hasAgentRates}
+        onOpenImport={onOpenImport}
+      />
+
+      {abDetail.length > 0 && carrierTrend.length > 0 && (
+        <Chart3DCard>
+          <h3 className="font-semibold text-slate-900 mb-3 flex items-center gap-2">
+            <TrendingUp size={14} className="text-indigo-500" />
+            Monthly residual paid (from CommissionDetail)
+          </h3>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={carrierTrend}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <XAxis dataKey="period" fontSize={11} />
+              <YAxis fontSize={11} />
+              <Tooltip formatter={(v) => fmt2(v)} />
+              <Bar dataKey="total" radius={[4, 4, 0, 0]} fill="#6366f1" animationDuration={700}>
+                <LabelList dataKey="total" position="top" fill="#0f172a" fontSize={10} fontWeight={700} formatter={(v) => v > 0 ? fmt(v) : ''} />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+          <p className="text-xs text-slate-500 mt-2">
+            Net of reversals. Upload prior-month CommissionDetail files to extend the trend back further.
+          </p>
+        </Chart3DCard>
+      )}
+
       <Stagger className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
         <StaggerItem><Kpi label="Active Clients" numeric={activeClients.length} isCurrency={false} sub={`${pausedClients.length} paused · ${cancelledClients.length} cancelled`} grad="from-emerald-500 to-green-500" Icon={Users} /></StaggerItem>
         <StaggerItem><Kpi label="Monthly Recurring" numeric={activeMonthly} decimals={2} grad="from-indigo-500 to-blue-500" Icon={Repeat} /></StaggerItem>
@@ -163,16 +224,20 @@ function AssociationsView({ leads, onEdit, onPause, onResume, onCancel }) {
             <tbody>
               {clients.map(c => {
                 const p = ASSOCIATION_PRICING[c.associationPlan];
+                const ri = rateInfo(c.associationPlan);
                 const months = monthsActiveTotal(c);
-                const paid = months * (p?.commission || 0);
-                const projAnnual = (c.associationStatus === 'active' ? (p?.commission || 0) * 12 : 0);
+                const paid = months * ri.rate;
+                const projAnnual = (c.associationStatus === 'active' ? ri.rate * 12 : 0);
                 return (
                   <tr key={c.id} className="border-t border-slate-100 hover:bg-slate-50">
                     <td className="p-2 font-medium text-slate-900">{c.name}</td>
                     <td className="p-2"><span className="inline-block px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded text-xs">{c.mainProduct || '—'}</span></td>
                     <td className="p-2"><span className={`tier-text ${tierClass(c.associationPlan)} text-xs`}>{c.associationPlan}</span></td>
                     <td className="text-right p-2">{fmt2(p?.premium || 0)}</td>
-                    <td className="text-right p-2 text-emerald-700 font-medium">{fmt2(p?.commission || 0)}</td>
+                    <td className="text-right p-2 text-emerald-700 font-medium">
+                      {fmt2(ri.rate)}
+                      {ri.source === 'agent' && <span className="ml-1 text-[9px] uppercase tracking-wide bg-indigo-100 text-indigo-700 px-1 rounded" title="From your CommissionDetail upload">YOU</span>}
+                    </td>
                     <td className="p-2">{usDate(c.associationStartDate)}</td>
                     <td className="text-center p-2"><StatusBadge s={c.associationStatus} /></td>
                     <td className="text-right p-2">{months}</td>
@@ -202,6 +267,122 @@ function AssociationsView({ leads, onEdit, onPause, onResume, onCancel }) {
           </table>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Top-of-page panel that surfaces the agent's residual book health and
+ * gives one-click access to upload a fresh CommissionDetail.csv.
+ *
+ * Two modes:
+ *  - Empty state: "Upload your CommissionDetail.csv to unlock accurate
+ *    per-tier rates" + a single CTA.
+ *  - Loaded state: shows active subscribers, monthly run-rate, YTD net,
+ *    derived rate badges per tier — plus a "Re-import / extend history"
+ *    button so the user can keep adding monthly files.
+ */
+function CommissionDetailPanel({
+  abDetail,
+  agentRates,
+  carrierBook,
+  carrierYtd,
+  carrierTotal,
+  hasAgentRates,
+  onOpenImport,
+}) {
+  const hasData = abDetail && abDetail.length > 0;
+
+  if (!hasData) {
+    return (
+      <div className="bg-gradient-to-br from-indigo-50 to-violet-50 border border-indigo-200 rounded-xl p-4 flex items-center justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 rounded-lg bg-white shadow flex items-center justify-center flex-shrink-0">
+            <FileText size={18} className="text-indigo-600" />
+          </div>
+          <div>
+            <div className="font-semibold text-slate-900">Upload your CommissionDetail.csv to unlock accurate residuals</div>
+            <p className="text-sm text-slate-600 mt-0.5">
+              The projections below use the baseline contract rate. Upload your USHA CommissionDetail
+              export to derive your <em>actual</em> per-tier rate (Executive Diamond, Diamond, etc.) and
+              see your full residual book history.
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={onOpenImport}
+          className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-lg flex items-center gap-2 flex-shrink-0"
+        >
+          <Upload size={14} /> Upload CSV
+        </button>
+      </div>
+    );
+  }
+
+  const latestPeriod = carrierBook.period;
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl p-4">
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div className="flex items-center gap-2">
+          <Database size={16} className="text-indigo-600" />
+          <h3 className="font-semibold text-slate-900">Residual book (from CommissionDetail)</h3>
+        </div>
+        <button
+          onClick={onOpenImport}
+          className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium px-3 py-1.5 rounded-lg flex items-center gap-1.5"
+        >
+          <Upload size={12} /> Add another month
+        </button>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+        <MiniStat
+          label="Active subscribers"
+          value={carrierBook.count.toLocaleString()}
+          sub={latestPeriod ? `as of ${latestPeriod}` : ''}
+        />
+        <MiniStat
+          label="Monthly run-rate"
+          value={`$${fmt2(carrierBook.monthly)}`}
+          sub={`$${fmt2(carrierBook.monthly * 12)}/yr`}
+        />
+        <MiniStat
+          label={`${carrierYtd.year || '—'} YTD paid`}
+          value={`$${fmt2(carrierYtd.total)}`}
+          sub="net of reversals"
+        />
+        <MiniStat
+          label="All-time imported"
+          value={`$${fmt2(carrierTotal)}`}
+          sub={`${abDetail.length.toLocaleString()} rows`}
+        />
+      </div>
+
+      {hasAgentRates && (
+        <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3">
+          <div className="text-xs font-semibold text-indigo-900 mb-1.5">Your contract rates (derived from your latest data)</div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-x-3 gap-y-1 text-xs">
+            {Object.entries(agentRates)
+              .sort(([, a], [, b]) => (b.currentRate || 0) - (a.currentRate || 0))
+              .map(([planId, info]) => (
+                <div key={planId} className="flex items-center justify-between border-b border-indigo-100 pb-1 last:border-0">
+                  <span className="text-indigo-900 font-medium">{planId}</span>
+                  <span className="font-mono text-emerald-700 font-semibold">${fmt2(info.currentRate)}/mo</span>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MiniStat({ label, value, sub }) {
+  return (
+    <div className="bg-slate-50 rounded-lg p-2.5 border border-slate-100">
+      <div className="text-[11px] text-slate-500 uppercase tracking-wide">{label}</div>
+      <div className="text-lg font-bold text-slate-900 leading-tight">{value}</div>
+      {sub && <div className="text-[10px] text-slate-500 mt-0.5">{sub}</div>}
     </div>
   );
 }

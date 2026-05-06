@@ -33,6 +33,7 @@ import AgentChatbot from './AgentChatbot';
 import OnboardingWalkthrough from './OnboardingWalkthrough';
 import PaywallGate, { TrialBanner } from './PaywallGate';
 import ScreenshotImport from './ScreenshotImport';
+import AssociationCommissionDetailImport from './AssociationCommissionDetailImport';
 import Toast from './Toast';
 import AdvanceMonthsHistoryEditor from './AdvanceMonthsHistoryEditor';
 import { fireConfetti, FadeIn, OrbBackdrop } from './motion/MotionPrimitives';
@@ -55,6 +56,11 @@ const BE_KEY   = 'business_expenses_v1';
 const BI_KEY   = 'business_income_v1';
 const PROSPECTS_KEY = 'prospects_v1';
 const PROSPECT_SETTINGS_KEY = 'prospect_settings_v1';
+// Association Bonus residual book — populated by uploading USHA's
+// CommissionDetail.csv. Kept in isolated keys so it never affects
+// leads, advances, or Books P&L.
+const AB_DETAIL_KEY = 'association_bonus_detail_v1';
+const AGENT_RATES_KEY = 'agent_residual_rates_v1';
 
 // User menu — shows current email + sign-out button. Lives in the header.
 function UserMenu() {
@@ -141,6 +147,10 @@ export default function LeadTracker() {
   const [prospects, setProspects] = useState([]);
   const [prospectSettings, setProspectSettings] = useState(null);
   const [tier, setTier] = useState('WA');
+  // Association Bonus residual data — loaded from cloud, isolated from leads.
+  const [abDetail, setAbDetail] = useState([]);
+  const [agentRates, setAgentRates] = useState({});
+  const [showAbImport, setShowAbImport] = useState(false);
   const [toast, setToast] = useState(null);
   const [lastImportBatch, setLastImportBatch] = useState(null);
 
@@ -303,6 +313,21 @@ export default function LeadTracker() {
       }
       setProspectSettings(psInitial);
 
+      // Association Bonus residual book (CommissionDetail imports). Best
+      // effort — corrupted/missing data should never block app load.
+      try {
+        const abRaw = await storage.getItem(AB_DETAIL_KEY);
+        if (abRaw) {
+          const parsed = JSON.parse(abRaw);
+          if (Array.isArray(parsed)) setAbDetail(parsed);
+        }
+        const ratesRaw = await storage.getItem(AGENT_RATES_KEY);
+        if (ratesRaw) {
+          const parsed = JSON.parse(ratesRaw);
+          if (parsed && typeof parsed === 'object') setAgentRates(parsed);
+        }
+      } catch { /* ignore — feature degrades to baseline rates */ }
+
       setLoaded(true);
 
       // Auto-launch onboarding tour for genuinely new agents (no progress
@@ -334,6 +359,8 @@ export default function LeadTracker() {
   useEffect(() => { if (loaded) storage.setItem(BI_KEY, JSON.stringify(businessIncome)); }, [businessIncome, loaded]);
   useEffect(() => { if (loaded) storage.setItem(PROSPECTS_KEY, JSON.stringify(prospects)); }, [prospects, loaded]);
   useEffect(() => { if (loaded && prospectSettings) storage.setItem(PROSPECT_SETTINGS_KEY, JSON.stringify(prospectSettings)); }, [prospectSettings, loaded]);
+  useEffect(() => { if (loaded) storage.setItem(AB_DETAIL_KEY, JSON.stringify(abDetail)); }, [abDetail, loaded]);
+  useEffect(() => { if (loaded) storage.setItem(AGENT_RATES_KEY, JSON.stringify(agentRates)); }, [agentRates, loaded]);
 
   // lead handlers — useCallback'd so memoized views can skip re-render
   const newLead = useCallback(() => setLeadForm(mkLead({
@@ -1145,6 +1172,9 @@ export default function LeadTracker() {
             onPause={pauseClient}
             onResume={resumeClient}
             onCancel={cancelClient}
+            abDetail={abDetail}
+            agentRates={agentRates}
+            onOpenImport={() => setShowAbImport(true)}
           />
         </ViewMount>
         <ViewMount visible={view === 'closed'} viewKey="closed">
@@ -1356,6 +1386,23 @@ export default function LeadTracker() {
 
       {/* One-time no-PHI acknowledgement (gates the app on first sign-in) */}
       <NoPhiBanner />
+
+      {/* Association Bonus residual book — CommissionDetail.csv import.
+          Writes to isolated storage keys; never touches leads or P&L. */}
+      {showAbImport && (
+        <AssociationCommissionDetailImport
+          existingRows={abDetail}
+          onClose={() => setShowAbImport(false)}
+          onCommit={({ rows, rates, addedCount }) => {
+            setAbDetail(rows);
+            setAgentRates(rates);
+            setShowAbImport(false);
+            showToast(addedCount > 0
+              ? `Imported ${addedCount} new residual row${addedCount !== 1 ? 's' : ''}`
+              : 'Already up to date — no new rows added');
+          }}
+        />
+      )}
 
       {/* Screenshot -> Lead import (USHA portal OCR) */}
       <ScreenshotImport

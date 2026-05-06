@@ -169,6 +169,10 @@ const APP_KEYS = [
   'prospect_source_colors_v1',
   'user_rubric_v1',
   'import_history_v1',
+  // Association Bonus residual tracking (CommissionDetail.csv imports).
+  // Isolated from leads/Books — these only affect the Associations tab.
+  'association_bonus_detail_v1',
+  'agent_residual_rates_v1',
 ];
 export async function migrateLocalToCloud() {
   if (!useCloud()) throw new Error('Not signed in');

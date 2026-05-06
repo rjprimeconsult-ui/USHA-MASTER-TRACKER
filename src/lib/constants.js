@@ -146,6 +146,37 @@ export const ASSOCIATION_PRICING = {
 
 export const isPricedAssociation = (id) => ASSOCIATION_PRICING[id] !== undefined;
 
+/**
+ * Maps a USHA CommissionDetail "Product" string to our internal association
+ * plan id. The CSV ships codes like:
+ *   "3005 - TIER 6 EXE DMND"
+ *   "3105 - SCA TIER 6 EXE DMND"
+ *   "2120 - ABCELITE2020"
+ *   "3020 - AIBC PRO - ACA"
+ *
+ * The 3000 series and 3100 (SCA) series are parallel programs that share
+ * tier labels — both 3005 and 3105 are "Executive Diamond" from the agent's
+ * perspective. Same applies down the tiers. We collapse them.
+ *
+ * Returns null when the product doesn't map to one of our priced plans
+ * (e.g. AIBC PRO ACA wraps don't appear in the lead form's dropdown).
+ */
+export function productCodeToPlanId(productString) {
+  if (!productString || typeof productString !== 'string') return null;
+  const s = productString.toUpperCase();
+  // Order matters — check specific tiers before generic ones.
+  if (s.includes('EXE DMND') || s.includes('EXEC DMND') || s.includes('EXECUTIVE DIAMOND')) return 'EXECUTIVE DIAMOND';
+  if (s.includes('TIER 5 DIAMOND') || s.includes('TIER5 DIAMOND')) return 'DIAMOND';
+  if (s.includes('TIER 4 EMERALD') || s.includes('TIER4 EMERALD')) return 'EMERALD';
+  if (s.includes('TIER 3 SAPPHIRE') || s.includes('TIER3 SAPPHIRE')) return 'SAPPHIRE';
+  if (s.includes('TIER 2 RUBY') || s.includes('TIER2 RUBY')) return 'RUBY';
+  if (s.includes('TIER1 PEARL') || s.includes('TIER 1 PEARL')) return 'PEARL';
+  if (s.includes('ABCELITE') || s.includes('ABC ELITE')) return 'ABC ELITE';
+  if (s.includes('ABCEXECUTIVE') || s.includes('ABC EXECUTIVE')) return 'ABC EXECUTIVE';
+  if (s.includes('ABCENTREPRENEUR') || s.includes('ABC ENTREPRENEUR')) return 'ABC ENTREPRENEUR';
+  return null; // unknown — gets bucketed as OTHER
+}
+
 export const compatibleAssociations = (mainProduct) => {
   const priced = Object.keys(ASSOCIATION_PRICING);
   const unpriced = ASSOCIATION_PLANS.map(p => p.id).filter(id => !priced.includes(id));
