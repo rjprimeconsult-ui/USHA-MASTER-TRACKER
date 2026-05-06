@@ -66,7 +66,7 @@ export const CHAT_TOOLS = [
   {
     name: 'getExpenseTotals',
     description:
-      'Sum the user\'s Books expenses by category over a period. Use when they ask "how much did I spend on X", "what\'s my marketing total this year", "expenses by category". Returns totals per category plus the grand total.',
+      'Sum the user\'s Books + Platform expenses by category over a period. Use when they ask "how much did I spend on X", "what\'s my marketing total this year", "expenses by category", or "expenses for January". For a specific month, pass dateFrom and dateTo (e.g. January 2026 = 2026-01-01 / 2026-01-31). For broad periods, pass `period`. Returns books_total, platforms_total, grand_total, and a per-category breakdown.',
     input_schema: {
       type: 'object',
       properties: {
@@ -164,6 +164,12 @@ function withinRange(iso, from, to) {
 }
 
 // Read a JSON blob from user_kv. Returns parsed value or null.
+//
+// `value` is a JSONB column — supabase-js returns it already parsed (object
+// or array), NOT a string. We tolerate the legacy string shape just in case
+// older rows were written as strings, but the common path is to use the
+// returned value directly. Earlier versions ran JSON.parse on the parsed
+// object and silently returned null — that broke every tool that reads kv.
 async function readKv(supabase, userId, key) {
   const { data, error } = await supabase
     .from('user_kv')
@@ -171,8 +177,13 @@ async function readKv(supabase, userId, key) {
     .eq('user_id', userId)
     .eq('key', key)
     .maybeSingle();
-  if (error || !data?.value) return null;
-  try { return JSON.parse(data.value); } catch { return null; }
+  if (error || !data) return null;
+  const v = data.value;
+  if (v == null) return null;
+  if (typeof v === 'string') {
+    try { return JSON.parse(v); } catch { return null; }
+  }
+  return v;
 }
 
 // ===== Tool handlers =====
