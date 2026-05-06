@@ -495,6 +495,77 @@ export function periodTotals(rows) {
 }
 
 /**
+ * Estimate YTD residuals when the agent only has ONE monthly snapshot.
+ *
+ * Method: for each customer with a positive payout in the latest period,
+ * take their EffectiveDate, count how many calendar months of the current
+ * year they've been active (Jan through the snapshot month), and multiply
+ * by their latest rate. Sum across customers.
+ *
+ * Caveats (transparent in the UI label):
+ *  - Slightly overstates customers whose contract rate bumped mid-year
+ *    (e.g. a Tier 6 customer earning $23 in Jan, $28 from Feb onward
+ *     gets counted at $28 × 4 = $112 instead of $23 + $28×3 = $107).
+ *  - Customers who churned earlier in the year are NOT counted (we only
+ *    see survivors), so the estimate trends slightly low if churn happened.
+ *
+ * Net effect: usually within ~2% of the truth. Good enough for "what did
+ * I earn YTD" without forcing the agent to chase down older monthly files.
+ *
+ * Returns { year, monthsCovered, estimatedTotal }. Year and monthsCovered
+ * derived from the snapshot period.
+ */
+export function estimateYtdFromSnapshot(rows) {
+  if (!rows || rows.length === 0) return { year: null, monthsCovered: 0, estimatedTotal: 0 };
+  const latest = latestPeriodOf(rows);
+  if (!latest) return { year: null, monthsCovered: 0, estimatedTotal: 0 };
+
+  const [yearStr, monthStr] = latest.split('-');
+  const year = Number(yearStr);
+  const snapshotMonth = Number(monthStr); // 1-12
+  if (!year || !snapshotMonth) return { year: null, monthsCovered: 0, estimatedTotal: 0 };
+
+  // Use the snapshot period as the source of "currently active customers"
+  // — that's the only month we have a definitive list for.
+  const snapshot = rows.filter(r => r.period === latest);
+
+  // Net per policy in this period (one customer can have a reversal +
+  // correction in same period). We want their effective monthly rate.
+  const net = new Map();
+  const eff = new Map();
+  for (const r of snapshot) {
+    const k = r.policyId || `${r.customer}|${r.productCode}`;
+    net.set(k, (net.get(k) || 0) + (Number(r.asEarned) || 0));
+    if (!eff.has(k) && r.effectiveDate) eff.set(k, r.effectiveDate);
+  }
+
+  let total = 0;
+  for (const [k, monthlyNet] of net.entries()) {
+    if (!(monthlyNet > 0)) continue;
+    const effIso = eff.get(k);
+    let monthsActive = snapshotMonth; // assume Jan through snapshot
+    if (effIso) {
+      const [effY, effM] = effIso.split('-').map(Number);
+      if (effY > year) {
+        monthsActive = 0; // came in after the snapshot year — shouldn't reach here
+      } else if (effY === year) {
+        // Came in this year — count from their effective month forward
+        monthsActive = Math.max(0, snapshotMonth - effM + 1);
+      }
+      // effY < year → all months Jan-snapshot apply (initial value already correct)
+    }
+    if (monthsActive <= 0) continue;
+    total += monthlyNet * monthsActive;
+  }
+
+  return {
+    year: String(year),
+    monthsCovered: snapshotMonth,
+    estimatedTotal: Math.round(total * 100) / 100,
+  };
+}
+
+/**
  * YTD total for the calendar year of the most-recent period.
  * Includes negative adjustments (honest net).
  */

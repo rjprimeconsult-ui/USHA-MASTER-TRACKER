@@ -10,6 +10,7 @@ import {
   activeBook,
   periodTotals,
   ytdTotal,
+  estimateYtdFromSnapshot,
   buildBookIndex,
   latestPeriodOf,
   matchLeadToBook,
@@ -151,6 +152,21 @@ function AssociationsView({
   const carrierTrend  = useMemo(() => periodTotals(abDetail), [abDetail]);
   const carrierYtd    = useMemo(() => ytdTotal(abDetail), [abDetail]);
   const carrierTotal  = useMemo(() => netEarned(abDetail), [abDetail]);
+  const carrierYtdEst = useMemo(() => estimateYtdFromSnapshot(abDetail), [abDetail]);
+  // We have "actual YTD" when the agent has uploaded every month from
+  // January through the latest period. Otherwise we fall back to the
+  // one-snapshot estimate so they always see a YTD-ish number.
+  const periodsImported = useMemo(() => new Set(abDetail.map(r => r.period).filter(Boolean)), [abDetail]);
+  const hasFullYtd = (() => {
+    if (!carrierYtd.year || carrierYtd.total === 0) return false;
+    const month = carrierBook.period ? Number(carrierBook.period.split('-')[1]) : 0;
+    if (!month) return false;
+    for (let m = 1; m <= month; m++) {
+      const key = `${carrierYtd.year}-${String(m).padStart(2, '0')}`;
+      if (!periodsImported.has(key)) return false;
+    }
+    return true;
+  })();
 
   // Reconciliation badge: how many clients matched to the book?
   const matchStats = useMemo(() => {
@@ -194,6 +210,8 @@ function AssociationsView({
         carrierBook={carrierBook}
         carrierYtd={carrierYtd}
         carrierTotal={carrierTotal}
+        carrierYtdEst={carrierYtdEst}
+        hasFullYtd={hasFullYtd}
         hasAgentRates={hasAgentRates}
         matchStats={matchStats}
         onOpenImport={onOpenImport}
@@ -352,6 +370,8 @@ function CommissionDetailPanel({
   carrierBook,
   carrierYtd,
   carrierTotal,
+  carrierYtdEst,
+  hasFullYtd,
   hasAgentRates,
   matchStats,
   onOpenImport,
@@ -411,15 +431,23 @@ function CommissionDetailPanel({
           value={fmt2(carrierBook.monthly)}
           sub={`${fmt2(carrierBook.monthly * 12)}/yr`}
         />
+        {hasFullYtd ? (
+          <MiniStat
+            label={`${carrierYtd.year || '—'} YTD paid`}
+            value={fmt2(carrierYtd.total)}
+            sub="actual · net of reversals"
+          />
+        ) : (
+          <MiniStat
+            label={`${carrierYtdEst.year || carrierYtd.year || '—'} YTD est.`}
+            value={fmt2(carrierYtdEst.estimatedTotal)}
+            sub={`based on ${carrierYtdEst.monthsCovered} mo × current rates`}
+          />
+        )}
         <MiniStat
-          label={`${carrierYtd.year || '—'} YTD paid`}
-          value={fmt2(carrierYtd.total)}
-          sub="net of reversals"
-        />
-        <MiniStat
-          label="All-time imported"
+          label="Imported actual"
           value={fmt2(carrierTotal)}
-          sub={`${abDetail.length.toLocaleString()} rows`}
+          sub={`${abDetail.length.toLocaleString()} rows · ${periodsCovered(abDetail)}`}
         />
       </div>
 
@@ -499,6 +527,15 @@ function ResidualSourceBadge({ source }) {
       BASELINE
     </span>
   );
+}
+
+// "Apr-26" or "Jan–Apr 2026" depending on whether one or many periods imported.
+function periodsCovered(rows) {
+  if (!rows || rows.length === 0) return '';
+  const periods = [...new Set(rows.map(r => r.period).filter(Boolean))].sort();
+  if (periods.length === 0) return '';
+  if (periods.length === 1) return periods[0];
+  return `${periods[0]} → ${periods[periods.length - 1]}`;
 }
 
 function MiniStat({ label, value, sub }) {
