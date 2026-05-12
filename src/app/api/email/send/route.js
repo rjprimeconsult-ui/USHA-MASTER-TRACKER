@@ -32,6 +32,13 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
 
+// Resend rejects tag values with anything outside [a-zA-Z0-9_-]. Coerce
+// whatever the caller hands us to a safe string. Empty / invalid → '_unknown'.
+function safeTagValue(v) {
+  const s = String(v || '').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 256);
+  return s || '_unknown';
+}
+
 async function getUserId(req) {
   const auth = req.headers.get('authorization') || '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
@@ -141,11 +148,17 @@ export async function POST(req) {
         subject: safeSubject,
         text: safeBody,
         html: `<div style="font-family: system-ui, -apple-system, Segoe UI, sans-serif; font-size: 14px; line-height: 1.6; color: #0f172a;">${htmlBody}</div>`,
-        // Tag for analytics inside Resend's dashboard.
+        // Tags double as analytics in Resend's dashboard AND as the
+        // identity bridge for webhook events — the /api/email/webhook
+        // handler reads user_id + lead_id back to find which lead to
+        // update with delivered/opened/clicked/bounced status.
+        // Resend tag values: ASCII alphanumeric / _ / - only.
         tags: [
           { name: 'app', value: 'prim' },
           { name: 'kind', value: 'post-sale' },
           { name: 'test_mode', value: testMode ? 'true' : 'false' },
+          { name: 'user_id', value: safeTagValue(userId) },
+          { name: 'lead_id', value: safeTagValue(leadId) },
         ],
       }),
     });
