@@ -40,6 +40,8 @@ import OnboardingWalkthrough from './OnboardingWalkthrough';
 import PaywallGate, { TrialBanner } from './PaywallGate';
 import ScreenshotImport from './ScreenshotImport';
 import AssociationCommissionDetailImport from './AssociationCommissionDetailImport';
+import PostSaleEmailSettings from './PostSaleEmailSettings';
+import { useBetaFeature } from '@/lib/useBetaFeature';
 import Toast from './Toast';
 import AdvanceMonthsHistoryEditor from './AdvanceMonthsHistoryEditor';
 import { fireConfetti, FadeIn, OrbBackdrop } from './motion/MotionPrimitives';
@@ -109,6 +111,26 @@ function UserMenu() {
 // hide it via display:none when the active view changes. This preserves all
 // internal state (filters, search, sort, scroll, month picker) across tab
 // switches without lifting state to LeadTracker.
+/**
+ * Beta-gated Post-Sale Emails section, rendered inside the main Settings
+ * modal. Renders nothing for non-allowlist users so non-beta agents see no
+ * UI change. The hook is safe to call here because this component only
+ * mounts when the parent Settings modal is open (showSettings === true).
+ */
+function PostSaleEmailsSection() {
+  const { canAccess, loading } = useBetaFeature('post_sale_emails');
+  if (loading || !canAccess) return null;
+  return (
+    <div className="mb-5 pb-5 border-b border-slate-200">
+      <div className="text-xs font-bold text-slate-500 tracking-wider mb-3 flex items-center gap-2">
+        POST-SALE EMAILS
+        <span className="text-[9px] uppercase tracking-wider bg-amber-100 text-amber-800 px-1 rounded font-bold">BETA</span>
+      </div>
+      <PostSaleEmailSettings />
+    </div>
+  );
+}
+
 function ViewMount({ visible, viewKey, children }) {
   const [hasBeenVisible, setHasBeenVisible] = useState(visible);
   useEffect(() => { if (visible && !hasBeenVisible) setHasBeenVisible(true); }, [visible, hasBeenVisible]);
@@ -1600,6 +1622,11 @@ export default function LeadTracker() {
                 existingLeadCount={leads.length}
               />
             </div>
+
+            {/* Post-Sale Emails (Beta) — hidden for non-allowlist users.
+                Lives between Advance Months History and DATA so it sits in
+                the middle of the modal where agents browse customization. */}
+            <PostSaleEmailsSection />
 
             <div className="text-xs font-bold text-slate-500 tracking-wider mb-2">DATA</div>
             <div className="space-y-2">
