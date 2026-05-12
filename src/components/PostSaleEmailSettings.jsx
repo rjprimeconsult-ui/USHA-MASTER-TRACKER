@@ -1,11 +1,14 @@
 'use client';
 import { useEffect, useState, useMemo } from 'react';
 import {
-  Mail, Save, Loader2, AlertTriangle, Eye, CheckCircle2, Beaker, Lock, Plus, Trash2, ChevronLeft, Edit2, Power, Zap,
+  Mail, Save, Loader2, AlertTriangle, Eye, CheckCircle2, Beaker, Lock, Plus, Trash2, ChevronLeft, Edit2, Power, Zap, User,
 } from 'lucide-react';
 import {
   loadBundle,
   saveBundle,
+  loadSenderIdentity,
+  saveSenderIdentity,
+  isValidEmailAddress,
   renderTemplate,
   parseTestAddresses,
   findMissingValues,
@@ -39,6 +42,7 @@ const SAMPLE_LEAD = {
 export default function PostSaleEmailSettings() {
   const { profile } = useBetaFeature('post_sale_emails');
   const [bundle, setBundle] = useState({ testMode: true, testAddresses: '', templates: [] });
+  const [identity, setIdentity] = useState({ fromName: '', fromAddress: '' });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
@@ -46,7 +50,12 @@ export default function PostSaleEmailSettings() {
 
   useEffect(() => {
     let alive = true;
-    loadBundle().then(b => { if (alive) { setBundle(b); setLoading(false); } });
+    Promise.all([loadBundle(), loadSenderIdentity()]).then(([b, id]) => {
+      if (!alive) return;
+      setBundle(b);
+      setIdentity(id);
+      setLoading(false);
+    });
     return () => { alive = false; };
   }, []);
 
@@ -84,14 +93,20 @@ export default function PostSaleEmailSettings() {
   const onSave = async () => {
     setSaving(true);
     try {
-      const next = await saveBundle(bundle);
-      setBundle(next);
+      const [nextBundle, nextIdentity] = await Promise.all([
+        saveBundle(bundle),
+        saveSenderIdentity(identity),
+      ]);
+      setBundle(nextBundle);
+      setIdentity(nextIdentity);
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 1800);
     } finally {
       setSaving(false);
     }
   };
+
+  const updateIdentity = (patch) => setIdentity(prev => ({ ...prev, ...patch }));
 
   const editing = useMemo(
     () => bundle.templates.find(t => t.id === editingId) || null,
@@ -105,6 +120,11 @@ export default function PostSaleEmailSettings() {
   return (
     <div className="space-y-4">
       <BetaBanner />
+
+      {/* Sender identity — per-agent override for the From line. When set,
+          emails go out as fromName <fromAddress> and Reply-To is the same
+          fromAddress (so customer replies land in that inbox). */}
+      <SenderIdentitySection identity={identity} updateIdentity={updateIdentity} profile={profile} />
 
       {/* Shared settings (apply to every template) */}
       <SharedSettings bundle={bundle} updateBundle={updateBundle} />
@@ -156,6 +176,62 @@ function BetaBanner() {
           We&apos;ll flip this off together once your templates are dialed in.
         </p>
       </div>
+    </div>
+  );
+}
+
+function SenderIdentitySection({ identity, updateIdentity, profile }) {
+  const addrLooksOk = !identity.fromAddress || isValidEmailAddress(identity.fromAddress);
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <User size={16} className="text-indigo-600" />
+        <h3 className="font-semibold text-slate-900">Sender identity</h3>
+      </div>
+      <p className="text-xs text-slate-500 -mt-2">
+        How outbound emails appear to your customers. Leave blank to use the PRIM default
+        (<span className="font-mono">welcome@contact.primtracker.com</span>). Set a custom address
+        only if its domain has been verified in Resend — otherwise sends will fail.
+      </p>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <Field label="From name" hint="What customers see as the sender's name.">
+          <input
+            type="text"
+            value={identity.fromName}
+            onChange={e => updateIdentity({ fromName: e.target.value })}
+            placeholder="Julio Fernandez"
+            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+        </Field>
+        <Field label="From address" hint="Must be on a Resend-verified domain.">
+          <input
+            type="email"
+            value={identity.fromAddress}
+            onChange={e => updateIdentity({ fromAddress: e.target.value })}
+            placeholder="julio.fernandez@rjprimehealth.com"
+            className={`w-full bg-slate-50 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${addrLooksOk ? 'border-slate-200' : 'border-rose-300'}`}
+          />
+          {!addrLooksOk && (
+            <p className="text-[11px] text-rose-700 mt-1">That doesn&apos;t look like a valid email.</p>
+          )}
+        </Field>
+      </div>
+
+      <div className="bg-slate-50 border border-slate-100 rounded-lg p-2.5 text-xs text-slate-600">
+        <span className="font-semibold text-slate-700">Preview From:</span>{' '}
+        {identity.fromName || identity.fromAddress
+          ? (
+            <span className="font-mono">
+              {(identity.fromName || (profile?.email || '').split('@')[0] || 'PRIM')}
+              {' '}&lt;{identity.fromAddress || 'welcome@contact.primtracker.com'}&gt;
+            </span>
+          )
+          : <span className="text-slate-400 italic">Using PRIM default (welcome@contact.primtracker.com)</span>}
+      </div>
+      <p className="text-[11px] text-slate-500">
+        Reply-To is set to the same <span className="font-mono">From</span> address — when customers hit reply, the message lands wherever that mailbox receives.
+      </p>
     </div>
   );
 }

@@ -36,6 +36,18 @@ import { storage } from './storage';
 
 export const TEMPLATE_KEY = 'post_sale_email_template_v1';
 
+// Sender identity — per-agent override for the From line of outbound
+// emails. When set, /api/email/send uses these values instead of the
+// global RESEND_FROM_ADDRESS env var, AND sets Reply-To to fromAddress
+// (so customer replies land in that agent's actual inbox).
+//
+// Stored alongside the templates bundle under its own user_kv key so
+// the data is portable + cloud-synced. The address MUST be on a domain
+// that's verified in Resend — otherwise sends fail with a 5xx from
+// Resend. (We don't validate against Resend client-side; admins
+// verify domains in the Resend dashboard out-of-band.)
+export const SENDER_IDENTITY_KEY = 'email_sender_identity_v1';
+
 // Lead stages that can trigger an auto-send. Mirrors src/lib/constants.js
 // STAGES but kept lightweight here so we don't pull in unrelated config.
 export const AUTO_SEND_STAGES = ['Pending', 'Issued', 'Declined', 'Not taken', 'Withdrawn'];
@@ -235,6 +247,41 @@ export function findMissingValues(rendered) {
     while ((m = re.exec(t)) !== null) found.add(m[0]);
   }
   return [...found];
+}
+
+// ---------- Sender identity (per-agent From override) ----------
+
+export const DEFAULT_SENDER_IDENTITY = {
+  fromName: '',
+  fromAddress: '',
+};
+
+export async function loadSenderIdentity() {
+  try {
+    const raw = await storage.getItem(SENDER_IDENTITY_KEY);
+    if (!raw) return { ...DEFAULT_SENDER_IDENTITY };
+    const parsed = JSON.parse(raw);
+    return {
+      fromName: typeof parsed?.fromName === 'string' ? parsed.fromName : '',
+      fromAddress: typeof parsed?.fromAddress === 'string' ? parsed.fromAddress : '',
+    };
+  } catch {
+    return { ...DEFAULT_SENDER_IDENTITY };
+  }
+}
+
+export async function saveSenderIdentity(identity) {
+  const safe = {
+    fromName: String(identity?.fromName || '').slice(0, 200),
+    fromAddress: String(identity?.fromAddress || '').slice(0, 254).trim(),
+  };
+  await storage.setItem(SENDER_IDENTITY_KEY, JSON.stringify(safe));
+  return safe;
+}
+
+export function isValidEmailAddress(s) {
+  if (!s) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
 }
 
 // ---------- Public helpers for callers (Settings UI, send button) ----------

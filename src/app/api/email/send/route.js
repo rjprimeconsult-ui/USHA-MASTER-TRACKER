@@ -115,14 +115,46 @@ export async function POST(req) {
     }, { status: 503 });
   }
 
-  // From address. During beta we send from Resend's onboarding-style
-  // domain — no DNS setup needed. The agent's name shows in the "From"
-  // display; reply-to is the agent's actual email so customer replies
-  // come back to them, not to a PRIM noreply inbox.
-  const fromDisplay = (fromName || (profile.email || '').split('@')[0] || 'PRIM').trim();
-  const fromAddress = process.env.RESEND_FROM_ADDRESS || 'PRIM <onboarding@resend.dev>';
-  const fromHeader = `${fromDisplay} <${fromAddress.match(/<([^>]+)>/)?.[1] || fromAddress}>`;
-  const replyTo = profile.email;
+  // Sender identity resolution order:
+  //   1. Per-agent override from user_kv (set in Settings → Post-Sale Emails)
+  //   2. Per-template fromName + global RESEND_FROM_ADDRESS env var
+  //   3. Hard-coded fallback (Resend's onboarding domain)
+  // Reply-To follows the From address when an override is set so customer
+  // replies land in the agent's actual sending mailbox.
+  let senderOverride = null;
+  try {
+    const { data: idRow } = await supabase
+      .from('user_kv')
+      .select('value')
+      .eq('user_id', userId)
+      .eq('key', 'email_sender_identity_v1')
+      .maybeSingle();
+    if (idRow?.value) {
+      const raw = typeof idRow.value === 'string' ? JSON.parse(idRow.value) : idRow.value;
+      const addr = String(raw?.fromAddress || '').trim();
+      if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(addr)) {
+        senderOverride = {
+          fromName: String(raw?.fromName || '').trim(),
+          fromAddress: addr,
+        };
+      }
+    }
+  } catch (e) {
+    console.warn('[email/send] sender identity load failed (falling back):', e?.message || e);
+  }
+
+  const globalFrom = process.env.RESEND_FROM_ADDRESS || 'PRIM <onboarding@resend.dev>';
+  let fromHeader;
+  let replyTo;
+  if (senderOverride) {
+    const display = senderOverride.fromName || (profile.email || '').split('@')[0] || 'PRIM';
+    fromHeader = `${display} <${senderOverride.fromAddress}>`;
+    replyTo = senderOverride.fromAddress;
+  } else {
+    const fromDisplay = (fromName || (profile.email || '').split('@')[0] || 'PRIM').trim();
+    fromHeader = `${fromDisplay} <${globalFrom.match(/<([^>]+)>/)?.[1] || globalFrom}>`;
+    replyTo = profile.email;
+  }
 
   // Convert body to a simple HTML version with linebreaks preserved. Keep
   // it text-first — agent's template is plain text, so we don't pretend

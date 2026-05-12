@@ -173,6 +173,10 @@ const APP_KEYS = [
   // Isolated from leads/Books — these only affect the Associations tab.
   'association_bonus_detail_v1',
   'agent_residual_rates_v1',
+  // Post-Sale Emails feature
+  'post_sale_email_template_v1',
+  'email_sender_identity_v1',
+  'pending_email_queue_v1',
 ];
 export async function migrateLocalToCloud() {
   if (!useCloud()) throw new Error('Not signed in');
