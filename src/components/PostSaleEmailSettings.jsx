@@ -1,30 +1,31 @@
 'use client';
 import { useEffect, useState, useMemo } from 'react';
-import { Mail, Save, Loader2, AlertTriangle, Eye, CheckCircle2, Beaker, Lock } from 'lucide-react';
 import {
-  loadTemplate,
-  saveTemplate,
+  Mail, Save, Loader2, AlertTriangle, Eye, CheckCircle2, Beaker, Lock, Plus, Trash2, ChevronLeft, Edit2, Power, Zap,
+} from 'lucide-react';
+import {
+  loadBundle,
+  saveBundle,
   renderTemplate,
   parseTestAddresses,
   findMissingValues,
+  createBlankTemplate,
   TEMPLATE_VARIABLES,
-  DEFAULT_TEMPLATE,
+  AUTO_SEND_STAGES,
 } from '@/lib/postSaleEmails';
 import { useBetaFeature } from '@/lib/useBetaFeature';
 
 /**
- * Settings UI for post-sale email templates.
+ * Settings for multi-template post-sale emails.
  *
- * Three modes:
- *  - Loading / no access: shows nothing or an upgrade teaser (handled in
- *    the wrapping settings tab; this component assumes access has already
- *    been granted upstream — the tab won't even render otherwise).
- *  - Editing: subject + body editor with variable chips, test addresses,
- *    test-mode toggle (locked ON during beta), live preview.
- *  - Saving / saved: subtle status indicator.
+ * Layout has two screens (state held in `editingId`):
+ *   - List view: every template with name, status pill, auto-send pill,
+ *     edit / delete / duplicate actions. Plus the shared test-mode +
+ *     test-addresses block at the top.
+ *   - Editor view: subject + body + variables + preview for one template.
  *
- * The preview uses a sample lead so an agent can iterate on copy without
- * needing a real lead in front of them.
+ * The list is shared with the SendWelcomeEmail button (it reads from the
+ * same bundle), and any change persists immediately on Save.
  */
 const SAMPLE_LEAD = {
   name: 'Sarah Johnson',
@@ -37,24 +38,54 @@ const SAMPLE_LEAD = {
 
 export default function PostSaleEmailSettings() {
   const { profile } = useBetaFeature('post_sale_emails');
-  const [template, setTemplate] = useState(DEFAULT_TEMPLATE);
+  const [bundle, setBundle] = useState({ testMode: true, testAddresses: '', templates: [] });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
+  const [editingId, setEditingId] = useState(null);
 
   useEffect(() => {
     let alive = true;
-    loadTemplate().then(t => { if (alive) { setTemplate(t); setLoading(false); } });
+    loadBundle().then(b => { if (alive) { setBundle(b); setLoading(false); } });
     return () => { alive = false; };
   }, []);
 
-  const update = (patch) => setTemplate(prev => ({ ...prev, ...patch }));
+  const updateBundle = (patch) => setBundle(prev => ({ ...prev, ...patch }));
+  const updateTemplate = (id, patch) => {
+    setBundle(prev => ({
+      ...prev,
+      templates: prev.templates.map(t => t.id === id ? { ...t, ...patch } : t),
+    }));
+  };
+
+  const addTemplate = () => {
+    const t = createBlankTemplate();
+    setBundle(prev => ({ ...prev, templates: [...prev.templates, t] }));
+    setEditingId(t.id);
+  };
+  const deleteTemplate = (id) => {
+    if (!confirm('Delete this template? This cannot be undone.')) return;
+    setBundle(prev => ({ ...prev, templates: prev.templates.filter(t => t.id !== id) }));
+    if (editingId === id) setEditingId(null);
+  };
+  const duplicateTemplate = (id) => {
+    const src = bundle.templates.find(t => t.id === id);
+    if (!src) return;
+    const copy = createBlankTemplate();
+    copy.name = `${src.name} (copy)`;
+    copy.subject = src.subject;
+    copy.body = src.body;
+    copy.fromName = src.fromName;
+    copy.autoSendOnStage = null;
+    setBundle(prev => ({ ...prev, templates: [...prev.templates, copy] }));
+    setEditingId(copy.id);
+  };
 
   const onSave = async () => {
     setSaving(true);
     try {
-      const next = await saveTemplate(template);
-      setTemplate(next);
+      const next = await saveBundle(bundle);
+      setBundle(next);
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 1800);
     } finally {
@@ -62,54 +93,212 @@ export default function PostSaleEmailSettings() {
     }
   };
 
-  const insertToken = (token) => {
-    update({ body: (template.body || '') + token });
-  };
-
-  const rendered = useMemo(
-    () => renderTemplate(template, SAMPLE_LEAD, profile, { agentName: profile?.email?.split('@')[0] }),
-    [template, profile]
+  const editing = useMemo(
+    () => bundle.templates.find(t => t.id === editingId) || null,
+    [bundle.templates, editingId]
   );
-  const missing = useMemo(() => {
-    const out = findMissingValues(rendered);
-    // SAMPLE_LEAD is reasonably complete so this should usually be empty —
-    // when it isn't, the agent has a typo'd placeholder. Surface it.
-    return out;
-  }, [rendered]);
-
-  const testAddressList = parseTestAddresses(template.testAddresses);
 
   if (loading) {
-    return <div className="flex items-center gap-2 text-sm text-slate-500"><Loader2 size={14} className="animate-spin" /> Loading template…</div>;
+    return <div className="flex items-center gap-2 text-sm text-slate-500"><Loader2 size={14} className="animate-spin" /> Loading templates…</div>;
   }
 
   return (
     <div className="space-y-4">
-      {/* Beta banner */}
-      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
-        <Beaker size={18} className="text-amber-700 mt-0.5 flex-shrink-0" />
-        <div className="text-sm text-amber-900">
-          <div className="font-semibold mb-0.5">Beta — Pro &amp; Team feature</div>
-          <p className="text-xs">
-            Test mode is locked ON during beta. Emails route to your test addresses below — never to real customers.
-            We&apos;ll flip this off together once your template is dialed in.
-          </p>
-        </div>
-      </div>
+      <BetaBanner />
 
-      {/* Template editor */}
-      <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-4">
+      {/* Shared settings (apply to every template) */}
+      <SharedSettings bundle={bundle} updateBundle={updateBundle} />
+
+      {/* Either list or editor */}
+      {!editing ? (
+        <TemplateList
+          templates={bundle.templates}
+          onEdit={setEditingId}
+          onDelete={deleteTemplate}
+          onDuplicate={duplicateTemplate}
+          onToggleEnabled={(id, enabled) => updateTemplate(id, { enabled })}
+          onAdd={addTemplate}
+        />
+      ) : (
+        <TemplateEditor
+          template={editing}
+          bundle={bundle}
+          profile={profile}
+          onChange={(patch) => updateTemplate(editing.id, patch)}
+          onBack={() => setEditingId(null)}
+        />
+      )}
+
+      {/* Save row */}
+      <div className="flex items-center justify-end gap-3">
+        {savedFlash && <span className="text-xs text-emerald-700 flex items-center gap-1"><CheckCircle2 size={12} /> Saved</span>}
+        <button
+          onClick={onSave}
+          disabled={saving}
+          className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white text-sm font-semibold px-4 py-2 rounded-lg flex items-center gap-2"
+        >
+          {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+          Save changes
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function BetaBanner() {
+  return (
+    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+      <Beaker size={18} className="text-amber-700 mt-0.5 flex-shrink-0" />
+      <div className="text-sm text-amber-900">
+        <div className="font-semibold mb-0.5">Beta — Pro &amp; Team feature</div>
+        <p className="text-xs">
+          Test mode is locked ON during beta. Emails route to your test addresses below — never to real customers.
+          We&apos;ll flip this off together once your templates are dialed in.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function SharedSettings({ bundle, updateBundle }) {
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
+      <div className="text-xs font-bold text-slate-500 tracking-wider">SHARED SETTINGS</div>
+      <Field label="Test addresses (required during beta)" hint="Comma-separated. All sends route to the first address.">
+        <input
+          type="text"
+          value={bundle.testAddresses}
+          onChange={e => updateBundle({ testAddresses: e.target.value })}
+          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          placeholder="you@example.com, friend@example.com"
+        />
+      </Field>
+      <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+        <div className="flex items-center gap-2 text-sm text-slate-700">
+          <Lock size={14} className="text-amber-600" />
+          <span className="font-medium">Test mode</span>
+          <span className="text-xs text-slate-500">— locked ON during beta. Emails route to your test addresses only.</span>
+        </div>
+        <span className="text-[10px] uppercase tracking-wider bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-bold">ON</span>
+      </div>
+    </div>
+  );
+}
+
+function TemplateList({ templates, onEdit, onDelete, onDuplicate, onToggleEnabled, onAdd }) {
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl p-4">
+      <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <Mail size={16} className="text-indigo-600" />
-          <h3 className="font-semibold text-slate-900">Welcome template</h3>
-          <span className="ml-auto text-xs text-slate-500">Triggered manually from a lead, for now.</span>
+          <h3 className="font-semibold text-slate-900">Templates ({templates.length})</h3>
         </div>
+        <button
+          onClick={onAdd}
+          className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5"
+        >
+          <Plus size={12} /> New template
+        </button>
+      </div>
+
+      {templates.length === 0 && (
+        <div className="text-center py-8 text-sm text-slate-400">
+          No templates yet. Click <span className="font-semibold">New template</span> to add one.
+        </div>
+      )}
+
+      <div className="space-y-2">
+        {templates.map(t => (
+          <div key={t.id} className="border border-slate-200 rounded-lg p-3 flex items-center gap-3">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-medium text-slate-900 truncate">{t.name}</span>
+                {!t.enabled && (
+                  <span className="text-[10px] uppercase tracking-wider bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-bold">Disabled</span>
+                )}
+                {t.autoSendOnStage && (
+                  <span className="text-[10px] uppercase tracking-wider bg-violet-100 text-violet-800 px-1.5 py-0.5 rounded font-bold flex items-center gap-1">
+                    <Zap size={9} /> Auto on {t.autoSendOnStage}
+                  </span>
+                )}
+              </div>
+              <div className="text-xs text-slate-500 truncate mt-0.5">{t.subject || <em>(no subject)</em>}</div>
+            </div>
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <button
+                onClick={() => onToggleEnabled(t.id, !t.enabled)}
+                className={`p-1.5 rounded transition ${t.enabled ? 'text-emerald-600 hover:bg-emerald-50' : 'text-slate-400 hover:bg-slate-100'}`}
+                title={t.enabled ? 'Disable' : 'Enable'}
+              >
+                <Power size={14} />
+              </button>
+              <button
+                onClick={() => onDuplicate(t.id)}
+                className="p-1.5 rounded text-slate-500 hover:bg-slate-100 transition"
+                title="Duplicate"
+              >
+                <Plus size={14} />
+              </button>
+              <button
+                onClick={() => onEdit(t.id)}
+                className="p-1.5 rounded text-indigo-600 hover:bg-indigo-50 transition"
+                title="Edit"
+              >
+                <Edit2 size={14} />
+              </button>
+              <button
+                onClick={() => onDelete(t.id)}
+                className="p-1.5 rounded text-rose-600 hover:bg-rose-50 transition"
+                title="Delete"
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TemplateEditor({ template, bundle, profile, onChange, onBack }) {
+  const insertToken = (token) => {
+    onChange({ body: (template.body || '') + token });
+  };
+
+  const rendered = useMemo(
+    () => renderTemplate(template, SAMPLE_LEAD, profile, bundle, { agentName: profile?.email?.split('@')[0] }),
+    [template, bundle, profile]
+  );
+  const missing = useMemo(() => findMissingValues(rendered), [rendered]);
+  const testList = parseTestAddresses(bundle.testAddresses);
+
+  return (
+    <div className="space-y-4">
+      <button
+        type="button"
+        onClick={onBack}
+        className="text-xs text-indigo-700 hover:text-indigo-900 flex items-center gap-1"
+      >
+        <ChevronLeft size={12} /> Back to templates
+      </button>
+
+      <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-4">
+        <Field label="Template name" hint="Just for your reference — agents see this when picking which template to send.">
+          <input
+            type="text"
+            value={template.name}
+            onChange={e => onChange({ name: e.target.value })}
+            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            placeholder="e.g. Welcome email"
+          />
+        </Field>
 
         <Field label="Subject">
           <input
             type="text"
             value={template.subject}
-            onChange={e => update({ subject: e.target.value })}
+            onChange={e => onChange({ subject: e.target.value })}
             className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
             placeholder="e.g. Welcome to USHEALTH, {customer_first_name}"
           />
@@ -118,7 +307,7 @@ export default function PostSaleEmailSettings() {
         <Field label="Body" hint="Use the variable chips below to insert dynamic values.">
           <textarea
             value={template.body}
-            onChange={e => update({ body: e.target.value })}
+            onChange={e => onChange({ body: e.target.value })}
             rows={10}
             className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 leading-relaxed"
           />
@@ -138,34 +327,38 @@ export default function PostSaleEmailSettings() {
         </Field>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <Field label="From name (optional)" hint="Leave blank to use your account email's display name.">
+          <Field label="From name (optional)" hint="Leave blank to use your account email's name.">
             <input
               type="text"
               value={template.fromName}
-              onChange={e => update({ fromName: e.target.value })}
+              onChange={e => onChange({ fromName: e.target.value })}
               className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               placeholder="Juan Trejo"
             />
           </Field>
-          <Field label="Test addresses (required during beta)" hint="Comma-separated. All sends route here.">
-            <input
-              type="text"
-              value={template.testAddresses}
-              onChange={e => update({ testAddresses: e.target.value })}
+          <Field label="Auto-send trigger" hint="Fires automatically when a lead's stage changes to this value (with a 5-min grace window to cancel).">
+            <select
+              value={template.autoSendOnStage || ''}
+              onChange={e => onChange({ autoSendOnStage: e.target.value || null })}
               className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              placeholder="you@example.com, friend@example.com"
-            />
+            >
+              <option value="">Manual only</option>
+              {AUTO_SEND_STAGES.map(s => <option key={s} value={s}>When stage → {s}</option>)}
+            </select>
           </Field>
         </div>
 
-        {/* Test mode toggle — locked ON during beta */}
-        <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-          <div className="flex items-center gap-2 text-sm text-slate-700">
-            <Lock size={14} className="text-amber-600" />
-            <span className="font-medium">Test mode</span>
-            <span className="text-xs text-slate-500">— locked ON during beta. Emails route to your test addresses only.</span>
-          </div>
-          <span className="text-[10px] uppercase tracking-wider bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-bold">ON</span>
+        <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+          <input
+            id={`enabled_${template.id}`}
+            type="checkbox"
+            checked={template.enabled !== false}
+            onChange={e => onChange({ enabled: e.target.checked })}
+            className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+          />
+          <label htmlFor={`enabled_${template.id}`} className="text-sm text-slate-700 cursor-pointer">
+            Enabled — show in send picker and run auto-send when triggered.
+          </label>
         </div>
       </div>
 
@@ -195,26 +388,9 @@ export default function PostSaleEmailSettings() {
             </div>
           </div>
         )}
-      </div>
-
-      {/* Save row */}
-      <div className="flex items-center justify-between">
-        <div className="text-xs text-slate-500">
-          {testAddressList.length > 0
-            ? <>Test addresses: <span className="font-mono">{testAddressList.join(', ')}</span></>
-            : <span className="text-amber-700">Add at least one test address before sending.</span>}
-        </div>
-        <div className="flex items-center gap-3">
-          {savedFlash && <span className="text-xs text-emerald-700 flex items-center gap-1"><CheckCircle2 size={12} /> Saved</span>}
-          <button
-            onClick={onSave}
-            disabled={saving}
-            className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white text-sm font-semibold px-4 py-2 rounded-lg flex items-center gap-2"
-          >
-            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-            Save template
-          </button>
-        </div>
+        {testList.length === 0 && (
+          <div className="text-xs text-amber-700">Add at least one test address above before sending.</div>
+        )}
       </div>
     </div>
   );

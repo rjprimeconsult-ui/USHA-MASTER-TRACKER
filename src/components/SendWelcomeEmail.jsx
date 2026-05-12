@@ -1,10 +1,10 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Mail, X, Send, Loader2, CheckCircle2, AlertTriangle, Beaker,
 } from 'lucide-react';
 import {
-  loadTemplate,
+  loadBundle,
   renderTemplate,
   parseTestAddresses,
   findMissingValues,
@@ -13,21 +13,11 @@ import { useBetaFeature } from '@/lib/useBetaFeature';
 import { supabase, supabaseConfigured } from '@/lib/supabase';
 
 /**
- * Lead-form button + preview modal for post-sale emails.
+ * Lead-form trigger + preview modal for post-sale emails.
  *
- * Behaviour:
- *  - The trigger button only renders when (a) the user has access to the
- *    beta feature AND (b) the lead is in a stage that warrants an email
- *    (Issued by default; we expose hideOnStage to override).
- *  - Clicking the trigger opens a modal that renders the template against
- *    THIS specific lead, showing the real recipient (or the test address
- *    if test mode is on) so the agent can sanity-check before sending.
- *  - Confirm fires /api/email/send. On success, the result is logged onto
- *    the lead via onLogged so the agent can see "sent at" in the audit
- *    trail later.
- *  - When the backend reports notConfigured: true (i.e. RESEND_API_KEY
- *    isn't set in Vercel yet), the modal surfaces a clear "ask Juan to
- *    finish setup" message instead of pretending the send worked.
+ * Now supports multiple templates: the modal shows a template picker if
+ * there's more than one enabled. When there's only one, picker is hidden
+ * and the modal renders straight to preview.
  */
 export default function SendWelcomeEmail({ lead, onLogged }) {
   const { canAccess, loading: accessLoading } = useBetaFeature('post_sale_emails');
@@ -35,8 +25,6 @@ export default function SendWelcomeEmail({ lead, onLogged }) {
 
   if (accessLoading) return null;
   if (!canAccess) return null;
-  // Only show on saved leads with an email on file (otherwise there's no
-  // recipient to even preview against).
   if (!lead?.id) return null;
 
   return (
@@ -48,7 +36,7 @@ export default function SendWelcomeEmail({ lead, onLogged }) {
         title="Send a post-sale email to this customer (beta)"
       >
         <Mail size={14} />
-        Send welcome email
+        Send email
         <span className="ml-1 text-[9px] uppercase tracking-wider bg-amber-100 text-amber-800 px-1 rounded font-bold">BETA</span>
       </button>
       {open && (
@@ -60,24 +48,42 @@ export default function SendWelcomeEmail({ lead, onLogged }) {
 
 function SendModal({ lead, onClose, onLogged }) {
   const { profile } = useBetaFeature('post_sale_emails');
-  const [template, setTemplate] = useState(null);
+  const [bundle, setBundle] = useState(null);
+  const [selectedId, setSelectedId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
-  const [result, setResult] = useState(null); // { ok, error?, notConfigured?, messageId? }
+  const [result, setResult] = useState(null);
 
   useEffect(() => {
     let alive = true;
-    loadTemplate().then(t => { if (alive) { setTemplate(t); setLoading(false); } });
+    loadBundle().then(b => {
+      if (!alive) return;
+      setBundle(b);
+      const enabled = (b.templates || []).filter(t => t.enabled !== false);
+      setSelectedId(enabled[0]?.id || b.templates?.[0]?.id || null);
+      setLoading(false);
+    });
     return () => { alive = false; };
   }, []);
 
+  const enabledTemplates = useMemo(
+    () => (bundle?.templates || []).filter(t => t.enabled !== false),
+    [bundle]
+  );
+  const template = useMemo(
+    () => (bundle?.templates || []).find(t => t.id === selectedId) || null,
+    [bundle, selectedId]
+  );
+
   const rendered = template
-    ? renderTemplate(template, lead, profile, { agentName: template.fromName || profile?.email?.split('@')[0] })
+    ? renderTemplate(template, lead, profile, bundle, {
+        agentName: template.fromName || profile?.email?.split('@')[0],
+      })
     : null;
   const missing = rendered ? findMissingValues(rendered) : [];
-  const testList = parseTestAddresses(template?.testAddresses || '');
-  const noTestAddress = !!template?.testMode && testList.length === 0;
-  const canSend = rendered && rendered.recipient && !noTestAddress && !sending;
+  const testList = parseTestAddresses(bundle?.testAddresses || '');
+  const noTestAddress = !!(bundle?.testMode !== false) && testList.length === 0;
+  const canSend = rendered && rendered.recipient && !noTestAddress && !sending && !!template;
 
   const onSend = async () => {
     if (!canSend) return;
@@ -99,15 +105,14 @@ function SendModal({ lead, onClose, onLogged }) {
         },
         body: JSON.stringify({
           leadId: lead.id,
-          // Send the rendered output (server re-renders too as defense in
-          // depth, but the preview-on-screen is what we want to actually
-          // send to avoid surprise edits).
           subject: rendered.subject,
           body: rendered.body,
           recipient: rendered.recipient,
           intendedRecipient: rendered.intendedRecipient,
           testMode: rendered.testMode,
           fromName: template.fromName || '',
+          templateId: template.id,
+          templateName: template.name,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -115,7 +120,6 @@ function SendModal({ lead, onClose, onLogged }) {
         setResult({ ok: false, error: data?.error || `HTTP ${res.status}`, notConfigured: !!data?.notConfigured });
       } else {
         setResult({ ok: true, messageId: data?.messageId, recipient: rendered.recipient });
-        // Tell the parent to append to the lead's audit log.
         if (typeof onLogged === 'function') {
           onLogged({
             sentAt: new Date().toISOString(),
@@ -124,6 +128,10 @@ function SendModal({ lead, onClose, onLogged }) {
             testMode: !!rendered.testMode,
             messageId: data?.messageId || null,
             subject: rendered.subject,
+            templateId: template.id,
+            templateName: template.name,
+            status: 'sent',
+            trigger: 'manual',
           });
         }
       }
@@ -143,7 +151,7 @@ function SendModal({ lead, onClose, onLogged }) {
         <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Mail size={18} className="text-indigo-600" />
-            <h2 className="font-bold text-slate-900">Send welcome email</h2>
+            <h2 className="font-bold text-slate-900">Send email</h2>
             <span className="text-[9px] uppercase tracking-wider bg-amber-100 text-amber-800 px-1 rounded font-bold">BETA</span>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-700 p-1"><X size={18} /></button>
@@ -151,12 +159,34 @@ function SendModal({ lead, onClose, onLogged }) {
 
         <div className="p-5 space-y-3">
           {loading && (
-            <div className="flex items-center gap-2 text-sm text-slate-500"><Loader2 size={14} className="animate-spin" /> Loading template…</div>
+            <div className="flex items-center gap-2 text-sm text-slate-500"><Loader2 size={14} className="animate-spin" /> Loading…</div>
+          )}
+
+          {!loading && enabledTemplates.length === 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-900">
+              No enabled templates. Open Settings → Post-Sale Emails to create one.
+            </div>
+          )}
+
+          {!loading && enabledTemplates.length > 1 && (
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                Template
+              </label>
+              <select
+                value={selectedId || ''}
+                onChange={e => setSelectedId(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                {enabledTemplates.map(t => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </div>
           )}
 
           {!loading && rendered && (
             <>
-              {/* Recipient + test-mode banner */}
               <div className={`rounded-lg p-3 text-sm flex items-start gap-2 ${rendered.testMode ? 'bg-amber-50 border border-amber-200 text-amber-900' : 'bg-emerald-50 border border-emerald-200 text-emerald-900'}`}>
                 {rendered.testMode ? <Beaker size={16} className="mt-0.5 flex-shrink-0 text-amber-700" /> : <CheckCircle2 size={16} className="mt-0.5 flex-shrink-0 text-emerald-700" />}
                 <div>
@@ -178,7 +208,6 @@ function SendModal({ lead, onClose, onLogged }) {
                 </div>
               </div>
 
-              {/* Subject + body preview */}
               <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
                 <div className="text-[11px] text-slate-500 uppercase tracking-wider mb-1">Subject</div>
                 <div className="font-semibold text-sm text-slate-900 mb-3">{rendered.subject}</div>
@@ -189,7 +218,7 @@ function SendModal({ lead, onClose, onLogged }) {
               {missing.length > 0 && (
                 <div className="flex items-start gap-2 text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-lg p-2">
                   <AlertTriangle size={14} className="text-amber-600 mt-0.5 flex-shrink-0" />
-                  <div>Unresolved placeholders in this preview: <span className="font-mono">{missing.join(' ')}</span>. Edit the template (Settings → Emails) to fix.</div>
+                  <div>Unresolved placeholders: <span className="font-mono">{missing.join(' ')}</span>. Edit the template (Settings → Emails) to fix.</div>
                 </div>
               )}
 
@@ -225,7 +254,7 @@ function SendModal({ lead, onClose, onLogged }) {
                 <div className="font-semibold">{result.notConfigured ? 'Email service not configured yet' : 'Send failed'}</div>
                 <div className="text-xs mt-0.5">{result.error || ''}</div>
                 {result.notConfigured && (
-                  <div className="text-xs mt-1">PRIM needs a Resend API key in Vercel (RESEND_API_KEY). This is a one-time setup step — your template is saved and ready to go once it&apos;s wired up.</div>
+                  <div className="text-xs mt-1">PRIM needs a Resend API key in Vercel (RESEND_API_KEY).</div>
                 )}
               </div>
             </div>

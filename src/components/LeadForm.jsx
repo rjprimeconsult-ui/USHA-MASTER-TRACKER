@@ -11,6 +11,7 @@ import { US_STATES, projectCommission, DEFAULT_ADVANCE_MONTHS } from '@/lib/comm
 import { today, fmt2 } from '@/lib/utils';
 import { useLeadOptionsAll, addCustomLeadOption, ADD_CUSTOM_VALUE } from '@/lib/customLeadOptions';
 import SendWelcomeEmail from './SendWelcomeEmail';
+import LeadEmailAuditPanel from './LeadEmailAuditPanel';
 
 const Field = ({ label, children, required }) => (
   <div>
@@ -514,6 +515,15 @@ export default function LeadForm({ open, lead, tier = 'WA', onSave, onClose, onD
             <textarea className={inp} rows="3" value={form.notes} onChange={e => set({ notes: e.target.value })} placeholder="Anything worth remembering about this lead…" />
           </Field>
         </div>
+
+        {/* Email audit panel — collapsible, only renders for beta-access
+            users AND only when there's at least one log entry. Above the
+            sticky footer so it's visible without scrolling past actions. */}
+        {form._existing && (
+          <div className="px-6 pb-2">
+            <LeadEmailAuditPanel lead={form} />
+          </div>
+        )}
 
         <div className="sticky bottom-0 bg-slate-50 border-t border-slate-200 px-6 py-4 flex flex-wrap items-center justify-between gap-3 rounded-b-2xl">
           <div className="flex items-center gap-3 flex-wrap">

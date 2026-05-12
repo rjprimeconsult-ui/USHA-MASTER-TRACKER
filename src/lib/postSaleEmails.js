@@ -1,27 +1,45 @@
 /**
  * Post-sale email templates and helpers.
  *
- * Templates are stored per-agent in user_kv via the cloud storage adapter
- * (same plumbing as expenses / vendor memory). One template per agent for
- * now — multiple templates + auto-send rules will land in a later iteration.
+ * Templates are stored per-agent in user_kv via the cloud storage adapter.
+ * The bundle shape (key `post_sale_email_template_v1`) is:
  *
- * The render pipeline is pure / synchronous: pass a template + a lead +
- * an agent profile, and you get back { subject, body } with all variables
- * substituted. The Send button + the email API route both use this so
- * preview-time and send-time rendering are guaranteed identical.
+ *   {
+ *     testMode: boolean,
+ *     testAddresses: string,           // comma-separated emails
+ *     templates: [
+ *       {
+ *         id:              string,
+ *         name:            string,     // shown in lists / pickers
+ *         subject:         string,
+ *         body:            string,
+ *         fromName:        string,     // optional From display name
+ *         enabled:         boolean,    // false = don't show in send picker
+ *         autoSendOnStage: string|null // when set, fire auto-send when a lead's
+ *                                      // stage changes to this value (with a
+ *                                      // grace window the agent can cancel)
+ *       },
+ *       ...
+ *     ]
+ *   }
  *
- * Test mode (default ON during beta): when a template has testMode=true,
- * recipients are silently redirected to the testAddresses array regardless
- * of what's on the lead. Production sends only go through when test mode
- * is explicitly off.
+ * Backwards compat: an older single-template shape ({subject, body, ...} at
+ * the root) is auto-migrated on first load. The first time the new shape
+ * saves, the old fields disappear cleanly.
+ *
+ * Test mode (default ON during beta): when on, recipients are silently
+ * redirected to the testAddresses array regardless of what's on the lead.
+ * Production sends only go through when test mode is explicitly off.
  */
 
 import { storage } from './storage';
 
 export const TEMPLATE_KEY = 'post_sale_email_template_v1';
 
-// Variables agents can drop into subject + body. The renderer is forgiving:
-// unknown placeholders are left as-is so a typo is visible (not silently empty).
+// Lead stages that can trigger an auto-send. Mirrors src/lib/constants.js
+// STAGES but kept lightweight here so we don't pull in unrelated config.
+export const AUTO_SEND_STAGES = ['Pending', 'Issued', 'Declined', 'Not taken', 'Withdrawn'];
+
 export const TEMPLATE_VARIABLES = [
   { token: '{customer_first_name}', label: 'Customer first name', sample: 'Sarah' },
   { token: '{customer_last_name}',  label: 'Customer last name',  sample: 'Johnson' },
@@ -35,8 +53,17 @@ export const TEMPLATE_VARIABLES = [
   { token: '{agent_phone}',         label: 'Agent (your) phone',  sample: '305-555-0100' },
 ];
 
-export const DEFAULT_TEMPLATE = {
-  enabled: true,
+// ---------- ID generation ----------
+
+function newTemplateId() {
+  return `tpl_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+// ---------- Default content ----------
+
+export const DEFAULT_WELCOME_TEMPLATE = () => ({
+  id: newTemplateId(),
+  name: 'Welcome email',
   subject: 'Welcome to USHEALTH, {customer_first_name} — quick next steps',
   body:
     `Hi {customer_first_name},\n\n` +
@@ -48,51 +75,99 @@ export const DEFAULT_TEMPLATE = {
     `  {agent_email}\n\n` +
     `Welcome aboard,\n` +
     `{agent_name}`,
-  fromName: '', // defaults to agent_name when empty
+  fromName: '',
+  enabled: true,
+  autoSendOnStage: null,
+});
+
+export const DEFAULT_BUNDLE = () => ({
   testMode: true,
-  testAddresses: '', // comma-separated; first one is the primary recipient
-};
+  testAddresses: '',
+  templates: [DEFAULT_WELCOME_TEMPLATE()],
+});
 
 // ---------- Storage ----------
 
-export async function loadTemplate() {
+/**
+ * Read the template bundle. Migrates the legacy single-template shape
+ * automatically — old saves that had {subject, body, fromName, enabled,
+ * testMode, testAddresses} at the root get wrapped into templates[0].
+ */
+export async function loadBundle() {
   try {
     const raw = await storage.getItem(TEMPLATE_KEY);
-    if (!raw) return { ...DEFAULT_TEMPLATE };
+    if (!raw) return DEFAULT_BUNDLE();
     const parsed = JSON.parse(raw);
-    return { ...DEFAULT_TEMPLATE, ...parsed };
+    // Already in the new shape
+    if (Array.isArray(parsed?.templates)) {
+      return {
+        testMode: parsed.testMode !== false,
+        testAddresses: typeof parsed.testAddresses === 'string' ? parsed.testAddresses : '',
+        templates: parsed.templates.length > 0
+          ? parsed.templates.map(normalizeTemplate)
+          : [DEFAULT_WELCOME_TEMPLATE()],
+      };
+    }
+    // Legacy single-template shape
+    if (parsed && (parsed.subject || parsed.body)) {
+      return {
+        testMode: parsed.testMode !== false,
+        testAddresses: typeof parsed.testAddresses === 'string' ? parsed.testAddresses : '',
+        templates: [normalizeTemplate({
+          id: newTemplateId(),
+          name: 'Welcome email',
+          subject: parsed.subject || '',
+          body: parsed.body || '',
+          fromName: parsed.fromName || '',
+          enabled: parsed.enabled !== false,
+          autoSendOnStage: null,
+        })],
+      };
+    }
+    return DEFAULT_BUNDLE();
   } catch {
-    return { ...DEFAULT_TEMPLATE };
+    return DEFAULT_BUNDLE();
   }
 }
 
-export async function saveTemplate(template) {
-  const next = { ...DEFAULT_TEMPLATE, ...template };
-  await storage.setItem(TEMPLATE_KEY, JSON.stringify(next));
-  return next;
+function normalizeTemplate(t) {
+  return {
+    id: t?.id || newTemplateId(),
+    name: typeof t?.name === 'string' && t.name.trim() ? t.name : 'Untitled template',
+    subject: typeof t?.subject === 'string' ? t.subject : '',
+    body: typeof t?.body === 'string' ? t.body : '',
+    fromName: typeof t?.fromName === 'string' ? t.fromName : '',
+    enabled: t?.enabled !== false,
+    autoSendOnStage: typeof t?.autoSendOnStage === 'string' && AUTO_SEND_STAGES.includes(t.autoSendOnStage)
+      ? t.autoSendOnStage
+      : null,
+  };
+}
+
+export async function saveBundle(bundle) {
+  const safe = {
+    testMode: bundle?.testMode !== false,
+    testAddresses: typeof bundle?.testAddresses === 'string' ? bundle.testAddresses : '',
+    templates: Array.isArray(bundle?.templates) && bundle.templates.length > 0
+      ? bundle.templates.map(normalizeTemplate)
+      : [DEFAULT_WELCOME_TEMPLATE()],
+  };
+  await storage.setItem(TEMPLATE_KEY, JSON.stringify(safe));
+  return safe;
 }
 
 // ---------- Render ----------
 
-/**
- * Substitutes {variable} placeholders inside a string. Unknown placeholders
- * are left in the output verbatim so an agent immediately notices a typo.
- */
 function substitute(str, values) {
   if (typeof str !== 'string') return '';
   return str.replace(/\{(\w+)\}/g, (m, key) => {
     if (Object.prototype.hasOwnProperty.call(values, key)) {
       return String(values[key] ?? '');
     }
-    return m; // leave unknown tokens visible
+    return m; // leave unknown tokens visible so typos are obvious
   });
 }
 
-/**
- * Builds the substitution map from a lead + agent profile + opts.
- * Helpers here pull from common lead fields (name, mainProduct, policyNumber,
- * effective/closed dates) and the agent's email/profile.
- */
 export function buildSubstitutions(lead, agentProfile, opts = {}) {
   const fullName = String(lead?.name || '').trim();
   const [first, ...rest] = fullName.split(/\s+/);
@@ -112,23 +187,22 @@ export function buildSubstitutions(lead, agentProfile, opts = {}) {
 }
 
 /**
- * Render a template against a lead. Returns { subject, body, recipient }.
+ * Render a template against a lead and bundle context.
  *
  * recipient resolution:
  *   - If testMode is on and testAddresses has entries, returns the first
- *     test address as the real recipient. Honest "would have sent to X"
- *     resolution.
+ *     test address as the real recipient.
  *   - Otherwise returns the lead's email.
  */
-export function renderTemplate(template, lead, agentProfile, opts = {}) {
-  const tmpl = { ...DEFAULT_TEMPLATE, ...(template || {}) };
+export function renderTemplate(template, lead, agentProfile, bundle = {}, opts = {}) {
+  const tmpl = normalizeTemplate(template || {});
   const values = buildSubstitutions(lead, agentProfile, opts);
   const subject = substitute(tmpl.subject, values);
   const body = substitute(tmpl.body, values);
 
   let recipient = (lead?.email || '').trim();
-  const testList = parseTestAddresses(tmpl.testAddresses);
-  if (tmpl.testMode && testList.length > 0) {
+  const testList = parseTestAddresses(bundle.testAddresses);
+  if (bundle.testMode !== false && testList.length > 0) {
     recipient = testList[0];
   }
 
@@ -136,9 +210,11 @@ export function renderTemplate(template, lead, agentProfile, opts = {}) {
     subject,
     body,
     recipient,
-    intendedRecipient: (lead?.email || '').trim(), // for "test mode redirected from X" UI
-    testMode: !!tmpl.testMode,
+    intendedRecipient: (lead?.email || '').trim(),
+    testMode: bundle.testMode !== false,
     testList,
+    templateId: tmpl.id,
+    templateName: tmpl.name,
   };
 }
 
@@ -150,12 +226,7 @@ export function parseTestAddresses(raw) {
     .filter(s => /.+@.+\..+/.test(s));
 }
 
-/**
- * List of unresolved placeholders left in the rendered output. Used by the
- * preview UI to warn the agent before sending ("your template references
- * {main_product} but this lead has no mainProduct set").
- */
-export function findMissingValues(rendered, lead) {
+export function findMissingValues(rendered) {
   const found = new Set();
   const re = /\{(\w+)\}/g;
   const texts = [rendered.subject || '', rendered.body || ''];
@@ -164,4 +235,40 @@ export function findMissingValues(rendered, lead) {
     while ((m = re.exec(t)) !== null) found.add(m[0]);
   }
   return [...found];
+}
+
+// ---------- Public helpers for callers (Settings UI, send button) ----------
+
+/**
+ * Returns the template that should auto-send when a lead's stage changes
+ * to `targetStage`. Returns null when no template is configured for that
+ * stage or when nothing is enabled.
+ */
+export function findAutoSendTemplate(bundle, targetStage) {
+  if (!bundle || !targetStage) return null;
+  for (const t of bundle.templates || []) {
+    if (t.enabled !== false && t.autoSendOnStage === targetStage) return t;
+  }
+  return null;
+}
+
+export function createBlankTemplate() {
+  return {
+    id: newTemplateId(),
+    name: 'New template',
+    subject: '',
+    body: '',
+    fromName: '',
+    enabled: true,
+    autoSendOnStage: null,
+  };
+}
+
+/**
+ * Append a new audit log entry to a lead. Returns the patched lead.
+ * Caller is responsible for persisting via the regular onSave path.
+ */
+export function appendAuditEntry(lead, entry) {
+  const existing = Array.isArray(lead?.emailLog) ? lead.emailLog : [];
+  return { ...lead, emailLog: [...existing, entry] };
 }
