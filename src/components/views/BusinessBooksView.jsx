@@ -10,6 +10,7 @@ import { storage } from '@/lib/storage';
 import { compressIfImage } from '@/lib/imageCompress';
 import { saveAttachment, getAttachment, deleteAttachment } from '@/lib/attachments';
 import { useCategoriesAll } from '@/lib/customCategories';
+import { PLATFORM_EXPENSE_CATEGORIES } from '@/lib/constants';
 import { vendorMemoryToHints, loadVendorMemory } from '@/lib/vendorMemory';
 import { loadUserRubric } from '@/lib/userRubric';
 import { useClosedPeriods } from '@/lib/closedPeriods';
@@ -329,20 +330,23 @@ function BusinessBooksView({
   const ytdExpenses = yrExpenses.reduce((s, e) => s + Number(e.amount || 0), 0);
   const ytdBooksIncome = yrIncome.reduce((s, e) => s + Number(e.amount || 0), 0);
 
-  // Platforms totals for visibility — Platforms is its own store (feeds True
-  // CPA), but agents need to see the full expense picture from Books. We
-  // surface "+ Platforms: $X" alongside the Books-only YTD/month totals
-  // without changing any underlying math.
-  const yrPlatformExpenses = useMemo(
-    () => platformExpenses.filter(e => (e.date || '').startsWith(yr)),
-    [platformExpenses, yr]
+  // Platforms (Ringy / TextDrip / VanillaSoft) live in Books now under their
+  // own categories (PLATFORM_RINGY / PLATFORM_TEXTDRIP / PLATFORM_VANILLASOFT).
+  // We surface their subtotal alongside the YTD/month tiles for transparency,
+  // but the underlying total is ALREADY in ytdExpenses / monthExpTotal —
+  // don't double-subtract them anywhere.
+  const ytdPlatformExpenses = useMemo(
+    () => yrExpenses
+      .filter(e => PLATFORM_EXPENSE_CATEGORIES.includes(e.category))
+      .reduce((s, e) => s + Number(e.amount || 0), 0),
+    [yrExpenses]
   );
-  const ytdPlatformExpenses = yrPlatformExpenses.reduce((s, e) => s + Number(e.amount || 0), 0);
-  const monthPlatformExpenses = useMemo(
-    () => platformExpenses.filter(e => ymOf(e.date) === activeMonth),
-    [platformExpenses, activeMonth]
+  const monthPlatformTotal = useMemo(
+    () => expenses
+      .filter(e => ymOf(e.date) === activeMonth && PLATFORM_EXPENSE_CATEGORIES.includes(e.category))
+      .reduce((s, e) => s + Number(e.amount || 0), 0),
+    [expenses, activeMonth]
   );
-  const monthPlatformTotal = monthPlatformExpenses.reduce((s, e) => s + Number(e.amount || 0), 0);
 
   // Commission income for the year — sum statement-derived own advances +
   // overrides for the year. Falls back to leads' dealValue (issued in YR) when
@@ -365,10 +369,9 @@ function BusinessBooksView({
 
   // Total YTD income shown on the dashboard card = books income + commissions.
   const ytdIncome   = ytdBooksIncome + ytdCommissions;
-  // True YTD Net = all income (commissions + books) − all expenses (Books +
-  // Platforms). Platforms is a real cash outflow even though it's stored
-  // separately for True-CPA purposes — leaving it out overstated NET.
-  const ytdNet      = ytdIncome - ytdExpenses - ytdPlatformExpenses;
+  // True YTD Net = all income − all Books expenses. Platforms now live IN
+  // Books (PLATFORM_* categories) so they're already inside ytdExpenses.
+  const ytdNet      = ytdIncome - ytdExpenses;
 
   // Filters for the daily entries table — per-tab so switching keeps each one
   const [filterCategory, setFilterCategory] = useState('');
@@ -427,7 +430,8 @@ function BusinessBooksView({
   // True monthly income = books income + statement advances + overrides
   const monthIncTotal = monthBooksIncTotal + monthCommissions;
   // True monthly net = income − books expenses − platforms expenses
-  const monthNet = monthIncTotal - monthExpTotal - monthPlatformTotal;
+  // Platforms now live in Books, so monthExpTotal already includes them.
+  const monthNet = monthIncTotal - monthExpTotal;
 
   // Per-category breakdown for active month (current tab)
   const monthByCategory = useMemo(() => {
@@ -756,9 +760,9 @@ function BusinessBooksView({
               }>+{fmt2(monthIncTotal)}</span>
               <span className="text-slate-300">·</span>
               <span className="font-bold text-red-500" title={
-                `Books expenses: ${fmt2(monthExpTotal)}` +
-                (monthPlatformTotal > 0 ? ` · Platforms: ${fmt2(monthPlatformTotal)}` : '')
-              }>−{fmt2(monthExpTotal + monthPlatformTotal)}</span>
+                `All Books expenses: ${fmt2(monthExpTotal)}` +
+                (monthPlatformTotal > 0 ? ` (of which Platforms: ${fmt2(monthPlatformTotal)})` : '')
+              }>−{fmt2(monthExpTotal)}</span>
               <span className="text-slate-300">=</span>
               <span className={`font-bold ${monthNet >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
                 {monthNet >= 0 ? '+' : '−'}{fmt2(Math.abs(monthNet))}

@@ -3,7 +3,14 @@ import { useMemo, useState, memo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LabelList } from 'recharts';
 import { DollarSign, TrendingUp, Percent, Target, Package, Plus, Edit2, Trash2, Phone, Calendar, Presentation, Trophy, Info, Sparkles, ChevronDown, ChevronUp, Wallet } from 'lucide-react';
 import { fmt, fmt2, getWeekStart, weekAgo, weekLabel, weekRangeLabel, usDate } from '@/lib/utils';
-import { productPremium, UNDERWRITTEN_PRODUCTS, GI_PRODUCTS, TRUE_CPA_BOOK_CATEGORIES } from '@/lib/constants';
+import {
+  productPremium,
+  UNDERWRITTEN_PRODUCTS,
+  GI_PRODUCTS,
+  TRUE_CPA_BOOK_CATEGORIES,
+  PLATFORM_EXPENSE_CATEGORIES,
+  CATEGORY_TO_PLATFORM_ID,
+} from '@/lib/constants';
 import TakenRateCalculator from '../TakenRateCalculator';
 import ChargebacksPanel from '../ChargebacksPanel';
 import { TiltCard, CountUp, FadeIn, Stagger, StaggerItem, Chart3DCard, fireConfetti } from '../motion/MotionPrimitives';
@@ -51,17 +58,24 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
     return m;
   }, [leads]);
 
-  // Platform expenses (TextDrip / Ringy / VanillaSoft credits) bucketed by the
-  // ISO Friday-week start of their date — adds to Invested in CPA math.
+  // Platform expenses now live in business_expenses_v1 under the
+  // PLATFORM_RINGY / PLATFORM_TEXTDRIP / PLATFORM_VANILLASOFT categories
+  // (migrated 2026-05). Derive the legacy platform-expense view for
+  // anywhere that still bucketed by Friday-week.
+  const platformsFromBooks = useMemo(
+    () => (businessExpenses || []).filter(e => PLATFORM_EXPENSE_CATEGORIES.includes(e.category)),
+    [businessExpenses]
+  );
+
   const platformByWeek = useMemo(() => {
     const m = {};
-    platformExpenses.forEach(e => {
+    platformsFromBooks.forEach(e => {
       if (!e?.date) return;
       const w = getWeekStart(e.date);
       m[w] = (m[w] || 0) + Number(e.amount || 0);
     });
     return m;
-  }, [platformExpenses]);
+  }, [platformsFromBooks]);
 
   // Earned is driven SOLELY by Issued-lead commissions (the auto-sync).
   // Manual advances/paid in the investment log are tracked for record-keeping
@@ -125,7 +139,11 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
 
     const scopedInvestments = investments.filter(i => inPeriod(i.weekStart));
     const scopedIssued      = leads.filter(l => l.stage === 'Issued' && inPeriod(l.closedDate));
-    const scopedPlatform    = platformExpenses.filter(e => inPeriod(e.date)).reduce((s, e) => s + Number(e.amount || 0), 0);
+    // Platform spend now lives in Books under PLATFORM_* categories. Sum
+    // those for the lead-acquisition slice (Weekly + Platforms).
+    const scopedPlatform    = platformsFromBooks
+      .filter(e => inPeriod(e.date))
+      .reduce((s, e) => s + Number(e.amount || 0), 0);
     const scopedBaseInvested = scopedInvestments.reduce((s, i) => s + (i.leadSpend || 0) + (i.crmWeekly || 0) + (i.crmDaily || 0), 0);
     // Lead-acquisition slice ONLY (Weekly + Platforms). Used for the legacy
     // "Net" derivation and any place we explicitly want to separate
@@ -167,30 +185,26 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
 
     // True CPA per agent direction:
     //   Numerator = Weekly Investment (leadSpend + crmWeekly + crmDaily)
-    //             + Platform Expenses
-    //             + Books LEAD_INVESTMENT
-    //             + Books SOFTWARE
+    //             + Books LEAD_INVESTMENT + SOFTWARE + PLATFORM_*  (all in Books now)
     //   Denominator = Issued deals
+    //
+    // The Books-side platform charges (PLATFORM_RINGY / PLATFORM_TEXTDRIP /
+    // PLATFORM_VANILLASOFT) are already counted via scopedPlatform above,
+    // so we sum the non-platform True-CPA categories here to avoid double.
     const scopedBookLeadInvestment = businessExpenses
       .filter(e => inPeriod(e.date) && e.category === 'LEAD_INVESTMENT')
       .reduce((s, e) => s + Number(e.amount || 0), 0);
 
-    // De-dup: Books SOFTWARE entries whose vendor matches a Platforms-tracked
-    // tool (TextDrip / Ringy / VanillaSoft) are double-counts of what's
-    // already in scopedPlatform. Strip them from True CPA but track the
-    // excluded total for transparency in the breakdown.
-    const PLATFORM_VENDOR_RE = /textdrip|text\s*drip|\bringy\b|vanilla\s*soft|vanillasoft/i;
-    const softwareEntries = businessExpenses.filter(e => inPeriod(e.date) && e.category === 'SOFTWARE');
-    const scopedBookSoftware = softwareEntries
-      .filter(e => !PLATFORM_VENDOR_RE.test(e.vendor || ''))
+    // SOFTWARE category is now CRM-platform-free (those have their own
+    // categories). No more vendor-string dedup hack required.
+    const scopedBookSoftware = businessExpenses
+      .filter(e => inPeriod(e.date) && e.category === 'SOFTWARE')
       .reduce((s, e) => s + Number(e.amount || 0), 0);
-    const scopedBookSoftwarePlatformOverlap = softwareEntries
-      .filter(e => PLATFORM_VENDOR_RE.test(e.vendor || ''))
-      .reduce((s, e) => s + Number(e.amount || 0), 0);
+    const scopedBookSoftwarePlatformOverlap = 0; // legacy field, kept for breakdown panel transparency
 
-    // INVESTED (full per-deal cost basis) = Weekly + Platforms + Books LI + Books SW.
-    // This is the same number as the True CPA denominator, so all per-deal
-    // metrics (Invested KPI / True CPA / ROI) tell the same cost story.
+    // INVESTED (full per-deal cost basis) = Weekly + Books LI + Books SW + Platforms (in Books).
+    // scopedInvestedLeadAcq already includes scopedPlatform; we add the two
+    // remaining True-CPA Books categories.
     const scopedTrueCpaBooks = scopedBookLeadInvestment + scopedBookSoftware;
     const scopedInvested = scopedInvestedLeadAcq + scopedTrueCpaBooks;
     const scopedTrueCpaBase = scopedInvested; // alias kept for breakdown panel
@@ -203,12 +217,11 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
       ? ((scopedEarned - scopedInvested) / scopedInvested) * 100
       : 0;
 
-    // True Net "out": Invested already contains Books LI + SW, so we must
-    // exclude those categories from BusinessExpenses to avoid double-count.
-    // Platform-overlap SW is also excluded (it's an artifact of bank statement
-    // imports duplicating Platforms-tab entries).
+    // True Net "out": Invested already contains every TRUE_CPA_BOOK_CATEGORIES
+    // entry (LI + SOFTWARE + the three PLATFORM_*), so exclude those when
+    // summing the rest of Books to avoid double-counting.
     const scopedBusinessExpensesNonInvested = businessExpenses
-      .filter(e => inPeriod(e.date) && e.category !== 'LEAD_INVESTMENT' && e.category !== 'SOFTWARE')
+      .filter(e => inPeriod(e.date) && !TRUE_CPA_BOOK_CATEGORIES.includes(e.category))
       .reduce((s, e) => s + Number(e.amount || 0), 0);
     const scopedTrueNet = (scopedEarned + scopedBusinessIncome) - (scopedInvested + scopedBusinessExpensesNonInvested);
 
@@ -220,10 +233,10 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
       return acc;
     }, { leadSpend: 0, crmWeekly: 0, crmDaily: 0 });
 
-    const platformBreakdown = platformExpenses
+    const platformBreakdown = platformsFromBooks
       .filter(e => inPeriod(e.date))
       .reduce((acc, e) => {
-        const p = e.platform || 'OTHER';
+        const p = CATEGORY_TO_PLATFORM_ID[e.category] || 'OTHER';
         acc[p] = (acc[p] || 0) + Number(e.amount || 0);
         return acc;
       }, {});
@@ -275,7 +288,7 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
       earnedByProduct, incomeByCategory, expensesByCategory,
       inKpiPeriod: inPeriod,
     };
-  }, [leads, investments, platformExpenses, businessExpenses, businessIncome, overrides, ownAdvances, kpiPeriod, kpiWeekStart]);
+  }, [leads, investments, platformsFromBooks, businessExpenses, businessIncome, overrides, ownAdvances, kpiPeriod, kpiWeekStart]);
 
   // Destructure once so the rest of the component reads naturally
   const {

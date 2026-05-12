@@ -7,7 +7,13 @@ import { storage, onStorageError } from '@/lib/storage';
 import { deleteAttachment as deleteAttachmentFromIdb } from '@/lib/attachments';
 import { mkLead, migrateLead, SEED_LEADS, SEED_INVESTMENTS, SEED_ACTIVITIES } from '@/lib/seed';
 import { today, uid, getWeekStart } from '@/lib/utils';
-import { isPricedAssociation, NAV_TABS } from '@/lib/constants';
+import {
+  isPricedAssociation,
+  NAV_TABS,
+  PLATFORM_EXPENSE_CATEGORIES,
+  PLATFORM_ID_TO_CATEGORY,
+  CATEGORY_TO_PLATFORM_ID,
+} from '@/lib/constants';
 import { TIERS, DEFAULT_ADVANCE_MONTHS, getAdvanceMonthsForDate, currentAdvanceMonths } from '@/lib/commission';
 import { dedupLeads } from '@/lib/leadDedup';
 
@@ -263,10 +269,58 @@ export default function LeadTracker() {
       setAdvanceMonthsHistory(amRaw ? JSON.parse(amRaw) : []);
 
       const peRaw = await storage.getItem(PE_KEY);
-      setPlatformExpenses(peRaw ? JSON.parse(peRaw) : []);
+      const peInitial = peRaw ? JSON.parse(peRaw) : [];
 
       const beRaw = await storage.getItem(BE_KEY);
-      setBusinessExpenses(beRaw ? JSON.parse(beRaw) : []);
+      let beInitial = beRaw ? JSON.parse(beRaw) : [];
+
+      // One-shot migration (2026-05): platform_expenses_v1 → business_expenses_v1.
+      // Platforms used to live in their own isolated store. They now live in
+      // Books under dedicated categories (PLATFORM_RINGY / PLATFORM_TEXTDRIP /
+      // PLATFORM_VANILLASOFT). Migration flag prevents re-runs. The legacy
+      // store is left in place as a backup — future cleanup can remove it
+      // once we're confident the migration is stable.
+      const migrationFlag = await storage.getItem('platform_to_books_migrated_v1');
+      if (!migrationFlag && Array.isArray(peInitial) && peInitial.length > 0) {
+        const { PLATFORM_ID_TO_CATEGORY } = await import('@/lib/constants');
+        // Build a set of (date|amount|category|notes) tuples already present
+        // in Books to avoid re-importing if the user previously did manual
+        // moves. Cheap O(n) check.
+        const existingKeys = new Set(beInitial.map(e => `${e.date}|${e.amount}|${e.category}|${(e.notes || '').slice(0, 40)}`));
+        const migratedRows = [];
+        for (const p of peInitial) {
+          if (!p) continue;
+          const category = PLATFORM_ID_TO_CATEGORY[p.platform];
+          if (!category) continue;
+          const vendor = p.vendor || `${p.platform} ${p.reason || 'charge'}`.trim();
+          const key = `${p.date}|${p.amount}|${category}|${(p.notes || '').slice(0, 40)}`;
+          if (existingKeys.has(key)) continue;
+          migratedRows.push({
+            id: p.id || uid(),
+            date: p.date,
+            vendor,
+            amount: Number(p.amount) || 0,
+            category,
+            // Preserve the platform-specific sub-classification so the
+            // Platforms tab still groups credit-refills vs subscriptions.
+            reason: p.reason || 'CREDIT REFILL',
+            notes: p.notes || '',
+          });
+          existingKeys.add(key);
+        }
+        if (migratedRows.length > 0) {
+          beInitial = [...migratedRows, ...beInitial];
+          await storage.setItem(BE_KEY, JSON.stringify(beInitial));
+        }
+        await storage.setItem('platform_to_books_migrated_v1', JSON.stringify({ migrated: migratedRows.length, at: new Date().toISOString() }));
+      }
+
+      // Keep platformExpenses state in sync for any code that still reads
+      // it directly (legacy paths). After migration, the Platforms tab and
+      // True CPA both read from businessExpenses → these stay until full
+      // cleanup.
+      setPlatformExpenses(peInitial);
+      setBusinessExpenses(beInitial);
       const biRaw = await storage.getItem(BI_KEY);
       setBusinessIncome(biRaw ? JSON.parse(biRaw) : []);
 
@@ -971,6 +1025,57 @@ export default function LeadTracker() {
   const onUpdatePlatformExpense = useCallback((e) => setPlatformExpenses(prev => prev.map(x => x.id === e.id ? e : x)), []);
   const onDeletePlatformExpense = useCallback((id) => setPlatformExpenses(prev => prev.filter(x => x.id !== id)), []);
 
+  // ---- Unified platform-via-Books wiring (2026-05) ----
+  // Platforms now live in business_expenses_v1 with PLATFORM_RINGY /
+  // PLATFORM_TEXTDRIP / PLATFORM_VANILLASOFT categories. The Platforms
+  // tab still wants to see rows in its old shape ({ platform, reason, ... }),
+  // so we expose a derived "view" + writer adapters that translate the
+  // legacy shape into Books rows on the way in.
+  const platformExpensesAsView = useMemo(() => {
+    return (businessExpenses || [])
+      .filter(e => PLATFORM_EXPENSE_CATEGORIES.includes(e.category))
+      .map(e => ({
+        id: e.id,
+        date: e.date,
+        platform: CATEGORY_TO_PLATFORM_ID[e.category],
+        amount: Number(e.amount) || 0,
+        reason: e.reason || 'CREDIT REFILL',
+        notes: e.notes || '',
+        vendor: e.vendor || '',
+      }));
+  }, [businessExpenses]);
+
+  // Maps the Platforms-tab row shape to a Books expense row.
+  const platformRowToBooks = useCallback((p) => ({
+    id: p.id || uid(),
+    date: p.date || today(),
+    vendor: p.vendor || `${p.platform || ''} ${p.reason || 'charge'}`.trim(),
+    amount: Math.abs(Number(p.amount) || 0),
+    category: PLATFORM_ID_TO_CATEGORY[p.platform] || 'PLATFORM_RINGY',
+    reason: p.reason || 'CREDIT REFILL',
+    notes: p.notes || '',
+  }), []);
+
+  const onAddPlatformViaBooks = useCallback((p) => {
+    setBusinessExpenses(prev => [platformRowToBooks(p), ...prev]);
+    showToast('Entry added');
+  }, [platformRowToBooks, showToast]);
+
+  const onBulkAddPlatformsViaBooks = useCallback((rows) => {
+    if (!rows?.length) return;
+    const books = rows.map(platformRowToBooks);
+    setBusinessExpenses(prev => [...books, ...prev]);
+    showToast(`Imported ${rows.length} expense${rows.length !== 1 ? 's' : ''}`);
+  }, [platformRowToBooks, showToast]);
+
+  const onUpdatePlatformViaBooks = useCallback((p) => {
+    setBusinessExpenses(prev => prev.map(x => x.id === p.id ? { ...x, ...platformRowToBooks(p) } : x));
+  }, [platformRowToBooks]);
+
+  const onDeletePlatformViaBooks = useCallback((id) => {
+    setBusinessExpenses(prev => prev.filter(x => x.id !== id));
+  }, []);
+
   const onAddBusinessExpense = useCallback((e) => { setBusinessExpenses(prev => [e, ...prev]); showToast('Expense added'); }, [showToast]);
   const onUpdateBusinessExpense = useCallback((e) => setBusinessExpenses(prev => prev.map(x => x.id === e.id ? e : x)), []);
   const onDeleteBusinessExpense = useCallback((id) => {
@@ -1211,15 +1316,11 @@ export default function LeadTracker() {
         </ViewMount>
         <ViewMount visible={view === 'platforms'} viewKey="platforms">
           <PlatformExpensesView
-            expenses={platformExpenses}
-            onAdd={(e) => { setPlatformExpenses(prev => [e, ...prev]); showToast('Entry added'); }}
-            onBulkAdd={(rows) => {
-              if (!rows?.length) return;
-              setPlatformExpenses(prev => [...rows, ...prev]);
-              showToast(`Imported ${rows.length} expense${rows.length !== 1 ? 's' : ''}`);
-            }}
-            onUpdate={(e) => setPlatformExpenses(prev => prev.map(x => x.id === e.id ? e : x))}
-            onDelete={(id) => setPlatformExpenses(prev => prev.filter(x => x.id !== id))}
+            expenses={platformExpensesAsView}
+            onAdd={onAddPlatformViaBooks}
+            onBulkAdd={onBulkAddPlatformsViaBooks}
+            onUpdate={onUpdatePlatformViaBooks}
+            onDelete={onDeletePlatformViaBooks}
             onBulkAddBooksExpenses={(rows) => {
               if (!rows?.length) return;
               setBusinessExpenses(prev => [...rows, ...prev]);
@@ -1276,7 +1377,7 @@ export default function LeadTracker() {
               setBusinessIncome(prev => [...rows, ...prev]);
               showToast(`Imported ${rows.length} income entr${rows.length !== 1 ? 'ies' : 'y'}`);
             }}
-            onBulkAddPlatforms={onBulkAddPlatformExpenses}
+            onBulkAddPlatforms={onBulkAddPlatformsViaBooks}
             smartImportOpenSignal={smartImportOpenSignal}
           />
         </ViewMount>

@@ -277,9 +277,19 @@ export const PROSPECT_POLICY_TYPES = [
   'SUPPY',
 ];
 
-// Business Books — expense categories (money OUT beyond lead spend / platforms)
+// Business Books — expense categories (money OUT beyond lead spend / platforms).
+//
+// CRM platforms (Ringy / TextDrip / VanillaSoft) live in Books too as of
+// 2026-05 — they used to have their own isolated store but agents kept
+// missing them in audits because Books wouldn't show them. Now they're
+// regular Books expenses with their own categories. The Platforms tab is
+// a filtered view of these categories. True CPA reads from Books only
+// (see TRUE_CPA_BOOK_CATEGORIES below) so there's no double-count.
 export const EXPENSE_CATEGORIES = [
-  { id: 'LEAD_INVESTMENT', label: 'Lead Investment',  color: '#dc2626', badge: 'bg-red-100 text-red-700' },
+  { id: 'LEAD_INVESTMENT',     label: 'Lead Investment',   color: '#dc2626', badge: 'bg-red-100 text-red-700' },
+  { id: 'PLATFORM_RINGY',      label: 'Ringy',             color: '#ef4444', badge: 'bg-red-500 text-white' },
+  { id: 'PLATFORM_TEXTDRIP',   label: 'TextDrip',          color: '#7f1d1d', badge: 'bg-red-900 text-white' },
+  { id: 'PLATFORM_VANILLASOFT', label: 'VanillaSoft',      color: '#1e3a8a', badge: 'bg-blue-900 text-white' },
   { id: 'OFFICE_RENT',    label: 'Office Rent',       color: '#b91c1c', badge: 'bg-red-100 text-red-800' },
   { id: 'OFFICE',         label: 'Office Supplies',   color: '#0ea5e9', badge: 'bg-sky-100 text-sky-700' },
   { id: 'SOFTWARE',       label: 'Software',          color: '#6366f1', badge: 'bg-indigo-100 text-indigo-700' },
@@ -298,11 +308,43 @@ export const EXPENSE_CATEGORIES = [
 ];
 
 // Books expense categories that contribute to TRUE CPA (cost-per-acquisition).
-// Per agent direction: only Lead Investment + Software qualify as direct
-// per-deal acquisition costs. Other categories like office rent / recruiting /
+// Per agent direction: Lead Investment + Software + the CRM platform
+// categories (Ringy / TextDrip / VanillaSoft) qualify as direct per-deal
+// acquisition costs. Other categories like office rent / recruiting /
 // travel are valid business expenses but don't scale per-deal so they're
 // excluded from True CPA. They DO still flow into True Net.
-export const TRUE_CPA_BOOK_CATEGORIES = ['LEAD_INVESTMENT', 'SOFTWARE'];
+export const TRUE_CPA_BOOK_CATEGORIES = [
+  'LEAD_INVESTMENT',
+  'SOFTWARE',
+  'PLATFORM_RINGY',
+  'PLATFORM_TEXTDRIP',
+  'PLATFORM_VANILLASOFT',
+];
+
+// The three "platform" expense categories. Used in places where we need
+// to filter Books down to just CRM-platform spend (e.g. Platforms tab,
+// True CPA breakdown, migration of legacy platform_expenses_v1 entries).
+export const PLATFORM_EXPENSE_CATEGORIES = [
+  'PLATFORM_RINGY',
+  'PLATFORM_TEXTDRIP',
+  'PLATFORM_VANILLASOFT',
+];
+
+// Maps legacy `platform` field values ('TD' / 'RINGY' / 'VANILLA') to the
+// matching Books category id. Drives migration + Smart Import routing.
+export const PLATFORM_ID_TO_CATEGORY = {
+  RINGY:   'PLATFORM_RINGY',
+  TD:      'PLATFORM_TEXTDRIP',
+  VANILLA: 'PLATFORM_VANILLASOFT',
+};
+
+// Inverse map — derive the platform "id" from a category. Used when we
+// render Platforms tab views which still group/filter by platformId.
+export const CATEGORY_TO_PLATFORM_ID = {
+  PLATFORM_RINGY:       'RINGY',
+  PLATFORM_TEXTDRIP:    'TD',
+  PLATFORM_VANILLASOFT: 'VANILLA',
+};
 
 // Business Books — income categories (money IN beyond commissions)
 export const INCOME_CATEGORIES = [
