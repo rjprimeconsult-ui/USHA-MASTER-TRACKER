@@ -274,23 +274,33 @@ export default function LeadTracker() {
       const beRaw = await storage.getItem(BE_KEY);
       let beInitial = beRaw ? JSON.parse(beRaw) : [];
 
-      // One-shot migration (2026-05): platform_expenses_v1 → business_expenses_v1.
+      // Auto-migration (2026-05): platform_expenses_v1 → business_expenses_v1.
       // Platforms used to live in their own isolated store. They now live in
       // Books under dedicated categories (PLATFORM_RINGY / PLATFORM_TEXTDRIP /
-      // PLATFORM_VANILLASOFT). Migration flag prevents re-runs. The legacy
-      // store is left in place as a backup — future cleanup can remove it
-      // once we're confident the migration is stable.
-      const migrationFlag = await storage.getItem('platform_to_books_migrated_v1');
-      if (!migrationFlag && Array.isArray(peInitial) && peInitial.length > 0) {
-        const { PLATFORM_ID_TO_CATEGORY } = await import('@/lib/constants');
+      // PLATFORM_VANILLASOFT). The legacy store is kept as a backup.
+      //
+      // Runs on EVERY load (not flag-gated): dedup keys make it idempotent,
+      // so re-running can't double-count. This catches legacy rows that the
+      // first pass missed (e.g., a manual entry with `platform: 'TEXTDRIP'`
+      // instead of the short code 'TD').
+      if (Array.isArray(peInitial) && peInitial.length > 0) {
+        // Forgiving platform-name normalizer. Accepts the short codes (TD,
+        // VANILLA), the full names (TEXTDRIP, VANILLASOFT), abbreviations
+        // (VS), and is whitespace/case insensitive.
+        const normalizePlatform = (raw) => {
+          const s = String(raw || '').toUpperCase().replace(/\s/g, '');
+          if (s === 'RINGY')                         return 'PLATFORM_RINGY';
+          if (s === 'TD' || s === 'TEXTDRIP')        return 'PLATFORM_TEXTDRIP';
+          if (s === 'VANILLA' || s === 'VANILLASOFT' || s === 'VS') return 'PLATFORM_VANILLASOFT';
+          return null;
+        };
         // Build a set of (date|amount|category|notes) tuples already present
-        // in Books to avoid re-importing if the user previously did manual
-        // moves. Cheap O(n) check.
+        // in Books so re-runs of this migration don't duplicate rows.
         const existingKeys = new Set(beInitial.map(e => `${e.date}|${e.amount}|${e.category}|${(e.notes || '').slice(0, 40)}`));
         const migratedRows = [];
         for (const p of peInitial) {
           if (!p) continue;
-          const category = PLATFORM_ID_TO_CATEGORY[p.platform];
+          const category = normalizePlatform(p.platform);
           if (!category) continue;
           const vendor = p.vendor || `${p.platform} ${p.reason || 'charge'}`.trim();
           const key = `${p.date}|${p.amount}|${category}|${(p.notes || '').slice(0, 40)}`;
@@ -311,8 +321,9 @@ export default function LeadTracker() {
         if (migratedRows.length > 0) {
           beInitial = [...migratedRows, ...beInitial];
           await storage.setItem(BE_KEY, JSON.stringify(beInitial));
+          // eslint-disable-next-line no-console
+          console.log(`[platform-to-books migration] Recovered ${migratedRows.length} legacy platform row(s) into Books.`);
         }
-        await storage.setItem('platform_to_books_migrated_v1', JSON.stringify({ migrated: migratedRows.length, at: new Date().toISOString() }));
       }
 
       // Keep platformExpenses state in sync for any code that still reads
