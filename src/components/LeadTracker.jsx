@@ -41,7 +41,10 @@ import PaywallGate, { TrialBanner } from './PaywallGate';
 import ScreenshotImport from './ScreenshotImport';
 import AssociationCommissionDetailImport from './AssociationCommissionDetailImport';
 import PostSaleEmailSettings from './PostSaleEmailSettings';
+import PendingEmailQueueRunner from './PendingEmailQueueRunner';
 import { useBetaFeature } from '@/lib/useBetaFeature';
+import { loadBundle, findAutoSendTemplate } from '@/lib/postSaleEmails';
+import { enqueuePending, cancelAllForLead } from '@/lib/pendingEmailQueue';
 import Toast from './Toast';
 import AdvanceMonthsHistoryEditor from './AdvanceMonthsHistoryEditor';
 import { fireConfetti, FadeIn, OrbBackdrop } from './motion/MotionPrimitives';
@@ -449,6 +452,25 @@ export default function LeadTracker() {
   useEffect(() => { if (loaded) storage.setItem(AB_DETAIL_KEY, JSON.stringify(abDetail)); }, [abDetail, loaded]);
   useEffect(() => { if (loaded) storage.setItem(AGENT_RATES_KEY, JSON.stringify(agentRates)); }, [agentRates, loaded]);
 
+  // Auto-send hook — when a lead's stage transitions to a value that any
+  // enabled template is configured to auto-fire on, drop a pending send into
+  // the queue. The PendingEmailQueueRunner picks it up, surfaces a 5-min
+  // countdown toast with Cancel, then either fires or skips. No-op when the
+  // user doesn't have beta access or no template matches the new stage.
+  const maybeEnqueueAutoSend = useCallback(async (prevStage, newLead) => {
+    if (!newLead?.id || !newLead?.stage || prevStage === newLead.stage) return;
+    try {
+      const bundle = await loadBundle();
+      const template = findAutoSendTemplate(bundle, newLead.stage);
+      if (!template) return;
+      await enqueuePending({ leadId: newLead.id, templateId: template.id });
+    } catch (e) {
+      // Don't surface to the user — the queue runner already retries on next tick.
+      // eslint-disable-next-line no-console
+      console.warn('[auto-send] enqueue failed:', e?.message || e);
+    }
+  }, []);
+
   // lead handlers — useCallback'd so memoized views can skip re-render
   const newLead = useCallback(() => setLeadForm(mkLead({
     advanceMonths: currentAdvanceMonths(advanceMonthsHistory, DEFAULT_ADVANCE_MONTHS),
@@ -463,10 +485,12 @@ export default function LeadTracker() {
       setLeads(prev => prev.map(x => x.id === l.id ? clean : x));
       showToast('Lead updated');
       if (nowIssued) fireConfetti();
+      maybeEnqueueAutoSend(prevLead?.stage, clean);
     } else {
       setLeads(prev => [clean, ...prev]);
       showToast('Lead added');
       if (clean.stage === 'Issued') fireConfetti();
+      maybeEnqueueAutoSend(null, clean);
     }
     setLeadForm(null);
   };
@@ -479,6 +503,9 @@ export default function LeadTracker() {
         setLeadForm(null);
         setConfirm(null);
         showToast('Lead deleted');
+        // Cancel any pending auto-send tied to this lead so we don't fire
+        // a welcome email after the agent decided to delete the record.
+        cancelAllForLead(id).catch(() => {});
       },
     });
   }, [showToast]);
@@ -882,8 +909,10 @@ export default function LeadTracker() {
   const bulkStageChange = useCallback((ids, newStage) => {
     if (!ids || ids.length === 0 || !newStage) return;
     const idSet = new Set(ids);
+    const prevStageById = new Map();
     setLeads(prev => prev.map(l => {
       if (!idSet.has(l.id)) return l;
+      prevStageById.set(l.id, l.stage);
       const patch = { stage: newStage, lastTouch: today() };
       // Stamp closedDate + (retroactive) association start for any post-close stage
       if (newStage === 'Pending' || newStage === 'Issued') {
@@ -892,10 +921,13 @@ export default function LeadTracker() {
           patch.associationStartDate = patch.closedDate || today();
         }
       }
-      return { ...l, ...patch };
+      const next = { ...l, ...patch };
+      // Best-effort fire-and-forget auto-send check per affected lead.
+      maybeEnqueueAutoSend(l.stage, next);
+      return next;
     }));
     showToast(`${ids.length} lead${ids.length !== 1 ? 's' : ''} moved to ${newStage}`);
-  }, [showToast]);
+  }, [showToast, maybeEnqueueAutoSend]);
 
   const changeStage = useCallback((id, newStage) => {
     let wasNotIssued = false;
@@ -910,11 +942,13 @@ export default function LeadTracker() {
           patch.associationStartDate = patch.closedDate || today();
         }
       }
-      return { ...l, ...patch };
+      const next = { ...l, ...patch };
+      maybeEnqueueAutoSend(l.stage, next);
+      return next;
     }));
     showToast(`Moved to ${newStage}`);
     if (wasNotIssued) fireConfetti();
-  }, [showToast]);
+  }, [showToast, maybeEnqueueAutoSend]);
 
   // investment handlers
   const newInvestment = useCallback((weekStart) => {
@@ -1645,6 +1679,20 @@ export default function LeadTracker() {
       )}
 
       <Toast toast={toast} />
+
+      {/* Auto-send queue runner — surfaces the 5-min countdown toast(s)
+          for any pending post-sale emails and fires them when due.
+          No-op for non-beta-access users (the component handles that
+          internally). */}
+      <PendingEmailQueueRunner
+        leads={leads}
+        onAuditEntry={(leadId, entry) => {
+          setLeads(prev => prev.map(l => l.id === leadId
+            ? { ...l, emailLog: [...(l.emailLog || []), entry] }
+            : l
+          ));
+        }}
+      />
 
       {/* In-app onboarding walkthrough — auto-launches first sign-in,
           re-launchable from Settings → Replay tour. */}
