@@ -2,8 +2,10 @@
 import { useEffect, useState, useMemo } from 'react';
 import {
   X, Settings, BookOpen, History, Brain, DollarSign, Trash2, AlertCircle,
-  CheckCircle2, Loader2, FileText, Eye, ChevronDown, ChevronRight, Save, Plus,
+  CheckCircle2, Loader2, FileText, Eye, ChevronDown, ChevronRight, Save, Plus, Mail, Lock,
 } from 'lucide-react';
+import { useBetaFeature } from '@/lib/useBetaFeature';
+import PostSaleEmailSettings from './PostSaleEmailSettings';
 import { loadUserRubric, saveUserRubric, MAX_RUBRIC_LENGTH } from '@/lib/userRubric';
 import {
   loadImportHistory, deleteImportHistoryEntry, clearImportHistory, summarizeUsage,
@@ -91,6 +93,7 @@ export default function AgentSettingsPanel({ open, onClose }) {
           <TabBtn active={tab === 'history'} onClick={() => setTab('history')} icon={<History size={14} />} label={`History (${history.entries.length})`} />
           <TabBtn active={tab === 'memory'} onClick={() => setTab('memory')} icon={<Brain size={14} />} label={`Vendor memory (${vendorMemoryCount})`} />
           <TabBtn active={tab === 'cost'} onClick={() => setTab('cost')} icon={<DollarSign size={14} />} label="AI cost" />
+          <EmailsTabBtn active={tab === 'emails'} onClick={() => setTab('emails')} />
         </div>
 
         {/* Body */}
@@ -259,6 +262,8 @@ export default function AgentSettingsPanel({ open, onClose }) {
               </p>
             </div>
           )}
+
+          {tab === 'emails' && <EmailsTabContent />}
         </div>
 
         {/* Footer */}
@@ -312,6 +317,58 @@ function TabBtn({ active, onClick, icon, label }) {
       {icon} {label}
     </button>
   );
+}
+
+/**
+ * Tab button for Emails — hidden entirely when the user can't access the
+ * beta. (Starter users on a future GA could see an "Upgrade" teaser, but
+ * during beta we just don't show the tab.)
+ */
+function EmailsTabBtn({ active, onClick }) {
+  const { canAccess, reason, feature, loading } = useBetaFeature('post_sale_emails');
+  // During beta, hide the tab from non-allowlist users entirely.
+  if (loading) return null;
+  if (!canAccess && reason === 'not_in_beta') return null;
+  if (!canAccess && reason === 'not_signed_in') return null;
+  return (
+    <button onClick={onClick}
+      className={`px-3 py-2.5 text-sm font-medium flex items-center gap-1.5 border-b-2 transition ${active ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+    >
+      <Mail size={14} /> {feature?.name || 'Emails'}
+      <span className="ml-1 text-[9px] uppercase tracking-wider bg-amber-100 text-amber-800 px-1 rounded font-bold">BETA</span>
+    </button>
+  );
+}
+
+function EmailsTabContent() {
+  const { canAccess, reason, loading } = useBetaFeature('post_sale_emails');
+  if (loading) {
+    return <div className="flex items-center gap-2 text-sm text-slate-500"><Loader2 size={14} className="animate-spin" /> Loading…</div>;
+  }
+  if (!canAccess) {
+    // Surface a friendly explanation rather than a blank tab.
+    if (reason === 'tier_too_low' || reason === 'no_subscription') {
+      return (
+        <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-6 text-center">
+          <Lock size={24} className="text-indigo-600 mx-auto mb-3" />
+          <h3 className="font-bold text-slate-900 mb-1">Post-Sale Emails is a Pro feature</h3>
+          <p className="text-sm text-slate-600 mb-4">
+            Upgrade to Pro or Team to send branded post-sale emails to your customers — welcome notes, policy summaries, follow-ups.
+          </p>
+          <a href="/pricing" className="inline-flex items-center bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-lg">
+            See Pro plans
+          </a>
+        </div>
+      );
+    }
+    return (
+      <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 text-center text-sm text-slate-600">
+        <Lock size={24} className="text-slate-400 mx-auto mb-3" />
+        This beta feature isn&apos;t available on your account yet.
+      </div>
+    );
+  }
+  return <PostSaleEmailSettings />;
 }
 
 function RubricField({ label, hint, value, onChange }) {

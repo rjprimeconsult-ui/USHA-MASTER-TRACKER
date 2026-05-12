@@ -10,6 +10,7 @@ import {
 import { US_STATES, projectCommission, DEFAULT_ADVANCE_MONTHS } from '@/lib/commission';
 import { today, fmt2 } from '@/lib/utils';
 import { useLeadOptionsAll, addCustomLeadOption, ADD_CUSTOM_VALUE } from '@/lib/customLeadOptions';
+import SendWelcomeEmail from './SendWelcomeEmail';
 
 const Field = ({ label, children, required }) => (
   <div>
@@ -514,12 +515,26 @@ export default function LeadForm({ open, lead, tier = 'WA', onSave, onClose, onD
           </Field>
         </div>
 
-        <div className="sticky bottom-0 bg-slate-50 border-t border-slate-200 px-6 py-4 flex justify-between rounded-b-2xl">
-          <div>
+        <div className="sticky bottom-0 bg-slate-50 border-t border-slate-200 px-6 py-4 flex flex-wrap items-center justify-between gap-3 rounded-b-2xl">
+          <div className="flex items-center gap-3 flex-wrap">
             {onDelete && form._existing && (
               <button onClick={() => onDelete(form.id)} className="text-red-600 hover:text-red-700 text-sm font-medium flex items-center gap-1">
                 <Trash2 size={14} /> Delete
               </button>
+            )}
+            {/* Post-sale email — beta-gated. Renders nothing for users
+                without access, so non-beta agents see no UI change. */}
+            {form._existing && (
+              <SendWelcomeEmail
+                lead={form}
+                onLogged={(entry) => {
+                  const next = { ...form, emailLog: [...(form.emailLog || []), entry] };
+                  set({ emailLog: next.emailLog });
+                  // Persist the audit entry without closing the modal —
+                  // route through onSave so the parent saves to storage.
+                  if (onSave) onSave(next);
+                }}
+              />
             )}
           </div>
           <div className="flex gap-2">
