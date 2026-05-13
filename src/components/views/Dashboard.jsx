@@ -5,6 +5,7 @@ import { Users, Target, DollarSign, TrendingUp, CheckCircle2, Percent, MapPin } 
 import { STAGES, SOURCES, LEAD_CATEGORIES, CRMS, effectiveLeadCategory } from '@/lib/constants';
 import { fmt } from '@/lib/utils';
 import { Chart3DCard, TiltCard, Stagger, StaggerItem, Pie3D } from '../motion/MotionPrimitives';
+import SetupChecklist from '../SetupChecklist';
 
 const Kpi = ({ label, value, grad, Icon }) => (
   <TiltCard className="bg-white rounded-xl p-3 border border-slate-200 shine-on-hover glow-ring cursor-default">
@@ -56,7 +57,7 @@ function sourceColor(label) {
   return '#6366f1';
 }
 
-function Dashboard({ leads }) {
+function Dashboard({ leads, setupStats, onSetupAction }) {
   const [stateMetric, setStateMetric] = useState('deals'); // 'deals' | 'issued' | 'advance'
 
   const total = leads.length;
@@ -158,6 +159,13 @@ function Dashboard({ leads }) {
 
   return (
     <div className="space-y-5">
+      {/* Setup checklist for new agents — auto-hides when complete OR
+          when dismissed. Existing agents who already have data tracked
+          see it briefly (most tasks pre-checked) and can dismiss. */}
+      {setupStats && (
+        <SetupChecklist stats={setupStats} onAction={onSetupAction} />
+      )}
+
       <Stagger className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <StaggerItem><Kpi label="Total Leads" value={total} grad="from-indigo-500 to-blue-500" Icon={Users} /></StaggerItem>
         <StaggerItem><Kpi label="Open Leads" value={openLeads.length} grad="from-sky-500 to-cyan-500" Icon={Target} /></StaggerItem>

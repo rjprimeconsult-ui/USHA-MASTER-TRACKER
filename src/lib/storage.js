@@ -177,6 +177,8 @@ const APP_KEYS = [
   'post_sale_email_template_v1',
   'email_sender_identity_v1',
   'pending_email_queue_v1',
+  // Setup checklist dismiss flag (Dashboard widget)
+  'setup_checklist_v1',
 ];
 export async function migrateLocalToCloud() {
   if (!useCloud()) throw new Error('Not signed in');

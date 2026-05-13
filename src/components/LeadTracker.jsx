@@ -162,6 +162,10 @@ export default function LeadTracker() {
   // new agents (no progress record). Re-launchable from Settings.
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showFirstRunWizard, setShowFirstRunWizard] = useState(false);
+  // Reflects loadOnboardingProgress().completed — drives the setup
+  // checklist's "tier confirmed" task. Synced once on load + after
+  // the wizard fires markCompleted.
+  const [onboardingCompletedFlag, setOnboardingCompletedFlag] = useState(false);
   // Bridge for the chatbot's open state — used by the onboarding step
   // "Meet the PRIM Assistant" to pop the chat after closing the tour.
   const [chatOpenSignal, setChatOpenSignal] = useState(0);
@@ -430,6 +434,8 @@ export default function LeadTracker() {
       try {
         const { loadOnboardingProgress, shouldAutoLaunch } = await import('@/lib/onboarding');
         const progress = await loadOnboardingProgress();
+        // Track completion so the Setup Checklist's first task reflects it.
+        setOnboardingCompletedFlag(!!progress?.completed);
         if (shouldAutoLaunch(progress)) {
           // Slight delay so the app paints first; wizard appears over a
           // populated UI, not a blank screen.
@@ -1273,6 +1279,18 @@ export default function LeadTracker() {
     ytdNet: trialBannerYtdIncome - trialBannerYtdExpenses,
   };
 
+  // Stats for the Setup Checklist widget on the Dashboard. All derived
+  // from existing state — no extra tracking required. The widget hides
+  // itself when all 5 tasks complete OR when the agent dismisses it.
+  const setupChecklistStats = {
+    onboardingCompleted: !!onboardingCompletedFlag,
+    leadsCount: leads.length,
+    ownAdvancesCount: ownAdvances.length,
+    businessExpensesCount: businessExpenses.length,
+    businessIncomeCount: businessIncome.length,
+    issuedLeadsCount: leads.filter(l => l.stage === 'Issued').length,
+  };
+
   return (
     <PaywallGate>
     <div className="min-h-screen bg-slate-50 text-slate-900 relative">
@@ -1399,7 +1417,20 @@ export default function LeadTracker() {
           />
         </ViewMount>
         <ViewMount visible={view === 'dashboard'} viewKey="dashboard">
-          <Dashboard leads={leads} />
+          <Dashboard
+            leads={leads}
+            setupStats={setupChecklistStats}
+            onSetupAction={(action) => {
+              switch (action) {
+                case 'openWizard': setShowFirstRunWizard(true); break;
+                case 'newLead': newLead(); break;
+                case 'goLeads': setView('leads'); break;
+                case 'goUpload': setView('upload'); break;
+                case 'goBooks': setView('books'); break;
+                default: break;
+              }
+            }}
+          />
         </ViewMount>
         <ViewMount visible={view === 'leads'} viewKey="leads">
           <LeadsView leads={leads} onNew={newLead} onEdit={editLead} onDelete={deleteLead} onBulkDelete={bulkDeleteLeads} onBulkStage={bulkStageChange} onNavigate={(v) => setView(v)} />
@@ -1759,6 +1790,7 @@ export default function LeadTracker() {
           try {
             const { markCompleted } = await import('@/lib/onboarding');
             await markCompleted();
+            setOnboardingCompletedFlag(true);
           } catch { /* ignore */ }
         }}
         onSelectTier={(t) => setTier(t)}
