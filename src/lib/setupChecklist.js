@@ -60,10 +60,10 @@ export function deriveTasks({
 }) {
   return [
     {
-      id: 'tier',
-      label: 'Confirm your contract tier',
-      detail: 'Drives every commission and CPA projection. Set in Settings or the welcome wizard.',
-      actionLabel: 'Replay setup',
+      id: 'welcome',
+      label: 'Finish the welcome tour',
+      detail: 'Quick 60-second tour that shows you how Smart Import and the assistant work.',
+      actionLabel: 'Replay tour',
       action: 'openWizard',
       done: !!onboardingCompleted,
     },

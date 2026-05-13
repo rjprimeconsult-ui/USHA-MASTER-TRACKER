@@ -4,22 +4,20 @@ import {
   Sparkles, X, ChevronRight, ChevronLeft, Check, Upload, Plus,
   BookOpen, Calculator, MessageCircle, BarChart3, Wand2,
 } from 'lucide-react';
-import { TIERS } from '@/lib/commission';
 import { motion, AnimatePresence } from 'framer-motion';
 
 /**
  * First-run setup wizard.
  *
- * Replaces the auto-launch of the 12-step OnboardingWalkthrough for
- * brand-new agents. The old tour was a feature inventory ("here's where
- * each tab is"); this wizard is a fast setup flow that gets agents to
- * their first piece of value in under a minute.
- *
- * Four steps:
- *   1. Welcome + pick tier
+ * Three-step flow that gets brand-new agents to first value in ~45 seconds:
+ *   1. Welcome — intro to what PRIM does + how it's different from spreadsheets
  *   2. How to start (upload statement / add lead / skip)
  *   3. Books setup explainer (optional Smart Import nudge)
  *   4. You're set — quick links to explore
+ *
+ * Previously had a tier-picker step at the front, but tier is now managed
+ * inside the Commission Calculator (the only view that actually uses it
+ * for projections — every other number comes from real statements).
  *
  * Every step has Skip + Back + Continue. Skip-anywhere closes the wizard
  * and marks onboarding complete so it never auto-launches again. The
@@ -29,29 +27,23 @@ import { motion, AnimatePresence } from 'framer-motion';
  *   open                    — boolean
  *   onClose()               — called when wizard closes (skip or finish).
  *                             Parent should also call onComplete().
- *   onComplete({ tier })    — fired with final wizard state when the agent
- *                             clicks the final "Start using PRIM" button.
- *   onSelectTier(tier)      — called when the agent picks a tier on step 1.
- *                             Parent should setTier() to persist.
+ *   onComplete()            — fired when the agent finishes the final step
+ *                             (or skips anywhere). Parent should markCompleted.
  *   onOpenSmartImport()     — opens the Books Smart Import wizard.
  *   onOpenLeadForm()        — opens a blank new-lead form.
  *   onNavigate(viewId)      — routes to a top-level view.
  *   onOpenChat()            — opens the PRIM Assistant chat bubble.
- *   initialTier             — current tier (default selection on step 1).
  */
 export default function FirstRunWizard({
   open,
   onClose,
   onComplete,
-  onSelectTier,
   onOpenSmartImport,
   onOpenLeadForm,
   onNavigate,
   onOpenChat,
-  initialTier = 'WA',
 }) {
   const [step, setStep] = useState(1);
-  const [tier, setTier] = useState(initialTier);
   const [firstActionPicked, setFirstActionPicked] = useState(null); // 'statement' | 'lead' | 'skip' | null
 
   if (!open) return null;
@@ -59,7 +51,7 @@ export default function FirstRunWizard({
   const totalSteps = 4;
 
   const finish = (deferredAction) => {
-    if (typeof onComplete === 'function') onComplete({ tier, firstActionPicked });
+    if (typeof onComplete === 'function') onComplete({ firstActionPicked });
     if (typeof onClose === 'function') onClose();
     // Fire deferred action AFTER close so the parent doesn't have stale
     // wizard state (e.g. opening Smart Import while wizard's still modal).
@@ -119,15 +111,7 @@ export default function FirstRunWizard({
               exit={{ opacity: 0, x: -12 }}
               transition={{ duration: 0.18 }}
             >
-              {step === 1 && (
-                <Step1Tier
-                  tier={tier}
-                  setTier={(t) => {
-                    setTier(t);
-                    if (typeof onSelectTier === 'function') onSelectTier(t);
-                  }}
-                />
-              )}
+              {step === 1 && <Step1Welcome />}
               {step === 2 && (
                 <Step2FirstAction
                   picked={firstActionPicked}
@@ -211,28 +195,50 @@ export default function FirstRunWizard({
 
 // ---------------- Step content components ----------------
 
-function Step1Tier({ tier, setTier }) {
+function Step1Welcome() {
   return (
     <div>
-      <h2 className="text-xl font-bold text-slate-900 mb-1">First, your contract tier.</h2>
-      <p className="text-sm text-slate-500 mb-4">
-        This drives every commission and CPA projection. You can change it anytime from Settings.
+      <h2 className="text-xl font-bold text-slate-900 mb-2">Welcome to PRIM.</h2>
+      <p className="text-sm text-slate-600 mb-5 leading-relaxed">
+        Built for USHA agents who&apos;d rather sell than spreadsheet. Two minutes of setup unlocks
+        Smart Import (AI auto-parses statements), True CPA tracking, and your full residual book in one place.
       </p>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
-        {TIERS.map(t => (
-          <button
-            key={t.id}
-            onClick={() => setTier(t.id)}
-            className={`rounded-xl p-3 text-left border transition ${tier === t.id ? 'border-indigo-600 bg-indigo-50 ring-2 ring-indigo-200' : 'border-slate-200 bg-white hover:border-indigo-300 hover:bg-indigo-50/30'}`}
-          >
-            <div className={`font-bold text-base ${tier === t.id ? 'text-indigo-700' : 'text-slate-900'}`}>{t.id}</div>
-            <div className="text-[11px] text-slate-500 mt-0.5 leading-tight">{t.label}</div>
-          </button>
-        ))}
+
+      <div className="space-y-2.5">
+        <FeatureRow
+          icon={Wand2}
+          title="Smart Import everything"
+          body="Drop USHA statements, bank exports, Ringy CSVs, or expense sheets. AI extracts every line in seconds — no manual entry."
+        />
+        <FeatureRow
+          icon={BarChart3}
+          title="True CPA + commissions"
+          body="Real cost-per-deal math. See exactly what you're earning vs. spending, week over week."
+        />
+        <FeatureRow
+          icon={MessageCircle}
+          title="An AI assistant that reads your data"
+          body="Ask the chatbot about your numbers. It actually knows your leads, expenses, and books — not generic answers."
+        />
       </div>
-      <p className="text-xs text-slate-400 mt-3">
-        Not sure? Pick your best guess — you can change it anytime.
+
+      <p className="text-xs text-slate-400 mt-4">
+        Next: we&apos;ll get your first piece of data in so you can see PRIM work end-to-end.
       </p>
+    </div>
+  );
+}
+
+function FeatureRow({ icon: Icon, title, body }) {
+  return (
+    <div className="flex items-start gap-3 bg-slate-50 border border-slate-100 rounded-lg p-3">
+      <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-100 to-violet-100 flex items-center justify-center flex-shrink-0">
+        <Icon size={16} className="text-indigo-600" />
+      </div>
+      <div>
+        <div className="font-semibold text-sm text-slate-900">{title}</div>
+        <div className="text-xs text-slate-600 leading-relaxed mt-0.5">{body}</div>
+      </div>
     </div>
   );
 }

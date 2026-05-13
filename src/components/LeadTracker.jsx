@@ -14,7 +14,7 @@ import {
   PLATFORM_ID_TO_CATEGORY,
   CATEGORY_TO_PLATFORM_ID,
 } from '@/lib/constants';
-import { TIERS, DEFAULT_ADVANCE_MONTHS, getAdvanceMonthsForDate, currentAdvanceMonths } from '@/lib/commission';
+import { DEFAULT_ADVANCE_MONTHS, getAdvanceMonthsForDate, currentAdvanceMonths } from '@/lib/commission';
 import { dedupLeads } from '@/lib/leadDedup';
 
 import CpaDashboard from './views/CpaDashboard';
@@ -1506,7 +1506,13 @@ export default function LeadTracker() {
           />
         </ViewMount>
         <ViewMount visible={view === 'calculator'} viewKey="calculator">
-          <CommissionCalculator defaultTier={tier} />
+          <CommissionCalculator
+            defaultTier={tier}
+            onSaveDefaultTier={(t) => {
+              setTier(t);
+              showToast(`Default tier set to ${t}`);
+            }}
+          />
         </ViewMount>
         <ViewMount visible={view === 'upload'} viewKey="upload">
           <UploadView
@@ -1682,24 +1688,6 @@ export default function LeadTracker() {
               <button onClick={() => setShowSettings(false)} className="text-slate-400 hover:text-slate-600">×</button>
             </div>
 
-            {/* My Tier */}
-            <div className="mb-5 pb-5 border-b border-slate-200">
-              <div className="text-xs font-bold text-slate-500 tracking-wider mb-2">MY CONTRACT TIER</div>
-              <div className="grid grid-cols-4 gap-2">
-                {TIERS.map(t => (
-                  <button
-                    key={t.id}
-                    onClick={() => { setTier(t.id); showToast(`Tier set to ${t.id}`); }}
-                    className={`rounded-lg py-2 text-sm font-semibold transition border ${tier === t.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'}`}
-                    title={t.label}
-                  >
-                    {t.id}
-                  </button>
-                ))}
-              </div>
-              <div className="text-xs text-slate-500 mt-2">{TIERS.find(t => t.id === tier)?.label} — this drives commission projections on new and existing leads.</div>
-            </div>
-
             {/* Advance Months History */}
             <div className="mb-5 pb-5 border-b border-slate-200">
               <div className="text-xs font-bold text-slate-500 tracking-wider mb-2">ADVANCE MONTHS HISTORY</div>
@@ -1784,7 +1772,6 @@ export default function LeadTracker() {
           choose how to start, see what Books does, jump into the app. */}
       <FirstRunWizard
         open={showFirstRunWizard}
-        initialTier={tier}
         onClose={() => setShowFirstRunWizard(false)}
         onComplete={async () => {
           try {
@@ -1793,7 +1780,6 @@ export default function LeadTracker() {
             setOnboardingCompletedFlag(true);
           } catch { /* ignore */ }
         }}
-        onSelectTier={(t) => setTier(t)}
         onOpenSmartImport={() => {
           setView('books');
           setSmartImportOpenSignal(s => s + 1);

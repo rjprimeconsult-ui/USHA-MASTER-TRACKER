@@ -49,7 +49,7 @@ const SPLIT_PRESETS = [
   { id: '30_70', label: '30 / 70 (qualifier)', yours: 30, theirs: 70 },
 ];
 
-export default function CommissionCalculator({ defaultTier = 'WA' }) {
+export default function CommissionCalculator({ defaultTier = 'WA', onSaveDefaultTier }) {
   const [deal, setDeal] = useState(() => makeBlankDeal(defaultTier));
   const [splitId, setSplitId] = useState('none');
   const [customSplit, setCustomSplit] = useState(70); // your % for "custom"
@@ -306,13 +306,24 @@ export default function CommissionCalculator({ defaultTier = 'WA' }) {
 
         {/* ===== Right: tier comparison ===== */}
         <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
             <h3 className="font-semibold text-slate-900 flex items-center gap-2">
               <Sparkles size={16} className="text-violet-600" /> Compare across contract tiers
             </h3>
-            <span className="text-[10px] text-slate-500">
-              Highlighted = your default tier
-            </span>
+            <div className="flex items-center gap-2 text-[10px] text-slate-500">
+              {deal.selectedTier !== defaultTier && onSaveDefaultTier && (
+                <button
+                  onClick={() => onSaveDefaultTier(deal.selectedTier)}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-md px-2 py-1 text-[10px] uppercase tracking-wide transition"
+                  title={`Save ${deal.selectedTier} as your default tier`}
+                >
+                  Save as my default
+                </button>
+              )}
+              <span>
+                <b className="text-slate-700">{defaultTier}</b> is your saved default
+              </span>
+            </div>
           </div>
           <div className="overflow-x-auto -mx-4 px-4">
             <table className="w-full text-sm">
