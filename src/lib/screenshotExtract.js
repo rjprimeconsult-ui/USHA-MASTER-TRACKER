@@ -429,20 +429,92 @@ function aiToParsed(ai) {
 }
 
 /**
+ * Downsample large screenshots before upload. USHA portal screenshots come
+ * in at 1500-2200px wide which is overkill for Vision — Anthropic actually
+ * downscales anything over 1568px anyway. Shrinking to 1200px wide on the
+ * client cuts upload size 3-4x AND speeds up Vision processing.
+ *
+ * Failures here are non-fatal — caller falls back to the original file.
+ */
+async function downsampleImage(file, maxDim = 1200, quality = 0.85) {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return file;
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const longest = Math.max(img.width, img.height);
+      // Already small enough? Skip the canvas round-trip.
+      if (longest <= maxDim) {
+        resolve(file);
+        return;
+      }
+      const scale = maxDim / longest;
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) return reject(new Error('Canvas toBlob failed'));
+          const renamed = file.name.replace(/\.\w+$/, '.jpg');
+          resolve(new File([blob], renamed, { type: 'image/jpeg' }));
+        },
+        'image/jpeg',
+        quality
+      );
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Image load failed'));
+    };
+    img.src = url;
+  });
+}
+
+/**
  * Try AI extraction first (Claude Vision, much higher accuracy on small
  * text like emails / phones / DOBs). Falls back to Tesseract.js if the
- * API is missing, errors, or returns nothing usable.
+ * API is missing, errors, returns nothing usable, OR doesn't respond
+ * within 25 seconds.
  *
  * onProgress is preserved so the UI's progress indicator works on both
- * paths (AI = single 0→100% transition; Tesseract = real OCR percentage).
+ * paths (AI = stepped 0/30/85/100; Tesseract = real OCR percentage).
  */
 export async function extractDealFromImage(file, onProgress) {
+  // Downsample first — speeds up both paths and reduces Vision API cost.
+  // Falls back to original file if the canvas path errors.
+  let workingFile = file;
+  try {
+    workingFile = await downsampleImage(file, 1200, 0.85);
+  } catch (e) {
+    console.warn('[screenshotExtract] downsample failed, using original:', e?.message || e);
+  }
+
   // ---- Path 1: AI extraction via Vision API ----
   try {
     onProgress?.(15);
     const fd = new FormData();
-    fd.append('file', file);
-    const res = await fetch('/api/extract-screenshot-ai', { method: 'POST', body: fd });
+    fd.append('file', workingFile);
+    const controller = new AbortController();
+    // 25s — well under Vercel's 60s function timeout. If the API hangs
+    // beyond this, we abandon and fall back to Tesseract rather than
+    // wait forever (which is what was making extracts feel "stuck").
+    const timer = setTimeout(() => controller.abort(), 25_000);
+    onProgress?.(30);
+    let res;
+    try {
+      res = await fetch('/api/extract-screenshot-ai', {
+        method: 'POST',
+        body: fd,
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
     onProgress?.(85);
     if (res.ok) {
       const data = await res.json();
@@ -454,18 +526,21 @@ export async function extractDealFromImage(file, onProgress) {
         }
       }
     } else {
-      // Surface non-2xx responses in console for debugging but keep going.
       const err = await res.text().catch(() => '');
       console.warn('[screenshotExtract] AI path returned non-OK', res.status, err);
     }
   } catch (e) {
-    console.warn('[screenshotExtract] AI path failed, falling back to Tesseract:', e?.message || e);
+    if (e?.name === 'AbortError') {
+      console.warn('[screenshotExtract] AI path timed out at 25s — falling back to Tesseract');
+    } else {
+      console.warn('[screenshotExtract] AI path failed, falling back to Tesseract:', e?.message || e);
+    }
   }
 
   // ---- Path 2: Tesseract fallback (free, offline-capable) ----
   onProgress?.(0);
   const Tesseract = (await import('tesseract.js')).default;
-  const { data: { text } } = await Tesseract.recognize(file, 'eng', {
+  const { data: { text } } = await Tesseract.recognize(workingFile, 'eng', {
     logger: m => {
       if (m.status === 'recognizing text' && typeof m.progress === 'number') {
         onProgress?.(Math.round(m.progress * 100));
