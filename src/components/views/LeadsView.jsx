@@ -1,8 +1,9 @@
 'use client';
 import { useState, useMemo, memo } from 'react';
-import { Plus, Search, Edit2, Trash2, Download, ArrowUpDown, X, Calendar } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, Download, ArrowUpDown, X, Calendar, Users, Upload } from 'lucide-react';
 import { STAGES, SOURCES, OWNERS, LEAD_CATEGORIES, MAIN_PRODUCTS, UNDERWRITTEN_PRODUCTS, GI_PRODUCTS } from '@/lib/constants';
 import { fmt, usDate } from '@/lib/utils';
+import { EmptyStateTableRow } from '../EmptyState';
 
 const StageBadge = ({ stage }) => {
   const s = STAGES.find(x => x.id === stage) || STAGES[0];
@@ -30,7 +31,7 @@ const ProductBadge = ({ id }) => {
   return <span className={`inline-block px-2 py-0.5 rounded text-[11px] font-bold tracking-wide ${cls}`}>{id}</span>;
 };
 
-function LeadsView({ leads, onNew, onEdit, onDelete, onBulkDelete, onBulkStage }) {
+function LeadsView({ leads, onNew, onEdit, onDelete, onBulkDelete, onBulkStage, onNavigate }) {
   const [q, setQ] = useState('');
   const [stageF, setStageF] = useState('');
   const [productF, setProductF] = useState('');       // family: '', 'UW', 'GI', 'OTHER', or a specific product id
@@ -381,7 +382,19 @@ function LeadsView({ leads, onNew, onEdit, onDelete, onBulkDelete, onBulkStage }
                 </tr>
               );
             })}
-            {filtered.length === 0 && (
+            {filtered.length === 0 && leads.length === 0 && (
+              <EmptyStateTableRow
+                colSpan={12}
+                icon={Users}
+                title="No leads yet"
+                message="Add your first lead manually, or import your existing book of business in seconds with Smart Import."
+                actions={[
+                  { label: 'Add a lead', onClick: onNew, icon: Plus },
+                  { label: 'Smart Import', onClick: () => onNavigate?.('upload'), icon: Upload, primary: false },
+                ]}
+              />
+            )}
+            {filtered.length === 0 && leads.length > 0 && (
               <tr><td colSpan="12" className="text-center p-8 text-slate-400">No leads match your filters.</td></tr>
             )}
           </tbody>

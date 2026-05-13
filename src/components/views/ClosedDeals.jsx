@@ -1,7 +1,8 @@
 'use client';
 import { useMemo, memo, useState } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Sector } from 'recharts';
-import { Edit2, Trash2, CheckCircle2, Clock, ImageUp, ArrowLeft, MousePointer2 } from 'lucide-react';
+import { Edit2, Trash2, CheckCircle2, Clock, ImageUp, ArrowLeft, MousePointer2, Trophy } from 'lucide-react';
+import EmptyState from '../EmptyState';
 import { CRMS, CAMPAIGNS, LEAD_CATEGORIES, STAGES, effectiveLeadCategory } from '@/lib/constants';
 import { fmt, fmt2, usDate, monthLabel } from '@/lib/utils';
 import { useLeadOptionsAll, addCustomLeadOption, ADD_CUSTOM_VALUE } from '@/lib/customLeadOptions';
@@ -283,14 +284,15 @@ function ClosedDeals({ leads, onEdit, onUpdate, onDelete, onImportFromScreenshot
             <p className="text-sm text-slate-500 mt-0.5">Pending + Issued deals grouped by month</p>
           </div>
         </div>
-        <div className="bg-white rounded-xl border border-slate-200 text-center py-16">
-          <p className="text-slate-400 mb-4">No closed deals yet — submit a deal from the Leads tab.</p>
-          {onImportFromScreenshot && (
-            <button onClick={onImportFromScreenshot}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-4 py-2 text-sm font-semibold inline-flex items-center gap-1.5">
-              <ImageUp size={14} /> Import from screenshot
-            </button>
-          )}
+        <div className="bg-white rounded-xl border border-slate-200">
+          <EmptyState
+            icon={Trophy}
+            title="No closed deals yet"
+            message="When you mark a lead as Pending or Issued, it lands here grouped by month — with full breakdowns of premium, advance, and association residuals. Snap a portal screenshot to add your first one."
+            actions={onImportFromScreenshot ? [
+              { label: 'Import from screenshot', onClick: onImportFromScreenshot, icon: ImageUp },
+            ] : []}
+          />
         </div>
       </div>
     );

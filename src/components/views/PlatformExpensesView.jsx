@@ -1,6 +1,7 @@
 'use client';
 import { useMemo, useRef, useState, useEffect, memo } from 'react';
-import { Plus, Trash2, DollarSign, TrendingUp, AlertCircle, Calendar, Upload, X, Check, ChevronLeft, ChevronRight, Sparkles, Lock, Unlock } from 'lucide-react';
+import { Plus, Trash2, DollarSign, TrendingUp, AlertCircle, Calendar, Upload, X, Check, ChevronLeft, ChevronRight, Sparkles, Lock, Unlock, Zap } from 'lucide-react';
+import EmptyState from '../EmptyState';
 import { PLATFORMS, PLATFORM_REASONS } from '@/lib/constants';
 import { fmt, fmt2, today, uid } from '@/lib/utils';
 import { storage } from '@/lib/storage';
@@ -591,10 +592,15 @@ function PlatformExpensesView({ expenses, onAdd, onUpdate, onDelete, onBulkAdd, 
           </div>
         )}
         {monthExpenses.length === 0 ? (
-          <div className="text-center py-8 text-slate-400 text-sm">
-            <AlertCircle className="mx-auto mb-2" size={20} />
-            No entries yet for {ymLabel(activeMonth)}. Add one above.
-          </div>
+          <EmptyState
+            icon={Zap}
+            title={`No platform charges yet for ${ymLabel(activeMonth)}`}
+            message="Track Ringy, TextDrip, and VanillaSoft spend here — it feeds True CPA so you see real per-deal costs. Drop a billing-history CSV into Smart Import and we parse it automatically."
+            actions={[
+              { label: 'Smart Import', onClick: () => setShowSmartImport(true), icon: Sparkles },
+            ]}
+            compact
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

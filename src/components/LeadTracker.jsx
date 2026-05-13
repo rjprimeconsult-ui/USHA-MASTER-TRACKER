@@ -1398,10 +1398,10 @@ export default function LeadTracker() {
           <Dashboard leads={leads} />
         </ViewMount>
         <ViewMount visible={view === 'leads'} viewKey="leads">
-          <LeadsView leads={leads} onNew={newLead} onEdit={editLead} onDelete={deleteLead} onBulkDelete={bulkDeleteLeads} onBulkStage={bulkStageChange} />
+          <LeadsView leads={leads} onNew={newLead} onEdit={editLead} onDelete={deleteLead} onBulkDelete={bulkDeleteLeads} onBulkStage={bulkStageChange} onNavigate={(v) => setView(v)} />
         </ViewMount>
         <ViewMount visible={view === 'pipeline'} viewKey="pipeline">
-          <Pipeline leads={leads} onStageChange={changeStage} onEdit={editLead} onDelete={deleteLead} />
+          <Pipeline leads={leads} onStageChange={changeStage} onEdit={editLead} onDelete={deleteLead} onNew={newLead} />
         </ViewMount>
         <ViewMount visible={view === 'platforms'} viewKey="platforms">
           <PlatformExpensesView

@@ -1,12 +1,28 @@
 'use client';
 import { useState, memo } from 'react';
-import { Trash2 } from 'lucide-react';
+import { Trash2, Columns, Plus } from 'lucide-react';
 import { STAGES } from '@/lib/constants';
 import { fmt } from '@/lib/utils';
+import EmptyState from '../EmptyState';
 
-function Pipeline({ leads, onStageChange, onEdit, onDelete }) {
+function Pipeline({ leads, onStageChange, onEdit, onDelete, onNew }) {
   const [dragged, setDragged] = useState(null);
   const [overCol, setOverCol] = useState(null);
+
+  if (leads.length === 0) {
+    return (
+      <div className="bg-white rounded-xl border border-slate-200">
+        <EmptyState
+          icon={Columns}
+          title="Your pipeline is empty"
+          message="Drag leads between Pending / Issued / Declined / Not taken / Withdrawn columns to update their stage. Add your first lead to see it on the board."
+          actions={onNew ? [
+            { label: 'Add a lead', onClick: onNew, icon: Plus },
+          ] : []}
+        />
+      </div>
+    );
+  }
 
   const byStage = STAGES.map(s => ({
     ...s,

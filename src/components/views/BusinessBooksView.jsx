@@ -18,6 +18,7 @@ import { TiltCard, CountUp, Stagger, StaggerItem, MoneyCell } from '../motion/Mo
 import SmartImportWizard from '../SmartImportWizard';
 import CustomCategoryManager from '../CustomCategoryManager';
 import AgentSettingsPanel from '../AgentSettingsPanel';
+import EmptyState from '../EmptyState';
 
 const ACCOUNTS_KEY = 'business_accounts_v1';
 
@@ -1174,10 +1175,19 @@ function BusinessBooksView({
           </div>
         )}
         {list.length === 0 ? (
-          <div className="text-center py-8 text-slate-400 text-sm">
-            <AlertCircle className="mx-auto mb-2" size={20} />
-            No {tab === 'expenses' ? 'expenses' : 'income'} yet for {ymLabel(activeMonth)}.
-          </div>
+          <EmptyState
+            icon={tab === 'expenses' ? TrendingDown : TrendingUp}
+            title={`No ${tab === 'expenses' ? 'expenses' : 'income'} yet for ${ymLabel(activeMonth)}`}
+            message={
+              tab === 'expenses'
+                ? 'Smart Import reads bank statements, credit-card exports, or expense sheets — auto-categorizes everything in seconds. Or add an entry by hand below.'
+                : 'Track Books income alongside your commissions for a true monthly P&L. Add an entry below, or use Smart Import to bring in deposit statements.'
+            }
+            actions={[
+              { label: 'Smart Import', onClick: () => setShowSmartImport(true), icon: Sparkles },
+            ]}
+            compact
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
