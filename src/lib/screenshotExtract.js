@@ -383,10 +383,82 @@ export function parseDealFromText(rawText) {
 }
 
 /**
- * Run Tesseract.js on an image File or Blob.
- * Returns a Promise that resolves to { rawText, parsed }.
+ * Convert an AI-extracted record (matching the /api/extract-screenshot-ai
+ * schema) into the same shape as parseDealFromText so the import wizard
+ * doesn't care which path produced the data.
+ *
+ * The two differences are:
+ *   - AI returns addressStreet + addressCity as separate fields; we don't
+ *     show street/city in the wizard form today, so we fold them into a
+ *     single notes-ready string the caller can preserve.
+ *   - AI returns age as a separate integer; the regex path computes age
+ *     from dob if needed downstream.
+ */
+function aiToParsed(ai) {
+  if (!ai || typeof ai !== 'object') return null;
+  return {
+    raw: '[AI-extracted]',
+    name: ai.name || '',
+    policyNumber: ai.policyNumber || '',
+    monthlyPremium: Number(ai.monthlyPremium) || 0,
+    applicationDate: ai.applicationDate || '',
+    effectiveDate: ai.effectiveDate || '',
+    paidToDate: ai.paidToDate || '',
+    stage: ai.stage || '',
+    gender: ai.gender || '',
+    dob: ai.dob || '',
+    age: Number(ai.age) || 0,
+    phone: ai.phone || '',
+    email: ai.email || '',
+    addressStreet: ai.addressStreet || '',
+    addressCity: ai.addressCity || '',
+    state: ai.state || '',
+    zip: ai.zip || '',
+    indvOrFamily: ai.indvOrFamily || 'Indv',
+    products: Array.isArray(ai.products) ? ai.products : [],
+    mainProduct: ai.mainProduct || '',
+    associationPlan: ai.associationPlan || '',
+    dependents: Array.isArray(ai.dependents) ? ai.dependents : [],
+    confidence: { source: 'ai' },
+  };
+}
+
+/**
+ * Try AI extraction first (Claude Vision, much higher accuracy on small
+ * text like emails / phones / DOBs). Falls back to Tesseract.js if the
+ * API is missing, errors, or returns nothing usable.
+ *
+ * onProgress is preserved so the UI's progress indicator works on both
+ * paths (AI = single 0→100% transition; Tesseract = real OCR percentage).
  */
 export async function extractDealFromImage(file, onProgress) {
+  // ---- Path 1: AI extraction via Vision API ----
+  try {
+    onProgress?.(15);
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await fetch('/api/extract-screenshot-ai', { method: 'POST', body: fd });
+    onProgress?.(85);
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.parsed) {
+        const parsed = aiToParsed(data.parsed);
+        if (parsed && (parsed.name || parsed.policyNumber)) {
+          onProgress?.(100);
+          return { rawText: '[Claude Vision API]', parsed, usedAi: true, usage: data.usage };
+        }
+      }
+    } else {
+      // Surface non-2xx responses in console for debugging but keep going.
+      const err = await res.text().catch(() => '');
+      console.warn('[screenshotExtract] AI path returned non-OK', res.status, err);
+    }
+  } catch (e) {
+    console.warn('[screenshotExtract] AI path failed, falling back to Tesseract:', e?.message || e);
+  }
+
+  // ---- Path 2: Tesseract fallback (free, offline-capable) ----
+  onProgress?.(0);
   const Tesseract = (await import('tesseract.js')).default;
   const { data: { text } } = await Tesseract.recognize(file, 'eng', {
     logger: m => {
@@ -395,5 +467,5 @@ export async function extractDealFromImage(file, onProgress) {
       }
     },
   });
-  return { rawText: text, parsed: parseDealFromText(text) };
+  return { rawText: text, parsed: parseDealFromText(text), usedAi: false };
 }

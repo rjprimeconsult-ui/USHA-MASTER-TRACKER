@@ -85,16 +85,33 @@ export default function ScreenshotImport({ open, onClose, onCreateLead }) {
     // Map the extracted record onto a Lead patch. Tracker-required fields
     // (CRM, source, lead category, campaign, owner, leadCost) come from the
     // user-edited defaults — they can't be inferred from a USHA screenshot.
+    // Compute age from DOB when DOB is present and age wasn't extracted
+    // (or extraction returned 0). Saves the agent a step.
+    let computedAge = Number(edits.age) || 0;
+    if (!computedAge && edits.dob) {
+      const dobDate = new Date(edits.dob);
+      if (!isNaN(dobDate.getTime())) {
+        const now = new Date();
+        let yrs = now.getFullYear() - dobDate.getFullYear();
+        const m = now.getMonth() - dobDate.getMonth();
+        if (m < 0 || (m === 0 && now.getDate() < dobDate.getDate())) yrs--;
+        if (yrs > 0 && yrs < 120) computedAge = yrs;
+      }
+    }
     const lead = {
       name: edits.name,
       phone: edits.phone,
       email: edits.email,
       state: edits.state,
+      age: computedAge,
       stage: edits.stage || 'Issued',
       mainProduct: edits.mainProduct,
       mainProductPremium: Number(edits.monthlyPremium) || 0,
       policyNumber: edits.policyNumber,
       products: (edits.products || []).map(p => ({ id: p, premium: 0 })),
+      // Association plan extracted by the AI path; preserved so the
+      // Associations tab picks it up automatically.
+      ...(edits.associationPlan ? { associationPlan: edits.associationPlan } : {}),
       closedDate: edits.applicationDate || new Date().toISOString().slice(0, 10),
       dateAdded: edits.applicationDate || new Date().toISOString().slice(0, 10),
       lastTouch: new Date().toISOString().slice(0, 10),
@@ -108,6 +125,7 @@ export default function ScreenshotImport({ open, onClose, onCreateLead }) {
       notes: [
         edits.gender && `Gender: ${edits.gender}`,
         edits.dob && `DOB: ${edits.dob}`,
+        (edits.addressStreet || edits.addressCity) && `Addr: ${[edits.addressStreet, edits.addressCity].filter(Boolean).join(', ')}`,
         edits.zip && `ZIP: ${edits.zip}`,
         edits.indvOrFamily === 'Family' && 'Family policy',
         edits.effectiveDate && `Effective: ${edits.effectiveDate}`,
@@ -215,10 +233,22 @@ export default function ScreenshotImport({ open, onClose, onCreateLead }) {
                     </select>
                   </Field>
                   <Field label="Phone">
-                    <input className={inp} value={edits.phone || ''} onChange={e => setEdit({ phone: e.target.value })} />
+                    <input className={inp} value={edits.phone || ''} onChange={e => setEdit({ phone: e.target.value })} placeholder="(XXX) XXX-XXXX" />
                   </Field>
                   <Field label="Email">
                     <input className={inp} value={edits.email || ''} onChange={e => setEdit({ email: e.target.value })} />
+                  </Field>
+                  <Field label="DOB" hint="Used to auto-compute age.">
+                    <input type="date" className={inp} value={edits.dob || ''} onChange={e => setEdit({ dob: e.target.value })} />
+                  </Field>
+                  <Field label="Age">
+                    <input type="number" min={0} max={120} className={inp} value={edits.age || ''} onChange={e => setEdit({ age: e.target.value })} placeholder="Auto from DOB" />
+                  </Field>
+                  <Field label="Address (street)" hint="Optional — goes to lead notes.">
+                    <input className={inp} value={edits.addressStreet || ''} onChange={e => setEdit({ addressStreet: e.target.value })} />
+                  </Field>
+                  <Field label="Address (city)">
+                    <input className={inp} value={edits.addressCity || ''} onChange={e => setEdit({ addressCity: e.target.value })} />
                   </Field>
                   <Field label="State">
                     <input className={inp} value={edits.state || ''} onChange={e => setEdit({ state: e.target.value.toUpperCase() })} maxLength={2} />
