@@ -58,8 +58,8 @@ export default function ScreenshotImport({ open, onClose, onCreateLead }) {
     if (!file) return;
     setBusy(true); setError(''); setProgress(0);
     try {
-      const { parsed, rawText } = await extractDealFromImage(file, setProgress);
-      setResult({ parsed, rawText });
+      const { parsed, rawText, usedAi } = await extractDealFromImage(file, setProgress);
+      setResult({ parsed, rawText, usedAi: !!usedAi });
       // Seed tracker-required fields with sensible defaults — agent edits
       // these before clicking Create Lead.
       setEdits({
@@ -213,9 +213,22 @@ export default function ScreenshotImport({ open, onClose, onCreateLead }) {
               </div>
             ) : (
               <div className="space-y-3">
-                <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 flex items-start gap-2">
-                  <CheckCircle2 size={14} className="text-emerald-700 mt-0.5 flex-shrink-0" />
-                  <span className="text-xs text-emerald-900">Extracted. Review and edit anything that&apos;s wrong, then click &quot;Create Lead.&quot;</span>
+                <div className={`rounded-lg p-3 flex items-start gap-2 ${result.usedAi ? 'bg-emerald-50 border border-emerald-200' : 'bg-amber-50 border border-amber-200'}`}>
+                  <CheckCircle2 size={14} className={`${result.usedAi ? 'text-emerald-700' : 'text-amber-700'} mt-0.5 flex-shrink-0`} />
+                  <div className={`text-xs ${result.usedAi ? 'text-emerald-900' : 'text-amber-900'}`}>
+                    <div className="font-semibold flex items-center gap-1.5">
+                      {result.usedAi ? (
+                        <>Extracted via Claude Vision <span className="text-[9px] uppercase bg-emerald-200 text-emerald-900 rounded px-1 py-0.5 font-bold">AI</span></>
+                      ) : (
+                        <>Extracted via offline OCR <span className="text-[9px] uppercase bg-amber-200 text-amber-900 rounded px-1 py-0.5 font-bold">FALLBACK</span></>
+                      )}
+                    </div>
+                    <div className="mt-0.5">
+                      {result.usedAi
+                        ? 'Review and edit anything that\'s wrong, then click "Create Lead."'
+                        : 'AI extraction unavailable. Results may have garbled emails or missed phone numbers. Double-check before saving.'}
+                    </div>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">

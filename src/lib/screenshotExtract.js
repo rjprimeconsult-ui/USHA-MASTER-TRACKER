@@ -358,8 +358,13 @@ export function parseDealFromText(rawText) {
   if (main) out.mainProduct = main.canonical;
   out.products = matches.filter(m => m.bucket === 'addon').map(m => m.canonical);
 
-  // Indv / Family heuristic — Dependents section presence
-  if (/\bDependent(s)?\b/i.test(text)) {
+  // Indv / Family heuristic — Dependents section present AND populated.
+  // The USHA portal always shows the "Dependents" heading even when there
+  // are none; "There are no dependents to display" was being read as
+  // proof of dependents and flagging the lead Family.
+  const hasNoDependentsCopy = /no\s+dependents?\s+to\s+display/i.test(text);
+  const hasDependentRow = /\bDependent\b/i.test(text) && !hasNoDependentsCopy;
+  if (hasDependentRow) {
     out.indvOrFamily = 'Family';
   }
 
