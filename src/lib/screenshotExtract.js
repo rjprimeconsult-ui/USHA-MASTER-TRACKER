@@ -500,10 +500,12 @@ export async function extractDealFromImage(file, onProgress) {
     const fd = new FormData();
     fd.append('file', workingFile);
     const controller = new AbortController();
-    // 25s — well under Vercel's 60s function timeout. If the API hangs
-    // beyond this, we abandon and fall back to Tesseract rather than
-    // wait forever (which is what was making extracts feel "stuck").
-    const timer = setTimeout(() => controller.abort(), 25_000);
+    // 45s — generous to absorb Vercel cold-start latency on the first
+    // call (function spin-up can add 5-10s before our code even starts).
+    // Subsequent calls within the same warm function are 3-8s typically.
+    // Still well under Vercel's 60s function timeout so we get a clean
+    // abort + fallback rather than HTTP-504 from the platform.
+    const timer = setTimeout(() => controller.abort(), 45_000);
     onProgress?.(30);
     let res;
     try {

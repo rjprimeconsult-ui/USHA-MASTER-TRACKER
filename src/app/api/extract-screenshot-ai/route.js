@@ -164,12 +164,17 @@ export async function POST(req) {
   const base64 = buffer.toString('base64');
 
   const startedAt = Date.now();
+  console.log(`[extract-screenshot-ai] start · image=${(buffer.length / 1024).toFixed(0)}KB · type=${mediaType}`);
   const client = new Anthropic({ apiKey });
   let resp;
   try {
-    const stream = client.messages.stream({
+    // Non-streaming for this route — the JSON-schema response is small
+    // (under 1500 output tokens) so we don't benefit from streaming's
+    // back-pressure handling, and streaming adds overhead that pushed
+    // total latency over 25s on cold-start Vercel functions.
+    resp = await client.messages.create({
       model: 'claude-haiku-4-5',
-      max_tokens: 2000,
+      max_tokens: 1500,
       system: [
         { type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
       ],
@@ -190,7 +195,7 @@ export async function POST(req) {
         ],
       }],
     });
-    resp = await stream.finalMessage();
+    console.log(`[extract-screenshot-ai] anthropic done in ${Date.now() - startedAt}ms · in=${resp.usage.input_tokens} out=${resp.usage.output_tokens}`);
   } catch (e) {
     console.error('[extract-screenshot-ai] Anthropic call failed:', e);
     return Response.json({
