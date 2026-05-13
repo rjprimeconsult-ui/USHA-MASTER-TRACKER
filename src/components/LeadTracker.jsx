@@ -37,6 +37,7 @@ import ImpersonationBanner from './ImpersonationBanner';
 import AnnouncementBanner from './AnnouncementBanner';
 import AgentChatbot from './AgentChatbot';
 import OnboardingWalkthrough from './OnboardingWalkthrough';
+import FirstRunWizard from './FirstRunWizard';
 import PaywallGate, { TrialBanner } from './PaywallGate';
 import ScreenshotImport from './ScreenshotImport';
 import AssociationCommissionDetailImport from './AssociationCommissionDetailImport';
@@ -160,6 +161,7 @@ export default function LeadTracker() {
   // Onboarding walkthrough — auto-launches on first sign-in for genuinely
   // new agents (no progress record). Re-launchable from Settings.
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showFirstRunWizard, setShowFirstRunWizard] = useState(false);
   // Bridge for the chatbot's open state — used by the onboarding step
   // "Meet the PRIM Assistant" to pop the chat after closing the tour.
   const [chatOpenSignal, setChatOpenSignal] = useState(0);
@@ -420,18 +422,20 @@ export default function LeadTracker() {
 
       setLoaded(true);
 
-      // Auto-launch onboarding tour for genuinely new agents (no progress
-      // record). Existing agents who already skipped/completed never get
-      // re-prompted — they can still trigger via Settings → Replay tour.
+      // Auto-launch the First-Run Wizard for genuinely new agents (no
+      // onboarding progress record yet). The 12-step walkthrough lives
+      // on as a "Replay tour" option in Settings — see showOnboarding
+      // state — but the wizard is what brand-new agents see first.
+      // Existing agents who already skipped/completed never get re-prompted.
       try {
         const { loadOnboardingProgress, shouldAutoLaunch } = await import('@/lib/onboarding');
         const progress = await loadOnboardingProgress();
         if (shouldAutoLaunch(progress)) {
-          // Slight delay so the app paints first; tour appears over a
+          // Slight delay so the app paints first; wizard appears over a
           // populated UI, not a blank screen.
-          setTimeout(() => setShowOnboarding(true), 800);
+          setTimeout(() => setShowFirstRunWizard(true), 800);
         }
-      } catch { /* tour is optional — never block app load on it */ }
+      } catch { /* setup wizard is optional — never block app load on it */ }
     })();
   }, []);
 
@@ -1684,6 +1688,34 @@ export default function LeadTracker() {
                 the middle of the modal where agents browse customization. */}
             <PostSaleEmailsSection />
 
+            {/* Onboarding replays — gives agents a way to re-watch the
+                feature tour or re-run the setup wizard after dismissing it. */}
+            <div className="mb-5 pb-5 border-b border-slate-200">
+              <div className="text-xs font-bold text-slate-500 tracking-wider mb-2">ONBOARDING</div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                <button
+                  onClick={() => {
+                    setShowSettings(false);
+                    setShowFirstRunWizard(true);
+                  }}
+                  className="text-left border border-slate-200 rounded-lg px-3 py-2 text-sm hover:bg-slate-50"
+                >
+                  Replay setup wizard
+                  <div className="text-[11px] text-slate-500 mt-0.5">4-step new-agent setup flow.</div>
+                </button>
+                <button
+                  onClick={() => {
+                    setShowSettings(false);
+                    setShowOnboarding(true);
+                  }}
+                  className="text-left border border-slate-200 rounded-lg px-3 py-2 text-sm hover:bg-slate-50"
+                >
+                  Replay feature tour
+                  <div className="text-[11px] text-slate-500 mt-0.5">Full 12-step walkthrough of every tab.</div>
+                </button>
+              </div>
+            </div>
+
             <div className="text-xs font-bold text-slate-500 tracking-wider mb-2">DATA</div>
             <div className="space-y-2">
               <button onClick={() => clearAll('activities')} className="w-full text-left border border-slate-200 rounded-lg px-3 py-2 text-sm hover:bg-slate-50">Clear activities</button>
@@ -1716,8 +1748,31 @@ export default function LeadTracker() {
         }}
       />
 
-      {/* In-app onboarding walkthrough — auto-launches first sign-in,
-          re-launchable from Settings → Replay tour. */}
+      {/* First-Run Wizard — auto-launches once per agent (brand new
+          accounts). Gets them to first value in ~60 seconds: pick tier,
+          choose how to start, see what Books does, jump into the app. */}
+      <FirstRunWizard
+        open={showFirstRunWizard}
+        initialTier={tier}
+        onClose={() => setShowFirstRunWizard(false)}
+        onComplete={async () => {
+          try {
+            const { markCompleted } = await import('@/lib/onboarding');
+            await markCompleted();
+          } catch { /* ignore */ }
+        }}
+        onSelectTier={(t) => setTier(t)}
+        onOpenSmartImport={() => {
+          setView('books');
+          setSmartImportOpenSignal(s => s + 1);
+        }}
+        onOpenLeadForm={() => newLead()}
+        onNavigate={(v) => setView(v)}
+        onOpenChat={() => setChatOpenSignal(s => s + 1)}
+      />
+
+      {/* 12-step walkthrough — replay-only from Settings now that the
+          First-Run Wizard handles brand-new agents. */}
       <OnboardingWalkthrough
         open={showOnboarding}
         onClose={() => setShowOnboarding(false)}
