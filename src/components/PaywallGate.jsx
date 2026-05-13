@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { Lock, Sparkles, ArrowRight, Loader2 } from 'lucide-react';
+import { Lock, Sparkles, ArrowRight, Loader2, X, AlertTriangle, Zap } from 'lucide-react';
 import { useSubscription, hasActiveSubscription, isInTrial, trialDaysLeft, isComplimentary, syncAfterCheckout } from '@/lib/subscription';
 
 /**
@@ -124,29 +124,142 @@ function PaywallScreen({ profile }) {
  * Trial countdown banner shown above the app while the user is still
  * inside their 7-day trial. Auto-hides for active paid subscribers.
  */
-export function TrialBanner() {
+/**
+ * Tiered urgency banner during the 7-day trial. Copy + color shifts based
+ * on days left so the message feels right at each stage of the journey:
+ *
+ *   7+ days  → calm informational ("you're trying it out")
+ *   3-7 days → indigo nudge ("a few days left — check out plans")
+ *   1-2 days → amber urgency ("don't lose what you've built")
+ *   0 days   → red high-pressure ("today is the last day")
+ *
+ * Optional `stats` prop quantifies what the agent has built so far
+ * ({ leadsCount, ytdNet }) — lets the banner say "Keep your 47 leads
+ * + $12K tracked" instead of a generic message. LeadTracker passes
+ * these in; consumers without stats fall back to generic copy.
+ *
+ * Dismissible per-day via localStorage. Banner re-appears the next day
+ * so it doesn't permanently disappear.
+ */
+const DISMISS_KEY = 'trial_banner_dismissed_day_v1';
+
+export function TrialBanner({ stats } = {}) {
   const { profile } = useSubscription();
+  const [dismissed, setDismissed] = useState(false);
+
+  // Check dismiss flag on mount. Stored as YYYY-MM-DD so it auto-expires
+  // when the day rolls over — the banner reappears the next morning even
+  // if the agent dismissed yesterday.
+  useEffect(() => {
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const last = localStorage.getItem(DISMISS_KEY);
+      if (last === today) setDismissed(true);
+    } catch { /* ignore */ }
+  }, []);
+
+  const onDismiss = () => {
+    setDismissed(true);
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      localStorage.setItem(DISMISS_KEY, today);
+    } catch { /* ignore */ }
+  };
 
   if (!profile) return null;
-  // Complimentary users get full access without a trial — no countdown
-  // banner to show.
   if (isComplimentary(profile)) return null;
   if (!isInTrial(profile)) return null;
+  if (dismissed) return null;
   const days = trialDaysLeft(profile);
   if (days == null) return null;
 
+  // Stat string — only shown when LeadTracker passes real counts.
+  const valueChunks = [];
+  if (stats?.leadsCount > 0) valueChunks.push(`${stats.leadsCount} lead${stats.leadsCount === 1 ? '' : 's'}`);
+  if (stats?.ytdNet != null && stats.ytdNet !== 0) {
+    const fmt = stats.ytdNet >= 0 ? '$' : '−$';
+    valueChunks.push(`${fmt}${Math.abs(Math.round(stats.ytdNet)).toLocaleString()} tracked`);
+  }
+  const valueLine = valueChunks.length > 0 ? valueChunks.join(' + ') : null;
+
+  // Tier resolution.
+  const tier = days === 0
+    ? 'critical'
+    : days <= 2
+      ? 'urgent'
+      : days <= 4
+        ? 'nudge'
+        : 'calm';
+
+  const styles = {
+    calm:     { bar: 'from-indigo-600 to-violet-600', pill: 'bg-white/15 hover:bg-white/25', Icon: Sparkles },
+    nudge:    { bar: 'from-indigo-600 to-violet-600', pill: 'bg-white/15 hover:bg-white/25', Icon: Sparkles },
+    urgent:   { bar: 'from-amber-500 to-orange-600',  pill: 'bg-white/20 hover:bg-white/30', Icon: AlertTriangle },
+    critical: { bar: 'from-rose-600 to-red-700',      pill: 'bg-white/25 hover:bg-white/35', Icon: Zap },
+  }[tier];
+
+  // Copy varies by tier so it doesn't feel like the same generic banner
+  // every day. Each tier has its own framing.
+  let headline;
+  let ctaLabel;
+  if (tier === 'critical') {
+    headline = (
+      <>
+        <b>Today is the last day of your trial.</b>
+        {valueLine && <> Don&apos;t lose your {valueLine}.</>}
+      </>
+    );
+    ctaLabel = 'Pick a plan now →';
+  } else if (tier === 'urgent') {
+    headline = (
+      <>
+        Trial ends in <b>{days} day{days === 1 ? '' : 's'}</b>.
+        {valueLine ? <> Keep your {valueLine}.</> : <> Lock in a plan to keep your data.</>}
+      </>
+    );
+    ctaLabel = 'See plans →';
+  } else if (tier === 'nudge') {
+    headline = (
+      <>
+        <b>{days} day{days === 1 ? '' : 's'} left</b> on your trial.
+        {valueLine ? <> Already tracking {valueLine}.</> : <> Plans start at $49.95/mo.</>}
+      </>
+    );
+    ctaLabel = 'See plans →';
+  } else {
+    headline = (
+      <>
+        Free trial — <b>{days} day{days !== 1 ? 's' : ''} left</b>. Plans from $49.95/mo when you&apos;re ready.
+      </>
+    );
+    ctaLabel = 'See plans →';
+  }
+
+  const { Icon } = styles;
+
   return (
-    <div className="bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-sm py-2 px-4 flex items-center justify-center gap-3 flex-wrap">
-      <Sparkles size={14} />
-      <span>
-        Free trial — <b>{days} day{days !== 1 ? 's' : ''} left</b>. Add a plan now to keep using PRIM after the trial ends.
-      </span>
+    <div className={`bg-gradient-to-r ${styles.bar} text-white text-sm py-2 px-4 flex items-center justify-center gap-3 flex-wrap relative`}>
+      <Icon size={14} className="flex-shrink-0" />
+      <span>{headline}</span>
       <a
         href="/pricing"
-        className="bg-white/15 hover:bg-white/25 rounded-lg px-3 py-1 text-xs font-semibold transition"
+        className={`${styles.pill} rounded-lg px-3 py-1 text-xs font-semibold transition`}
       >
-        See plans →
+        {ctaLabel}
       </a>
+      {/* Dismiss button — only available on calm/nudge tiers. We don't
+          let agents bury urgent / critical day banners since those are
+          the conversion windows that actually matter. */}
+      {(tier === 'calm' || tier === 'nudge') && (
+        <button
+          onClick={onDismiss}
+          className="absolute right-2 top-1/2 -translate-y-1/2 text-white/70 hover:text-white p-1"
+          title="Hide for today"
+          aria-label="Hide for today"
+        >
+          <X size={14} />
+        </button>
+      )}
     </div>
   );
 }

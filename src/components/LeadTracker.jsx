@@ -1250,12 +1250,34 @@ export default function LeadTracker() {
     return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-500">Loading…</div>;
   }
 
+  // Stats handed to the trial banner so its urgent-day copy can quantify
+  // what the agent has built ("Keep your 47 leads + $12K tracked").
+  // Cheap one-pass calc; not memoized because the render path is already
+  // memo-stable below this point and recomputing each render is fine.
+  const trialBannerYear = new Date().getFullYear().toString();
+  const trialBannerYtdIncome = businessIncome
+    .filter(e => (e.date || '').startsWith(trialBannerYear))
+    .reduce((s, e) => s + Number(e.amount || 0), 0)
+    + ownAdvances
+        .filter(a => (a.period || '').includes(trialBannerYear))
+        .reduce((s, a) => s + Number(a.amount || 0), 0);
+  const trialBannerYtdExpenses = businessExpenses
+    .filter(e => (e.date || '').startsWith(trialBannerYear))
+    .reduce((s, e) => s + Number(e.amount || 0), 0);
+  const trialBannerStats = {
+    leadsCount: leads.length,
+    ytdNet: trialBannerYtdIncome - trialBannerYtdExpenses,
+  };
+
   return (
     <PaywallGate>
     <div className="min-h-screen bg-slate-50 text-slate-900 relative">
       <OrbBackdrop />
-      {/* Trial countdown banner (auto-hides for active paid subs) */}
-      <TrialBanner />
+      {/* Trial countdown banner (auto-hides for active paid subs).
+          Stats give the banner real value-built numbers so the urgent-day
+          copy can say "Keep your N leads + $X tracked" instead of a
+          generic message. Memoized via useMemo below. */}
+      <TrialBanner stats={trialBannerStats} />
       {/* Header */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-20 relative">
         {/* Mesh gradient backdrop — bounded by overflow-hidden on this child wrapper
