@@ -69,68 +69,6 @@ You will return a JSON object that conforms to the provided schema. Rules:
 Quality bar: only fill fields you can READ on the image. Don't guess. Empty strings / null are acceptable for any field. Don't fabricate dates, addresses, or contact info.
 `.trim();
 
-function buildSchema() {
-  return {
-    type: 'object',
-    properties: {
-      name: { type: 'string', description: 'Title-cased primary customer name' },
-      policyNumber: { type: 'string' },
-      monthlyPremium: { type: 'number' },
-      applicationDate: { type: 'string', description: 'YYYY-MM-DD' },
-      effectiveDate: { type: 'string', description: 'YYYY-MM-DD' },
-      paidToDate: { type: 'string', description: 'YYYY-MM-DD' },
-      stage: {
-        type: 'string',
-        enum: ['Issued', 'Pending', 'Declined', 'Not taken', 'Withdrawn', ''],
-      },
-      gender: { type: 'string', enum: ['Male', 'Female', ''] },
-      dob: { type: 'string', description: 'YYYY-MM-DD or empty' },
-      age: { type: 'integer', description: 'Integer 0-120, or 0 if unknown' },
-      phone: { type: 'string', description: '(XXX) XXX-XXXX format' },
-      email: { type: 'string', description: 'lowercase email, or empty' },
-      addressStreet: { type: 'string' },
-      addressCity: { type: 'string' },
-      state: { type: 'string', description: '2-letter uppercase state' },
-      zip: { type: 'string', description: '5-digit ZIP' },
-      indvOrFamily: { type: 'string', enum: ['Indv', 'Family'] },
-      mainProduct: {
-        type: 'string',
-        enum: ['', ...MAIN_IDS],
-        description: 'Canonical main product ID, or empty if not detected',
-      },
-      products: {
-        type: 'array',
-        items: { type: 'string', enum: ADDON_IDS },
-        description: 'Canonical add-on product IDs',
-      },
-      associationPlan: {
-        type: 'string',
-        enum: ['', ...ASSOCIATION_IDS],
-        description: 'Canonical association plan ID, or empty',
-      },
-      dependents: {
-        type: 'array',
-        items: {
-          type: 'object',
-          properties: {
-            name: { type: 'string' },
-            relationship: { type: 'string', enum: ['spouse', 'child', 'other'] },
-            dob: { type: 'string', description: 'YYYY-MM-DD or empty' },
-          },
-          required: ['name', 'relationship'],
-          additionalProperties: false,
-        },
-      },
-    },
-    required: [
-      'name', 'policyNumber', 'stage', 'phone', 'email',
-      'state', 'zip', 'indvOrFamily', 'mainProduct', 'products',
-      'dependents',
-    ],
-    additionalProperties: false,
-  };
-}
-
 export async function POST(req) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
@@ -168,21 +106,17 @@ export async function POST(req) {
   const client = new Anthropic({ apiKey });
   let resp;
   try {
-    // Streaming + finalMessage is the standard pattern for AI routes on
-    // Vercel. Non-streaming silently hangs at the platform edge layer
-    // ("Task timed out after 60 seconds") because Vercel kills idle
-    // outbound TCP connections — streaming keeps the connection alive
-    // with progressive chunks. Same pattern used by /api/chat,
-    // /api/import-expenses-ai, /api/parse-statement-ai.
+    // No output_config / json_schema — Vision + structured outputs was
+    // causing constrained-sampling hangs on Vercel (60s function timeouts
+    // with no Anthropic-side error). Instead we ask the model to return
+    // JSON in a fenced code block and parse client-side. Same pattern
+    // used by /api/parse-statement-ai which has worked reliably.
     const stream = client.messages.stream({
       model: 'claude-haiku-4-5',
       max_tokens: 1500,
       system: [
         { type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
       ],
-      output_config: {
-        format: { type: 'json_schema', schema: buildSchema() },
-      },
       messages: [{
         role: 'user',
         content: [
@@ -192,7 +126,31 @@ export async function POST(req) {
           },
           {
             type: 'text',
-            text: 'Extract structured deal data from this USHA portal screenshot.',
+            text: `Extract structured deal data from this USHA portal screenshot. Return ONE JSON object with EXACTLY these keys:
+{
+  "name": string,
+  "policyNumber": string,
+  "monthlyPremium": number,
+  "applicationDate": "YYYY-MM-DD",
+  "effectiveDate": "YYYY-MM-DD",
+  "paidToDate": "YYYY-MM-DD",
+  "stage": "Issued" | "Pending" | "Declined" | "Not taken" | "Withdrawn" | "",
+  "gender": "Male" | "Female" | "",
+  "dob": "YYYY-MM-DD" | "",
+  "age": integer 0-120 or 0,
+  "phone": "(XXX) XXX-XXXX" or "",
+  "email": lowercase email or "",
+  "addressStreet": string,
+  "addressCity": string,
+  "state": "XX" (2-letter),
+  "zip": "12345",
+  "indvOrFamily": "Indv" | "Family",
+  "mainProduct": canonical ID from [${MAIN_IDS.map(s => `"${s}"`).join(', ')}] or "",
+  "products": array of canonical IDs from [${ADDON_IDS.map(s => `"${s}"`).join(', ')}],
+  "associationPlan": canonical ID from [${ASSOCIATION_IDS.map(s => `"${s}"`).join(', ')}] or "",
+  "dependents": [{ "name": string, "relationship": "spouse" | "child" | "other", "dob": "YYYY-MM-DD" | "" }]
+}
+Respond with ONLY the JSON object inside a single \`\`\`json code block. No prose, no preamble, no trailing notes.`,
           },
         ],
       }],
@@ -211,9 +169,15 @@ export async function POST(req) {
   if (!textBlock) {
     return Response.json({ error: 'AI returned no text block.', fallback: true }, { status: 500 });
   }
+  // Strip ```json fences if present, then parse. The prompt asks for a
+  // fenced code block but we tolerate raw JSON too in case the model
+  // skips the fence on shorter responses.
+  let jsonText = textBlock.text.trim();
+  const fenceMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+  if (fenceMatch) jsonText = fenceMatch[1].trim();
   let parsed;
   try {
-    parsed = JSON.parse(textBlock.text);
+    parsed = JSON.parse(jsonText);
   } catch (e) {
     return Response.json({
       error: `AI returned invalid JSON: ${e.message}`,
