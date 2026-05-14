@@ -61,8 +61,10 @@ import {
   DEFAULT_AGENT_PROFILE,
   PALETTES,
   applyAccentToDOM,
+  applyThemeToDOM,
   compressForProfile,
 } from '@/lib/agentProfile';
+import { Sun, Moon, Monitor } from 'lucide-react';
 import {
   loadSenderIdentity,
   saveSenderIdentity,
@@ -102,9 +104,10 @@ export default function Profile({ open, onClose }) {
   const [savedFlash, setSavedFlash] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [portalLoading, setPortalLoading] = useState(false);
-  // Original accent at the time the modal was opened — used to revert
-  // a live preview when the user closes without saving.
+  // Original accent + theme at modal-open time — used to revert live
+  // previews when the user closes without saving.
   const [originalAccent, setOriginalAccent] = useState('indigo');
+  const [originalTheme, setOriginalTheme] = useState('light');
 
   // Hydrate when modal opens. Re-fetches on every open so a fresh
   // record from another tab is reflected; doesn't flash a spinner on
@@ -117,6 +120,7 @@ export default function Profile({ open, onClose }) {
       setAgentProfile(ap);
       setSenderIdentity(si);
       setOriginalAccent(ap.accent || 'indigo');
+      setOriginalTheme(ap.theme || 'light');
       setDirty(false);
       setLoading(false);
     });
@@ -132,6 +136,11 @@ export default function Profile({ open, onClose }) {
         applyAccentToDOM(patch.accent);
         window.dispatchEvent(new CustomEvent('prim:accent-changed', { detail: { accent: patch.accent } }));
       }
+      // Same idea for theme — flip the dark class instantly.
+      if (patch.theme && patch.theme !== prev.theme) {
+        applyThemeToDOM(patch.theme);
+        window.dispatchEvent(new CustomEvent('prim:theme-changed', { detail: { theme: patch.theme } }));
+      }
       return next;
     });
     setDirty(true);
@@ -141,12 +150,18 @@ export default function Profile({ open, onClose }) {
     setDirty(true);
   };
 
-  // Close handler — if the user previewed a new accent but didn't save,
-  // revert to whatever was applied when the modal opened.
+  // Close handler — revert any unsaved live-preview changes (accent or
+  // theme) so closing the modal feels safe even after exploring.
   const handleClose = () => {
-    if (dirty && agentProfile.accent !== originalAccent) {
-      applyAccentToDOM(originalAccent);
-      window.dispatchEvent(new CustomEvent('prim:accent-changed', { detail: { accent: originalAccent } }));
+    if (dirty) {
+      if (agentProfile.accent !== originalAccent) {
+        applyAccentToDOM(originalAccent);
+        window.dispatchEvent(new CustomEvent('prim:accent-changed', { detail: { accent: originalAccent } }));
+      }
+      if (agentProfile.theme !== originalTheme) {
+        applyThemeToDOM(originalTheme);
+        window.dispatchEvent(new CustomEvent('prim:theme-changed', { detail: { theme: originalTheme } }));
+      }
     }
     onClose?.();
   };
@@ -162,6 +177,7 @@ export default function Profile({ open, onClose }) {
       setAgentProfile(nextAgent);
       setSenderIdentity(nextSender);
       setOriginalAccent(nextAgent.accent); // new baseline — don't revert on close
+      setOriginalTheme(nextAgent.theme);
       setDirty(false);
       setSavedFlash(true);
       // Tell the rest of the app (header avatar, etc.) to re-read.
@@ -761,11 +777,51 @@ function SenderSection({ identity, updateIdentity, authEmail, agentName }) {
  * --------------------------------------------------------------- */
 function AppearanceSection({ agentProfile, updateAgent }) {
   const current = agentProfile.accent || 'indigo';
+  const currentTheme = agentProfile.theme || 'light';
   return (
     <SectionShell
       title="Appearance"
-      description="Pick an accent palette. Your choice flows through the PRIM logo, your avatar, the page background tint, and other branded touches. Dark mode + banner image arrive in Phase 3."
+      description="Pick a theme, an accent palette, and an optional banner. Your choices flow across the PRIM logo, your avatar, the page background, and other branded touches."
     >
+      {/* Theme — Light / System / Dark */}
+      <div className="mb-6">
+        <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Theme</div>
+        <div className="inline-flex bg-slate-100 dark:bg-slate-800 rounded-xl p-1 gap-1">
+          {[
+            { id: 'light',  label: 'Light',  icon: Sun },
+            { id: 'system', label: 'System', icon: Monitor },
+            { id: 'dark',   label: 'Dark',   icon: Moon },
+          ].map((opt) => {
+            const Icon = opt.icon;
+            const isSelected = currentTheme === opt.id;
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => updateAgent({ theme: opt.id })}
+                className={`text-sm font-semibold px-4 py-2 rounded-lg transition flex items-center gap-2 ${
+                  isSelected
+                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                }`}
+              >
+                <Icon size={14} />
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
+          {currentTheme === 'system'
+            ? 'Follows your operating system setting. Changes automatically when your OS switches.'
+            : currentTheme === 'dark'
+            ? 'Easier on the eyes for late-night work. Save to lock it in.'
+            : 'Bright and crisp. The classic PRIM look.'}
+        </p>
+      </div>
+
+      {/* Accent palette */}
+      <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Accent palette</div>
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
         {PALETTES.map((p) => {
           const isSelected = current === p.id;

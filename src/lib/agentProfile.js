@@ -26,6 +26,8 @@ export const DEFAULT_AGENT_PROFILE = {
   phone: '',
   // Appearance preset id (see PALETTES below).
   accent: 'indigo',
+  // Theme — 'light' | 'dark' | 'system'. System follows OS preference.
+  theme: 'light',
   // Avatar photo — compressed JPEG data URL (target ~50KB).
   avatarUrl: '',
   // Banner image — compressed JPEG data URL (target ~180KB).
@@ -36,6 +38,33 @@ export const DEFAULT_AGENT_PROFILE = {
   emailDigest: 'weekly',    // 'weekly' | 'never'
   productUpdates: true,     // true = receive product update emails
 };
+
+export const THEME_OPTIONS = ['light', 'system', 'dark'];
+
+/**
+ * Apply a theme preference to <html>. Adds/removes the `.dark` class
+ * which Tailwind reads via the @custom-variant declaration in
+ * globals.css. 'system' follows the OS-level prefers-color-scheme.
+ * Safe to call on the server (no-op).
+ */
+export function applyThemeToDOM(theme) {
+  if (typeof document === 'undefined') return;
+  const t = THEME_OPTIONS.includes(theme) ? theme : 'light';
+  const html = document.documentElement;
+  let isDark;
+  if (t === 'dark') isDark = true;
+  else if (t === 'light') isDark = false;
+  else {
+    // system
+    isDark = typeof window !== 'undefined'
+      && window.matchMedia
+      && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  }
+  html.classList.toggle('dark', isDark);
+  // Stash the resolved preference so a re-render can re-apply system
+  // changes via the matchMedia listener installed by ThemeProvider.
+  html.dataset.themePref = t;
+}
 
 /**
  * Per-kind size + quality presets for profile image compression.
@@ -241,6 +270,7 @@ export async function loadAgentProfile() {
       phone: typeof parsed?.phone === 'string' ? parsed.phone : '',
       accent: typeof parsed?.accent === 'string' && PALETTES.some(p => p.id === parsed.accent)
         ? parsed.accent : 'indigo',
+      theme: THEME_OPTIONS.includes(parsed?.theme) ? parsed.theme : 'light',
       avatarUrl: typeof parsed?.avatarUrl === 'string' ? parsed.avatarUrl : '',
       bannerUrl: typeof parsed?.bannerUrl === 'string' ? parsed.bannerUrl : '',
       language: lang,
@@ -266,10 +296,12 @@ export async function saveAgentProfile(profile) {
   const rawBanner = typeof profile?.bannerUrl === 'string' ? profile.bannerUrl : '';
   const safeAvatar = rawAvatar.length <= MAX_AVATAR_LEN ? rawAvatar : '';
   const safeBanner = rawBanner.length <= MAX_BANNER_LEN ? rawBanner : '';
+  const safeTheme = THEME_OPTIONS.includes(profile?.theme) ? profile.theme : 'light';
   const safe = {
     displayName: String(profile?.displayName || '').slice(0, 100).trim(),
     phone: String(profile?.phone || '').slice(0, 32).trim(),
     accent: safeAccent,
+    theme: safeTheme,
     avatarUrl: safeAvatar,
     bannerUrl: safeBanner,
     language: safeLang,
@@ -281,8 +313,9 @@ export async function saveAgentProfile(profile) {
   // Mirror language to the legacy chatbot key so AgentChatbot.jsx (which
   // owns its own LANG_KEY load) picks the new value up without a refactor.
   try { await storage.setItem(CHAT_LANGUAGE_KEY, JSON.stringify(safeLang)); } catch { /* ignore */ }
-  // Apply accent immediately so the UI reflects the change before remount.
+  // Apply accent + theme immediately so the UI reflects changes before remount.
   applyAccentToDOM(safe.accent);
+  applyThemeToDOM(safe.theme);
   return safe;
 }
 

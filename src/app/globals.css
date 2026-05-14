@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+/* Class-based dark mode for Tailwind 4. Lets us toggle theme via a
+   `dark` class on <html> instead of forcing prefers-color-scheme. The
+   ThemeProvider component manages that class based on the agent's
+   stored preference (Light / System / Dark). */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
@@ -15,6 +21,106 @@
   /* Page background tint — barely-there wash matched to the accent.
      slate-50 is the historic default. */
   --prim-bg-tint:      #F8FAFC;
+}
+
+/* Dark theme overrides. Active when the `.dark` class is on <html>.
+   Page tint shifts to a deep slate; the accent gradient itself keeps
+   its full saturation so the user's chosen color still pops. */
+.dark {
+  --background: #0F172A;
+  --foreground: #E2E8F0;
+  --prim-bg-tint: #0B1220;
+}
+
+/* ---------- App-wide dark-mode color overrides ----------
+   Rather than touching every component to add Tailwind `dark:` variants,
+   we override the most common slate/white utility classes globally
+   when `.dark` is on <html>. This keeps the component code clean and
+   means one place to tune dark-mode aesthetics. Per-component
+   `dark:` variants can still take precedence by adding more
+   specificity if a surface needs special handling.
+
+   These selectors target the exact escaped Tailwind class names that
+   the JIT generates (e.g. `.bg-white`). Order within the utilities
+   layer matters — these come after `@import "tailwindcss"` so they win
+   by virtue of being declared later. */
+
+@layer utilities {
+  /* Surfaces */
+  .dark .bg-white          { background-color: #1E293B; }
+  .dark .bg-slate-50       { background-color: #0F172A; }
+  .dark .bg-slate-100      { background-color: #1E293B; }
+  .dark .bg-slate-200      { background-color: #334155; }
+
+  /* Hover surfaces */
+  .dark .hover\:bg-white:hover       { background-color: #1E293B; }
+  .dark .hover\:bg-slate-50:hover    { background-color: #1E293B; }
+  .dark .hover\:bg-slate-100:hover   { background-color: #334155; }
+
+  /* Text */
+  .dark .text-slate-900    { color: #F1F5F9; }
+  .dark .text-slate-800    { color: #E2E8F0; }
+  .dark .text-slate-700    { color: #CBD5E1; }
+  .dark .text-slate-600    { color: #94A3B8; }
+  .dark .text-slate-500    { color: #94A3B8; }
+  .dark .text-slate-400    { color: #64748B; }
+
+  /* Borders */
+  .dark .border-slate-100  { border-color: #1E293B; }
+  .dark .border-slate-200  { border-color: #334155; }
+  .dark .border-slate-300  { border-color: #475569; }
+  .dark .border-white      { border-color: #334155; }
+
+  /* Dividers */
+  .dark .divide-slate-100 > * + * { border-color: #1E293B; }
+  .dark .divide-slate-200 > * + * { border-color: #334155; }
+
+  /* Rings / ring colors used on focus + avatar */
+  .dark .ring-white        { --tw-ring-color: #334155; }
+
+  /* Translucent backdrops used on modals etc. */
+  .dark .bg-slate-900\/40  { background-color: rgb(2 6 23 / 0.65); }
+  .dark .bg-slate-900\/50  { background-color: rgb(2 6 23 / 0.7); }
+
+  /* Common subtle backgrounds */
+  .dark .bg-slate-50\/60   { background-color: rgb(15 23 42 / 0.6); }
+  .dark .bg-slate-50\/80   { background-color: rgb(15 23 42 / 0.8); }
+  .dark .bg-white\/85      { background-color: rgb(30 41 59 / 0.85); }
+
+  /* Form inputs default backgrounds — bump contrast in dark mode. */
+  .dark input:not([type="checkbox"]):not([type="radio"]),
+  .dark textarea,
+  .dark select {
+    color-scheme: dark;
+  }
+
+  /* Placeholder text */
+  .dark .placeholder\:text-slate-400::placeholder,
+  .dark input::placeholder,
+  .dark textarea::placeholder {
+    color: #64748B;
+  }
+
+  /* Soft-tinted accent backgrounds used inside Profile etc. — bump
+     down lightness in dark mode so they don't blow out. */
+  .dark .bg-indigo-50      { background-color: rgb(99 102 241 / 0.12); }
+  .dark .bg-indigo-50\/60  { background-color: rgb(99 102 241 / 0.10); }
+  .dark .bg-amber-50       { background-color: rgb(245 158 11 / 0.12); }
+  .dark .bg-amber-50\/60   { background-color: rgb(245 158 11 / 0.10); }
+  .dark .bg-emerald-50     { background-color: rgb(16 185 129 / 0.12); }
+  .dark .bg-rose-50        { background-color: rgb(244 63 94 / 0.12); }
+  .dark .bg-red-50         { background-color: rgb(239 68 68 / 0.12); }
+  .dark .bg-amber-100      { background-color: rgb(245 158 11 / 0.20); }
+  .dark .bg-indigo-100     { background-color: rgb(99 102 241 / 0.20); }
+  .dark .bg-emerald-100    { background-color: rgb(16 185 129 / 0.20); }
+
+  /* Adjust border colors on tinted accents in dark mode. */
+  .dark .border-indigo-200 { border-color: rgb(99 102 241 / 0.35); }
+  .dark .border-indigo-100 { border-color: rgb(99 102 241 / 0.25); }
+  .dark .border-amber-200  { border-color: rgb(245 158 11 / 0.35); }
+  .dark .border-emerald-200{ border-color: rgb(16 185 129 / 0.35); }
+  .dark .border-rose-200   { border-color: rgb(244 63 94 / 0.35); }
+  .dark .border-red-200    { border-color: rgb(239 68 68 / 0.35); }
 }
 
 /* Page background — flows with the agent's accent palette. */
@@ -77,6 +183,15 @@ body {
      OS asks for reduced motion. */
   animation: mesh-drift 40s ease-in-out infinite;
   will-change: background-position;
+}
+
+/* In dark mode dim the mesh overlay so it reads as ambient glow on
+   a dark header rather than washed-out pastel haze. */
+.dark .bg-mesh-luxe {
+  background-image:
+    radial-gradient(at 20% 30%, rgba(99,102,241,0.18)  0px, transparent 50%),
+    radial-gradient(at 80% 20%, rgba(139,92,246,0.15)  0px, transparent 50%),
+    radial-gradient(at 60% 80%, rgba(16,185,129,0.12)  0px, transparent 50%);
 }
 
 /* Floating orbs for dashboard backdrop */
