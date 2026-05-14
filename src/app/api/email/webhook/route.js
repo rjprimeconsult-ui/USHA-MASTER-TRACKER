@@ -124,56 +124,60 @@ export async function POST(req) {
   const data = event?.data || {};
   const messageId = data.email_id || data.id;
   const tags = data.tags || [];
-  const userId = tagValue(tags, 'user_id');
-  const leadId = tagValue(tags, 'lead_id');
+  const userId     = tagValue(tags, 'user_id');
+  const leadId     = tagValue(tags, 'lead_id');
+  const prospectId = tagValue(tags, 'prospect_id');
 
   if (!type || !EVENT_FIELD[type]) {
-    // Acknowledge unknown event types so Resend doesn't keep retrying.
     return Response.json({ ok: true, ignored: true, reason: 'unknown event type' });
   }
   const field = EVENT_FIELD[type];
   if (field === null) {
     return Response.json({ ok: true, ignored: true, reason: 'event type intentionally skipped' });
   }
-  if (!messageId || !userId || !leadId) {
-    console.warn('[email/webhook] missing identifiers — type=', type, 'mid=', messageId, 'uid=', userId, 'lid=', leadId);
+  if (!messageId || !userId || (!leadId && !prospectId)) {
+    console.warn('[email/webhook] missing identifiers — type=', type, 'mid=', messageId, 'uid=', userId, 'lid=', leadId, 'pid=', prospectId);
     return Response.json({ ok: true, ignored: true, reason: 'missing identifiers' });
   }
 
   const supabase = getServiceClient();
   if (!supabase) return Response.json({ error: 'server not configured' }, { status: 503 });
 
-  // Read leads_v5 from user_kv, find the lead, patch the matching
-  // emailLog entry, write back.
+  // Determine which store to update: lead-tagged events update leads_v5,
+  // prospect-tagged events update prospects_v1. The shape of each row is
+  // different but the emailLog array on it works identically.
+  const storeKey = prospectId ? 'prospects_v1' : 'leads_v5';
+  const targetId = prospectId || leadId;
+  const idLabel  = prospectId ? 'prospectId' : 'leadId';
+
   const { data: kvRow, error: readErr } = await supabase
     .from('user_kv')
     .select('value')
     .eq('user_id', userId)
-    .eq('key', 'leads_v5')
+    .eq('key', storeKey)
     .maybeSingle();
   if (readErr) {
     console.error('[email/webhook] user_kv read failed:', readErr);
     return Response.json({ error: 'storage read failed' }, { status: 500 });
   }
   if (!kvRow?.value) {
-    return Response.json({ ok: true, ignored: true, reason: 'no leads stored for user' });
+    return Response.json({ ok: true, ignored: true, reason: `no ${storeKey} stored for user` });
   }
 
-  // user_kv.value is a JSONB column. supabase-js returns it parsed.
-  let leadsArr = kvRow.value;
-  if (typeof leadsArr === 'string') {
-    try { leadsArr = JSON.parse(leadsArr); } catch { leadsArr = null; }
+  let arr = kvRow.value;
+  if (typeof arr === 'string') {
+    try { arr = JSON.parse(arr); } catch { arr = null; }
   }
-  if (!Array.isArray(leadsArr)) {
-    return Response.json({ ok: true, ignored: true, reason: 'leads not an array' });
+  if (!Array.isArray(arr)) {
+    return Response.json({ ok: true, ignored: true, reason: `${storeKey} not an array` });
   }
 
   const eventAt = data.created_at ? new Date(data.created_at).toISOString() : new Date().toISOString();
   let touched = false;
 
-  const nextLeads = leadsArr.map(l => {
-    if (l?.id !== leadId) return l;
-    const log = Array.isArray(l.emailLog) ? l.emailLog : [];
+  const next = arr.map(row => {
+    if (row?.id !== targetId) return row;
+    const log = Array.isArray(row.emailLog) ? row.emailLog : [];
     const nextLog = log.map(entry => {
       if (entry?.messageId !== messageId) return entry;
       // Idempotent — re-delivery of the same event doesn't move the
@@ -182,7 +186,7 @@ export async function POST(req) {
       touched = true;
       return { ...entry, [field]: eventAt };
     });
-    return touched ? { ...l, emailLog: nextLog } : l;
+    return touched ? { ...row, emailLog: nextLog } : row;
   });
 
   if (!touched) {
@@ -192,7 +196,7 @@ export async function POST(req) {
   const { error: writeErr } = await supabase
     .from('user_kv')
     .upsert(
-      { user_id: userId, key: 'leads_v5', value: nextLeads, updated_at: new Date().toISOString() },
+      { user_id: userId, key: storeKey, value: next, updated_at: new Date().toISOString() },
       { onConflict: 'user_id,key' }
     );
   if (writeErr) {
@@ -200,6 +204,6 @@ export async function POST(req) {
     return Response.json({ error: 'storage write failed' }, { status: 500 });
   }
 
-  console.log(`[email/webhook] ${type} → userId=${userId} leadId=${leadId} mid=${messageId} field=${field}`);
+  console.log(`[email/webhook] ${type} → userId=${userId} ${idLabel}=${targetId} mid=${messageId} field=${field}`);
   return Response.json({ ok: true, type, field, messageId });
 }

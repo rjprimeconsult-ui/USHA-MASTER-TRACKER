@@ -39,6 +39,36 @@ function safeTagValue(v) {
   return s || '_unknown';
 }
 
+// Best-effort plain-text fallback derived from HTML. Resend recommends
+// both for deliverability — when a caller ships HTML-only we synthesize
+// a readable text version so the multipart/alternative is real.
+function stripHtmlForText(html) {
+  if (!html) return '';
+  return String(html)
+    // Drop script/style content entirely
+    .replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, '')
+    // Block-level tags become newlines so paragraph spacing survives
+    .replace(/<\/(p|div|tr|li|h[1-6]|br)>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    // Strip everything else
+    .replace(/<[^>]+>/g, '')
+    // Decode common entities
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&rarr;/g, '→')
+    .replace(/&ndash;/g, '–')
+    .replace(/&middot;/g, '·')
+    .replace(/&rsquo;/g, "'")
+    // Collapse runs of blank lines
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+    .slice(0, 50_000);
+}
+
 async function getUserId(req) {
   const auth = req.headers.get('authorization') || '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
@@ -89,22 +119,35 @@ export async function POST(req) {
   try { body = await req.json(); } catch { return Response.json({ error: 'invalid json' }, { status: 400 }); }
   const {
     leadId,
+    prospectId,            // optional — when set, this is an outreach email
+    kind = 'post-sale',    // 'post-sale' | 'outreach'
     subject = '',
     body: emailBody = '',
+    html: emailHtml = '',  // optional — full HTML body. When present,
+                           // overrides the auto-generated wrap from text.
     recipient = '',
     intendedRecipient = '',
     testMode = false,
     fromName = '',
+    templateId = '',
+    templateName = '',
   } = body || {};
 
-  if (!leadId)               return Response.json({ error: 'leadId required' }, { status: 400 });
+  // Either a leadId (post-sale) or a prospectId (outreach) is required.
+  if (!leadId && !prospectId) {
+    return Response.json({ error: 'leadId or prospectId required' }, { status: 400 });
+  }
   if (!subject.trim())       return Response.json({ error: 'subject required' }, { status: 400 });
-  if (!emailBody.trim())     return Response.json({ error: 'body required' }, { status: 400 });
+  if (!emailBody.trim() && !emailHtml.trim()) {
+    return Response.json({ error: 'body or html required' }, { status: 400 });
+  }
   if (!/.+@.+\..+/.test(recipient)) return Response.json({ error: 'invalid recipient' }, { status: 400 });
 
   // Truncate to safe lengths so a runaway template doesn't blow the API.
+  // HTML allowance is bigger because banner-heavy templates run ~10-20KB.
   const safeSubject = String(subject).slice(0, 200);
   const safeBody    = String(emailBody).slice(0, 50_000);
+  const safeHtml    = String(emailHtml).slice(0, 200_000);
 
   // Resend wiring — clean failure if not configured yet.
   const resendKey = process.env.RESEND_API_KEY;
@@ -156,14 +199,17 @@ export async function POST(req) {
     replyTo = profile.email;
   }
 
-  // Convert body to a simple HTML version with linebreaks preserved. Keep
-  // it text-first — agent's template is plain text, so we don't pretend
-  // to do Markdown / HTML editing yet.
-  const htmlBody = safeBody
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/\n/g, '<br>');
+  // If the caller passed full HTML (outreach templates), use it as-is.
+  // Otherwise convert the plain-text body to a simple HTML wrap with
+  // linebreaks preserved — the legacy post-sale path that's worked
+  // since the feature shipped.
+  const htmlBody = safeHtml
+    ? safeHtml
+    : `<div style="font-family: system-ui, -apple-system, Segoe UI, sans-serif; font-size: 14px; line-height: 1.6; color: #0f172a;">${safeBody
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\n/g, '<br>')}</div>`;
 
   let resendResult;
   try {
@@ -178,19 +224,21 @@ export async function POST(req) {
         to: [recipient],
         reply_to: replyTo,
         subject: safeSubject,
-        text: safeBody,
-        html: `<div style="font-family: system-ui, -apple-system, Segoe UI, sans-serif; font-size: 14px; line-height: 1.6; color: #0f172a;">${htmlBody}</div>`,
+        text: safeBody || stripHtmlForText(safeHtml),
+        html: htmlBody,
         // Tags double as analytics in Resend's dashboard AND as the
         // identity bridge for webhook events — the /api/email/webhook
-        // handler reads user_id + lead_id back to find which lead to
-        // update with delivered/opened/clicked/bounced status.
+        // handler reads user_id + lead_id / prospect_id back to find
+        // which record to update with delivered/opened/clicked status.
         // Resend tag values: ASCII alphanumeric / _ / - only.
         tags: [
           { name: 'app', value: 'prim' },
-          { name: 'kind', value: 'post-sale' },
+          { name: 'kind', value: safeTagValue(kind || 'post-sale') },
           { name: 'test_mode', value: testMode ? 'true' : 'false' },
           { name: 'user_id', value: safeTagValue(userId) },
-          { name: 'lead_id', value: safeTagValue(leadId) },
+          ...(leadId     ? [{ name: 'lead_id',     value: safeTagValue(leadId) }]     : []),
+          ...(prospectId ? [{ name: 'prospect_id', value: safeTagValue(prospectId) }] : []),
+          ...(templateId ? [{ name: 'template_id', value: safeTagValue(templateId) }] : []),
         ],
       }),
     });

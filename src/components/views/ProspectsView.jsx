@@ -1,6 +1,7 @@
 'use client';
 import { useState, useMemo, useRef, useCallback, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
+import SendOutreachEmail from '../SendOutreachEmail';
 import {
   Plus, Search, LayoutGrid, List as ListIcon, Settings as SettingsIcon, Upload,
   Calendar, CalendarDays, Phone, Mail, MapPin, ArrowRight, Trash2, X, AlertCircle, Clock, GripVertical,
@@ -788,7 +789,73 @@ function DetailSection({ title, children }) {
   );
 }
 
-function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, onConvertToLead }) {
+/**
+ * Compact list of outreach emails fired for this prospect, newest
+ * first. Each row shows the template name, when it went out, and the
+ * latest tracking signal (delivered / opened / clicked / bounced) from
+ * Resend's webhook updates. Hover the timestamp for the full ISO.
+ */
+function OutreachLogList({ log }) {
+  // Capture "now" once via state so React's purity rule isn't tripped
+  // by reading Date.now() in render. Re-renders use the same anchor.
+  const [now] = useState(() => Date.now());
+
+  const sorted = [...(log || [])].sort((a, b) => {
+    const ax = new Date(a?.sentAt || 0).getTime();
+    const bx = new Date(b?.sentAt || 0).getTime();
+    return bx - ax;
+  });
+
+  const fmtRelative = (iso) => {
+    if (!iso) return '';
+    const t = new Date(iso).getTime();
+    if (!isFinite(t)) return '';
+    const diff = now - t;
+    const m = Math.floor(diff / 60000);
+    if (m < 1) return 'just now';
+    if (m < 60) return `${m}m ago`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h}h ago`;
+    const d = Math.floor(h / 24);
+    if (d < 7) return `${d}d ago`;
+    return new Date(iso).toLocaleDateString();
+  };
+
+  const statusOf = (entry) => {
+    if (entry?.bouncedAt)    return { label: 'Bounced',   cls: 'bg-rose-50 text-rose-700 border-rose-200' };
+    if (entry?.complainedAt) return { label: 'Complaint', cls: 'bg-rose-50 text-rose-700 border-rose-200' };
+    if (entry?.clickedAt)    return { label: 'Clicked',   cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
+    if (entry?.openedAt)     return { label: 'Opened',    cls: 'bg-indigo-50 text-indigo-700 border-indigo-200' };
+    if (entry?.deliveredAt)  return { label: 'Delivered', cls: 'bg-slate-100 text-slate-700 border-slate-200' };
+    return { label: 'Sent', cls: 'bg-slate-100 text-slate-700 border-slate-200' };
+  };
+
+  return (
+    <div className="space-y-2 py-2">
+      {sorted.map((entry, i) => {
+        const status = statusOf(entry);
+        return (
+          <div key={entry?.messageId || i} className="flex items-center justify-between gap-2 py-1.5">
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-medium text-slate-900 truncate">
+                {entry?.templateName || entry?.subject || 'Email'}
+              </div>
+              <div className="text-[11px] text-slate-500 truncate" title={entry?.sentAt}>
+                {fmtRelative(entry?.sentAt)}
+                {entry?.recipient && <> &middot; <span className="font-mono">{entry.recipient}</span></>}
+              </div>
+            </div>
+            <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${status.cls} flex-shrink-0`}>
+              {status.label}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, onConvertToLead, onProspectUpdate }) {
   if (!open || !prospect) return null;
   const stage = settings.stages.find(s => s.id === prospect.stage);
   const stageColor = stage?.color || '#64748b';
@@ -909,16 +976,34 @@ function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, o
               })}
             </DetailSection>
           )}
+
+          {/* Outreach email log — shown when at least one outreach has fired */}
+          {Array.isArray(prospect.emailLog) && prospect.emailLog.length > 0 && (
+            <DetailSection title="Outreach activity">
+              <OutreachLogList log={prospect.emailLog} />
+            </DetailSection>
+          )}
         </div>
 
         {/* Action footer — flex-shrink-0 keeps it pinned at the bottom
             of the modal card (replaces the old sticky bottom-0). */}
-        <div className="bg-white border-t border-slate-200 rounded-b-2xl p-4 flex items-center justify-between gap-2 flex-shrink-0">
+        <div className="bg-white border-t border-slate-200 rounded-b-2xl p-4 flex items-center justify-between gap-2 flex-shrink-0 flex-wrap">
           <button onClick={() => onDelete(prospect.id)}
             className="text-red-600 hover:bg-red-50 px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5">
             <Trash2 size={14} /> Delete
           </button>
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center flex-wrap">
+            {/* Outreach email — only renders for allowlist beta users
+                (component handles its own access gate). */}
+            <SendOutreachEmail
+              prospect={prospect}
+              onLogged={(entry) => {
+                onProspectUpdate?.({
+                  ...prospect,
+                  emailLog: [...(prospect.emailLog || []), entry],
+                });
+              }}
+            />
             {isSold && (
               <button onClick={() => onConvertToLead(prospect)}
                 className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg px-4 py-2 text-sm font-semibold flex items-center gap-1.5">
@@ -1419,6 +1504,7 @@ export default function ProspectsView({
         onEdit={onEdit}
         onDelete={(id) => { setViewing(null); onDeleteWrap(id); }}
         onConvertToLead={(p) => { setViewing(null); onConvertWrap(p); }}
+        onProspectUpdate={(p) => { onUpdate(p); setViewing(p); }}
       />
       <ProspectForm
         open={!!editing}
