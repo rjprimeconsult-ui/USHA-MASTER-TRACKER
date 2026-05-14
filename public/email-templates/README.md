@@ -17,7 +17,7 @@ The emails reference `https://www.primtracker.com/email-assets/phc-banner.png`.
 Save the Prime Health Consultants banner image to that exact path:
 
 ```
-public/email-assets/phc-banner.png
+public/email-assets/phc-banner.jpg
 ```
 
 The image should be at least **600px wide** (1200px is better for retina
