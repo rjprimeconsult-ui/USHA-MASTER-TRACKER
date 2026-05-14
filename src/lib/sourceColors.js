@@ -64,15 +64,34 @@ export function useSourceColors() {
 }
 
 /**
- * Lookup the color for a source, with a deterministic fallback so
- * uncolored sources still get a stable hue (instead of all rendering
- * gray and looking the same).
+ * Out-of-the-box defaults for the built-in PROSPECT_SOURCES so every
+ * card has a vivid badge from day one. Agents can still override any
+ * source via SourceColorManager — explicit colors always win over
+ * these fallbacks.
+ */
+export const DEFAULT_SOURCE_COLORS = {
+  Referral:        '#10B981', // emerald — warm-warm, high-trust source
+  'Google Ads':    '#EF4444', // red — Google brand red
+  'Facebook Ads':  '#0EA5E9', // sky — Facebook brand blue
+  'Web Lead':      '#6366F1', // indigo — generic web
+  'Aged Lead':     '#3B82F6', // blue — cooler / older inventory
+  'Major League':  '#8B5CF6', // violet — premium tier
+  'Bizz Lead':     '#F59E0B', // amber — small-business vibe
+  Benepath:        '#F97316', // orange — matches the Benepath CRM color
+  'Cold Call':     '#64748B', // slate — neutral
+};
+
+/**
+ * Lookup the color for a source. Order:
+ *   1. Explicit agent override from the saved color map.
+ *   2. Built-in default for a known source.
+ *   3. null → caller renders the plain fallback text.
  */
 export function colorForSource(map, source) {
   if (!source) return null;
   const explicit = map?.[source];
   if (explicit) return explicit;
-  return null;
+  return DEFAULT_SOURCE_COLORS[source] || null;
 }
 
 /**
