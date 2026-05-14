@@ -48,6 +48,7 @@ import { loadBundle, findAutoSendTemplate } from '@/lib/postSaleEmails';
 import { enqueuePending, cancelAllForLead } from '@/lib/pendingEmailQueue';
 import Toast from './Toast';
 import Profile from './Profile';
+import { loadAgentProfile } from '@/lib/agentProfile';
 import { fireConfetti, FadeIn, OrbBackdrop } from './motion/MotionPrimitives';
 import { useAuth } from './auth/AuthProvider';
 import { motion } from 'framer-motion';
@@ -75,7 +76,9 @@ const AB_DETAIL_KEY = 'association_bonus_detail_v1';
 const AGENT_RATES_KEY = 'agent_residual_rates_v1';
 
 // User menu — shows current email + Profile + sign-out. Lives in the header.
-function UserMenu({ onOpenProfile }) {
+// Reads the uploaded avatar from user_kv on mount (and re-reads when the
+// Profile modal closes, in case the agent just updated it).
+function UserMenu({ onOpenProfile, avatarUrl }) {
   const { user, signOut } = useAuth();
   const [open, setOpen] = useState(false);
   if (!user) return null;
@@ -86,8 +89,13 @@ function UserMenu({ onOpenProfile }) {
         className="flex items-center gap-2 text-slate-600 hover:text-slate-900 p-1.5 rounded-lg hover:bg-slate-100 transition text-sm"
         title={user.email}
       >
-        <div className="w-8 h-8 rounded-full bg-accent-gradient flex items-center justify-center text-white text-xs font-bold shadow-md shadow-indigo-500/20 ring-2 ring-white">
-          {(user.email || '?').slice(0, 1).toUpperCase()}
+        <div className="w-8 h-8 rounded-full bg-accent-gradient flex items-center justify-center text-white text-xs font-bold shadow-md shadow-indigo-500/20 ring-2 ring-white overflow-hidden">
+          {avatarUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={avatarUrl} alt="" className="w-full h-full object-cover" />
+          ) : (
+            (user.email || '?').slice(0, 1).toUpperCase()
+          )}
         </div>
       </button>
       {open && (
@@ -209,6 +217,23 @@ export default function LeadTracker() {
   const [confirm, setConfirm] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  // Avatar URL shown in the top-right UserMenu. Refreshed whenever the
+  // Profile modal closes so an upload propagates immediately. Listens
+  // for the same 'prim:accent-changed' event family so other tabs stay
+  // in sync. (Lightweight string — no perf concern.)
+  const [headerAvatarUrl, setHeaderAvatarUrl] = useState('');
+  useEffect(() => {
+    let alive = true;
+    loadAgentProfile().then((p) => { if (alive) setHeaderAvatarUrl(p.avatarUrl || ''); });
+    const refresh = () => {
+      loadAgentProfile().then((p) => { if (alive) setHeaderAvatarUrl(p.avatarUrl || ''); });
+    };
+    window.addEventListener('prim:profile-saved', refresh);
+    return () => {
+      alive = false;
+      window.removeEventListener('prim:profile-saved', refresh);
+    };
+  }, []);
 
   const showToast = useCallback((msg, kind = 'ok') => {
     setToast({ msg, kind });
@@ -1313,7 +1338,7 @@ export default function LeadTracker() {
             </div>
           </div>
           <div className="flex items-center gap-1">
-            <UserMenu onOpenProfile={() => setShowProfile(true)} />
+            <UserMenu onOpenProfile={() => setShowProfile(true)} avatarUrl={headerAvatarUrl} />
             <button onClick={() => setShowSettings(true)} className="text-slate-500 hover:text-slate-900 p-2 rounded-lg hover:bg-slate-100 transition" title="Settings">
               <Settings size={18} />
             </button>

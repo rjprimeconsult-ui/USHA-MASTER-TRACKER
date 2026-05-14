@@ -26,7 +26,9 @@ export const DEFAULT_AGENT_PROFILE = {
   phone: '',
   // Appearance preset id (see PALETTES below).
   accent: 'indigo',
-  // Banner image (data URL or Supabase Storage URL) — reserved for Phase 3.
+  // Avatar photo — compressed JPEG data URL (target ~50KB).
+  avatarUrl: '',
+  // Banner image — compressed JPEG data URL (target ~180KB).
   bannerUrl: '',
   // Preferences.
   language: 'en',           // 'en' | 'es' — feeds PRIM Assistant
@@ -34,6 +36,95 @@ export const DEFAULT_AGENT_PROFILE = {
   emailDigest: 'weekly',    // 'weekly' | 'never'
   productUpdates: true,     // true = receive product update emails
 };
+
+/**
+ * Per-kind size + quality presets for profile image compression.
+ *   - avatar: 384x384 max @ 0.85 quality → ~30-60KB JPEG, looks crisp at 192px display.
+ *   - banner: 1600x400 max @ 0.75 quality → ~120-200KB JPEG, hero strip width.
+ * Output is a data URL so we can store it inline in user_kv without
+ * needing a separate Supabase Storage bucket. If a row ever feels too
+ * big, we can swap this for Storage in a later refactor — the callers
+ * only see "save this image", they don't care where it lives.
+ */
+const PROFILE_IMAGE_PRESETS = {
+  avatar: { maxDim: 384, quality: 0.85, mime: 'image/jpeg' },
+  banner: { maxDim: 1600, quality: 0.75, mime: 'image/jpeg' },
+};
+
+export async function compressForProfile(file, kind = 'avatar') {
+  if (!file) return null;
+  const preset = PROFILE_IMAGE_PRESETS[kind] || PROFILE_IMAGE_PRESETS.avatar;
+  if (typeof window === 'undefined') return null;
+  if (!file.type?.startsWith('image/')) {
+    throw new Error('Please pick an image file (PNG, JPG, or WebP).');
+  }
+  // Read the file into an <img> element via an object URL so we can
+  // measure it and render to a canvas.
+  const objectUrl = URL.createObjectURL(file);
+  let img;
+  try {
+    img = await new Promise((resolve, reject) => {
+      const i = new Image();
+      i.onload = () => resolve(i);
+      i.onerror = (e) => reject(e);
+      i.src = objectUrl;
+    });
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+  const { width, height } = img;
+  let targetW = width;
+  let targetH = height;
+  if (kind === 'avatar') {
+    // Square crop from the center, then downscale to the preset.
+    const side = Math.min(width, height);
+    const sx = Math.round((width - side) / 2);
+    const sy = Math.round((height - side) / 2);
+    targetW = Math.min(side, preset.maxDim);
+    targetH = targetW;
+    const canvas = document.createElement('canvas');
+    canvas.width = targetW;
+    canvas.height = targetH;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, sx, sy, side, side, 0, 0, targetW, targetH);
+    return canvasToDataUrl(canvas, preset);
+  }
+  // Banner: scale-to-fit, preserving aspect, capped to maxDim wide.
+  if (width > preset.maxDim) {
+    targetW = preset.maxDim;
+    targetH = Math.round((height / width) * preset.maxDim);
+  }
+  // Optionally cap height too so absurdly tall images stay reasonable.
+  const MAX_BANNER_H = 600;
+  if (targetH > MAX_BANNER_H) {
+    targetH = MAX_BANNER_H;
+    targetW = Math.round((width / height) * MAX_BANNER_H);
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = targetW;
+  canvas.height = targetH;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, targetW, targetH);
+  return canvasToDataUrl(canvas, preset);
+}
+
+function canvasToDataUrl(canvas, preset) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        reject(new Error('Image compression failed.'));
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => resolve({
+        dataUrl: reader.result,
+        sizeBytes: blob.size,
+      });
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    }, preset.mime, preset.quality);
+  });
+}
 
 /**
  * Accent palette presets. Each one drives:
@@ -150,6 +241,7 @@ export async function loadAgentProfile() {
       phone: typeof parsed?.phone === 'string' ? parsed.phone : '',
       accent: typeof parsed?.accent === 'string' && PALETTES.some(p => p.id === parsed.accent)
         ? parsed.accent : 'indigo',
+      avatarUrl: typeof parsed?.avatarUrl === 'string' ? parsed.avatarUrl : '',
       bannerUrl: typeof parsed?.bannerUrl === 'string' ? parsed.bannerUrl : '',
       language: lang,
       defaultLeadSource: typeof parsed?.defaultLeadSource === 'string' ? parsed.defaultLeadSource : '',
@@ -165,11 +257,21 @@ export async function saveAgentProfile(profile) {
   const safeAccent = PALETTES.some(p => p.id === profile?.accent) ? profile.accent : 'indigo';
   const safeLang = profile?.language === 'es' ? 'es' : 'en';
   const safeDigest = profile?.emailDigest === 'never' ? 'never' : 'weekly';
+  // Images are data URLs (~50KB avatar / ~180KB banner) — large but still
+  // well within user_kv JSONB limits. Hard ceilings prevent a runaway
+  // upload from blowing the row.
+  const MAX_AVATAR_LEN = 200 * 1024;   // ~150KB image headroom
+  const MAX_BANNER_LEN = 400 * 1024;   // ~300KB image headroom
+  const rawAvatar = typeof profile?.avatarUrl === 'string' ? profile.avatarUrl : '';
+  const rawBanner = typeof profile?.bannerUrl === 'string' ? profile.bannerUrl : '';
+  const safeAvatar = rawAvatar.length <= MAX_AVATAR_LEN ? rawAvatar : '';
+  const safeBanner = rawBanner.length <= MAX_BANNER_LEN ? rawBanner : '';
   const safe = {
     displayName: String(profile?.displayName || '').slice(0, 100).trim(),
     phone: String(profile?.phone || '').slice(0, 32).trim(),
     accent: safeAccent,
-    bannerUrl: String(profile?.bannerUrl || '').slice(0, 1024),
+    avatarUrl: safeAvatar,
+    bannerUrl: safeBanner,
     language: safeLang,
     defaultLeadSource: String(profile?.defaultLeadSource || '').slice(0, 64).trim(),
     emailDigest: safeDigest,

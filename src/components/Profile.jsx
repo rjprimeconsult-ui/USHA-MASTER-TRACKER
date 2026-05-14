@@ -17,7 +17,7 @@
  *   - subscription state  → read-only from Supabase `profiles` table
  *     via `useSubscription`
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X,
@@ -37,6 +37,10 @@ import {
   Phone as PhoneIcon,
   AtSign,
   ArrowUpRight,
+  Camera,
+  Image as ImageIcon,
+  Trash2,
+  AlertTriangle,
 } from 'lucide-react';
 import { useAuth } from './auth/AuthProvider';
 import {
@@ -57,6 +61,7 @@ import {
   DEFAULT_AGENT_PROFILE,
   PALETTES,
   applyAccentToDOM,
+  compressForProfile,
 } from '@/lib/agentProfile';
 import {
   loadSenderIdentity,
@@ -159,6 +164,8 @@ export default function Profile({ open, onClose }) {
       setOriginalAccent(nextAgent.accent); // new baseline — don't revert on close
       setDirty(false);
       setSavedFlash(true);
+      // Tell the rest of the app (header avatar, etc.) to re-read.
+      window.dispatchEvent(new CustomEvent('prim:profile-saved'));
       setTimeout(() => setSavedFlash(false), 1800);
     } finally {
       setSaving(false);
@@ -203,21 +210,34 @@ export default function Profile({ open, onClose }) {
           onClick={(e) => e.stopPropagation()}
           className="bg-white border border-white/60 shadow-2xl shadow-indigo-500/20 rounded-2xl w-full max-w-5xl max-h-[92vh] overflow-hidden flex flex-col"
         >
-          {/* Top hero strip — uses accent palette so theme picks flow here */}
-          <div className="relative bg-accent-gradient px-6 py-5 text-white overflow-hidden">
-            {/* Decorative orb */}
-            <div className="absolute -top-12 -right-12 w-48 h-48 rounded-full bg-white/10 blur-2xl pointer-events-none" />
-            <div className="absolute -bottom-16 -left-8 w-40 h-40 rounded-full bg-white/10 blur-2xl pointer-events-none" />
+          {/* Top hero strip — uses accent palette so theme picks flow here.
+              If the agent uploaded a banner image, it replaces the gradient
+              with a darkening overlay so the text + avatar stay readable. */}
+          <div
+            className="relative bg-accent-gradient px-6 py-5 text-white overflow-hidden"
+            style={agentProfile.bannerUrl ? {
+              backgroundImage: `linear-gradient(135deg, rgba(15,23,42,0.55), rgba(15,23,42,0.35)), url(${agentProfile.bannerUrl})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+            } : undefined}
+          >
+            {/* Decorative orbs — softened when a banner is set so they don't
+                fight with the user's image. */}
+            <div className={`absolute -top-12 -right-12 w-48 h-48 rounded-full bg-white/10 blur-2xl pointer-events-none ${agentProfile.bannerUrl ? 'opacity-40' : ''}`} />
+            <div className={`absolute -bottom-16 -left-8 w-40 h-40 rounded-full bg-white/10 blur-2xl pointer-events-none ${agentProfile.bannerUrl ? 'opacity-40' : ''}`} />
 
             <div className="relative flex items-center gap-4">
-              {/* Avatar */}
+              {/* Avatar — uses uploaded photo when set, falls back to initials */}
               <motion.div
                 initial={{ scale: 0.85, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 transition={{ type: 'spring', stiffness: 200, damping: 14 }}
-                className="w-16 h-16 rounded-2xl bg-white/20 backdrop-blur-sm border border-white/40 flex items-center justify-center text-white text-2xl font-bold shadow-xl"
+                className="w-16 h-16 rounded-2xl bg-white/20 backdrop-blur-sm border border-white/40 flex items-center justify-center text-white text-2xl font-bold shadow-xl overflow-hidden"
               >
-                {initials}
+                {agentProfile.avatarUrl ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img src={agentProfile.avatarUrl} alt="" className="w-full h-full object-cover" />
+                ) : initials}
               </motion.div>
 
               <div className="flex-1 min-w-0">
@@ -413,11 +433,13 @@ function IdentitySection({ authUser, agentProfile, updateAgent, initials }) {
       description="How you appear inside PRIM. Display name feeds the {agent_name} variable in your email templates; phone feeds {agent_phone}."
     >
       <div className="flex items-start gap-5 mb-6">
-        <div className="w-20 h-20 rounded-2xl bg-accent-gradient flex items-center justify-center text-white text-3xl font-bold shadow-accent flex-shrink-0">
-          {initials}
-        </div>
-        <div className="text-xs text-slate-500 mt-2 leading-relaxed">
-          Avatar uses your initials for now. Custom image upload is coming in Phase 3 alongside dark mode and banner images.
+        <AvatarUploader
+          avatarUrl={agentProfile.avatarUrl}
+          initials={initials}
+          onChange={(url) => updateAgent({ avatarUrl: url })}
+        />
+        <div className="text-xs text-slate-500 mt-2 leading-relaxed flex-1">
+          Upload a photo to replace the initials avatar. We&apos;ll crop to a square and compress automatically — keeps your profile fast to load.
         </div>
       </div>
 
@@ -816,6 +838,15 @@ function AppearanceSection({ agentProfile, updateAgent }) {
       <p className="text-[11px] text-slate-500 mt-4 leading-relaxed">
         Save changes to lock it in — closing without saving reverts to your current accent.
       </p>
+
+      {/* Banner image — sits below the palette picker so the page flow
+          is: pick palette → see preview → personalize the hero. */}
+      <div className="mt-8 pt-6 border-t border-slate-200">
+        <BannerUploader
+          bannerUrl={agentProfile.bannerUrl}
+          onChange={(url) => updateAgent({ bannerUrl: url })}
+        />
+      </div>
     </SectionShell>
   );
 }
@@ -968,6 +999,170 @@ function SectionShell({ title, description, children }) {
       </div>
       {children}
     </motion.div>
+  );
+}
+
+/* ----------------------------------------------------------------
+ * Image uploaders — shared logic for avatar + banner
+ * --------------------------------------------------------------- */
+function AvatarUploader({ avatarUrl, initials, onChange }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const inputRef = useRef(null);
+
+  const handleFile = async (file) => {
+    if (!file) return;
+    setBusy(true);
+    setError('');
+    try {
+      const result = await compressForProfile(file, 'avatar');
+      onChange(result.dataUrl);
+    } catch (e) {
+      setError(e?.message || 'Could not process that image.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="flex-shrink-0">
+      <div className="relative w-20 h-20 group">
+        <div className="w-20 h-20 rounded-2xl bg-accent-gradient flex items-center justify-center text-white text-3xl font-bold shadow-accent overflow-hidden">
+          {avatarUrl ? (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img src={avatarUrl} alt="" className="w-full h-full object-cover" />
+          ) : initials}
+        </div>
+
+        {/* Edit overlay (camera icon) */}
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          disabled={busy}
+          className="absolute inset-0 rounded-2xl bg-slate-900/55 opacity-0 group-hover:opacity-100 disabled:opacity-100 flex items-center justify-center text-white transition"
+          title={avatarUrl ? 'Change photo' : 'Upload photo'}
+        >
+          {busy ? <Loader2 size={20} className="animate-spin" /> : <Camera size={20} />}
+        </button>
+      </div>
+
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        className="hidden"
+        onChange={(e) => handleFile(e.target.files?.[0])}
+      />
+
+      <div className="flex items-center gap-2 mt-2">
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          disabled={busy}
+          className="text-[11px] font-semibold text-indigo-700 hover:text-indigo-900 disabled:text-slate-400"
+        >
+          {avatarUrl ? 'Change' : 'Upload'}
+        </button>
+        {avatarUrl && (
+          <button
+            type="button"
+            onClick={() => onChange('')}
+            className="text-[11px] font-semibold text-slate-500 hover:text-rose-600"
+          >
+            Remove
+          </button>
+        )}
+      </div>
+      {error && (
+        <div className="mt-1 text-[11px] text-rose-700 flex items-center gap-1 max-w-[10rem] leading-snug">
+          <AlertTriangle size={10} className="flex-shrink-0" /> {error}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BannerUploader({ bannerUrl, onChange }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const inputRef = useRef(null);
+
+  const handleFile = async (file) => {
+    if (!file) return;
+    setBusy(true);
+    setError('');
+    try {
+      const result = await compressForProfile(file, 'banner');
+      onChange(result.dataUrl);
+    } catch (e) {
+      setError(e?.message || 'Could not process that image.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div>
+      <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+        Profile banner
+      </div>
+      <p className="text-xs text-slate-500 leading-relaxed mb-3">
+        Optional photo for the top of your Profile hub. Wide images work best (16:4 or wider). Falls back to your accent gradient when no banner is set.
+      </p>
+
+      <div className="relative rounded-xl overflow-hidden border border-slate-200 bg-slate-50">
+        {bannerUrl ? (
+          <div
+            className="w-full h-32"
+            style={{
+              backgroundImage: `linear-gradient(135deg, rgba(15,23,42,0.45), rgba(15,23,42,0.25)), url(${bannerUrl})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+            }}
+          />
+        ) : (
+          <div className="w-full h-32 bg-accent-gradient flex items-center justify-center text-white/85 text-xs font-medium">
+            No banner — using accent gradient
+          </div>
+        )}
+
+        {/* Hover overlay actions */}
+        <div className="absolute inset-0 bg-slate-900/55 opacity-0 hover:opacity-100 transition flex items-center justify-center gap-2">
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            disabled={busy}
+            className="bg-white/95 hover:bg-white text-slate-900 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5 disabled:opacity-60"
+          >
+            {busy ? <Loader2 size={12} className="animate-spin" /> : <ImageIcon size={12} />}
+            {bannerUrl ? 'Replace' : 'Upload'}
+          </button>
+          {bannerUrl && (
+            <button
+              type="button"
+              onClick={() => onChange('')}
+              className="bg-rose-600/95 hover:bg-rose-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5"
+            >
+              <Trash2 size={12} /> Remove
+            </button>
+          )}
+        </div>
+      </div>
+
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        className="hidden"
+        onChange={(e) => handleFile(e.target.files?.[0])}
+      />
+
+      {error && (
+        <div className="mt-2 text-xs text-rose-700 flex items-center gap-1.5">
+          <AlertTriangle size={12} /> {error}
+        </div>
+      )}
+    </div>
   );
 }
 
