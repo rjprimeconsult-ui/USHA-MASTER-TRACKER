@@ -25,7 +25,16 @@
 
 /* Dark theme overrides. Active when the `.dark` class is on <html>.
    Page tint shifts to a deep slate; the accent gradient itself keeps
-   its full saturation so the user's chosen color still pops. */
+   its full saturation so the user's chosen color still pops.
+
+   Surface hierarchy in dark mode (darkest → lightest):
+     page      #0B1220   ← bg-prim-canvas
+     base      #131B30   ← bg-slate-50 (subtly raised regions)
+     card      #1F2945   ← bg-white  (the main elevated surface)
+     raised    #2A3553   ← bg-slate-100 (hover / nested cards)
+     more      #36426B   ← bg-slate-200
+   Each step is ~12 lightness units brighter so card edges read
+   clearly and text stays readable on every layer. */
 .dark {
   --background: #0F172A;
   --foreground: #E2E8F0;
@@ -46,16 +55,18 @@
    by virtue of being declared later. */
 
 @layer utilities {
-  /* Surfaces */
-  .dark .bg-white          { background-color: #1E293B; }
-  .dark .bg-slate-50       { background-color: #0F172A; }
-  .dark .bg-slate-100      { background-color: #1E293B; }
-  .dark .bg-slate-200      { background-color: #334155; }
+  /* Surfaces — clearly separated tonality so cards read as elevated
+     against the page background and text never gets lost. */
+  .dark .bg-white          { background-color: #1F2945; }
+  .dark .bg-slate-50       { background-color: #131B30; }
+  .dark .bg-slate-100      { background-color: #2A3553; }
+  .dark .bg-slate-200      { background-color: #36426B; }
 
-  /* Hover surfaces */
-  .dark .hover\:bg-white:hover       { background-color: #1E293B; }
-  .dark .hover\:bg-slate-50:hover    { background-color: #1E293B; }
-  .dark .hover\:bg-slate-100:hover   { background-color: #334155; }
+  /* Hover surfaces — one tonal step above each base color so the
+     hover feedback is visible without overpowering. */
+  .dark .hover\:bg-white:hover       { background-color: #2A3553; }
+  .dark .hover\:bg-slate-50:hover    { background-color: #1F2945; }
+  .dark .hover\:bg-slate-100:hover   { background-color: #36426B; }
 
   /* Text */
   .dark .text-slate-900    { color: #F1F5F9; }
@@ -65,15 +76,16 @@
   .dark .text-slate-500    { color: #94A3B8; }
   .dark .text-slate-400    { color: #64748B; }
 
-  /* Borders */
-  .dark .border-slate-100  { border-color: #1E293B; }
-  .dark .border-slate-200  { border-color: #334155; }
+  /* Borders — sit just above the surface they enclose so card edges
+     read cleanly without becoming hard outlines. */
+  .dark .border-slate-100  { border-color: #2A3553; }
+  .dark .border-slate-200  { border-color: #3A476B; }
   .dark .border-slate-300  { border-color: #475569; }
-  .dark .border-white      { border-color: #334155; }
+  .dark .border-white      { border-color: #3A476B; }
 
   /* Dividers */
-  .dark .divide-slate-100 > * + * { border-color: #1E293B; }
-  .dark .divide-slate-200 > * + * { border-color: #334155; }
+  .dark .divide-slate-100 > * + * { border-color: #2A3553; }
+  .dark .divide-slate-200 > * + * { border-color: #3A476B; }
 
   /* Rings / ring colors used on focus + avatar */
   .dark .ring-white        { --tw-ring-color: #334155; }
@@ -82,10 +94,11 @@
   .dark .bg-slate-900\/40  { background-color: rgb(2 6 23 / 0.65); }
   .dark .bg-slate-900\/50  { background-color: rgb(2 6 23 / 0.7); }
 
-  /* Common subtle backgrounds */
-  .dark .bg-slate-50\/60   { background-color: rgb(15 23 42 / 0.6); }
-  .dark .bg-slate-50\/80   { background-color: rgb(15 23 42 / 0.8); }
-  .dark .bg-white\/85      { background-color: rgb(30 41 59 / 0.85); }
+  /* Common subtle backgrounds — match the new surface hierarchy. */
+  .dark .bg-slate-50\/60   { background-color: rgb(19 27 48 / 0.6); }
+  .dark .bg-slate-50\/80   { background-color: rgb(19 27 48 / 0.8); }
+  .dark .bg-white\/85      { background-color: rgb(31 41 69 / 0.92); }
+  .dark .bg-white\/90      { background-color: rgb(31 41 69 / 0.95); }
 
   /* Form inputs default backgrounds — bump contrast in dark mode. */
   .dark input:not([type="checkbox"]):not([type="radio"]),
