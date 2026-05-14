@@ -798,10 +798,17 @@ function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, o
   const apptD = apptDate(prospect.appointmentTime);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} className="bg-slate-50 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] overflow-y-auto">
-        {/* Hero header */}
-        <div className="bg-white rounded-t-2xl border-b border-slate-200 p-6 relative">
+    // Outer scroller — if the whole modal is somehow taller than the
+    // viewport (small laptop screens + big custom-fields list), the
+    // user can scroll the entire modal up/down. Inside the modal we
+    // use flex-column so the hero + footer stay pinned and only the
+    // middle body scrolls — that was the bug Juan caught: hero used
+    // to scroll out of view together with the body.
+    <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm overflow-y-auto" onClick={onClose}>
+      <div className="min-h-full flex items-center justify-center p-4">
+        <div onClick={e => e.stopPropagation()} className="bg-slate-50 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col">
+          {/* Hero header — pinned, doesn't scroll */}
+          <div className="bg-white rounded-t-2xl border-b border-slate-200 p-6 relative flex-shrink-0">
           <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 p-1">
             <X size={20} />
           </button>
@@ -830,8 +837,9 @@ function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, o
           </div>
         </div>
 
-        {/* Body sections */}
-        <div className="p-4 space-y-3">
+        {/* Body sections — flex-1 + overflow-y-auto so only this middle
+            region scrolls. Hero stays pinned at top, footer at bottom. */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
           {/* Primary Information */}
           <DetailSection title="Primary Information">
             <DetailRow Icon={User} value={prospect.indvOrFamily === 'Family' ? 'Family policy' : 'Individual'} />
@@ -894,8 +902,9 @@ function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, o
           )}
         </div>
 
-        {/* Action footer */}
-        <div className="bg-white border-t border-slate-200 rounded-b-2xl p-4 flex items-center justify-between gap-2 sticky bottom-0">
+        {/* Action footer — flex-shrink-0 keeps it pinned at the bottom
+            of the modal card (replaces the old sticky bottom-0). */}
+        <div className="bg-white border-t border-slate-200 rounded-b-2xl p-4 flex items-center justify-between gap-2 flex-shrink-0">
           <button onClick={() => onDelete(prospect.id)}
             className="text-red-600 hover:bg-red-50 px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5">
             <Trash2 size={14} /> Delete
@@ -913,7 +922,8 @@ function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, o
             </button>
           </div>
         </div>
-      </div>
+        </div>{/* /modal card */}
+      </div>{/* /flex centering wrapper */}
     </div>
   );
 }
