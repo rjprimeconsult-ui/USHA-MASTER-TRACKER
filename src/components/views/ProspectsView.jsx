@@ -2,6 +2,7 @@
 import { useState, useMemo, useRef, useCallback, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import SendOutreachEmail from '../SendOutreachEmail';
+import OutreachRemindersWidget from '../OutreachRemindersWidget';
 import {
   Plus, Search, LayoutGrid, List as ListIcon, Settings as SettingsIcon, Upload,
   Calendar, CalendarDays, Phone, Mail, MapPin, ArrowRight, Trash2, X, AlertCircle, Clock, GripVertical,
@@ -1311,6 +1312,19 @@ export default function ProspectsView({
           </button>
         </div>
       </div>
+
+      {/* Outreach follow-ups (beta) — only renders for allowlist users
+          and only when at least one prospect has a follow-up due or
+          upcoming. Clicking a row opens that prospect's detail with
+          the next-due template auto-selected in the Send Outreach
+          picker. */}
+      <OutreachRemindersWidget
+        prospects={prospects}
+        onOpenProspect={(id) => {
+          const p = prospects.find(x => x.id === id);
+          if (p) onView(p);
+        }}
+      />
 
       {/* Today panel */}
       <TodayPanel prospects={prospects} onEdit={onView} />

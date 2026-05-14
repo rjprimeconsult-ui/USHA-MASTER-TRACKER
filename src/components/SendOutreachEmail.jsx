@@ -22,6 +22,7 @@ import {
   OUTREACH_TEMPLATES,
   renderOutreachTemplate,
 } from '@/lib/outreachEmails';
+import { nextTemplateIdForProspect } from '@/lib/outreachReminders';
 import { useBetaFeature } from '@/lib/useBetaFeature';
 import { supabase, supabaseConfigured } from '@/lib/supabase';
 
@@ -52,7 +53,12 @@ export default function SendOutreachEmail({ prospect, onLogged }) {
 }
 
 function SendModal({ prospect, onClose, onLogged }) {
-  const [selectedId, setSelectedId] = useState(OUTREACH_TEMPLATES[0]?.id || null);
+  // Default to the next-due template based on the prospect's email
+  // history — opening the modal for a prospect who's already received
+  // Email 1 lands you on Email 2's preview, saving a manual click.
+  const [selectedId, setSelectedId] = useState(
+    () => nextTemplateIdForProspect(prospect) || OUTREACH_TEMPLATES[0]?.id || null
+  );
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState(null);
 

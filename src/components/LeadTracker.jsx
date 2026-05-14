@@ -1433,6 +1433,8 @@ export default function LeadTracker() {
         <ViewMount visible={view === 'dashboard'} viewKey="dashboard">
           <Dashboard
             leads={leads}
+            prospects={prospects}
+            onOpenProspects={() => setView('prospects')}
             setupStats={setupChecklistStats}
             onSetupAction={(action) => {
               switch (action) {
