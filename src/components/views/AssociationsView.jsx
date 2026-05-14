@@ -17,6 +17,7 @@ import {
   aggregateByPolicy,
 } from '@/lib/associationResiduals';
 import { TiltCard, CountUp, Stagger, StaggerItem, Chart3DCard } from '../motion/MotionPrimitives';
+import { useChartColors } from '@/lib/useIsDark';
 
 // Canonical display order — highest tier first. Any plan not in this list
 // gets sorted to the bottom alphabetically (so unknown plans always trail).
@@ -89,6 +90,7 @@ function AssociationsView({
   onOpenImport,           // opens the CommissionDetail uploader
   onClearResidualBook,    // resets the residual book + agent rates
 }) {
+  const chartColors = useChartColors();
   const clients = useMemo(() =>
     leads.filter(l => l.stage === 'Issued' && l.associationPlan && isPricedAssociation(l.associationPlan))
   , [leads]);
@@ -245,12 +247,12 @@ function AssociationsView({
           </h3>
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={carrierTrend}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} />
               <XAxis dataKey="period" fontSize={11} />
               <YAxis fontSize={11} />
               <Tooltip formatter={(v) => fmt2(v)} />
               <Bar dataKey="total" radius={[4, 4, 0, 0]} fill="#6366f1" animationDuration={700}>
-                <LabelList dataKey="total" position="top" fill="#0f172a" fontSize={10} fontWeight={700} formatter={(v) => v > 0 ? fmt(v) : ''} />
+                <LabelList dataKey="total" position="top" fill={chartColors.label} fontSize={10} fontWeight={700} formatter={(v) => v > 0 ? fmt(v) : ''} />
               </Bar>
             </BarChart>
           </ResponsiveContainer>
@@ -299,13 +301,13 @@ function AssociationsView({
           <h3 className="font-semibold text-slate-900 mb-3">Quarterly Payouts ({year})</h3>
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={quarterData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} />
               <XAxis dataKey="name" fontSize={12} />
               <YAxis fontSize={11} />
               <Tooltip formatter={(v) => fmt2(v)} />
               <Bar dataKey="value" radius={[4, 4, 0, 0]} animationDuration={900}>
                 {quarterData.map((_, i) => <Cell key={i} fill={QUARTER_COLORS[i % QUARTER_COLORS.length]} />)}
-                <LabelList dataKey="value" position="top" fill="#0f172a" fontSize={11} fontWeight={700} formatter={(v) => v > 0 ? fmt(v) : ''} />
+                <LabelList dataKey="value" position="top" fill={chartColors.label} fontSize={11} fontWeight={700} formatter={(v) => v > 0 ? fmt(v) : ''} />
               </Bar>
             </BarChart>
           </ResponsiveContainer>

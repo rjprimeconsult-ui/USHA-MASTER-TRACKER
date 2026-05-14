@@ -686,7 +686,9 @@ function ActionTile({ onClick, disabled, loading, icon: Icon, title, description
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`group relative bg-gradient-to-br ${accentMap[accent]} border rounded-xl p-4 text-left transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-current`}
+      // 60% opacity when disabled (was 40%) so the tile + text stay
+      // readable on dark backgrounds. Cursor still signals it's inactive.
+      className={`group relative bg-gradient-to-br ${accentMap[accent]} border rounded-xl p-4 text-left transition disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:border-current`}
     >
       <div className="flex items-start justify-between mb-2">
         <div className={`w-9 h-9 rounded-lg bg-white border border-current/20 flex items-center justify-center shadow-sm`}>
@@ -697,7 +699,9 @@ function ActionTile({ onClick, disabled, loading, icon: Icon, title, description
           : <ExternalLink size={13} className="opacity-50 group-hover:opacity-100 transition" />}
       </div>
       <div className="font-semibold text-sm text-slate-900 mb-0.5">{title}</div>
-      <div className="text-xs text-slate-600 leading-snug">{description}</div>
+      {/* slate-700 (not -600) for better contrast against the brand-tinted
+          gradient backdrop in both light + dark modes. */}
+      <div className="text-xs text-slate-700 leading-snug">{description}</div>
     </button>
   );
 }

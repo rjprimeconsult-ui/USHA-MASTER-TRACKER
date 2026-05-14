@@ -14,6 +14,7 @@ import {
 import TakenRateCalculator from '../TakenRateCalculator';
 import ChargebacksPanel from '../ChargebacksPanel';
 import { TiltCard, CountUp, FadeIn, Stagger, StaggerItem, Chart3DCard, fireConfetti } from '../motion/MotionPrimitives';
+import { useChartColors } from '@/lib/useIsDark';
 
 const Kpi = memo(({ label, value, numeric, isCurrency = true, isPercent = false, sub, grad, Icon, onClick, active }) => (
   <TiltCard
@@ -42,6 +43,7 @@ const Kpi = memo(({ label, value, numeric, isCurrency = true, isPercent = false,
 Kpi.displayName = 'Kpi';
 
 function CpaDashboard({ leads, investments, activities, platformExpenses = [], businessExpenses = [], businessIncome = [], chargebacks = [], overrides = [], ownAdvances = [], onDeleteChargeback, onEditInvestment, onDeleteInvestment, onDeleteAutoWeek, onNewInvestment, onNewActivity, onEditActivity, onDeleteActivity }) {
+  const chartColors = useChartColors();
   const [showHowTo, setShowHowTo] = useState(false);
   const thisWeek = getWeekStart(new Date().toISOString().slice(0, 10));
 
@@ -687,16 +689,16 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
           </div>
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={weekly}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} />
               <XAxis dataKey="label" fontSize={11} />
               <YAxis fontSize={11} />
               <Tooltip />
               <Legend />
               <Bar dataKey="invested" name="Invested" fill="#ef4444" radius={[4, 4, 0, 0]} animationDuration={900}>
-                <LabelList dataKey="invested" position="top" fill="#0f172a" fontSize={11} fontWeight={700} formatter={(v) => v > 0 ? fmt(v) : ''} />
+                <LabelList dataKey="invested" position="top" fill={chartColors.label} fontSize={11} fontWeight={700} formatter={(v) => v > 0 ? fmt(v) : ''} />
               </Bar>
               <Bar dataKey="earned" name="Earned" fill="#10b981" radius={[4, 4, 0, 0]} animationDuration={900}>
-                <LabelList dataKey="earned" position="top" fill="#0f172a" fontSize={11} fontWeight={700} formatter={(v) => v > 0 ? fmt(v) : ''} />
+                <LabelList dataKey="earned" position="top" fill={chartColors.label} fontSize={11} fontWeight={700} formatter={(v) => v > 0 ? fmt(v) : ''} />
               </Bar>
             </BarChart>
           </ResponsiveContainer>

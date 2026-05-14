@@ -13,6 +13,7 @@
 import { motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import { useIsDark } from '@/lib/useIsDark';
 
 // Darken a hex color by N (0-255) for the side-wall layer of the 3D pie.
 function darken(hex, amt = 40) {
@@ -182,6 +183,7 @@ export function Pie3D({
   insideThreshold = 2,          // 0..1 — set < 1 to put very large slices inside instead of outside
   labelOffset = 22,             // px outside the outer radius for the label
 }) {
+  const isDark = useIsDark();
   // All values rendered at the end of a leader line (matching the user's "1 → Pending" example).
   // Inside-slice labels can still be enabled by lowering insideThreshold.
   const renderLabel = (props) => {
@@ -213,7 +215,7 @@ export function Pie3D({
     return (
       <text
         x={x} y={y}
-        fill="#0f172a"
+        fill={isDark ? '#E2E8F0' : '#0f172a'}
         textAnchor={x > cx ? 'start' : 'end'}
         dominantBaseline="central"
         fontSize={fontSize}

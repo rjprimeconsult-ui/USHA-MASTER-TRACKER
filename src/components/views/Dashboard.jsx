@@ -6,6 +6,7 @@ import { STAGES, SOURCES, LEAD_CATEGORIES, CRMS, effectiveLeadCategory } from '@
 import { fmt } from '@/lib/utils';
 import { Chart3DCard, TiltCard, Stagger, StaggerItem, Pie3D } from '../motion/MotionPrimitives';
 import SetupChecklist from '../SetupChecklist';
+import { useChartColors } from '@/lib/useIsDark';
 
 const Kpi = ({ label, value, grad, Icon }) => (
   <TiltCard className="bg-white rounded-xl p-3 border border-slate-200 shine-on-hover glow-ring cursor-default">
@@ -58,6 +59,7 @@ function sourceColor(label) {
 }
 
 function Dashboard({ leads, setupStats, onSetupAction }) {
+  const chartColors = useChartColors();
   const [stateMetric, setStateMetric] = useState('deals'); // 'deals' | 'issued' | 'advance'
 
   const total = leads.length;
@@ -180,7 +182,7 @@ function Dashboard({ leads, setupStats, onSetupAction }) {
           <h3 className="font-semibold mb-3 text-slate-900">Revenue by Month</h3>
           <ResponsiveContainer width="100%" height={240}>
             <LineChart data={byMonth}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} />
               <XAxis dataKey="month" fontSize={11} />
               <YAxis fontSize={11} />
               <Tooltip formatter={(v) => fmt(v)} />
@@ -218,13 +220,13 @@ function Dashboard({ leads, setupStats, onSetupAction }) {
           <h3 className="font-semibold mb-3 text-slate-900">By Lead Category</h3>
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={categoryData} layout="vertical">
-              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} />
               <XAxis type="number" fontSize={11} />
               <YAxis type="category" dataKey="name" fontSize={11} width={100} />
               <Tooltip />
               <Bar dataKey="count" radius={[0, 4, 4, 0]} animationDuration={900}>
                 {categoryData.map((d, i) => <Cell key={i} fill={d.color} />)}
-                <LabelList dataKey="count" position="right" fill="#0f172a" fontSize={13} fontWeight={700} offset={8} />
+                <LabelList dataKey="count" position="right" fill={chartColors.label} fontSize={13} fontWeight={700} offset={8} />
               </Bar>
             </BarChart>
           </ResponsiveContainer>
@@ -234,13 +236,13 @@ function Dashboard({ leads, setupStats, onSetupAction }) {
           <h3 className="font-semibold mb-3 text-slate-900">By Source (CRM breakdown)</h3>
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={sourceData} layout="vertical">
-              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} />
               <XAxis type="number" fontSize={11} />
               <YAxis type="category" dataKey="name" fontSize={11} width={110} />
               <Tooltip />
               <Bar dataKey="count" radius={[0, 4, 4, 0]} animationDuration={900}>
                 {sourceData.map((d, i) => <Cell key={i} fill={d.color} />)}
-                <LabelList dataKey="count" position="right" fill="#0f172a" fontSize={13} fontWeight={700} offset={8} />
+                <LabelList dataKey="count" position="right" fill={chartColors.label} fontSize={13} fontWeight={700} offset={8} />
               </Bar>
             </BarChart>
           </ResponsiveContainer>
@@ -299,7 +301,7 @@ function Dashboard({ leads, setupStats, onSetupAction }) {
 
             <ResponsiveContainer width="100%" height={Math.max(220, stateChartData.length * 22)}>
               <BarChart data={stateChartData} layout="vertical" margin={{ top: 5, right: 30, left: 5, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} />
                 <XAxis
                   type="number"
                   fontSize={11}
@@ -315,7 +317,7 @@ function Dashboard({ leads, setupStats, onSetupAction }) {
                   <LabelList
                     dataKey={activeMetric.key}
                     position="right"
-                    fill="#0f172a"
+                    fill={chartColors.label}
                     fontSize={13}
                     fontWeight={700}
                     offset={8}
