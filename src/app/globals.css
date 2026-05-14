@@ -113,9 +113,30 @@
   .dark .bg-white\/85      { background-color: rgb(31 41 69 / 0.92); }
   .dark .bg-white\/90      { background-color: rgb(31 41 69 / 0.95); }
 
-  /* Form input native styling is handled by `color-scheme: dark` on
-     <html.dark> above — that covers select dropdown panels, date
-     pickers, and scrollbars in one place. */
+  /* Native form-control styling in dark mode.
+     color-scheme: dark (set on <html.dark>) handles most browsers'
+     native UI (dropdown panel, date picker, scrollbars), but Chrome
+     on Windows still uses OS-default white for <option> elements
+     unless we style them explicitly. Setting select + option here
+     forces a readable dark background + light text on the open
+     dropdown list. */
+  .dark select {
+    background-color: #1F2945;
+    color: #F1F5F9;
+  }
+  .dark option {
+    background-color: #1F2945;
+    color: #F1F5F9;
+  }
+  /* Date / time / native inputs — bump background so the field
+     value reads against the page tint in dark mode. */
+  .dark input[type="date"],
+  .dark input[type="time"],
+  .dark input[type="datetime-local"],
+  .dark input[type="month"],
+  .dark input[type="week"] {
+    color: #F1F5F9;
+  }
 
   /* Placeholder text */
   .dark .placeholder\:text-slate-400::placeholder,
