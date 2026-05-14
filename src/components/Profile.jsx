@@ -55,6 +55,8 @@ import {
   formatPhone,
   initialsFor,
   DEFAULT_AGENT_PROFILE,
+  PALETTES,
+  applyAccentToDOM,
 } from '@/lib/agentProfile';
 import {
   loadSenderIdentity,
@@ -71,6 +73,18 @@ const SECTIONS = [
   { id: 'preferences',  label: 'Preferences',  icon: Sliders,    phase: 2 },
 ];
 
+// Lead-source options for the Preferences default-source dropdown.
+// Matches the most common values the lead form already uses; agents
+// can still pick anything inside the form itself.
+const LEAD_SOURCE_OPTIONS = [
+  { value: '',            label: 'No default (pick each time)' },
+  { value: 'AGED',        label: 'Aged leads' },
+  { value: 'INTERNET',    label: 'Internet leads' },
+  { value: 'REFERRAL',    label: 'Referral' },
+  { value: 'PERSONAL',    label: 'Personal market' },
+  { value: 'SOCIAL',      label: 'Social media' },
+];
+
 export default function Profile({ open, onClose }) {
   const { user: authUser } = useAuth();
   const { profile: subProfile, loading: subLoading, refresh: refreshSub } = useSubscription();
@@ -83,6 +97,9 @@ export default function Profile({ open, onClose }) {
   const [savedFlash, setSavedFlash] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [portalLoading, setPortalLoading] = useState(false);
+  // Original accent at the time the modal was opened — used to revert
+  // a live preview when the user closes without saving.
+  const [originalAccent, setOriginalAccent] = useState('indigo');
 
   // Hydrate when modal opens. Re-fetches on every open so a fresh
   // record from another tab is reflected; doesn't flash a spinner on
@@ -94,6 +111,7 @@ export default function Profile({ open, onClose }) {
       if (!alive) return;
       setAgentProfile(ap);
       setSenderIdentity(si);
+      setOriginalAccent(ap.accent || 'indigo');
       setDirty(false);
       setLoading(false);
     });
@@ -101,12 +119,31 @@ export default function Profile({ open, onClose }) {
   }, [open]);
 
   const updateAgent = (patch) => {
-    setAgentProfile((prev) => ({ ...prev, ...patch }));
+    setAgentProfile((prev) => {
+      const next = { ...prev, ...patch };
+      // Live-preview accent changes so the hero strip + avatar repaint
+      // instantly as the user clicks through palettes.
+      if (patch.accent && patch.accent !== prev.accent) {
+        applyAccentToDOM(patch.accent);
+        window.dispatchEvent(new CustomEvent('prim:accent-changed', { detail: { accent: patch.accent } }));
+      }
+      return next;
+    });
     setDirty(true);
   };
   const updateSender = (patch) => {
     setSenderIdentity((prev) => ({ ...prev, ...patch }));
     setDirty(true);
+  };
+
+  // Close handler — if the user previewed a new accent but didn't save,
+  // revert to whatever was applied when the modal opened.
+  const handleClose = () => {
+    if (dirty && agentProfile.accent !== originalAccent) {
+      applyAccentToDOM(originalAccent);
+      window.dispatchEvent(new CustomEvent('prim:accent-changed', { detail: { accent: originalAccent } }));
+    }
+    onClose?.();
   };
 
   const onSave = async () => {
@@ -119,6 +156,7 @@ export default function Profile({ open, onClose }) {
       ]);
       setAgentProfile(nextAgent);
       setSenderIdentity(nextSender);
+      setOriginalAccent(nextAgent.accent); // new baseline — don't revert on close
       setDirty(false);
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 1800);
@@ -154,7 +192,7 @@ export default function Profile({ open, onClose }) {
         exit={{ opacity: 0 }}
         transition={{ duration: 0.2 }}
         className="fixed inset-0 bg-slate-900/50 backdrop-blur-md z-50 flex items-center justify-center p-4"
-        onClick={onClose}
+        onClick={handleClose}
       >
         <motion.div
           key="profile-card"
@@ -165,8 +203,8 @@ export default function Profile({ open, onClose }) {
           onClick={(e) => e.stopPropagation()}
           className="bg-white border border-white/60 shadow-2xl shadow-indigo-500/20 rounded-2xl w-full max-w-5xl max-h-[92vh] overflow-hidden flex flex-col"
         >
-          {/* Top hero strip */}
-          <div className="relative bg-gradient-to-br from-indigo-600 via-violet-600 to-fuchsia-600 px-6 py-5 text-white overflow-hidden">
+          {/* Top hero strip — uses accent palette so theme picks flow here */}
+          <div className="relative bg-accent-gradient px-6 py-5 text-white overflow-hidden">
             {/* Decorative orb */}
             <div className="absolute -top-12 -right-12 w-48 h-48 rounded-full bg-white/10 blur-2xl pointer-events-none" />
             <div className="absolute -bottom-16 -left-8 w-40 h-40 rounded-full bg-white/10 blur-2xl pointer-events-none" />
@@ -196,7 +234,7 @@ export default function Profile({ open, onClose }) {
               </div>
 
               <button
-                onClick={onClose}
+                onClick={handleClose}
                 className="text-white/80 hover:text-white p-1.5 rounded-lg hover:bg-white/15 transition flex-shrink-0"
                 title="Close"
               >
@@ -212,24 +250,18 @@ export default function Profile({ open, onClose }) {
               {SECTIONS.map((s) => {
                 const Icon = s.icon;
                 const isActive = active === s.id;
-                const isLocked = s.phase > 1;
                 return (
                   <button
                     key={s.id}
                     onClick={() => setActive(s.id)}
                     className={`relative w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition mb-0.5 ${
                       isActive
-                        ? 'bg-white text-indigo-700 shadow-sm border border-indigo-100'
+                        ? 'bg-white text-accent shadow-sm border border-slate-200'
                         : 'text-slate-600 hover:bg-white/70 hover:text-slate-900'
                     }`}
                   >
-                    <Icon size={15} className={isActive ? 'text-indigo-600' : 'text-slate-400'} />
+                    <Icon size={15} className={isActive ? 'text-accent' : 'text-slate-400'} />
                     <span className="flex-1 text-left">{s.label}</span>
-                    {isLocked && (
-                      <span className="text-[9px] uppercase tracking-wider bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-bold">
-                        Soon
-                      </span>
-                    )}
                   </button>
                 );
               })}
@@ -278,15 +310,25 @@ export default function Profile({ open, onClose }) {
                       agentName={agentProfile.displayName}
                     />
                   )}
-                  {active === 'appearance' && <AppearancePreview />}
-                  {active === 'preferences' && <PreferencesPreview />}
+                  {active === 'appearance' && (
+                    <AppearanceSection
+                      agentProfile={agentProfile}
+                      updateAgent={updateAgent}
+                    />
+                  )}
+                  {active === 'preferences' && (
+                    <PreferencesSection
+                      agentProfile={agentProfile}
+                      updateAgent={updateAgent}
+                    />
+                  )}
                 </div>
               )}
             </div>
           </div>
 
-          {/* Footer — sticky save bar */}
-          {!loading && (active === 'identity' || active === 'sender') && (
+          {/* Footer — sticky save bar. Subscription is read-only; everything else can be edited. */}
+          {!loading && active !== 'subscription' && (
             <div className="border-t border-slate-200 bg-slate-50/80 backdrop-blur-sm px-6 py-3 flex items-center justify-end gap-3 flex-shrink-0">
               <AnimatePresence>
                 {savedFlash && (
@@ -371,7 +413,7 @@ function IdentitySection({ authUser, agentProfile, updateAgent, initials }) {
       description="How you appear inside PRIM. Display name feeds the {agent_name} variable in your email templates; phone feeds {agent_phone}."
     >
       <div className="flex items-start gap-5 mb-6">
-        <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white text-3xl font-bold shadow-lg shadow-indigo-500/30 flex-shrink-0">
+        <div className="w-20 h-20 rounded-2xl bg-accent-gradient flex items-center justify-center text-white text-3xl font-bold shadow-accent flex-shrink-0">
           {initials}
         </div>
         <div className="text-xs text-slate-500 mt-2 leading-relaxed">
@@ -693,78 +735,209 @@ function SenderSection({ identity, updateIdentity, authEmail, agentName }) {
 }
 
 /* ----------------------------------------------------------------
- * Appearance — Phase 2 preview
+ * Appearance — accent palette picker with live preview
  * --------------------------------------------------------------- */
-function AppearancePreview() {
-  const palettes = [
-    { id: 'indigo',  name: 'Indigo',  from: '#6366F1', to: '#8B5CF6' },
-    { id: 'emerald', name: 'Emerald', from: '#10B981', to: '#14B8A6' },
-    { id: 'rose',    name: 'Rose',    from: '#F43F5E', to: '#EC4899' },
-    { id: 'amber',   name: 'Amber',   from: '#F59E0B', to: '#EF4444' },
-    { id: 'teal',    name: 'Teal',    from: '#06B6D4', to: '#3B82F6' },
-  ];
+function AppearanceSection({ agentProfile, updateAgent }) {
+  const current = agentProfile.accent || 'indigo';
   return (
     <SectionShell
       title="Appearance"
-      description="Pick an accent palette that flows through PRIM's buttons, badges, and highlights. Dark mode and banner image are on the Phase 3 roadmap."
+      description="Pick an accent palette. Your choice flows through the PRIM logo, your avatar, the Profile hero, and other branded touches. Dark mode + banner image arrive in Phase 3."
     >
-      <ComingSoonBanner phase={2} />
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mt-4 opacity-60 pointer-events-none">
-        {palettes.map((p) => (
-          <div key={p.id} className="rounded-xl border border-slate-200 bg-white p-3">
-            <div
-              className="w-full h-12 rounded-lg mb-2 shadow-inner"
-              style={{ background: `linear-gradient(135deg, ${p.from}, ${p.to})` }}
-            />
-            <div className="text-xs font-semibold text-slate-700 text-center">{p.name}</div>
-          </div>
-        ))}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+        {PALETTES.map((p) => {
+          const isSelected = current === p.id;
+          return (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => updateAgent({ accent: p.id })}
+              className={`group relative rounded-xl border-2 bg-white p-3 text-left transition ${
+                isSelected
+                  ? 'border-slate-900 shadow-lg'
+                  : 'border-slate-200 hover:border-slate-300 hover:shadow-sm'
+              }`}
+              style={isSelected ? {
+                borderColor: p.solid,
+                boxShadow: `0 10px 25px -10px ${p.solid}66`,
+              } : undefined}
+            >
+              <div
+                className="w-full h-16 rounded-lg mb-2 shadow-inner relative overflow-hidden"
+                style={{ background: `linear-gradient(135deg, ${p.from}, ${p.to})` }}
+              >
+                {isSelected && (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="bg-white/95 rounded-full p-1.5 shadow-md">
+                      <CheckCircle2 size={16} style={{ color: p.solid }} />
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="text-sm font-semibold text-slate-900 leading-tight">{p.name}</div>
+              <div className="text-[11px] text-slate-500 leading-snug mt-0.5">{p.description}</div>
+            </button>
+          );
+        })}
       </div>
+
+      <div className="mt-6 bg-slate-50 border border-slate-200 rounded-xl p-4">
+        <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-3">Live preview</div>
+        <div className="flex items-center gap-4">
+          {/* Mini header preview */}
+          <div className="flex items-center gap-2 bg-white rounded-lg p-2.5 border border-slate-200 flex-1">
+            <div className="w-7 h-7 rounded-md bg-accent-gradient flex items-center justify-center text-white shadow-sm">
+              <Sparkles size={14} />
+            </div>
+            <div className="text-xs">
+              <div className="font-bold text-slate-900 leading-tight">PRIM</div>
+              <div className="text-[10px] text-slate-500 leading-tight">Your header</div>
+            </div>
+          </div>
+          {/* Mini button preview */}
+          <button
+            type="button"
+            disabled
+            className="bg-accent-gradient text-white text-xs font-semibold px-4 py-2 rounded-lg shadow-accent"
+          >
+            Primary action
+          </button>
+        </div>
+      </div>
+
+      <p className="text-[11px] text-slate-500 mt-4 leading-relaxed">
+        Save changes to lock it in — closing without saving reverts to your current accent.
+      </p>
     </SectionShell>
   );
 }
 
 /* ----------------------------------------------------------------
- * Preferences — Phase 2 preview
+ * Preferences — language, default lead source, email opt-ins
  * --------------------------------------------------------------- */
-function PreferencesPreview() {
+function PreferencesSection({ agentProfile, updateAgent }) {
   return (
     <SectionShell
       title="Preferences"
-      description="Tune how PRIM behaves day-to-day: assistant language, default lead source, email opt-ins."
+      description="Day-to-day defaults. The PRIM Assistant language used to live inside the chatbot itself — it's centralized here now."
     >
-      <ComingSoonBanner phase={2} />
-      <div className="mt-4 space-y-2 opacity-60 pointer-events-none">
-        <PreferenceRow label="PRIM Assistant language" value="English (US)" />
-        <PreferenceRow label="Default lead source" value="Smart Import (AI)" />
-        <PreferenceRow label="Email digest" value="Weekly summary" />
+      <div className="space-y-4">
+        {/* Language */}
+        <PrefRow
+          label="PRIM Assistant language"
+          description="Drives chatbot replies, voice recognition, and proactive starters."
+        >
+          <SegmentedControl
+            value={agentProfile.language || 'en'}
+            onChange={(v) => updateAgent({ language: v })}
+            options={[
+              { value: 'en', label: 'English' },
+              { value: 'es', label: 'Español' },
+            ]}
+          />
+        </PrefRow>
+
+        {/* Default lead source */}
+        <PrefRow
+          label="Default lead source"
+          description="Pre-selects this source when you open the lead form. You can always change it per-lead."
+        >
+          <select
+            value={agentProfile.defaultLeadSource || ''}
+            onChange={(e) => updateAgent({ defaultLeadSource: e.target.value })}
+            className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition min-w-[200px]"
+          >
+            {LEAD_SOURCE_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </PrefRow>
+
+        {/* Email digest */}
+        <PrefRow
+          label="Weekly digest email"
+          description="Summary of your week — closed deals, CPA, and pipeline movement. Sent Monday mornings."
+        >
+          <SegmentedControl
+            value={agentProfile.emailDigest || 'weekly'}
+            onChange={(v) => updateAgent({ emailDigest: v })}
+            options={[
+              { value: 'weekly', label: 'Weekly' },
+              { value: 'never',  label: 'Never' },
+            ]}
+          />
+        </PrefRow>
+
+        {/* Product updates */}
+        <PrefRow
+          label="Product update emails"
+          description="Heads-up when new features ship. ~1-2 emails per month."
+        >
+          <ToggleSwitch
+            checked={agentProfile.productUpdates !== false}
+            onChange={(v) => updateAgent({ productUpdates: v })}
+          />
+        </PrefRow>
       </div>
     </SectionShell>
   );
 }
 
-function PreferenceRow({ label, value }) {
+function PrefRow({ label, description, children }) {
   return (
-    <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-lg px-4 py-3">
-      <div className="text-sm font-medium text-slate-700">{label}</div>
-      <div className="text-sm text-slate-500">{value}</div>
+    <div className="bg-white border border-slate-200 rounded-xl p-4 flex items-start gap-4">
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-semibold text-slate-900">{label}</div>
+        {description && (
+          <div className="text-[12px] text-slate-500 mt-0.5 leading-relaxed">{description}</div>
+        )}
+      </div>
+      <div className="flex-shrink-0">{children}</div>
     </div>
   );
 }
 
-function ComingSoonBanner({ phase }) {
+function SegmentedControl({ value, onChange, options }) {
   return (
-    <div className="bg-gradient-to-br from-indigo-50 via-violet-50 to-fuchsia-50 border border-indigo-200 rounded-xl p-4 flex items-start gap-3">
-      <Sparkles size={18} className="text-indigo-600 mt-0.5 flex-shrink-0" />
-      <div>
-        <div className="font-semibold text-sm text-indigo-900 mb-0.5">
-          Coming in Phase {phase}
-        </div>
-        <p className="text-xs text-indigo-900/75 leading-relaxed">
-          Preview only — wired and ready to ship. We&apos;re finalizing Phase 1 (Identity · Subscription · Sender) first.
-        </p>
-      </div>
+    <div className="inline-flex bg-slate-100 rounded-lg p-0.5">
+      {options.map((o) => {
+        const isSelected = value === o.value;
+        return (
+          <button
+            key={o.value}
+            type="button"
+            onClick={() => onChange(o.value)}
+            className={`text-xs font-semibold px-3 py-1.5 rounded-md transition ${
+              isSelected
+                ? 'bg-white text-slate-900 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            {o.label}
+          </button>
+        );
+      })}
     </div>
+  );
+}
+
+function ToggleSwitch({ checked, onChange }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className={`relative w-11 h-6 rounded-full transition ${
+        checked ? 'bg-accent-gradient' : 'bg-slate-300'
+      }`}
+    >
+      <span
+        className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow-md transition-transform ${
+          checked ? 'translate-x-5' : 'translate-x-0'
+        }`}
+      />
+    </button>
   );
 }
 

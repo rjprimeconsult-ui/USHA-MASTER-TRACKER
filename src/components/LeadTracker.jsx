@@ -86,7 +86,7 @@ function UserMenu({ onOpenProfile }) {
         className="flex items-center gap-2 text-slate-600 hover:text-slate-900 p-1.5 rounded-lg hover:bg-slate-100 transition text-sm"
         title={user.email}
       >
-        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white text-xs font-bold shadow-md shadow-indigo-500/20 ring-2 ring-white">
+        <div className="w-8 h-8 rounded-full bg-accent-gradient flex items-center justify-center text-white text-xs font-bold shadow-md shadow-indigo-500/20 ring-2 ring-white">
           {(user.email || '?').slice(0, 1).toUpperCase()}
         </div>
       </button>
@@ -1300,7 +1300,7 @@ export default function LeadTracker() {
               animate={{ rotate: 0, scale: 1, opacity: 1 }}
               transition={{ type: 'spring', stiffness: 200, damping: 14 }}
               whileHover={{ rotate: 6, scale: 1.05 }}
-              className="w-9 h-9 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white shadow-lg shadow-indigo-500/30"
+              className="w-9 h-9 rounded-lg bg-accent-gradient flex items-center justify-center text-white shadow-lg shadow-indigo-500/30"
             >
               <Sparkles size={18} />
             </motion.div>

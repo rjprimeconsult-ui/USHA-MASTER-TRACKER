@@ -3,6 +3,31 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+
+  /* Accent palette — overridden at runtime by applyAccentToDOM() based
+     on the agent's `accent` preference. Defaults match the historic
+     indigo theme so existing agents see no change unless they pick a
+     new palette in Profile → Appearance. */
+  --prim-accent-from:  #6366F1;
+  --prim-accent-to:    #8B5CF6;
+  --prim-accent-solid: #6366F1;
+  --prim-accent-ring:  99 102 241; /* rgb triplet for rgba() use */
+}
+
+/* High-visibility surfaces opt into the accent palette via this class.
+   Header logo, Profile hero, user avatar, primary save button. */
+.bg-accent-gradient {
+  background-image: linear-gradient(135deg, var(--prim-accent-from), var(--prim-accent-to));
+}
+.text-accent {
+  color: var(--prim-accent-solid);
+}
+.ring-accent {
+  --tw-ring-color: rgba(var(--prim-accent-ring), 0.4);
+}
+.shadow-accent {
+  box-shadow: 0 10px 30px -10px rgba(var(--prim-accent-ring), 0.5),
+              0 4px 12px -4px rgba(var(--prim-accent-ring), 0.3);
 }
 
 @theme inline {
