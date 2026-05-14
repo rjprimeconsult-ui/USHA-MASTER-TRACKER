@@ -18,9 +18,12 @@
   --prim-accent-to:    #8B5CF6;
   --prim-accent-solid: #6366F1;
   --prim-accent-ring:  99 102 241; /* rgb triplet for rgba() use */
-  /* Page background tint — barely-there wash matched to the accent.
-     slate-50 is the historic default. */
-  --prim-bg-tint:      #F8FAFC;
+  /* Page background tints — set by applyAccentToDOM() to a pair of
+     palette-matched values: a barely-there wash for light mode and a
+     deep tinted slate for dark mode. The .bg-prim-canvas utility
+     reads the right one based on whether `.dark` is on <html>. */
+  --prim-bg-tint-light: #F8FAFC;
+  --prim-bg-tint-dark:  #0B1220;
 }
 
 /* Dark theme overrides. Active when the `.dark` class is on <html>.
@@ -38,7 +41,6 @@
 .dark {
   --background: #0F172A;
   --foreground: #E2E8F0;
-  --prim-bg-tint: #0B1220;
 }
 
 /* ---------- App-wide dark-mode color overrides ----------
@@ -137,8 +139,14 @@
 }
 
 /* Page background — flows with the agent's accent palette. */
+/* Page background — flows with the agent's accent palette AND with
+   the active theme. Light mode uses the barely-there wash; dark
+   mode uses the deep tinted slate. */
 .bg-prim-canvas {
-  background-color: var(--prim-bg-tint);
+  background-color: var(--prim-bg-tint-light);
+}
+.dark .bg-prim-canvas {
+  background-color: var(--prim-bg-tint-dark);
 }
 
 /* High-visibility surfaces opt into the accent palette via this class.

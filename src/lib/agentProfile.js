@@ -164,6 +164,16 @@ function canvasToDataUrl(canvas, preset) {
  * Tailwind `indigo` is the historic default; new agents land on it
  * so production looks unchanged unless they explicitly pick a theme.
  */
+/**
+ * Each palette has two background tints:
+ *   - bgTint     → used in LIGHT mode (barely-there wash)
+ *   - bgTintDark → used in DARK mode (very dark, faintly tinted toward
+ *                  the accent so the canvas feels intentional, not
+ *                  identical to the cards on top of it)
+ * Cards (the `bg-white` surfaces) are a separate, lighter slate via
+ * the dark utility overrides in globals.css. The two together give
+ * clear surface hierarchy in dark mode.
+ */
 export const PALETTES = [
   {
     id: 'indigo',
@@ -173,7 +183,8 @@ export const PALETTES = [
     to:   '#8B5CF6',
     solid: '#6366F1',
     ring: '99 102 241',
-    bgTint: '#F8FAFC', // slate-50 — current default, no visible change
+    bgTint:     '#F8FAFC',
+    bgTintDark: '#0B1220', // deep navy-slate
   },
   {
     id: 'emerald',
@@ -183,7 +194,8 @@ export const PALETTES = [
     to:   '#14B8A6',
     solid: '#10B981',
     ring: '16 185 129',
-    bgTint: '#F0FDF4', // ultra-soft green wash (emerald-50)
+    bgTint:     '#F0FDF4',
+    bgTintDark: '#0A1A18', // deep forest
   },
   {
     id: 'rose',
@@ -193,7 +205,8 @@ export const PALETTES = [
     to:   '#EC4899',
     solid: '#F43F5E',
     ring: '244 63 94',
-    bgTint: '#FFF5F7', // ultra-soft rose wash
+    bgTint:     '#FFF5F7',
+    bgTintDark: '#1A0E15', // deep wine
   },
   {
     id: 'amber',
@@ -203,7 +216,8 @@ export const PALETTES = [
     to:   '#EF4444',
     solid: '#F59E0B',
     ring: '245 158 11',
-    bgTint: '#FFFBEB', // ultra-soft amber wash (amber-50)
+    bgTint:     '#FFFBEB',
+    bgTintDark: '#171208', // deep coffee
   },
   {
     id: 'teal',
@@ -213,7 +227,8 @@ export const PALETTES = [
     to:   '#3B82F6',
     solid: '#06B6D4',
     ring: '6 182 212',
-    bgTint: '#F0FDFA', // ultra-soft teal wash (teal-50)
+    bgTint:     '#F0FDFA',
+    bgTintDark: '#0A1A1E', // deep ocean
   },
 ];
 
@@ -235,9 +250,12 @@ export function applyAccentToDOM(accentId) {
   root.style.setProperty('--prim-accent-to', p.to);
   root.style.setProperty('--prim-accent-solid', p.solid);
   root.style.setProperty('--prim-accent-ring', p.ring);
-  // Ultra-soft background tint matched to the accent. Cards stay white
-  // so legibility is unchanged; this just adds a hint of personality.
-  root.style.setProperty('--prim-bg-tint', p.bgTint || '#F8FAFC');
+  // Write BOTH the light and dark page tints. The .bg-prim-canvas
+  // utility in globals.css picks whichever is appropriate based on
+  // whether the .dark class is on <html>. This keeps theme + accent
+  // independent so toggling dark mode doesn't lose the accent flavor.
+  root.style.setProperty('--prim-bg-tint-light', p.bgTint || '#F8FAFC');
+  root.style.setProperty('--prim-bg-tint-dark',  p.bgTintDark || '#0B1220');
 }
 
 export async function loadAgentProfile() {
