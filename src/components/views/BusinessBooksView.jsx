@@ -1442,6 +1442,8 @@ function BusinessBooksView({
         <ImportPreviewModal
           preview={importPreview}
           knownAccounts={knownAccounts}
+          expenseCategories={EXPENSE_CATEGORIES}
+          incomeCategories={INCOME_CATEGORIES}
           onSetAccount={setPreviewAccount}
           onClose={() => setImportPreview(null)}
           onToggle={togglePreviewRow}
@@ -1485,7 +1487,7 @@ function RowAttachmentButton({ entry, onUpdate }) {
 }
 
 // ---------- Import preview modal (split: expenses + income) ----------
-function ImportPreviewModal({ preview, knownAccounts = [], onSetAccount, onClose, onToggle, onUpdateExp, onUpdateInc, onCommit }) {
+function ImportPreviewModal({ preview, knownAccounts = [], expenseCategories = [], incomeCategories = [], onSetAccount, onClose, onToggle, onUpdateExp, onUpdateInc, onCommit }) {
   const expSelected = preview.expFresh?.filter(e => preview.selected.has(e.id)) || [];
   const incSelected = preview.incFresh?.filter(e => preview.selected.has(e.id)) || [];
   const totalSel = expSelected.length + incSelected.length;
@@ -1548,7 +1550,7 @@ function ImportPreviewModal({ preview, knownAccounts = [], onSetAccount, onClose
                 <PreviewSection
                   title={`Expenses (${preview.expFresh.length})`}
                   rows={preview.expFresh}
-                  cats={EXPENSE_CATEGORIES}
+                  cats={expenseCategories}
                   selected={preview.selected}
                   onToggle={onToggle}
                   onUpdate={onUpdateExp}
@@ -1561,7 +1563,7 @@ function ImportPreviewModal({ preview, knownAccounts = [], onSetAccount, onClose
                 <PreviewSection
                   title={`Income (${preview.incFresh.length})`}
                   rows={preview.incFresh}
-                  cats={INCOME_CATEGORIES}
+                  cats={incomeCategories}
                   selected={preview.selected}
                   onToggle={onToggle}
                   onUpdate={onUpdateInc}
