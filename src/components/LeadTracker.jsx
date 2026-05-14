@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  Calculator, Repeat, CheckSquare, LayoutDashboard, Users, Columns, Upload, Settings, Sparkles, DollarSign, BookOpen, LogOut, UserPlus,
+  Calculator, Repeat, CheckSquare, LayoutDashboard, Users, Columns, Upload, Settings, Sparkles, DollarSign, BookOpen, LogOut, UserPlus, User as UserIcon,
 } from 'lucide-react';
 import { storage, onStorageError } from '@/lib/storage';
 import { deleteAttachment as deleteAttachmentFromIdb } from '@/lib/attachments';
@@ -14,7 +14,7 @@ import {
   PLATFORM_ID_TO_CATEGORY,
   CATEGORY_TO_PLATFORM_ID,
 } from '@/lib/constants';
-import { DEFAULT_ADVANCE_MONTHS, getAdvanceMonthsForDate, currentAdvanceMonths } from '@/lib/commission';
+import { DEFAULT_ADVANCE_MONTHS, currentAdvanceMonths } from '@/lib/commission';
 import { dedupLeads } from '@/lib/leadDedup';
 
 import CpaDashboard from './views/CpaDashboard';
@@ -47,7 +47,7 @@ import { useBetaFeature } from '@/lib/useBetaFeature';
 import { loadBundle, findAutoSendTemplate } from '@/lib/postSaleEmails';
 import { enqueuePending, cancelAllForLead } from '@/lib/pendingEmailQueue';
 import Toast from './Toast';
-import AdvanceMonthsHistoryEditor from './AdvanceMonthsHistoryEditor';
+import Profile from './Profile';
 import { fireConfetti, FadeIn, OrbBackdrop } from './motion/MotionPrimitives';
 import { useAuth } from './auth/AuthProvider';
 import { motion } from 'framer-motion';
@@ -74,8 +74,8 @@ const PROSPECT_SETTINGS_KEY = 'prospect_settings_v1';
 const AB_DETAIL_KEY = 'association_bonus_detail_v1';
 const AGENT_RATES_KEY = 'agent_residual_rates_v1';
 
-// User menu — shows current email + sign-out button. Lives in the header.
-function UserMenu() {
+// User menu — shows current email + Profile + sign-out. Lives in the header.
+function UserMenu({ onOpenProfile }) {
   const { user, signOut } = useAuth();
   const [open, setOpen] = useState(false);
   if (!user) return null;
@@ -83,24 +83,32 @@ function UserMenu() {
     <div className="relative">
       <button
         onClick={() => setOpen(v => !v)}
-        className="flex items-center gap-2 text-slate-600 hover:text-slate-900 p-2 rounded-lg hover:bg-slate-100 transition text-sm"
+        className="flex items-center gap-2 text-slate-600 hover:text-slate-900 p-1.5 rounded-lg hover:bg-slate-100 transition text-sm"
         title={user.email}
       >
-        <div className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white text-xs font-bold">
+        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white text-xs font-bold shadow-md shadow-indigo-500/20 ring-2 ring-white">
           {(user.email || '?').slice(0, 1).toUpperCase()}
         </div>
       </button>
       {open && (
         <>
           <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 mt-1 w-64 bg-white border border-slate-200 rounded-xl shadow-lg z-40 overflow-hidden">
-            <div className="px-4 py-3 border-b border-slate-100">
-              <div className="text-xs text-slate-500">Signed in as</div>
+          <div className="absolute right-0 mt-2 w-64 bg-white border border-slate-200 rounded-xl shadow-xl shadow-slate-900/10 z-40 overflow-hidden">
+            <div className="px-4 py-3 border-b border-slate-100 bg-gradient-to-br from-indigo-50/60 to-violet-50/60">
+              <div className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Signed in as</div>
               <div className="text-sm font-semibold text-slate-900 truncate">{user.email}</div>
             </div>
             <button
+              onClick={() => { setOpen(false); onOpenProfile?.(); }}
+              className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 hover:bg-indigo-50/50 hover:text-indigo-700 text-left transition"
+            >
+              <UserIcon size={14} /> Profile
+              <span className="ml-auto text-[10px] uppercase tracking-wider bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-bold">New</span>
+            </button>
+            <div className="border-t border-slate-100" />
+            <button
               onClick={() => { setOpen(false); signOut(); }}
-              className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 text-left"
+              className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 text-left transition"
             >
               <LogOut size={14} /> Sign out
             </button>
@@ -197,6 +205,7 @@ export default function LeadTracker() {
   const [actForm, setActForm] = useState(null);
   const [confirm, setConfirm] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
 
   const showToast = useCallback((msg, kind = 'ok') => {
     setToast({ msg, kind });
@@ -862,30 +871,6 @@ export default function LeadTracker() {
     showToast(bits.join(' · '));
   }, [showToast]);
 
-  // Retroactively apply the Advance Months History to all existing leads,
-  // using each lead's closedDate to pick the right historical value.
-  const applyAdvanceMonthsHistory = () => {
-    if (leads.length === 0 || advanceMonthsHistory.length === 0) return;
-    setConfirm({
-      title: 'Apply history to all existing leads?',
-      message: `Every lead's Advance Months will be set to whatever value was active on its close date. Leads without a close date will be left alone. Overrides you made manually on specific leads WILL be overwritten.`,
-      onConfirm: () => {
-        let changed = 0;
-        setLeads(prev => prev.map(l => {
-          if (!l.closedDate) return l;
-          const active = getAdvanceMonthsForDate(advanceMonthsHistory, l.closedDate, DEFAULT_ADVANCE_MONTHS);
-          if (Math.abs((l.advanceMonths || 0) - active) < 0.001) return l;
-          changed += 1;
-          return { ...l, advanceMonths: active, lastTouch: today() };
-        }));
-        setConfirm(null);
-        setShowSettings(false);
-        // small delay so toast appears after modal closes
-        setTimeout(() => showToast(`Updated advance months on ${changed} lead${changed !== 1 ? 's' : ''}`), 50);
-      },
-    });
-  };
-
   // Backfill mode — merge patches into existing leads (only fills empty fields)
   const backfillFromExcel = useCallback(({ updates = [] } = {}) => {
     if (updates.length === 0) {
@@ -1325,7 +1310,7 @@ export default function LeadTracker() {
             </div>
           </div>
           <div className="flex items-center gap-1">
-            <UserMenu />
+            <UserMenu onOpenProfile={() => setShowProfile(true)} />
             <button onClick={() => setShowSettings(true)} className="text-slate-500 hover:text-slate-900 p-2 rounded-lg hover:bg-slate-100 transition" title="Settings">
               <Settings size={18} />
             </button>
@@ -1688,23 +1673,9 @@ export default function LeadTracker() {
               <button onClick={() => setShowSettings(false)} className="text-slate-400 hover:text-slate-600">×</button>
             </div>
 
-            {/* Advance Months History */}
-            <div className="mb-5 pb-5 border-b border-slate-200">
-              <div className="text-xs font-bold text-slate-500 tracking-wider mb-2">ADVANCE MONTHS HISTORY</div>
-              <p className="text-xs text-slate-500 mb-3">
-                Your advance pay months changes through the year based on taken rate. Log each change here — new leads auto-use the value active on their close date.
-              </p>
-              <AdvanceMonthsHistoryEditor
-                history={advanceMonthsHistory}
-                onChange={setAdvanceMonthsHistory}
-                onApplyToExistingLeads={applyAdvanceMonthsHistory}
-                existingLeadCount={leads.length}
-              />
-            </div>
-
             {/* Post-Sale Emails (Beta) — hidden for non-allowlist users.
-                Lives between Advance Months History and DATA so it sits in
-                the middle of the modal where agents browse customization. */}
+                Lives at the top of the modal so it's discoverable for the
+                allowlist agents who use the feature. */}
             <PostSaleEmailsSection />
 
             {/* Onboarding replays — gives agents a way to re-watch the
@@ -1750,6 +1721,9 @@ export default function LeadTracker() {
           </motion.div>
         </motion.div>
       )}
+
+      {/* Profile hub — personal control center */}
+      <Profile open={showProfile} onClose={() => setShowProfile(false)} />
 
       <Toast toast={toast} />
 
