@@ -147,14 +147,17 @@ function ViewMount({ visible, viewKey, children }) {
   const [hasBeenVisible, setHasBeenVisible] = useState(visible);
   useEffect(() => { if (visible && !hasBeenVisible) setHasBeenVisible(true); }, [visible, hasBeenVisible]);
   if (!hasBeenVisible) return null;
+  // Snappy first-reveal fade (~120ms, opacity only — no Y offset). The
+  // earlier 250ms easing + y-translate stacked with the heavy view's
+  // own first-render cost, which read as "tab lag." Subsequent visits
+  // are instant (display toggle, no re-animation).
   return (
     <motion.div
       key={viewKey}
-      style={{ display: visible ? 'block' : 'none' }}
-      // Animate only on first reveal — once mounted, just toggle visibility
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+      style={{ display: visible ? 'block' : 'none', willChange: 'opacity' }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.12, ease: 'easeOut' }}
     >
       {children}
     </motion.div>
@@ -1328,7 +1331,8 @@ export default function LeadTracker() {
                     <motion.span
                       layoutId="navPill"
                       className="absolute inset-0 bg-indigo-600 rounded-lg shadow-md shadow-indigo-500/30"
-                      transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                      style={{ willChange: 'transform' }}
+                      transition={{ type: 'spring', stiffness: 600, damping: 38 }}
                     />
                   )}
                   <span className="relative flex items-center gap-1.5">

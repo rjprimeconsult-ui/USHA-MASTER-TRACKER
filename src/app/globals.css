@@ -72,7 +72,11 @@ body {
     radial-gradient(at 80% 20%, rgba(139,92,246,0.22)  0px, transparent 50%),
     radial-gradient(at 60% 80%, rgba(16,185,129,0.18)  0px, transparent 50%);
   background-size: 200% 200%, 200% 200%, 200% 200%;
-  animation: mesh-drift 18s ease-in-out infinite;
+  /* 40s loop instead of 18s — the slower drift is calmer visually and
+     costs fewer repaints on lower-end laptops. Pauses entirely if the
+     OS asks for reduced motion. */
+  animation: mesh-drift 40s ease-in-out infinite;
+  will-change: background-position;
 }
 
 /* Floating orbs for dashboard backdrop */
@@ -87,8 +91,24 @@ body {
   filter: blur(80px);
   opacity: 0.7;
   pointer-events: none;
-  animation: orb-float 18s ease-in-out infinite;
+  /* 30s loop — slower drift, fewer continuous repaints. */
+  animation: orb-float 30s ease-in-out infinite;
   will-change: transform;
+}
+
+/* Respect OS-level reduced-motion preference. Pauses background
+   loops and shortens framer-motion-driven transitions. */
+@media (prefers-reduced-motion: reduce) {
+  .bg-mesh-luxe,
+  .orb {
+    animation: none !important;
+  }
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.001ms !important;
+    animation-duration: 0.001ms !important;
+  }
 }
 
 /* Subtle shine sweep for KPI cards on hover */
