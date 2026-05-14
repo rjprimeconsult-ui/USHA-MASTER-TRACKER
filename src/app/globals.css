@@ -7,6 +7,11 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
+  /* Tells the browser to use light UI for native controls (select
+     dropdown panels, date pickers, scrollbars). The .dark rule
+     below overrides to dark when the agent picks dark mode. */
+  color-scheme: light;
+
   --background: #ffffff;
   --foreground: #171717;
 
@@ -39,6 +44,12 @@
    Each step is ~12 lightness units brighter so card edges read
    clearly and text stays readable on every layer. */
 .dark {
+  /* Switches native form controls to dark UI (select dropdown panels,
+     date pickers, scrollbars). Without this the OS-default white
+     dropdown panel renders white-on-white when our select text is
+     light-colored. */
+  color-scheme: dark;
+
   --background: #0F172A;
   --foreground: #E2E8F0;
 }
@@ -102,12 +113,9 @@
   .dark .bg-white\/85      { background-color: rgb(31 41 69 / 0.92); }
   .dark .bg-white\/90      { background-color: rgb(31 41 69 / 0.95); }
 
-  /* Form inputs default backgrounds — bump contrast in dark mode. */
-  .dark input:not([type="checkbox"]):not([type="radio"]),
-  .dark textarea,
-  .dark select {
-    color-scheme: dark;
-  }
+  /* Form input native styling is handled by `color-scheme: dark` on
+     <html.dark> above — that covers select dropdown panels, date
+     pickers, and scrollbars in one place. */
 
   /* Placeholder text */
   .dark .placeholder\:text-slate-400::placeholder,
