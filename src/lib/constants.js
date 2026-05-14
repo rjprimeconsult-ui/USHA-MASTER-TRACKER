@@ -254,11 +254,31 @@ export const PROSPECT_SOURCES = [
   'Aged Lead',
   'Major League',
   'Bizz Lead',
+  'Benepath',
   'Cold Call',
   'Other',
 ];
 
-export const PROSPECT_CRMS = ['TextDrip', 'Ringy', 'VanillaSoft', 'None'];
+export const PROSPECT_CRMS = ['TextDrip', 'Ringy', 'VanillaSoft', 'Benepath', 'None'];
+
+/**
+ * Per-CRM display style. Drives the colored, bold rendering of the CRM
+ * label anywhere it shows up (prospect detail row, kanban cards, list
+ * cells). Keep this in sync with PROSPECT_CRMS — unknown values render
+ * with the slate fallback. Hex colors picked to work on both light and
+ * dark mode without further overrides (mid-saturation, high contrast).
+ */
+export const PROSPECT_CRM_STYLES = {
+  Ringy:       { color: '#EC4899', colorDark: '#F472B6', label: 'Ringy' },        // pink-500 / pink-400
+  TextDrip:    { color: '#A855F7', colorDark: '#C084FC', label: 'TextDrip' },     // purple-500 / purple-400
+  VanillaSoft: { color: '#1E3A8A', colorDark: '#60A5FA', label: 'VanillaSoft' },  // navy / blue-400 in dark
+  Benepath:    { color: '#F97316', colorDark: '#FB923C', label: 'Benepath' },    // orange-500 / orange-400
+  None:        { color: '#94A3B8', colorDark: '#94A3B8', label: 'None' },         // slate-400 (muted, both)
+};
+
+export function getCrmStyle(crm) {
+  return PROSPECT_CRM_STYLES[crm] || { color: '#475569', colorDark: '#94A3B8', label: crm || '' };
+}
 
 // Aligned with MAIN_PRODUCTS so a prospect's policy type maps cleanly
 // to a lead's mainProduct when the prospect is converted to a Lead.

@@ -11,7 +11,8 @@ import {
 import { TiltCard, FadeIn, Stagger, StaggerItem } from '../motion/MotionPrimitives';
 import { fmt2, today } from '@/lib/utils';
 import { newProspect, defaultProspectSettings, detectFieldFromHeader, detectStageId, detectSource, detectIndvOrFamily, prospectDedupKey } from '@/lib/prospects';
-import { DEFAULT_PROSPECT_STAGES } from '@/lib/constants';
+import { DEFAULT_PROSPECT_STAGES, getCrmStyle } from '@/lib/constants';
+import { useIsDark } from '@/lib/useIsDark';
 import * as XLSX from 'xlsx';
 import ProspectForm from '../ProspectForm';
 import SmartProspectImportWizard from '../SmartProspectImportWizard';
@@ -790,6 +791,21 @@ function DetailSection({ title, children }) {
 }
 
 /**
+ * Renders the CRM name in its branded color + bold weight. Picks the
+ * light-mode or dark-mode color based on the active theme so each
+ * brand stays vivid against the current canvas.
+ */
+function CrmLabel({ crm }) {
+  const isDark = useIsDark();
+  const style = getCrmStyle(crm);
+  return (
+    <span style={{ color: isDark ? style.colorDark : style.color, fontWeight: 700 }}>
+      {style.label || crm}
+    </span>
+  );
+}
+
+/**
  * Compact list of outreach emails fired for this prospect, newest
  * first. Each row shows the template name, when it went out, and the
  * latest tracking signal (delivered / opened / clicked / bounced) from
@@ -940,7 +956,7 @@ function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, o
                 <DetailRow Icon={ArrowRight} label="Next Steps" value={prospect.nextSteps} valueClass="font-medium" />
               )}
               {prospect.crm && prospect.crm !== 'None' && (
-                <DetailRow Icon={Tag} label="CRM" value={prospect.crm} />
+                <DetailRow Icon={Tag} label="CRM" value={<CrmLabel crm={prospect.crm} />} />
               )}
               {prospect.referrer && (
                 <DetailRow Icon={User} label="Referred By" value={prospect.referrer} />
