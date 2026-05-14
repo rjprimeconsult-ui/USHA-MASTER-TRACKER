@@ -12,6 +12,14 @@
   --prim-accent-to:    #8B5CF6;
   --prim-accent-solid: #6366F1;
   --prim-accent-ring:  99 102 241; /* rgb triplet for rgba() use */
+  /* Page background tint — barely-there wash matched to the accent.
+     slate-50 is the historic default. */
+  --prim-bg-tint:      #F8FAFC;
+}
+
+/* Page background — flows with the agent's accent palette. */
+.bg-prim-canvas {
+  background-color: var(--prim-bg-tint);
 }
 
 /* High-visibility surfaces opt into the accent palette via this class.

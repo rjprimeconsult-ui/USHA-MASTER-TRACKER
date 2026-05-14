@@ -1278,7 +1278,7 @@ export default function LeadTracker() {
 
   return (
     <PaywallGate>
-    <div className="min-h-screen bg-slate-50 text-slate-900 relative">
+    <div className="min-h-screen bg-prim-canvas text-slate-900 relative transition-colors duration-300">
       <OrbBackdrop />
       {/* Trial countdown banner (auto-hides for active paid subs).
           Stats give the banner real value-built numbers so the urgent-day

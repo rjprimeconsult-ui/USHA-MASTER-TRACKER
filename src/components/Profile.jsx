@@ -742,7 +742,7 @@ function AppearanceSection({ agentProfile, updateAgent }) {
   return (
     <SectionShell
       title="Appearance"
-      description="Pick an accent palette. Your choice flows through the PRIM logo, your avatar, the Profile hero, and other branded touches. Dark mode + banner image arrive in Phase 3."
+      description="Pick an accent palette. Your choice flows through the PRIM logo, your avatar, the page background tint, and other branded touches. Dark mode + banner image arrive in Phase 3."
     >
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
         {PALETTES.map((p) => {
@@ -781,7 +781,12 @@ function AppearanceSection({ agentProfile, updateAgent }) {
         })}
       </div>
 
-      <div className="mt-6 bg-slate-50 border border-slate-200 rounded-xl p-4">
+      {/* Live preview — uses the actual page tint var so it mirrors what
+          you'll see behind the modal once you close it. */}
+      <div
+        className="mt-6 border border-slate-200 rounded-xl p-4 transition-colors"
+        style={{ backgroundColor: 'var(--prim-bg-tint)' }}
+      >
         <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-3">Live preview</div>
         <div className="flex items-center gap-4">
           {/* Mini header preview */}
@@ -802,6 +807,9 @@ function AppearanceSection({ agentProfile, updateAgent }) {
           >
             Primary action
           </button>
+        </div>
+        <div className="mt-3 text-[10px] text-slate-500 italic">
+          The card backdrop above is your page tint — soft and matched to the accent so it never fights with content.
         </div>
       </div>
 

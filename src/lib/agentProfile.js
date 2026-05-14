@@ -53,6 +53,7 @@ export const PALETTES = [
     to:   '#8B5CF6',
     solid: '#6366F1',
     ring: '99 102 241',
+    bgTint: '#F8FAFC', // slate-50 — current default, no visible change
   },
   {
     id: 'emerald',
@@ -62,6 +63,7 @@ export const PALETTES = [
     to:   '#14B8A6',
     solid: '#10B981',
     ring: '16 185 129',
+    bgTint: '#F0FDF4', // ultra-soft green wash (emerald-50)
   },
   {
     id: 'rose',
@@ -71,6 +73,7 @@ export const PALETTES = [
     to:   '#EC4899',
     solid: '#F43F5E',
     ring: '244 63 94',
+    bgTint: '#FFF5F7', // ultra-soft rose wash
   },
   {
     id: 'amber',
@@ -80,6 +83,7 @@ export const PALETTES = [
     to:   '#EF4444',
     solid: '#F59E0B',
     ring: '245 158 11',
+    bgTint: '#FFFBEB', // ultra-soft amber wash (amber-50)
   },
   {
     id: 'teal',
@@ -89,6 +93,7 @@ export const PALETTES = [
     to:   '#3B82F6',
     solid: '#06B6D4',
     ring: '6 182 212',
+    bgTint: '#F0FDFA', // ultra-soft teal wash (teal-50)
   },
 ];
 
@@ -110,6 +115,9 @@ export function applyAccentToDOM(accentId) {
   root.style.setProperty('--prim-accent-to', p.to);
   root.style.setProperty('--prim-accent-solid', p.solid);
   root.style.setProperty('--prim-accent-ring', p.ring);
+  // Ultra-soft background tint matched to the accent. Cards stay white
+  // so legibility is unchanged; this just adds a hint of personality.
+  root.style.setProperty('--prim-bg-tint', p.bgTint || '#F8FAFC');
 }
 
 export async function loadAgentProfile() {
