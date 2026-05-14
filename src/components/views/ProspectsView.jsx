@@ -1,5 +1,6 @@
 'use client';
 import { useState, useMemo, useRef, useCallback, useEffect, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Plus, Search, LayoutGrid, List as ListIcon, Settings as SettingsIcon, Upload,
   Calendar, CalendarDays, Phone, Mail, MapPin, ArrowRight, Trash2, X, AlertCircle, Clock, GripVertical,
@@ -797,7 +798,15 @@ function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, o
   const daysSinceCreated = created ? Math.floor((Date.now() - created.getTime()) / 86400000) : null;
   const apptD = apptDate(prospect.appointmentTime);
 
-  return (
+  // Portal-mount this modal to the document body so it escapes the
+  // ViewMount <motion.div> ancestor that applies a transform. Any
+  // ancestor with `transform` breaks `position: fixed` (it pins to
+  // the transformed ancestor instead of the viewport), which is why
+  // the modal was rendering BELOW the page header instead of over
+  // it. The portal target only exists on the client, so guard.
+  if (typeof document === 'undefined') return null;
+
+  const modal = (
     // Outer scroller — if the whole modal is somehow taller than the
     // viewport (small laptop screens + big custom-fields list), the
     // user can scroll the entire modal up/down. Inside the modal we
@@ -926,6 +935,8 @@ function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, o
       </div>{/* /flex centering wrapper */}
     </div>
   );
+
+  return createPortal(modal, document.body);
 }
 
 // ---------- Kanban Scroller ----------
