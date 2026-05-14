@@ -115,10 +115,43 @@ function escapeHtml(s) {
     .replace(/'/g, '&#39;');
 }
 
+/**
+ * Extract a clean first name from the prospect's `name` field.
+ * Title-cases the result so a lowercase entry like "joe mitchell"
+ * becomes "Joe". Returns an empty string when no usable name exists
+ * — callers handle the missing-name case via the token replacer.
+ */
+function firstNameOf(prospect) {
+  const raw = String(prospect?.name || '').trim();
+  if (!raw) return '';
+  // Take everything before the first space, strip punctuation.
+  const first = raw.split(/\s+/)[0].replace(/[^A-Za-z'-]/g, '');
+  if (!first) return '';
+  // Title-case (Joe, McConnell, O'Brien — first letter up, rest lower)
+  return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
+}
+
+/**
+ * Replace personalization tokens in a string. Used on both the HTML
+ * body and the plain-text fallback so they stay in sync.
+ *   {first_name}          → "Sarah" or "" when no name
+ *   {first_name_greeting} → " Sarah" or "" — leading space included
+ *                           so "Hello{first_name_greeting}," renders
+ *                           as "Hello Sarah," or "Hello,"
+ *   {first_name_or_there} → "Sarah" or "there" — for sentence use
+ */
+function applyTokens(str, prospect) {
+  const first = firstNameOf(prospect);
+  return String(str || '')
+    .replace(/\{first_name\}/g, first)
+    .replace(/\{first_name_greeting\}/g, first ? ` ${first}` : '')
+    .replace(/\{first_name_or_there\}/g, first || 'there');
+}
+
 // ---------- Template bodies (inner HTML for each email) ----------
 
 const EMAIL_1_BODY = `
-              <p style="margin:0 0 16px 0;">Hello,</p>
+              <p style="margin:0 0 16px 0;">Hello{first_name_greeting},</p>
               <p style="margin:0 0 16px 0;">My name is <strong style="color:#0A1733;">Julio Fernandez</strong>, and I am the owner of <strong style="color:#0A1733;">${COMPANY}</strong>. I received your inquiry that you placed online for health insurance plans and prices.</p>
               <p style="margin:0 0 16px 0;"><strong>Are you still looking for a health plan?</strong></p>
               <p style="margin:0 0 20px 0;">If you would like to review quotes from major carriers that are aggressively priced, simply reply with the information below about each person you are looking to insure, and I will have quotes ready for you <strong style="color:#0A1733;">within the next two hours</strong>.</p>
@@ -135,7 +168,7 @@ const EMAIL_1_BODY = `
               <p style="margin:0 0 4px 0;">Thank you for your time and I look forward to hearing from you.</p>`;
 
 const EMAIL_2_BODY = `
-              <p style="margin:0 0 16px 0;">Hi,</p>
+              <p style="margin:0 0 16px 0;">Hi{first_name_greeting},</p>
               <p style="margin:0 0 16px 0;">Just following up to make sure you saw my previous email. I&rsquo;ve reviewed some potential health coverage options that could be a strong fit based on what you shared.</p>
               <p style="margin:0 0 16px 0;">Before I finalize everything, I just need to confirm a few additional details to ensure I&rsquo;m putting together the best possible solutions for you and your business.</p>
               <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:#F8FAFC; border:1px solid #DBE3F0; border-left:4px solid #2563EB; border-radius:8px; margin:0 0 20px 0;">
@@ -146,7 +179,7 @@ const EMAIL_2_BODY = `
               <p style="margin:0 0 8px 0;"><strong style="color:#0A1733;">What does your availability look like later this week or early next week?</strong></p>`;
 
 const EMAIL_3_BODY = `
-              <p style="margin:0 0 16px 0;">Hi,</p>
+              <p style="margin:0 0 16px 0;">Hi{first_name_greeting},</p>
               <p style="margin:0 0 16px 0;">Just following up on my previous message. I&rsquo;m ready to start putting together your health coverage options, but I&rsquo;ll need a couple of details before I can finalize accurate pricing.</p>
               <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:#F8FAFC; border:1px solid #DBE3F0; border-left:4px solid #2563EB; border-radius:8px; margin:0 0 20px 0;">
                 <tr><td style="padding:18px 22px; color:#1E293B; font-size:14px; line-height:1.7;">
@@ -165,7 +198,7 @@ const EMAIL_3_BODY = `
 // Resend recommends both — text helps deliverability + handles clients
 // that strip HTML. Keeps the same voice as the HTML body.
 
-const EMAIL_1_TEXT = `Hello,
+const EMAIL_1_TEXT = `Hello{first_name_greeting},
 
 My name is Julio Fernandez, and I am the owner of Prime Health Consultants. I received your inquiry that you placed online for health insurance plans and prices.
 
@@ -188,7 +221,7 @@ ${REPLY_TO}
 ${COMPANY} · Licensed Independent Insurance Agency · NPN: ${NPN}
 ${ADDRESS}`;
 
-const EMAIL_2_TEXT = `Hi,
+const EMAIL_2_TEXT = `Hi{first_name_greeting},
 
 Just following up to make sure you saw my previous email. I've reviewed some potential health coverage options that could be a strong fit based on what you shared.
 
@@ -206,7 +239,7 @@ ${REPLY_TO}
 ${COMPANY} · Licensed Independent Insurance Agency · NPN: ${NPN}
 ${ADDRESS}`;
 
-const EMAIL_3_TEXT = `Hi,
+const EMAIL_3_TEXT = `Hi{first_name_greeting},
 
 Just following up on my previous message. I'm ready to start putting together your health coverage options, but I'll need a couple of details before I can finalize accurate pricing.
 
@@ -279,11 +312,15 @@ export function getOutreachTemplate(id) {
  */
 export function renderOutreachTemplate(template, prospect) {
   if (!template) return null;
+  // Personalize the inner body + text fallback with the prospect's
+  // first name. The shell (banner/signature/footer) doesn't reference
+  // any tokens so it stays static.
+  const bodyInnerPersonal = applyTokens(template.bodyHtmlInner, prospect);
   const html = renderShell({
     subject: template.subject,
     previewText: template.previewText,
     pillLabel: template.pillLabel,
-    bodyInner: template.bodyHtmlInner,
+    bodyInner: bodyInnerPersonal,
     ctaLabel: template.ctaLabel,
     ctaSubject: template.ctaSubject,
   });
@@ -292,7 +329,7 @@ export function renderOutreachTemplate(template, prospect) {
     templateName: template.name,
     subject: template.subject,
     html,
-    text: template.bodyText,
+    text: applyTokens(template.bodyText, prospect),
     recipient: (prospect?.email || '').trim(),
   };
 }
