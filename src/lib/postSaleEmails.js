@@ -105,7 +105,11 @@ export const DEFAULT_WELCOME_TEMPLATE = () => ({
 });
 
 export const DEFAULT_BUNDLE = () => ({
-  testMode: true,
+  // GA at launch: new agents start with test mode OFF — sends go
+  // straight to the customer email on the lead. Agents can opt back
+  // INTO test mode from Post-Sale Email Settings when they want to
+  // safely preview new template wording before going live.
+  testMode: false,
   testAddresses: '',
   templates: [DEFAULT_WELCOME_TEMPLATE()],
 });

@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState, useMemo } from 'react';
 import {
-  Mail, Save, Loader2, AlertTriangle, Eye, CheckCircle2, Beaker, Lock, Plus, Trash2, ChevronLeft, Edit2, Power, Zap,
+  Mail, Save, Loader2, AlertTriangle, Eye, CheckCircle2, Beaker, Plus, Trash2, ChevronLeft, Edit2, Power, Zap,
 } from 'lucide-react';
 import {
   loadBundle,
@@ -108,7 +108,7 @@ export default function PostSaleEmailSettings() {
 
   return (
     <div className="space-y-4">
-      <BetaBanner />
+      <BetaBanner testMode={bundle.testMode === true} />
 
       {/* Sender identity used to live here — moved to the Profile hub
           (top-right avatar → Profile → Email sender) since it's an
@@ -154,15 +154,32 @@ export default function PostSaleEmailSettings() {
   );
 }
 
-function BetaBanner() {
+function BetaBanner({ testMode }) {
+  // Two states now that the feature is live:
+  //   - Test mode ON  → amber banner reminding the agent emails route
+  //     to test addresses instead of real customers.
+  //   - Test mode OFF → emerald banner confirming sends go straight
+  //     to the customer email on each lead.
+  if (testMode) {
+    return (
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+        <Beaker size={18} className="text-amber-700 mt-0.5 flex-shrink-0" />
+        <div className="text-sm text-amber-900">
+          <div className="font-semibold mb-0.5">Test mode is ON</div>
+          <p className="text-xs">
+            Emails route to your test addresses below — never to real customers. Toggle off when you&apos;re ready to go live.
+          </p>
+        </div>
+      </div>
+    );
+  }
   return (
-    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
-      <Beaker size={18} className="text-amber-700 mt-0.5 flex-shrink-0" />
-      <div className="text-sm text-amber-900">
-        <div className="font-semibold mb-0.5">Beta — Pro &amp; Team feature</div>
+    <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-start gap-3">
+      <CheckCircle2 size={18} className="text-emerald-700 mt-0.5 flex-shrink-0" />
+      <div className="text-sm text-emerald-900">
+        <div className="font-semibold mb-0.5">Live — sending to real customers</div>
         <p className="text-xs">
-          Test mode is locked ON during beta. Emails route to your test addresses below — never to real customers.
-          We&apos;ll flip this off together once your templates are dialed in.
+          Emails go straight to each lead&apos;s email on file. Need to preview a new template safely? Flip Test mode on below.
         </p>
       </div>
     </div>
@@ -182,10 +199,16 @@ function SenderIdentityNotice() {
 }
 
 function SharedSettings({ bundle, updateBundle }) {
+  const testOn = bundle.testMode === true;
   return (
     <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
       <div className="text-xs font-bold text-slate-500 tracking-wider">SHARED SETTINGS</div>
-      <Field label="Test addresses (required during beta)" hint="Comma-separated. All sends route to the first address.">
+      <Field
+        label="Test addresses"
+        hint={testOn
+          ? 'Comma-separated. Required while test mode is on — all sends route to the first address.'
+          : 'Optional. Only used when you flip Test mode on below.'}
+      >
         <input
           type="text"
           value={bundle.testAddresses}
@@ -194,13 +217,32 @@ function SharedSettings({ bundle, updateBundle }) {
           placeholder="you@example.com, friend@example.com"
         />
       </Field>
-      <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-        <div className="flex items-center gap-2 text-sm text-slate-700">
-          <Lock size={14} className="text-amber-600" />
-          <span className="font-medium">Test mode</span>
-          <span className="text-xs text-slate-500">— locked ON during beta. Emails route to your test addresses only.</span>
+      <div className={`flex items-center justify-between rounded-lg px-3 py-2 border ${testOn ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'}`}>
+        <div className="flex items-center gap-2 text-sm">
+          {testOn
+            ? <Beaker size={14} className="text-amber-600 flex-shrink-0" />
+            : <CheckCircle2 size={14} className="text-emerald-600 flex-shrink-0" />}
+          <div>
+            <div className="font-medium text-slate-900">Test mode</div>
+            <div className="text-[11px] text-slate-600 leading-snug">
+              {testOn
+                ? 'Sends route to your test addresses — never to real customers.'
+                : 'Sends go straight to each lead’s email on file.'}
+            </div>
+          </div>
         </div>
-        <span className="text-[10px] uppercase tracking-wider bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-bold">ON</span>
+        <button
+          type="button"
+          onClick={() => updateBundle({ testMode: !testOn })}
+          role="switch"
+          aria-checked={testOn}
+          className={`relative w-12 h-6 rounded-full transition flex-shrink-0 ${testOn ? 'bg-amber-500' : 'bg-emerald-500'}`}
+          title={testOn ? 'Currently ON — click to go live' : 'Currently OFF — click to enable test mode'}
+        >
+          <span
+            className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow-md transition-transform ${testOn ? 'translate-x-6' : 'translate-x-0'}`}
+          />
+        </button>
       </div>
     </div>
   );
