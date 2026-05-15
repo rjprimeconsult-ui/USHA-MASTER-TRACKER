@@ -247,6 +247,13 @@ function imageMediaType(filename) {
 // ---- Main handler ----
 
 export async function POST(req) {
+  // Auth-gate this route so Anthropic spend is only billed for valid
+  // user sessions — previously any anonymous POST could trigger an
+  // import + drive cost.
+  const { requireUserId } = await import('@/lib/apiAuth');
+  const auth = await requireUserId(req);
+  if (auth instanceof Response) return auth;
+
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return Response.json({

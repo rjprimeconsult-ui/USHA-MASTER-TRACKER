@@ -91,6 +91,11 @@ function buildSchema(allowedCategoryIds) {
 }
 
 export async function POST(req) {
+  // Auth-gate so Anthropic spend is billed only for valid sessions.
+  const { requireUserId } = await import('@/lib/apiAuth');
+  const auth = await requireUserId(req);
+  if (auth instanceof Response) return auth;
+
   try {
     return await handle(req);
   } catch (e) {

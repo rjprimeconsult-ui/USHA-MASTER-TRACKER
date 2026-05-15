@@ -143,6 +143,30 @@ export async function POST(req) {
   }
   if (!/.+@.+\..+/.test(recipient)) return Response.json({ error: 'invalid recipient' }, { status: 400 });
 
+  // Ownership check — confirm the leadId/prospectId actually belongs
+  // to this user before sending. Prevents an authenticated agent from
+  // crafting a POST with someone else's lead/prospect ID and getting
+  // the server to send an email tagged with the victim's audit log
+  // (IDOR). Looks up the relevant user_kv row and bails with 404 if
+  // the ID isn't found in that user's records.
+  {
+    const storeKey = prospectId ? 'prospects_v1' : 'leads_v5';
+    const targetId = prospectId || leadId;
+    const { data: kvRow } = await supabase
+      .from('user_kv')
+      .select('value')
+      .eq('user_id', userId)
+      .eq('key', storeKey)
+      .maybeSingle();
+    let arr = kvRow?.value;
+    if (typeof arr === 'string') {
+      try { arr = JSON.parse(arr); } catch { arr = null; }
+    }
+    if (!Array.isArray(arr) || !arr.some(r => r?.id === targetId)) {
+      return Response.json({ error: 'not found' }, { status: 404 });
+    }
+  }
+
   // Truncate to safe lengths so a runaway template doesn't blow the API.
   // HTML allowance is bigger because banner-heavy templates run ~10-20KB.
   const safeSubject = String(subject).slice(0, 200);

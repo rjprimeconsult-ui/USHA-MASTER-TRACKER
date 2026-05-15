@@ -12,6 +12,7 @@ import {
 import { useCategoriesAll } from '@/lib/customCategories';
 import { loadUserRubric } from '@/lib/userRubric';
 import { recordImport } from '@/lib/importHistory';
+import { authedFetch } from '@/lib/authedFetch';
 
 const inp = 'w-full border border-slate-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500';
 
@@ -136,7 +137,7 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
       if (userRubric && userRubric.trim()) form.append('userRubric', userRubric.trim());
 
       try {
-        const res = await fetch('/api/import-expenses-ai', { method: 'POST', body: form });
+        const res = await authedFetch('/api/import-expenses-ai', { method: 'POST', body: form });
         const rawText = await res.text();
         let data;
         try { data = JSON.parse(rawText); }

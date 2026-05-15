@@ -10,6 +10,7 @@ import {
 } from '@/lib/constants';
 import { mkLead } from '@/lib/seed';
 import { uid } from '@/lib/utils';
+import { authedFetch } from '@/lib/authedFetch';
 import { dedupLeads } from '@/lib/leadDedup';
 
 const inp = 'w-full border border-slate-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500';
@@ -66,7 +67,7 @@ export default function SmartLeadImportWizard({ open, onClose, onImport, existin
         const r = await loadUserRubric();
         if (r?.lead && r.lead.trim()) form.append('userRubric', r.lead.trim());
       } catch {}
-      const res = await fetch('/api/import-leads-ai', { method: 'POST', body: form });
+      const res = await authedFetch('/api/import-leads-ai', { method: 'POST', body: form });
       // Resilient response parsing — fall back to text if not JSON
       const rawText = await res.text();
       let data;

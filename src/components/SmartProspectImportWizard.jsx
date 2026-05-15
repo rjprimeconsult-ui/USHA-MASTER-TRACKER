@@ -8,6 +8,7 @@ import {
   PROSPECT_SOURCES, PROSPECT_CRMS, PROSPECT_POLICY_TYPES,
 } from '@/lib/constants';
 import { newProspect, prospectDedupKey } from '@/lib/prospects';
+import { authedFetch } from '@/lib/authedFetch';
 
 const inp = 'w-full border border-slate-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500';
 
@@ -52,7 +53,7 @@ export default function SmartProspectImportWizard({ open, onClose, onImport, sta
         const r = await loadUserRubric();
         if (r?.prospect && r.prospect.trim()) form.append('userRubric', r.prospect.trim());
       } catch {}
-      const res = await fetch('/api/import-prospects-ai', { method: 'POST', body: form });
+      const res = await authedFetch('/api/import-prospects-ai', { method: 'POST', body: form });
       const rawText = await res.text();
       let data;
       try { data = JSON.parse(rawText); }

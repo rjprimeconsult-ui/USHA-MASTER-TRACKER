@@ -37,6 +37,11 @@ const NPN        = '19153319';
 // FINALIZE" badge above the body when set.
 function renderShell({ subject, previewText, pillLabel, bodyInner, ctaLabel, ctaSubject }) {
   const ctaSubjectEnc = encodeURIComponent(ctaSubject || `Re: ${subject}`);
+  // Mailto-based unsubscribe is the simplest CAN-SPAM-compliant
+  // mechanism until we wire up Resend's list management. Customer
+  // replies with "Unsubscribe" land in Julio's inbox; he can drop
+  // them from the prospect list manually.
+  const unsubscribeUrl = `mailto:${REPLY_TO}?subject=${encodeURIComponent('Unsubscribe')}`;
   const pillHtml = pillLabel ? `
           <tr>
             <td style="padding:24px 36px 0 36px;">
@@ -96,7 +101,7 @@ function renderShell({ subject, previewText, pillLabel, bodyInner, ctaLabel, cta
             Licensed Independent Insurance Agency &middot; NPN: ${NPN}<br/>
             ${ADDRESS}<br/><br/>
             You received this email because you submitted a request for health insurance quotes online.<br/>
-            <a href="{unsubscribe_url}" style="color:#64748B; text-decoration:underline;">Unsubscribe</a>
+            <a href="${unsubscribeUrl}" style="color:#64748B; text-decoration:underline;">Unsubscribe</a>
           </td>
         </tr>
       </table>

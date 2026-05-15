@@ -19,6 +19,7 @@ import SmartImportWizard from '../SmartImportWizard';
 import CustomCategoryManager from '../CustomCategoryManager';
 import AgentSettingsPanel from '../AgentSettingsPanel';
 import EmptyState from '../EmptyState';
+import { authedFetch } from '@/lib/authedFetch';
 
 const ACCOUNTS_KEY = 'business_accounts_v1';
 
@@ -193,7 +194,7 @@ function BusinessBooksView({
       const allSuggestions = [];
       for (let i = 0; i < allRows.length; i += RESCAN_BATCH_SIZE) {
         const chunk = allRows.slice(i, i + RESCAN_BATCH_SIZE);
-        const res = await fetch('/api/recategorize-ai', {
+        const res = await authedFetch('/api/recategorize-ai', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

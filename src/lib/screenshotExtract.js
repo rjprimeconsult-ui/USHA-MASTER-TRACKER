@@ -509,7 +509,11 @@ export async function extractDealFromImage(file, onProgress) {
     onProgress?.(30);
     let res;
     try {
-      res = await fetch('/api/extract-screenshot-ai', {
+      // Auth-gated endpoint — lazy-import authedFetch to keep this
+       // OCR module usable from non-React contexts that don't ship the
+       // supabase client.
+      const { authedFetch } = await import('./authedFetch');
+      res = await authedFetch('/api/extract-screenshot-ai', {
         method: 'POST',
         body: fd,
         signal: controller.signal,

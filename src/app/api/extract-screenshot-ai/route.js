@@ -70,6 +70,11 @@ Quality bar: only fill fields you can READ on the image. Don't guess. Empty stri
 `.trim();
 
 export async function POST(req) {
+  // Auth-gate so Anthropic spend is billed only for valid sessions.
+  const { requireUserId } = await import('@/lib/apiAuth');
+  const auth = await requireUserId(req);
+  if (auth instanceof Response) return auth;
+
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return Response.json({

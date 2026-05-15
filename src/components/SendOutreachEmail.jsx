@@ -13,7 +13,7 @@
  *   4. "Send to {prospect.email}" → POST to /api/email/send → logs
  *      to prospect.emailLog via onLogged callback
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Mail, X, Send, Loader2, CheckCircle2, AlertTriangle, Eye,
@@ -279,36 +279,22 @@ function SendModal({ prospect, onClose, onLogged }) {
 }
 
 /**
- * Renders the HTML email in an iframe so its inline CSS can't leak into
- * the modal's own styles. Auto-sizes height to the content via the
- * srcdoc + onLoad measurement.
+ * Renders the HTML email in a fully-sandboxed iframe so its inline
+ * CSS can't leak into the modal's own styles. We use the strictest
+ * possible sandbox (no flags) — that means no script execution and
+ * no same-origin DOM access from the parent. As a side effect we
+ * can't measure scrollHeight from outside, so we ship a generous
+ * fixed height (740px) and let the iframe scroll internally for
+ * longer templates. Defense-in-depth in case a future template ever
+ * contains user-controlled HTML.
  */
 function PreviewIframe({ html }) {
-  const ref = useRef(null);
-  const [height, setHeight] = useState(420);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const onLoad = () => {
-      try {
-        const doc = el.contentDocument || el.contentWindow?.document;
-        if (!doc) return;
-        const h = Math.min(1200, Math.max(400, doc.documentElement.scrollHeight || 420));
-        setHeight(h);
-      } catch { /* cross-origin guard, srcdoc shouldn't trigger but safe */ }
-    };
-    el.addEventListener('load', onLoad);
-    return () => el.removeEventListener('load', onLoad);
-  }, [html]);
-
   return (
     <iframe
-      ref={ref}
       srcDoc={html}
       title="Email preview"
-      sandbox="allow-same-origin"
-      style={{ width: '100%', height, border: 0, display: 'block', background: '#EEF2F7' }}
+      sandbox=""
+      style={{ width: '100%', height: 740, border: 0, display: 'block', background: '#EEF2F7' }}
     />
   );
 }

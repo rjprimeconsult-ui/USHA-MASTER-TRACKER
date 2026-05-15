@@ -112,10 +112,13 @@ async function sendEmail(to, subject, html) {
 }
 
 export async function GET(req) {
-  // Auth: require CRON_SECRET in Authorization header
+  // Auth: require CRON_SECRET in Authorization header. Fail CLOSED if
+  // the env var is missing — otherwise the endpoint would be publicly
+  // callable when CRON_SECRET is unset, leaking all users' prospect
+  // data via the service-role client below.
   const auth = req.headers.get('authorization') || '';
   const expected = process.env.CRON_SECRET;
-  if (expected && auth !== `Bearer ${expected}`) {
+  if (!expected || auth !== `Bearer ${expected}`) {
     return new Response('Unauthorized', { status: 401 });
   }
 

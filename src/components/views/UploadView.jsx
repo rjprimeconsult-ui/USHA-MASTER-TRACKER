@@ -18,6 +18,7 @@ import SmartLeadImportWizard from '../SmartLeadImportWizard';
 import { parseStatementPdf, reconcileStatement, isCommissionDetailPdf } from '@/lib/statement';
 import { parseSalesReport, gapDetect, dealToLead } from '@/lib/salesreport';
 import { mkLead } from '@/lib/seed';
+import { authedFetch } from '@/lib/authedFetch';
 import { uid } from '@/lib/utils';
 
 const MODES = [
@@ -719,7 +720,7 @@ function StatementReconcile({ leads, onApply }) {
   const parseStatementWithAI = async (file) => {
     const form = new FormData();
     form.append('file', file);
-    const res = await fetch('/api/parse-statement-ai', { method: 'POST', body: form });
+    const res = await authedFetch('/api/parse-statement-ai', { method: 'POST', body: form });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     return data;
@@ -1571,7 +1572,7 @@ function MonthlyPayoutUpload({ onApply }) {
   const parseStatementWithAI = async (file) => {
     const form = new FormData();
     form.append('file', file);
-    const res = await fetch('/api/parse-statement-ai', { method: 'POST', body: form });
+    const res = await authedFetch('/api/parse-statement-ai', { method: 'POST', body: form });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     return data;
