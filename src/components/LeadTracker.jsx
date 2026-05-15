@@ -1321,7 +1321,7 @@ export default function LeadTracker() {
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute inset-0 bg-mesh-luxe opacity-90" />
         </div>
-        <div className="relative max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div className="relative max-w-screen-2xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <motion.div
               initial={{ rotate: -8, scale: 0.9, opacity: 0 }}
@@ -1344,7 +1344,7 @@ export default function LeadTracker() {
             </button>
           </div>
         </div>
-        <nav className="relative max-w-7xl mx-auto px-4 overflow-x-auto">
+        <nav className="relative max-w-screen-2xl mx-auto px-4 overflow-x-auto">
           <div className="flex gap-1 pb-2">
             {NAV_TABS.map(t => {
               const Icon = ICONS[t.icon];
@@ -1375,7 +1375,7 @@ export default function LeadTracker() {
           This preserves filter / search / sort / month-picker state across tab
           switches (was being lost when AnimatePresence unmounted views). The
           first visit to each view animates in; revisits are instant. */}
-      <main className="max-w-7xl mx-auto px-4 py-5">
+      <main className="max-w-screen-2xl mx-auto px-4 py-5">
         <ViewMount visible={view === 'cpa'} viewKey="cpa">
           <CpaDashboard
             leads={leads} investments={investments} activities={activities}
