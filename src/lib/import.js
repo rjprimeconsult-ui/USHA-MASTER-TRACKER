@@ -1,8 +1,19 @@
 /**
  * Spreadsheet → Tracker lead import.
  *
- * Supports the "USHA preset" — an xlsx with sheets named
- * "2026 PORTAL CLIENTS" and "BOUGHT LEAD TRACKER" that we join by name.
+ * Supports the "USHA preset" — an xlsx with one tab listing your
+ * portal customers (clients you've placed on the books) and another
+ * listing your bought leads (lead-source costs by name). Detection
+ * is fuzzy and tolerant of agent-specific naming so any USHA-style
+ * spreadsheet should auto-detect:
+ *
+ *   Portal tab matches:   "Portal Clients", "Portal Customers",
+ *                         "Issued Clients", "2026 Portal Clients", etc.
+ *   Bought-leads matches: "Bought Leads", "Bought Lead Tracker",
+ *                         "Lead Tracker", "Lead Log", etc.
+ *
+ * If detection doesn't catch the agent's naming, Smart Import (AI)
+ * handles any structure.
  */
 
 import * as XLSX from 'xlsx';
@@ -10,8 +21,11 @@ import { uid, today } from './utils';
 import { mkLead } from './seed';
 import { nameKey as fuzzyNameKey } from './statement';
 
-export const USHA_SHEET_PORTAL = '2026 PORTAL CLIENTS';
-export const USHA_SHEET_BOUGHT = 'BOUGHT LEAD TRACKER';
+// Neutral example labels — what we *show* the agent as the canonical
+// tab name. The detection (findSheet calls below) matches MUCH more
+// broadly than these literal strings.
+export const USHA_SHEET_PORTAL = 'Portal Clients';
+export const USHA_SHEET_BOUGHT = 'Bought Leads';
 
 /** Read an uploaded File into a parsed XLSX workbook. */
 export async function readWorkbook(file) {
@@ -19,7 +33,8 @@ export async function readWorkbook(file) {
   return XLSX.read(buffer, { type: 'array' });
 }
 
-/** Find a sheet by fuzzy match (case-insensitive, whitespace-insensitive, partial ok). */
+/** Find a sheet by fuzzy match (case-insensitive, whitespace-insensitive, partial ok).
+ *  All keywords must appear as substrings in the sheet name. */
 export function findSheet(wb, ...keywords) {
   const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
   for (const name of wb.SheetNames) {
@@ -29,16 +44,68 @@ export function findSheet(wb, ...keywords) {
   return null;
 }
 
+/** Try multiple keyword sets in priority order; return the first sheet
+ *  that matches any of them. Lets us catch a wider variety of USHA-style
+ *  naming without false positives because each candidate keyword-set is
+ *  still strict (all words in that set must appear).
+ *
+ *  Example:
+ *    findSheetAny(wb, [['portal','client'], ['issued','client'], ['portal']])
+ *  matches "Portal Clients" first, then "Issued Clients", then any
+ *  sheet with "portal" alone (last resort).
+ */
+export function findSheetAny(wb, candidates) {
+  for (const keywords of candidates) {
+    const hit = findSheet(wb, ...keywords);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+// Canonical candidate lists. These are the *only* names new agents
+// ever need to use — anything matching one of the sets below works.
+//
+// PORTAL_TAB_CANDIDATES covers: book of business / placed customers
+// BOUGHT_TAB_CANDIDATES covers: lead-purchase log / vendor spend
+const PORTAL_TAB_CANDIDATES = [
+  ['portal', 'client'],     // Portal Clients, 2026 Portal Clients, USHA Portal Clients
+  ['portal', 'customer'],   // Portal Customers, Customer Portal
+  ['issued', 'client'],     // Issued Clients
+  ['issued', 'customer'],   // Issued Customers
+  ['client', 'list'],       // Client List
+  ['customer', 'list'],     // Customer List
+  ['book'],                 // Book, Book of Business — last resort
+];
+
+const BOUGHT_TAB_CANDIDATES = [
+  ['bought', 'lead'],       // Bought Leads, Bought Lead Tracker
+  ['lead', 'tracker'],      // Lead Tracker, Lead Trackers
+  ['lead', 'log'],          // Lead Log
+  ['lead', 'cost'],         // Lead Costs
+  ['lead', 'spend'],        // Lead Spend
+  ['lead', 'source'],       // Lead Sources
+];
+
+/** Locate the portal/clients sheet across known USHA-style names. */
+export function findPortalSheet(wb) {
+  return findSheetAny(wb, PORTAL_TAB_CANDIDATES);
+}
+
+/** Locate the bought-leads sheet across known USHA-style names. */
+export function findBoughtSheet(wb) {
+  return findSheetAny(wb, BOUGHT_TAB_CANDIDATES);
+}
+
 /** True when both USHA preset sheets can be found (fuzzy match). */
 export function hasUshaPreset(wb) {
-  return !!findSheet(wb, 'portal', 'client') && !!findSheet(wb, 'bought', 'lead');
+  return !!findPortalSheet(wb) && !!findBoughtSheet(wb);
 }
 
 /** Resolve the actual sheet names used in this workbook (fuzzy). */
 export function resolveUshaSheets(wb) {
   return {
-    portal: findSheet(wb, 'portal', 'client'),
-    bought: findSheet(wb, 'bought', 'lead'),
+    portal: findPortalSheet(wb),
+    bought: findBoughtSheet(wb),
   };
 }
 
@@ -205,11 +272,11 @@ export function normalizeCampaign(raw) {
 }
 
 /**
- * Parse PORTAL CLIENTS rows into partial lead objects.
+ * Parse portal/clients rows into partial lead objects.
  * Column indexes based on observed layout (A=0 ... T=19).
  */
 function parsePortalSheet(wb) {
-  const sheetName = findSheet(wb, 'portal', 'client');
+  const sheetName = findPortalSheet(wb);
   const ws = sheetName ? wb.Sheets[sheetName] : null;
   if (!ws) return [];
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
@@ -265,7 +332,7 @@ function parsePortalSheet(wb) {
  *                 F(5)=CRM, G(6)=CAMPAIGN, H(7)=PRICE, I(8)=COMMISSION
  */
 function parseBoughtSheet(wb) {
-  const sheetName = findSheet(wb, 'bought', 'lead');
+  const sheetName = findBoughtSheet(wb);
   const ws = sheetName ? wb.Sheets[sheetName] : null;
   if (!ws) return {};
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });

@@ -230,9 +230,12 @@ function HistoryImport({ onImport, onUndoImport, lastImportBatch, leads = [], on
           <div className="w-16 h-16 mx-auto rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center mb-4">
             <Upload size={28} />
           </div>
-          <h2 className="text-lg font-semibold text-slate-900">Drop your Excel workbook</h2>
-          <p className="text-sm text-slate-600 mt-1">
-            Tabs named <code className="bg-slate-100 rounded px-1 text-xs">{USHA_SHEET_PORTAL}</code> + <code className="bg-slate-100 rounded px-1 text-xs">{USHA_SHEET_BOUGHT}</code>.
+          <h2 className="text-lg font-semibold text-slate-900">Classic import</h2>
+          <p className="text-sm text-slate-600 mt-1 max-w-md mx-auto">
+            For USHA-style spreadsheets &mdash; auto-detects tabs like <code className="bg-slate-100 rounded px-1 text-xs">{USHA_SHEET_PORTAL}</code> and <code className="bg-slate-100 rounded px-1 text-xs">{USHA_SHEET_BOUGHT}</code>. Naming is flexible.
+          </p>
+          <p className="text-[11px] text-slate-500 mt-1.5 max-w-md mx-auto">
+            Got a different layout? Use <strong className="text-indigo-700">Smart Import (AI)</strong> above &mdash; it figures out any structure.
           </p>
           <label className="mt-5 inline-block">
             <input type="file" accept=".xlsx,.xls,.csv,.pdf" className="hidden" onChange={(e) => handleFile(e.target.files?.[0])} />
