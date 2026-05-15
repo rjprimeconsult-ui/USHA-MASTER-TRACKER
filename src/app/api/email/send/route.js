@@ -127,6 +127,15 @@ export async function POST(req) {
     fromName = '',
     templateId = '',
     templateName = '',
+    // Polished HTML rendering for post-sale (server-side wrap).
+    // When useHtmlRender is true, the server pulls the agent's
+    // accent palette from user_kv and renders the full shell
+    // (banner + policy card + signature + footer) around the
+    // resolved body text. templateExtras + leadSnapshot give the
+    // server the bits it needs to render without re-fetching.
+    useHtmlRender = false,
+    templateExtras = {},
+    leadSnapshot = {},
   } = body || {};
 
   // Per-kind feature-flag check. Different email kinds gate to
@@ -244,17 +253,82 @@ export async function POST(req) {
     replyTo = profile.email;
   }
 
-  // If the caller passed full HTML (outreach templates), use it as-is.
-  // Otherwise convert the plain-text body to a simple HTML wrap with
-  // linebreaks preserved — the legacy post-sale path that's worked
-  // since the feature shipped.
-  const htmlBody = safeHtml
-    ? safeHtml
-    : `<div style="font-family: system-ui, -apple-system, Segoe UI, sans-serif; font-size: 14px; line-height: 1.6; color: #0f172a;">${safeBody
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/\n/g, '<br>')}</div>`;
+  // HTML body resolution. Three paths:
+  //   1. Outreach (passes full pre-rendered HTML)        → use as-is
+  //   2. Post-sale + useHtmlRender                       → render the
+  //      polished shell server-side using the agent's accent palette
+  //   3. Default (legacy post-sale plain-text)           → simple
+  //      <br>-converted wrap
+  let htmlBody;
+  let dearDoctorAttachment = null;
+  if (safeHtml) {
+    htmlBody = safeHtml;
+  } else if (kind === 'post-sale' && useHtmlRender) {
+    // Pull the agent's accent + banner from user_kv for the HTML shell.
+    let agentProfile = { accent: 'indigo', displayName: '', phone: '', bannerUrl: '' };
+    try {
+      const { data: apRow } = await supabase
+        .from('user_kv')
+        .select('value')
+        .eq('user_id', userId)
+        .eq('key', 'agent_profile_v1')
+        .maybeSingle();
+      if (apRow?.value) {
+        const parsed = typeof apRow.value === 'string' ? JSON.parse(apRow.value) : apRow.value;
+        agentProfile = {
+          accent: parsed?.accent || 'indigo',
+          displayName: parsed?.displayName || '',
+          phone: parsed?.phone || '',
+          bannerUrl: parsed?.bannerUrl || '',
+        };
+      }
+    } catch (e) {
+      console.warn('[email/send] agent profile load failed (using defaults):', e?.message);
+    }
+    const { renderPostSaleHtml, dearDoctorPdfPath } = await import('@/lib/postSaleHtml');
+    htmlBody = renderPostSaleHtml({
+      template: {
+        subject: safeSubject,
+        closingLine: templateExtras?.closingLine || '',
+        verificationPhone: templateExtras?.verificationPhone || '',
+        referralEnabled: templateExtras?.referralEnabled !== false,
+        referralText: templateExtras?.referralText || '',
+        fromName,
+      },
+      lead: {
+        name: leadSnapshot?.name || '',
+        policyNumber: leadSnapshot?.policyNumber || '',
+        effectiveDate: leadSnapshot?.effectiveDate || '',
+        mainProduct: leadSnapshot?.mainProduct || '',
+        associationPlan: leadSnapshot?.associationPlan || '',
+      },
+      profile,
+      agentProfile,
+      resolvedBody: safeBody,
+      resolvedSubject: safeSubject,
+    });
+
+    // Attach the matching "Dear Doctor Letter" PDF when the template
+    // wants it AND a PDF exists for this lead's main product. ACA
+    // Wrap + Suppy don't get a PDF — handled by the lookup returning
+    // null. Resend takes the public URL and fetches it itself.
+    if (templateExtras?.attachDearDoctorPdf !== false) {
+      const pdfPath = dearDoctorPdfPath(leadSnapshot?.mainProduct);
+      if (pdfPath) {
+        const origin = req.headers.get('origin') || 'https://www.primtracker.com';
+        dearDoctorAttachment = {
+          filename: pdfPath.split('/').pop(),
+          path: `${origin}${pdfPath}`,
+        };
+      }
+    }
+  } else {
+    htmlBody = `<div style="font-family: system-ui, -apple-system, Segoe UI, sans-serif; font-size: 14px; line-height: 1.6; color: #0f172a;">${safeBody
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/\n/g, '<br>')}</div>`;
+  }
 
   let resendResult;
   try {
@@ -271,6 +345,7 @@ export async function POST(req) {
         subject: safeSubject,
         text: safeBody || stripHtmlForText(safeHtml),
         html: htmlBody,
+        ...(dearDoctorAttachment ? { attachments: [dearDoctorAttachment] } : {}),
         // Tags double as analytics in Resend's dashboard AND as the
         // identity bridge for webhook events — the /api/email/webhook
         // handler reads user_id + lead_id / prospect_id back to find

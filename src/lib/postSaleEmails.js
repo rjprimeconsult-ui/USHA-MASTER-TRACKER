@@ -73,23 +73,35 @@ function newTemplateId() {
 
 // ---------- Default content ----------
 
+// Default body text for the polished HTML post-sale template. The
+// HTML shell (banner, policy info card, verification card, referral
+// card, signature, footer) is rendered server-side around this text —
+// agents only edit the wording here, not the structure.
+const DEFAULT_HTML_BODY = `Hi {customer_first_name},
+
+It was a pleasure helping you find a new individual health insurance plan. I would like to thank you for your business. I believe we accomplished the goals at hand in building a policy that will work well for you. I want to assure you I am available should you have any questions or request any changes in coverage.
+
+You will receive an email from the company with a link to your completed application and the product brochure. If you do not, let me know and I will send them to you.`;
+
 export const DEFAULT_WELCOME_TEMPLATE = () => ({
   id: newTemplateId(),
   name: 'Welcome email',
-  subject: 'Welcome to USHEALTH, {customer_first_name} — quick next steps',
-  body:
-    `Hi {customer_first_name},\n\n` +
-    `Thank you for choosing USHEALTH Advisors. Your {main_product} application is in motion, and I wanted to drop a quick note with what to expect next.\n\n` +
-    `Policy number: {policy_number}\n` +
-    `Effective: {effective_date}\n\n` +
-    `If anything comes up — questions about coverage, ID cards, or claims — reach me directly:\n` +
-    `  {agent_phone}\n` +
-    `  {agent_email}\n\n` +
-    `Welcome aboard,\n` +
-    `{agent_name}`,
+  subject: 'Welcome — your new policy is on its way, {customer_first_name}',
+  body: DEFAULT_HTML_BODY,
   fromName: '',
   enabled: true,
   autoSendOnStage: null,
+  // Polished HTML rendering (banner + policy card + signature shell).
+  // Set false to revert to the legacy plain-text-with-<br> render.
+  useHtmlRender: true,
+  // Editable fields that flow into the HTML shell:
+  verificationPhone: '',
+  referralEnabled: true,
+  referralText: '',           // empty → defaultReferralText() in postSaleHtml.js
+  closingLine: 'Thank you for your business.',
+  // Attach the "Dear Doctor Letter" PDF matching the lead's main
+  // product when one exists. Set false to never attach.
+  attachDearDoctorPdf: true,
 });
 
 export const DEFAULT_BUNDLE = () => ({
@@ -153,6 +165,16 @@ function normalizeTemplate(t) {
     autoSendOnStage: typeof t?.autoSendOnStage === 'string' && AUTO_SEND_STAGES.includes(t.autoSendOnStage)
       ? t.autoSendOnStage
       : null,
+    // HTML render + per-template extras. Default to true on new
+    // templates; legacy plain-text templates that never had these
+    // fields stay at their existing behavior (useHtmlRender defaults
+    // false when undefined on a loaded row).
+    useHtmlRender: t?.useHtmlRender === true,
+    verificationPhone: typeof t?.verificationPhone === 'string' ? t.verificationPhone : '',
+    referralEnabled: t?.referralEnabled !== false,
+    referralText: typeof t?.referralText === 'string' ? t.referralText : '',
+    closingLine: typeof t?.closingLine === 'string' ? t.closingLine : '',
+    attachDearDoctorPdf: t?.attachDearDoctorPdf !== false,
   };
 }
 

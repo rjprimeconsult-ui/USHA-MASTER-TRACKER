@@ -113,6 +113,27 @@ function SendModal({ lead, onClose, onLogged }) {
           fromName: template.fromName || '',
           templateId: template.id,
           templateName: template.name,
+          // HTML-mode extras — server renders the full polished shell
+          // when useHtmlRender is true. Lead snapshot lets the server
+          // build the policy card without a separate lookup. Template
+          // extras (closing line, verification phone, referral text,
+          // PDF attachment flag) are all per-template settings the
+          // agent edited in Post-Sale Email Settings.
+          useHtmlRender: template.useHtmlRender === true,
+          templateExtras: {
+            closingLine: template.closingLine || '',
+            verificationPhone: template.verificationPhone || '',
+            referralEnabled: template.referralEnabled !== false,
+            referralText: template.referralText || '',
+            attachDearDoctorPdf: template.attachDearDoctorPdf !== false,
+          },
+          leadSnapshot: {
+            name: lead.name || '',
+            policyNumber: lead.policyNumber || '',
+            effectiveDate: lead.effectiveDate || '',
+            mainProduct: lead.mainProduct || '',
+            associationPlan: lead.associationPlan || '',
+          },
         }),
       });
       const data = await res.json().catch(() => ({}));

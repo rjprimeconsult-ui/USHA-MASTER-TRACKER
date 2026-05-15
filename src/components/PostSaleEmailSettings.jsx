@@ -383,6 +383,91 @@ function TemplateEditor({ template, bundle, profile, onChange, onBack }) {
         </div>
       </div>
 
+      {/* Polished HTML layout — banner + policy info card + signature
+          shell. Agent edits the wording above; the HTML structure
+          renders server-side and can't be broken. */}
+      <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-4">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <h3 className="font-semibold text-sm text-slate-900">Polished layout (HTML)</h3>
+            <p className="text-[11px] text-slate-500 mt-0.5">Banner + policy info card + signature wrap, branded with your accent palette from Profile.</p>
+          </div>
+          <label className="inline-flex items-center gap-2 cursor-pointer flex-shrink-0">
+            <input
+              type="checkbox"
+              checked={template.useHtmlRender === true}
+              onChange={e => onChange({ useHtmlRender: e.target.checked })}
+              className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+            />
+            <span className="text-xs font-semibold text-slate-700">{template.useHtmlRender ? 'On' : 'Off'}</span>
+          </label>
+        </div>
+
+        {template.useHtmlRender && (
+          <div className="space-y-3 pt-2 border-t border-slate-100">
+            <Field label="Closing line" hint="Short line above your signature.">
+              <input
+                type="text"
+                value={template.closingLine || ''}
+                onChange={e => onChange({ closingLine: e.target.value })}
+                placeholder="Thank you for your business."
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </Field>
+
+            <Field label="Verification call phone (optional)" hint="When set, the email shows: ‘You'll receive a call at this number to verify your application answers.' Leave blank to hide the verification card.">
+              <input
+                type="tel"
+                value={template.verificationPhone || ''}
+                onChange={e => onChange({ verificationPhone: e.target.value })}
+                placeholder="(800) 555-0100"
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </Field>
+
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-2">
+              <label className="inline-flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={template.referralEnabled !== false}
+                  onChange={e => onChange({ referralEnabled: e.target.checked })}
+                  className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                <span className="text-sm font-medium text-slate-700">Include referral program card</span>
+              </label>
+              {template.referralEnabled !== false && (
+                <Field label="Referral wording (optional)" hint="Leave blank to use the default $150–$200 bounty wording.">
+                  <textarea
+                    value={template.referralText || ''}
+                    onChange={e => onChange({ referralText: e.target.value })}
+                    rows={4}
+                    placeholder="(Leave blank for the default wording — $150 to $200 referral bonus.)"
+                    className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 leading-relaxed"
+                  />
+                </Field>
+              )}
+            </div>
+
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+              <label className="inline-flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={template.attachDearDoctorPdf !== false}
+                  onChange={e => onChange({ attachDearDoctorPdf: e.target.checked })}
+                  className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                <span className="text-sm font-medium text-slate-700">Attach &ldquo;Dear Doctor Letter&rdquo; PDF</span>
+              </label>
+              <p className="text-[11px] text-slate-500 mt-1 ml-6 leading-relaxed">
+                Auto-picks the right PDF based on the lead&apos;s main product
+                (Premier Advantage / Premier Choice / Secure Advantage / Health Access).
+                Skipped silently for products without a matching PDF (ACA Wrap, Suppy).
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Live preview */}
       <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-2">
         <div className="flex items-center gap-2">
