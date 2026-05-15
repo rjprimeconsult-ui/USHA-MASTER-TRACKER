@@ -9,6 +9,8 @@ import {
   parseTestAddresses,
   findMissingValues,
 } from '@/lib/postSaleEmails';
+import { renderPostSaleHtml } from '@/lib/postSaleHtml';
+import { loadAgentProfile } from '@/lib/agentProfile';
 import { useBetaFeature } from '@/lib/useBetaFeature';
 import { supabase, supabaseConfigured } from '@/lib/supabase';
 
@@ -49,6 +51,7 @@ export default function SendWelcomeEmail({ lead, onLogged }) {
 function SendModal({ lead, onClose, onLogged }) {
   const { profile } = useBetaFeature('post_sale_emails');
   const [bundle, setBundle] = useState(null);
+  const [agentProfile, setAgentProfile] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -56,9 +59,13 @@ function SendModal({ lead, onClose, onLogged }) {
 
   useEffect(() => {
     let alive = true;
-    loadBundle().then(b => {
+    // Load BOTH the email templates and the agent profile in parallel.
+    // Agent profile drives the polished HTML banner (accent palette +
+    // display name) and signature (phone) shown in the preview.
+    Promise.all([loadBundle(), loadAgentProfile()]).then(([b, ap]) => {
       if (!alive) return;
       setBundle(b);
+      setAgentProfile(ap);
       const enabled = (b.templates || []).filter(t => t.enabled !== false);
       setSelectedId(enabled[0]?.id || b.templates?.[0]?.id || null);
       setLoading(false);
@@ -81,6 +88,39 @@ function SendModal({ lead, onClose, onLogged }) {
       })
     : null;
   const missing = rendered ? findMissingValues(rendered) : [];
+
+  // When the template uses the polished HTML shell, also render the
+  // full HTML client-side so the preview matches exactly what the
+  // recipient will see. Same renderer runs on the server at send
+  // time — keeps the two views identical.
+  const htmlPreview = useMemo(() => {
+    if (!template?.useHtmlRender || !rendered || !agentProfile) return null;
+    try {
+      return renderPostSaleHtml({
+        template: {
+          subject: rendered.subject,
+          closingLine: template.closingLine || '',
+          verificationPhone: template.verificationPhone || '',
+          referralEnabled: template.referralEnabled !== false,
+          referralText: template.referralText || '',
+          fromName: template.fromName,
+        },
+        lead: {
+          name: lead?.name || '',
+          policyNumber: lead?.policyNumber || '',
+          effectiveDate: lead?.effectiveDate || '',
+          mainProduct: lead?.mainProduct || '',
+          associationPlan: lead?.associationPlan || '',
+        },
+        profile,
+        agentProfile,
+        resolvedBody: rendered.body,
+        resolvedSubject: rendered.subject,
+      });
+    } catch {
+      return null;
+    }
+  }, [template, rendered, agentProfile, lead, profile]);
   const testList = parseTestAddresses(bundle?.testAddresses || '');
   const noTestAddress = !!(bundle?.testMode !== false) && testList.length === 0;
   const canSend = rendered && rendered.recipient && !noTestAddress && !sending && !!template;
@@ -168,7 +208,7 @@ function SendModal({ lead, onClose, onLogged }) {
       className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Mail size={18} className="text-indigo-600" />
@@ -232,8 +272,27 @@ function SendModal({ lead, onClose, onLogged }) {
               <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
                 <div className="text-[11px] text-slate-500 uppercase tracking-wider mb-1">Subject</div>
                 <div className="font-semibold text-sm text-slate-900 mb-3">{rendered.subject}</div>
-                <div className="text-[11px] text-slate-500 uppercase tracking-wider mb-1">Body</div>
-                <pre className="whitespace-pre-wrap font-sans text-sm text-slate-800 leading-relaxed">{rendered.body}</pre>
+                {htmlPreview ? (
+                  <>
+                    <div className="text-[11px] text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                      Preview
+                      <span className="text-[9px] uppercase tracking-wider bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-bold">HTML</span>
+                    </div>
+                    <div className="bg-white border border-slate-200 rounded overflow-hidden">
+                      <iframe
+                        srcDoc={htmlPreview}
+                        title="Email preview"
+                        sandbox=""
+                        style={{ width: '100%', height: 540, border: 0, display: 'block', background: '#EEF2F7' }}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-[11px] text-slate-500 uppercase tracking-wider mb-1">Body</div>
+                    <pre className="whitespace-pre-wrap font-sans text-sm text-slate-800 leading-relaxed">{rendered.body}</pre>
+                  </>
+                )}
               </div>
 
               {missing.length > 0 && (
