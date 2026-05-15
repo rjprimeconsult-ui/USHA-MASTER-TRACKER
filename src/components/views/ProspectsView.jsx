@@ -12,7 +12,7 @@ import {
 import { TiltCard, FadeIn, Stagger, StaggerItem } from '../motion/MotionPrimitives';
 import { fmt2, today } from '@/lib/utils';
 import { newProspect, defaultProspectSettings, detectFieldFromHeader, detectStageId, detectSource, detectIndvOrFamily, prospectDedupKey } from '@/lib/prospects';
-import { DEFAULT_PROSPECT_STAGES, getCrmStyle } from '@/lib/constants';
+import { DEFAULT_PROSPECT_STAGES, getCrmStyle, PROSPECT_SOURCES, PROSPECT_CRMS } from '@/lib/constants';
 import { useIsDark } from '@/lib/useIsDark';
 import * as XLSX from 'xlsx';
 import ProspectForm from '../ProspectForm';
@@ -1109,6 +1109,8 @@ export default function ProspectsView({
   const [search, setSearch] = useState('');
   const [stageFilter, setStageFilter] = useState('');
   const [apptFilter, setApptFilter] = useState(''); // '' | 'today' | 'week' | 'upcoming' | 'overdue' | 'none'
+  const [sourceFilter, setSourceFilter] = useState(''); // '' | source string
+  const [crmFilter, setCrmFilter] = useState('');       // '' | crm string
   const [editing, setEditing] = useState(null);
   const [viewing, setViewing] = useState(null);  // read-only detail bubble
   const [showSettings, setShowSettings] = useState(false);
@@ -1131,6 +1133,8 @@ export default function ProspectsView({
     return prospects.filter(p => {
       if (p.archivedAt) return false;
       if (stageFilter && p.stage !== stageFilter) return false;
+      if (sourceFilter && p.source !== sourceFilter) return false;
+      if (crmFilter && p.crm !== crmFilter) return false;
       if (apptFilter) {
         if (apptFilter === 'today'    && !isToday(p.appointmentTime)) return false;
         if (apptFilter === 'week'     && !isThisWeek(p.appointmentTime)) return false;
@@ -1142,7 +1146,27 @@ export default function ProspectsView({
       const blob = `${p.name} ${p.phone} ${p.email} ${p.state} ${p.notes} ${p.situation} ${p.referrer}`.toLowerCase();
       return blob.includes(q);
     });
-  }, [prospects, search, stageFilter, apptFilter]);
+  }, [prospects, search, stageFilter, apptFilter, sourceFilter, crmFilter]);
+
+  // Build the union of built-in PROSPECT_SOURCES + any custom values
+  // an agent has entered. That way a free-text source like "TikTok Ads"
+  // still appears in the filter dropdown if at least one prospect uses it.
+  const sourceOptions = useMemo(() => {
+    const set = new Set(PROSPECT_SOURCES);
+    for (const p of prospects) {
+      if (p?.source && typeof p.source === 'string') set.add(p.source);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [prospects]);
+
+  // Same idea for CRMs — built-in list plus any custom values in use.
+  const crmOptions = useMemo(() => {
+    const set = new Set(PROSPECT_CRMS.filter(c => c !== 'None'));
+    for (const p of prospects) {
+      if (p?.crm && p.crm !== 'None' && typeof p.crm === 'string') set.add(p.crm);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [prospects]);
 
   const grouped = useMemo(() => {
     const map = new Map(cfg.stages.map(s => [s.id, []]));
@@ -1361,9 +1385,19 @@ export default function ProspectsView({
             className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
         </div>
         <select value={stageFilter} onChange={e => setStageFilter(e.target.value)}
-          className="border border-slate-200 rounded-lg px-3 py-2 text-sm">
+          className="border border-slate-200 rounded-lg px-3 py-2 text-sm" title="Filter by stage">
           <option value="">All stages</option>
           {cfg.stages.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+        </select>
+        <select value={sourceFilter} onChange={e => setSourceFilter(e.target.value)}
+          className="border border-slate-200 rounded-lg px-3 py-2 text-sm" title="Filter by lead source">
+          <option value="">All sources</option>
+          {sourceOptions.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <select value={crmFilter} onChange={e => setCrmFilter(e.target.value)}
+          className="border border-slate-200 rounded-lg px-3 py-2 text-sm" title="Filter by CRM">
+          <option value="">All CRMs</option>
+          {crmOptions.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
         <select value={apptFilter} onChange={e => setApptFilter(e.target.value)}
           className="border border-slate-200 rounded-lg px-3 py-2 text-sm" title="Filter by appointment time">
