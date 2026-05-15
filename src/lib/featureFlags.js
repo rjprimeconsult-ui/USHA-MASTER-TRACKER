@@ -64,7 +64,22 @@ export const BETA_FEATURES = {
       'juantrejo9082@gmail.com',
       'rjprimeconsult@gmail.com',
     ],
-    publicGA: false,
+    // GA at launch: Pro + Team get post-sale email automation. Starter
+    // does not — it's an upgrade lever to nudge agents who care about
+    // post-sale touchpoints.
+    publicGA: true,
+  },
+  outreach_emails: {
+    name: 'Cold Outreach Email Sequences',
+    requiredTier: 'team',
+    betaAllowlist: [
+      'juantrejo9082@gmail.com',
+      'rjprimeconsult@gmail.com',
+    ],
+    // GA at launch: Team only. The Benepath-style outreach + reminders
+    // are positioned as a team-leader tool (your downline lifts when
+    // their cold outreach is automated). Big upgrade incentive from Pro.
+    publicGA: true,
   },
 };
 

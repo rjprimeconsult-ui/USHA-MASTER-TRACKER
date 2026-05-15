@@ -109,10 +109,6 @@ export async function POST(req) {
   if (pErr || !profile) {
     return Response.json({ error: 'profile not found' }, { status: 403 });
   }
-  const access = canAccessBetaFeature('post_sale_emails', profile);
-  if (!access.canAccess) {
-    return Response.json({ error: 'feature not enabled for this account', reason: access.reason }, { status: 403 });
-  }
 
   // Parse body
   let body;
@@ -120,7 +116,7 @@ export async function POST(req) {
   const {
     leadId,
     prospectId,            // optional — when set, this is an outreach email
-    kind = 'post-sale',    // 'post-sale' | 'outreach'
+    kind = 'post-sale',    // 'post-sale' | 'outreach' | 'welcome'
     subject = '',
     body: emailBody = '',
     html: emailHtml = '',  // optional — full HTML body. When present,
@@ -133,8 +129,31 @@ export async function POST(req) {
     templateName = '',
   } = body || {};
 
+  // Per-kind feature-flag check. Different email kinds gate to
+  // different flags so tier-policy is enforced server-side regardless
+  // of UI state:
+  //   - post-sale → post_sale_emails  (Pro+)
+  //   - outreach  → outreach_emails   (Team+)
+  //   - welcome   → no flag check     (PRIM-triggered system email)
+  if (kind === 'outreach') {
+    const access = canAccessBetaFeature('outreach_emails', profile);
+    if (!access.canAccess) {
+      return Response.json({ error: 'outreach not enabled for this account', reason: access.reason }, { status: 403 });
+    }
+  } else if (kind === 'post-sale') {
+    const access = canAccessBetaFeature('post_sale_emails', profile);
+    if (!access.canAccess) {
+      return Response.json({ error: 'post-sale emails not enabled for this account', reason: access.reason }, { status: 403 });
+    }
+  }
+  // 'welcome' bypasses the gate — only the system fires welcome emails
+  // (via the Stripe webhook on checkout.session.completed), not the user
+  // directly, so no per-tier gating is needed.
+
   // Either a leadId (post-sale) or a prospectId (outreach) is required.
-  if (!leadId && !prospectId) {
+  // Welcome emails don't need either — they're addressed to the user
+  // themselves on signup.
+  if (kind !== 'welcome' && !leadId && !prospectId) {
     return Response.json({ error: 'leadId or prospectId required' }, { status: 400 });
   }
   if (!subject.trim())       return Response.json({ error: 'subject required' }, { status: 400 });
@@ -149,7 +168,9 @@ export async function POST(req) {
   // the server to send an email tagged with the victim's audit log
   // (IDOR). Looks up the relevant user_kv row and bails with 404 if
   // the ID isn't found in that user's records.
-  {
+  // Welcome emails (kind='welcome') skip this check — they target the
+  // user themselves, not a lead or prospect.
+  if (kind !== 'welcome') {
     const storeKey = prospectId ? 'prospects_v1' : 'leads_v5';
     const targetId = prospectId || leadId;
     const { data: kvRow } = await supabase

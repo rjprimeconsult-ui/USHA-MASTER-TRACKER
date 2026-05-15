@@ -25,7 +25,7 @@ export default function OutreachRemindersWidget({
   compact = false,
   title = 'Follow-ups due',
 }) {
-  const { canAccess, loading } = useBetaFeature('post_sale_emails');
+  const { canAccess, loading } = useBetaFeature('outreach_emails');
 
   // Compute reminders BEFORE the early returns so the hook order stays
   // stable across renders (React only complains if the order changes

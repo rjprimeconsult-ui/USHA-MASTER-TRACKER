@@ -27,7 +27,7 @@ import { useBetaFeature } from '@/lib/useBetaFeature';
 import { supabase, supabaseConfigured } from '@/lib/supabase';
 
 export default function SendOutreachEmail({ prospect, onLogged }) {
-  const { canAccess, loading: accessLoading } = useBetaFeature('post_sale_emails');
+  const { canAccess, loading: accessLoading } = useBetaFeature('outreach_emails');
   const [open, setOpen] = useState(false);
 
   if (accessLoading) return null;

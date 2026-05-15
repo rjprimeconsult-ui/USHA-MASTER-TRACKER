@@ -18,6 +18,7 @@
 
 import { getStripe, getSupabaseAdmin, subscriptionToProfileFields } from '@/lib/stripe-server';
 import { priceIdToTier } from '@/lib/stripe-prices';
+import { sendWelcomeEmailForUser } from '@/lib/welcomeEmails';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -50,19 +51,20 @@ async function syncSubscription(subscriptionId) {
     : subscription.customer?.id;
   if (!customerId) {
     console.warn('[stripe webhook] subscription has no customer id, skipping');
-    return;
+    return null;
   }
 
-  // Find the user this customer belongs to
+  // Find the user this customer belongs to. Also pull email so the
+  // welcome-email path can fire without an extra round-trip.
   const { data: profile, error: lookupErr } = await supabase
     .from('profiles')
-    .select('id')
+    .select('id, email')
     .eq('stripe_customer_id', customerId)
     .maybeSingle();
   if (lookupErr) throw lookupErr;
   if (!profile?.id) {
     console.warn(`[stripe webhook] no profile for customer ${customerId} (subscription ${subscriptionId})`);
-    return;
+    return null;
   }
 
   const fields = subscriptionToProfileFields(subscription, priceIdToTier);
@@ -73,6 +75,14 @@ async function syncSubscription(subscriptionId) {
   if (updateErr) throw updateErr;
 
   console.log(`[stripe webhook] synced subscription ${subscriptionId} for user ${profile.id}: ${fields.subscription_status} / ${fields.subscription_tier} / ${fields.subscription_period}`);
+  // Return the data the caller needs to optionally fire downstream
+  // side-effects (welcome email, etc.) without another lookup.
+  return {
+    userId: profile.id,
+    email: profile.email,
+    tier: fields.subscription_tier,
+    status: fields.subscription_status,
+  };
 }
 
 export async function POST(req) {
@@ -103,7 +113,26 @@ export async function POST(req) {
       case 'checkout.session.completed': {
         const session = event.data.object;
         if (session.mode === 'subscription' && session.subscription) {
-          await syncSubscription(session.subscription);
+          const synced = await syncSubscription(session.subscription);
+          // Fire the tier-specific welcome email. Idempotent via a
+          // `welcome_email_sent_v1` flag in user_kv so repeated
+          // Stripe deliveries of the same event don't double-send.
+          // Best-effort — failure here doesn't block the webhook
+          // (Stripe would retry the whole event otherwise, which
+          // would also re-trigger the sync above).
+          if (synced?.userId && synced?.email && synced?.tier) {
+            try {
+              await sendWelcomeEmailForUser({
+                userId: synced.userId,
+                email: synced.email,
+                tier: synced.tier,
+              });
+            } catch (e) {
+              // Log and continue — don't fail the webhook over a missed
+              // welcome. We have other ways to surface the issue.
+              console.error('[stripe webhook] welcome email failed:', e?.message || e);
+            }
+          }
         }
         break;
       }
