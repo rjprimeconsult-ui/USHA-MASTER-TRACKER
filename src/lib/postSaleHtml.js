@@ -66,24 +66,26 @@ function paragraphsToHtml(text) {
 
 // ---------- Banner ----------
 //
-// Pulls the agent's accent palette from agentProfile.accent. When no
-// banner image is set we render a colored hero band with the agent's
-// display name + a small "Your insurance agent" subline. If the agent
-// has uploaded a banner image (Profile -> Appearance), we use that
-// behind a slight dark overlay so the agent name still reads.
+// Pulls the agent's accent palette from agentProfile.accent and renders
+// a vivid colored hero band with the agent's display name. We
+// intentionally use ONLY the accent gradient (no banner image) here
+// because:
+//   1. Data-URL banner images get stripped by Gmail/Outlook and don't
+//      render inside preview iframes — produces a grey wash instead of
+//      the agent's brand color.
+//   2. The Profile -> Appearance banner image stays for the in-app UI
+//      where it works reliably.
+// If we want per-template banner images later, we'll host them in
+// Supabase Storage and reference via public HTTPS URL — that's the
+// path email clients accept reliably.
 function renderBanner(agentProfile) {
   const accent = agentProfile?.accent || 'indigo';
   const palette = getPalette(accent);
   const displayName = escapeHtml(agentProfile?.displayName || 'Your insurance agent');
-  const bannerUrl = agentProfile?.bannerUrl;
-
-  const bgStyle = bannerUrl
-    ? `background-image: linear-gradient(135deg, rgba(15,23,42,0.6), rgba(15,23,42,0.35)), url(${bannerUrl}); background-size: cover; background-position: center;`
-    : `background: linear-gradient(135deg, ${palette.from} 0%, ${palette.to} 100%);`;
 
   return `
         <tr>
-          <td style="${bgStyle} padding:38px 36px 32px 36px; text-align:center;">
+          <td style="background: linear-gradient(135deg, ${palette.from} 0%, ${palette.to} 100%); padding:38px 36px 32px 36px; text-align:center;">
             <div style="font-size:11px; letter-spacing:3px; text-transform:uppercase; color:rgba(255,255,255,0.85); font-weight:bold; margin-bottom:8px;">Your new policy</div>
             <div style="font-size:26px; line-height:1.2; color:#FFFFFF; font-weight:bold; letter-spacing:-0.3px; margin-bottom:4px;">${displayName}</div>
             <div style="font-size:13px; color:rgba(255,255,255,0.85); font-weight:500;">Licensed Insurance Agent</div>
