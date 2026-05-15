@@ -66,26 +66,42 @@ function paragraphsToHtml(text) {
 
 // ---------- Banner ----------
 //
-// Pulls the agent's accent palette from agentProfile.accent and renders
-// a vivid colored hero band with the agent's display name. We
-// intentionally use ONLY the accent gradient (no banner image) here
-// because:
-//   1. Data-URL banner images get stripped by Gmail/Outlook and don't
-//      render inside preview iframes — produces a grey wash instead of
-//      the agent's brand color.
-//   2. The Profile -> Appearance banner image stays for the in-app UI
-//      where it works reliably.
-// If we want per-template banner images later, we'll host them in
-// Supabase Storage and reference via public HTTPS URL — that's the
-// path email clients accept reliably.
-function renderBanner(agentProfile) {
+// Hero band at the top of the email. Three layered behaviors:
+//
+//   1. If the agent uploaded a banner image in Profile -> Appearance,
+//      reference it via /api/banners/[userId] — that endpoint serves
+//      the data-URL-stored banner as a real https:// image so email
+//      clients (which strip data: URLs) can load it. A dark overlay
+//      sits on top so the agent's name + role stay readable.
+//   2. If no banner image, fall back to the agent's accent gradient
+//      (Indigo / Emerald / Rose / Amber / Teal) — still vivid and
+//      personalized via Profile -> Appearance.
+//   3. Image loads ON TOP of the accent gradient, so if the banner
+//      ever fails to load, the agent's brand color shows through
+//      instead of a grey wash.
+//
+// `appOrigin` is the absolute URL prefix for the API endpoint (e.g.
+// `https://www.primtracker.com`) — required because email clients
+// won't resolve relative URLs.
+function renderBanner(agentProfile, userId, appOrigin) {
   const accent = agentProfile?.accent || 'indigo';
   const palette = getPalette(accent);
   const displayName = escapeHtml(agentProfile?.displayName || 'Your insurance agent');
+  const hasBanner = !!(agentProfile?.bannerUrl && userId && appOrigin);
+
+  // CSS background stack: dark overlay → banner image → accent gradient.
+  // If the image fails to load, the accent gradient shows through.
+  // Without a banner, the accent gradient alone is used.
+  const bgStyle = hasBanner
+    ? `background:
+         linear-gradient(135deg, rgba(15,23,42,0.55), rgba(15,23,42,0.30)),
+         url(${appOrigin}/api/banners/${encodeURIComponent(userId)}) center/cover no-repeat,
+         linear-gradient(135deg, ${palette.from} 0%, ${palette.to} 100%);`
+    : `background: linear-gradient(135deg, ${palette.from} 0%, ${palette.to} 100%);`;
 
   return `
         <tr>
-          <td style="background: linear-gradient(135deg, ${palette.from} 0%, ${palette.to} 100%); padding:38px 36px 32px 36px; text-align:center;">
+          <td style="${bgStyle} padding:38px 36px 32px 36px; text-align:center;">
             <div style="font-size:11px; letter-spacing:3px; text-transform:uppercase; color:rgba(255,255,255,0.85); font-weight:bold; margin-bottom:8px;">Your new policy</div>
             <div style="font-size:26px; line-height:1.2; color:#FFFFFF; font-weight:bold; letter-spacing:-0.3px; margin-bottom:4px;">${displayName}</div>
             <div style="font-size:13px; color:rgba(255,255,255,0.85); font-weight:500;">Licensed Insurance Agent</div>
@@ -208,10 +224,15 @@ function renderSignature({ agentName, agentPhone, agentEmail }) {
  *
  * Output: string of complete HTML email.
  */
-export function renderPostSaleHtml({ template, lead, profile, agentProfile, resolvedBody, resolvedSubject }) {
+export function renderPostSaleHtml({ template, lead, profile, agentProfile, resolvedBody, resolvedSubject, userId, appOrigin }) {
   const agentName  = template?.fromName || agentProfile?.displayName || (profile?.email || '').split('@')[0] || '';
   const agentPhone = agentProfile?.phone || '';
   const agentEmail = profile?.email || '';
+  // userId + appOrigin are required to render the banner image via
+  // /api/banners/[userId]. Without them, we silently fall back to
+  // the accent-only banner.
+  const safeUserId = String(userId || '');
+  const safeOrigin = String(appOrigin || '').replace(/\/$/, '');
 
   const closing = String(template?.closingLine || 'Thank you for your business.').trim();
   const closingHtml = closing ? `<p style="margin:0 0 14px 0; color:#0F172A; font-weight:600;">${escapeHtml(closing)}</p>` : '';
@@ -245,7 +266,7 @@ export function renderPostSaleHtml({ template, lead, profile, agentProfile, reso
   <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color:#EEF2F7;">
     <tr><td align="center" style="padding:24px 12px;">
       <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" style="max-width:600px; width:100%; background:#FFFFFF; border-radius:14px; overflow:hidden; box-shadow:0 6px 18px rgba(15,23,51,0.10);">
-${renderBanner(agentProfile)}
+${renderBanner(agentProfile, safeUserId, safeOrigin)}
         <tr>
           <td style="padding:24px 36px 4px 36px; color:#1E293B; font-size:15px; line-height:1.65;">
             ${paragraphsToHtml(resolvedBody)}

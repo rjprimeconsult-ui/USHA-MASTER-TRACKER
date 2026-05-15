@@ -116,6 +116,11 @@ function SendModal({ lead, onClose, onLogged }) {
         agentProfile,
         resolvedBody: rendered.body,
         resolvedSubject: rendered.subject,
+        // userId + appOrigin let the banner reference the agent's
+        // uploaded image via /api/banners/[userId]. Same URL pattern
+        // the server uses at send time, so preview == real email.
+        userId: profile?.id || '',
+        appOrigin: typeof window !== 'undefined' ? window.location.origin : '',
       });
     } catch {
       return null;

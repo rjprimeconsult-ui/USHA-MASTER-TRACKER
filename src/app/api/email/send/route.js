@@ -286,6 +286,7 @@ export async function POST(req) {
       console.warn('[email/send] agent profile load failed (using defaults):', e?.message);
     }
     const { renderPostSaleHtml, dearDoctorPdfPath } = await import('@/lib/postSaleHtml');
+    const appOrigin = req.headers.get('origin') || 'https://www.primtracker.com';
     htmlBody = renderPostSaleHtml({
       template: {
         subject: safeSubject,
@@ -306,6 +307,8 @@ export async function POST(req) {
       agentProfile,
       resolvedBody: safeBody,
       resolvedSubject: safeSubject,
+      userId,
+      appOrigin,
     });
 
     // Attach the matching "Dear Doctor Letter" PDF when the template
