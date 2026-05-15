@@ -154,7 +154,47 @@ export async function loadBundle() {
   }
 }
 
+// Detects the unmigrated legacy "USHEALTH"-branded welcome template
+// shipped before 2026-05-15. Agents who never customized their
+// template (or only have the pre-launch default) should silently
+// auto-upgrade to the new neutral HTML version on next load.
+//
+// Detection is intentionally generous — subject OR body mentioning
+// USHEALTH/USHA is enough. Agents who have already moved away from
+// the USHA branding in their own copy keep their work.
+function looksLikeLegacyUshealthDefault(t) {
+  const subject = String(t?.subject || '').toLowerCase();
+  const body = String(t?.body || '').toLowerCase();
+  if (subject.includes('ushealth')) return true;
+  if (body.includes('thank you for choosing ushealth')) return true;
+  if (body.includes('ushealth advisors')) return true;
+  return false;
+}
+
 function normalizeTemplate(t) {
+  // Auto-migrate the legacy "USHEALTH" default to the new neutral
+  // HTML template. Preserves the template's id + per-agent settings
+  // (enabled, autoSendOnStage, fromName) so any existing auto-send
+  // wiring keeps working. Body + subject get replaced with the
+  // approved neutral wording + HTML layout enabled by default.
+  if (looksLikeLegacyUshealthDefault(t)) {
+    const migrated = DEFAULT_WELCOME_TEMPLATE();
+    return {
+      ...migrated,
+      id: t?.id || migrated.id,
+      enabled: t?.enabled !== false,
+      autoSendOnStage: typeof t?.autoSendOnStage === 'string' && AUTO_SEND_STAGES.includes(t.autoSendOnStage)
+        ? t.autoSendOnStage
+        : null,
+      fromName: typeof t?.fromName === 'string' ? t.fromName : '',
+      // Preserve verification phone if the agent already set one
+      // post-migration (defensive — shouldn't exist on legacy rows
+      // but won't hurt to carry forward if present).
+      verificationPhone: typeof t?.verificationPhone === 'string' && t.verificationPhone
+        ? t.verificationPhone
+        : migrated.verificationPhone,
+    };
+  }
   return {
     id: t?.id || newTemplateId(),
     name: typeof t?.name === 'string' && t.name.trim() ? t.name : 'Untitled template',
@@ -165,10 +205,10 @@ function normalizeTemplate(t) {
     autoSendOnStage: typeof t?.autoSendOnStage === 'string' && AUTO_SEND_STAGES.includes(t.autoSendOnStage)
       ? t.autoSendOnStage
       : null,
-    // HTML render + per-template extras. Default to true on new
-    // templates; legacy plain-text templates that never had these
-    // fields stay at their existing behavior (useHtmlRender defaults
-    // false when undefined on a loaded row).
+    // HTML render + per-template extras. New templates default these
+    // on; legacy plain-text templates (non-USHEALTH ones the agent
+    // customized) keep their existing behavior — useHtmlRender stays
+    // false unless explicitly enabled.
     useHtmlRender: t?.useHtmlRender === true,
     verificationPhone: typeof t?.verificationPhone === 'string' ? t.verificationPhone : '',
     referralEnabled: t?.referralEnabled !== false,
