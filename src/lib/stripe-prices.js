@@ -3,8 +3,7 @@
  *
  * IDs are NOT secret — they're created in the Stripe dashboard and
  * referenced from both client and server code. Test-mode and live-mode
- * have different IDs; this file currently holds TEST mode IDs (pricing
- * confirmed working, ready to swap in live IDs at launch).
+ * have different IDs; this file currently holds LIVE mode IDs.
  *
  * To add/change prices: open the product in Stripe Dashboard → Pricing
  * section → Copy ID, then paste here.
@@ -12,16 +11,16 @@
 
 export const STRIPE_PRICES = {
   starter: {
-    monthly: 'price_1TTqhORr0XRmGc2lrGr4OAjS',
-    yearly:  'price_1TTqjdRr0XRmGc2lAVH9A4HE',
+    monthly: 'price_1TXM28Rr0XRmGc2ljiOUCMWc',
+    yearly:  'price_1TXM3wRr0XRmGc2lAaKk4wlW',
   },
   pro: {
-    monthly: 'price_1TTqnqRr0XRmGc2lRw656CiQ',
-    yearly:  'price_1TTqoQRr0XRmGc2l9GypMayb',
+    monthly: 'price_1TXM4LRr0XRmGc2l9iTMeYfQ',
+    yearly:  'price_1TXM4dRr0XRmGc2lVbBpp8rf',
   },
   team: {
-    monthly: 'price_1TTqonRr0XRmGc2lLah9zuLl',
-    yearly:  'price_1TTqp2Rr0XRmGc2lK0OLMEv5',
+    monthly: 'price_1TXM5KRr0XRmGc2liPAPlufy',
+    yearly:  'price_1TXM5YRr0XRmGc2l91C2QDuQ',
   },
 };
 
