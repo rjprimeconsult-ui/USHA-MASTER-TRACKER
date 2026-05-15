@@ -15,6 +15,7 @@ import TakenRateCalculator from '../TakenRateCalculator';
 import ChargebacksPanel from '../ChargebacksPanel';
 import { TiltCard, CountUp, FadeIn, Stagger, StaggerItem, Chart3DCard, fireConfetti } from '../motion/MotionPrimitives';
 import { useChartColors } from '@/lib/useIsDark';
+import OutreachRemindersWidget from '../OutreachRemindersWidget';
 
 const Kpi = memo(({ label, value, numeric, isCurrency = true, isPercent = false, sub, grad, Icon, onClick, active }) => (
   <TiltCard
@@ -42,7 +43,7 @@ const Kpi = memo(({ label, value, numeric, isCurrency = true, isPercent = false,
 ));
 Kpi.displayName = 'Kpi';
 
-function CpaDashboard({ leads, investments, activities, platformExpenses = [], businessExpenses = [], businessIncome = [], chargebacks = [], overrides = [], ownAdvances = [], onDeleteChargeback, onEditInvestment, onDeleteInvestment, onDeleteAutoWeek, onNewInvestment, onNewActivity, onEditActivity, onDeleteActivity }) {
+function CpaDashboard({ leads, investments, activities, platformExpenses = [], businessExpenses = [], businessIncome = [], chargebacks = [], overrides = [], ownAdvances = [], prospects = [], onOpenProspects, onDeleteChargeback, onEditInvestment, onDeleteInvestment, onDeleteAutoWeek, onNewInvestment, onNewActivity, onEditActivity, onDeleteActivity }) {
   const chartColors = useChartColors();
   const [showHowTo, setShowHowTo] = useState(false);
   const thisWeek = getWeekStart(new Date().toISOString().slice(0, 10));
@@ -393,6 +394,16 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
           </button>
         </div>
       </div>
+
+      {/* Outreach follow-ups (beta) — compact card at the top of CPA so
+          the reminder is visible from the default landing view. Clicking
+          a row jumps to the Prospects tab; that view's full widget
+          surfaces the prospect's detail. */}
+      <OutreachRemindersWidget
+        prospects={prospects}
+        compact
+        onOpenProspect={() => onOpenProspects?.()}
+      />
 
       {/* How to use */}
       {showHowTo && (
