@@ -391,7 +391,7 @@ function FeatureStack() {
   return (
     <section id="features" ref={container} className="relative" style={{ background: BRAND.bg }}>
       {/* Sticky header */}
-      <div className="relative max-w-7xl mx-auto px-6 pt-32 pb-12 text-center">
+      <div className="relative max-w-7xl mx-auto px-6 pt-24 pb-8 text-center">
         <div className="text-[11px] uppercase tracking-[0.2em] font-bold mb-3" style={{ color: '#A5B4FC' }}>What you get</div>
         <h2 className="text-white font-bold tracking-tight"
           style={{ fontSize: 'clamp(2rem, 5vw, 3.5rem)', letterSpacing: '-0.02em' }}>
@@ -403,16 +403,13 @@ function FeatureStack() {
       </div>
 
       {/* Stacked cards.
-          Each card needs ~one viewport of scroll to layer in. Previous
-          formula (features.length * 70vh) left a trailing void after
-          the last card settled because the container kept scrolling
-          past the final layering range. New formula:
-            (length - 1) * 55vh + 40vh
-          = 5 * 55 + 40 = 315vh for 6 cards. The "(length - 1)" piece
-          covers the layer-in transitions; the trailing 40vh gives
-          the last card a brief moment to read at full scale before
-          the next section comes up. */}
-      <div className="relative" style={{ paddingBottom: `${(features.length - 1) * 55 + 40}vh` }}>
+          Each card layers in tighter now — 40vh of scroll per card
+          plus 20vh trailing so the last card can read before the
+          next section. Total = (length - 1) * 40 + 20 = 220vh for
+          6 cards (was 315vh in the previous iteration, 420vh in
+          the original). Section now flows directly into "How it
+          works" without dead air. */}
+      <div className="relative" style={{ paddingBottom: `${(features.length - 1) * 40 + 20}vh` }}>
         {features.map((f, i) => {
           const range = [i / features.length, (i + 1) / features.length];
           return (
