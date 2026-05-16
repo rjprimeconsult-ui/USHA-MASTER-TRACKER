@@ -626,33 +626,51 @@ function MockEmail() {
 }
 
 function MockFounder() {
+  // The headshot has a light grey background — we want it to blend
+  // into the dark card surface. Two tricks stacked:
+  //   1. A radial gradient mask that fades the edges of the photo
+  //      out to transparent so it dissolves into the card rather
+  //      than ending in a hard rectangle.
+  //   2. A subtle color overlay tinted with the brand accent so
+  //      the photo feels like it belongs on this dark canvas
+  //      (vs. looking like a pasted-in profile picture).
   return (
     <div className="w-full rounded-xl border overflow-hidden text-xs relative"
-      style={{ background: BRAND.surfaceRaise, borderColor: BRAND.border, minHeight: 280 }}>
-      <div className="absolute inset-0 flex flex-col justify-end p-6">
-        <div className="absolute inset-0"
-          style={{
-            backgroundImage: 'url(/founder/juan.jpg)',
-            backgroundSize: 'cover',
-            backgroundPosition: 'top center',
-            mixBlendMode: 'luminosity',
-            opacity: 0.7,
-          }} />
-        <div className="absolute inset-0"
-          style={{
-            background: `linear-gradient(180deg, transparent 30%, ${BRAND.surfaceRaise}EE 100%)`,
-          }} />
-        <div className="relative">
-          <div className="text-[10px] uppercase tracking-[0.15em] font-bold mb-1" style={{ color: '#A5B4FC' }}>
-            Founder
-          </div>
-          <div className="text-white font-bold text-lg">Juan Trejo</div>
-          <div className="text-[11px]" style={{ color: BRAND.textMuted }}>
-            Active USHA agent · 6 years in the field
-          </div>
-          <div className="mt-2 text-[11px] italic" style={{ color: BRAND.textMuted }}>
-            &ldquo;I built PRIM because I needed it. Now you can use it too.&rdquo;
-          </div>
+      style={{ background: BRAND.surfaceRaise, borderColor: BRAND.border, minHeight: 380 }}>
+      {/* The photo — soft-faded edges so it dissolves into the card */}
+      <div
+        className="absolute inset-0"
+        style={{
+          backgroundImage: 'url(/founder/juan.jpg)',
+          backgroundSize: 'cover',
+          backgroundPosition: 'top center',
+          // Radial mask: full opacity in the face area, fades to
+          // transparent at the edges. Removes the harsh photo
+          // boundary against the dark card.
+          WebkitMaskImage: 'radial-gradient(ellipse 70% 80% at 50% 35%, black 35%, transparent 95%)',
+          maskImage: 'radial-gradient(ellipse 70% 80% at 50% 35%, black 35%, transparent 95%)',
+        }}
+      />
+      {/* Brand color wash — gives the photo a subtle indigo tint so the
+          original light-grey backdrop reads as part of the page */}
+      <div
+        className="absolute inset-0"
+        style={{
+          background: `linear-gradient(180deg, rgba(15,23,48,0.15) 0%, rgba(15,23,48,0.55) 60%, ${BRAND.surfaceRaise} 95%)`,
+          mixBlendMode: 'normal',
+        }}
+      />
+      {/* Caption block at the bottom */}
+      <div className="absolute inset-x-0 bottom-0 p-6">
+        <div className="text-[10px] uppercase tracking-[0.15em] font-bold mb-1.5" style={{ color: '#A5B4FC' }}>
+          Founder
+        </div>
+        <div className="text-white font-bold text-xl">Juan Trejo</div>
+        <div className="text-[12px] mt-0.5" style={{ color: BRAND.textMuted }}>
+          Active USHA agent
+        </div>
+        <div className="mt-3 text-[12px] italic leading-relaxed" style={{ color: BRAND.textMuted }}>
+          &ldquo;I built PRIM because I needed it. Now you can use it too.&rdquo;
         </div>
       </div>
     </div>
