@@ -337,6 +337,30 @@ export default function LeadForm({ open, lead, tier = 'WA', onSave, onClose, onD
               </Field>
             </div>
 
+            {/* Policy identifiers — captured here so they live next to the
+                product they belong to. Both auto-populate from screenshot
+                import + AI smart imports, and can be manually entered or
+                edited here when needed. */}
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Policy Number">
+                <input
+                  type="text"
+                  className={`${inp} bg-white font-mono`}
+                  value={form.policyNumber || ''}
+                  onChange={e => set({ policyNumber: e.target.value })}
+                  placeholder="e.g. 72G216584S"
+                />
+              </Field>
+              <Field label="Effective Date">
+                <input
+                  type="date"
+                  className={`${inp} bg-white`}
+                  value={form.effectiveDate || ''}
+                  onChange={e => set({ effectiveDate: e.target.value })}
+                />
+              </Field>
+            </div>
+
             <Field label="Association Plan">
               <select className={`${inp} bg-white`} value={form.associationPlan} onChange={e => onAssocChange(e.target.value)}>
                 <option value="">— none —</option>

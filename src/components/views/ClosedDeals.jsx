@@ -444,6 +444,7 @@ function ClosedDeals({ leads, onEdit, onUpdate, onDelete, onImportFromScreenshot
                       <th className="text-left p-2 sticky left-0 bg-slate-50 z-10" style={{ minWidth: '160px' }}>Name</th>
                       <th className="text-left p-2" style={{ minWidth: '110px' }}>Stage</th>
                       <th className="text-left p-2" style={{ minWidth: '180px' }}>Products</th>
+                      <th className="text-left p-2" style={{ minWidth: '130px' }}>Policy #</th>
                       <th className="text-left p-2" style={{ minWidth: '120px' }}>Day Purchased</th>
                       <th className="text-left p-2" style={{ minWidth: '120px' }}>Date Sold</th>
                       <th className="text-left p-2" style={{ minWidth: '110px' }}>CRM</th>
@@ -488,6 +489,15 @@ function ClosedDeals({ leads, onEdit, onUpdate, onDelete, onImportFromScreenshot
                                 the full LeadForm modal where the product picker
                                 with premiums lives. */}
                             {prods}
+                          </td>
+                          <td className="p-2">
+                            <input
+                              className={inlineCell + ' font-mono'}
+                              value={l.policyNumber || ''}
+                              onChange={(e) => patch(l, 'policyNumber', e.target.value)}
+                              placeholder="—"
+                              title="Policy number (editable)"
+                            />
                           </td>
                           <td className="p-2">
                             <input
