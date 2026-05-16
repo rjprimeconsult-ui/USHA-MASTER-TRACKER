@@ -235,16 +235,16 @@ function HeroDashboardMockup() {
             </svg>
           </div>
 
-          {/* Mini activity */}
+          {/* Mini activity — generic deal types, no customer data */}
           <div className="mt-3 space-y-2">
             {[
-              ['Sarah Johnson', '$1,250', 'Issued', '#10B981'],
-              ['Eduardo Urdaneta', '$890', 'Pending', '#F59E0B'],
-              ['Michael Rivera', '$1,485', 'Issued', '#10B981'],
-            ].map(([name, val, stage, c]) => (
-              <div key={name} className="flex items-center justify-between text-xs px-3 py-2 rounded-md border"
+              ['Premier Advantage · Issued', '$1,250', 'Issued', '#10B981'],
+              ['Secure Advantage · Pending', '$890', 'Pending', '#F59E0B'],
+              ['Health Access · Issued', '$1,485', 'Issued', '#10B981'],
+            ].map(([label, val, stage, c]) => (
+              <div key={label} className="flex items-center justify-between text-xs px-3 py-2 rounded-md border"
                 style={{ background: BRAND.surfaceRaise, borderColor: BRAND.border }}>
-                <span className="text-white font-medium">{name}</span>
+                <span className="text-white font-medium">{label}</span>
                 <span className="flex items-center gap-3">
                   <span className="font-mono" style={{ color: BRAND.textMuted }}>{val}</span>
                   <span className="text-[10px] font-bold px-1.5 py-0.5 rounded"
@@ -402,14 +402,12 @@ function FeatureStack() {
         </p>
       </div>
 
-      {/* Stacked cards.
-          Each card layers in tighter now — 40vh of scroll per card
-          plus 20vh trailing so the last card can read before the
-          next section. Total = (length - 1) * 40 + 20 = 220vh for
-          6 cards (was 315vh in the previous iteration, 420vh in
-          the original). Section now flows directly into "How it
-          works" without dead air. */}
-      <div className="relative" style={{ paddingBottom: `${(features.length - 1) * 40 + 20}vh` }}>
+      {/* Stacked cards — tight scroll. Each card layers in over 20vh
+          of scroll plus a 10vh trailing beat for the last card. Total
+          for 6 cards = 110vh (was 220vh, 315vh, 420vh in prior
+          iterations). Section now flows directly into "How it works"
+          with no dead-air void between them. */}
+      <div className="relative" style={{ paddingBottom: `${(features.length - 1) * 20 + 10}vh` }}>
         {features.map((f, i) => {
           const range = [i / features.length, (i + 1) / features.length];
           return (
@@ -480,11 +478,11 @@ function MockSmartImport() {
       </div>
       <div className="space-y-1.5">
         {[
-          ['Advance · Sarah J.', '$1,250.00', '#34D399'],
-          ['Renewal · Eduardo U.', '$28.00', '#A5B4FC'],
-          ['Chargeback · Mike R.', '-$485.00', '#FB7185'],
-          ['Override · Maria L.', '$320.00', '#A5B4FC'],
-          ['Renewal · Sheree H.', '$28.00', '#A5B4FC'],
+          ['Advance · Premier Advantage',     '$1,250.00', '#34D399'],
+          ['Renewal · Health Access III',     '$28.00',    '#A5B4FC'],
+          ['Chargeback · Secure Advantage',   '-$485.00',  '#FB7185'],
+          ['Override · Premier Choice',       '$320.00',   '#A5B4FC'],
+          ['Renewal · Premier Advantage',     '$28.00',    '#A5B4FC'],
         ].map(([row, amt, color]) => (
           <div key={row} className="flex items-center justify-between px-3 py-1.5 rounded-md"
             style={{ background: 'rgba(0,0,0,0.25)' }}>
@@ -584,7 +582,7 @@ function MockProspects() {
               {Array.from({ length: 3 }).map((_, i) => (
                 <div key={i} className="rounded p-1.5" style={{ background: 'rgba(255,255,255,0.04)', borderLeft: `2px solid ${c.color}` }}>
                   <div className="text-[10px] text-white font-semibold truncate">
-                    {['Sarah J.', 'Eduardo U.', 'Mike R.', 'Maria L.', 'Sheree H.', 'Latoya S.'][(i + cols.indexOf(c) * 2) % 6]}
+                    Sample prospect
                   </div>
                   <div className="text-[9px] mt-0.5 inline-block px-1.5 py-0.5 rounded font-bold"
                     style={{ background: `${c.color}22`, color: c.color }}>BENEPATH</div>
@@ -599,6 +597,10 @@ function MockProspects() {
 }
 
 function MockEmail() {
+  // Shown as a TEMPLATE PREVIEW — visible {token} placeholders make it
+  // obvious nothing here is real customer data. Communicates "PRIM
+  // personalizes this automatically per lead" without inventing fake
+  // names or policy numbers (HIPAA-safe).
   return (
     <div className="w-full rounded-xl border overflow-hidden text-xs"
       style={{ background: BRAND.surfaceRaise, borderColor: BRAND.border }}>
@@ -606,11 +608,15 @@ function MockEmail() {
         background: `linear-gradient(135deg, ${BRAND.accent} 0%, ${BRAND.accent2} 100%)`,
       }}>
         <div className="text-[9px] uppercase tracking-[0.15em] font-bold text-white/85">Your new policy</div>
-        <div className="text-white font-bold mt-0.5" style={{ fontSize: 16 }}>Julio Fernandez</div>
+        <div className="text-white font-bold mt-0.5" style={{ fontSize: 16 }}>
+          <span className="font-mono text-white/90" style={{ fontSize: 12 }}>{'{agent_name}'}</span>
+        </div>
         <div className="text-[10px] text-white/85">Licensed Insurance Agent</div>
       </div>
       <div className="p-3">
-        <div className="text-white font-medium mb-2">Hi Sarah,</div>
+        <div className="text-white font-medium mb-2">
+          Hi <span className="font-mono" style={{ color: '#A5B4FC' }}>{'{customer_first_name}'}</span>,
+        </div>
         <p className="leading-relaxed mb-3" style={{ color: BRAND.textMuted, fontSize: 11 }}>
           It was a pleasure helping you find a new health insurance plan. I would like to thank you for your business...
         </p>
@@ -618,13 +624,16 @@ function MockEmail() {
           <div className="text-[9px] uppercase tracking-wider font-bold mb-1" style={{ color: BRAND.textPrimary }}>Your Policy</div>
           <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
             <span style={{ color: BRAND.textDim }}>Plan</span>
-            <span style={{ color: BRAND.textPrimary }}>Premier Advantage</span>
+            <span className="font-mono" style={{ color: '#A5B4FC' }}>{'{main_product}'}</span>
             <span style={{ color: BRAND.textDim }}>Policy</span>
-            <span className="font-mono" style={{ color: BRAND.textPrimary }}>72G216584S</span>
+            <span className="font-mono" style={{ color: '#A5B4FC' }}>{'{policy_number}'}</span>
           </div>
         </div>
         <div className="flex items-center gap-1.5 text-[10px]" style={{ color: '#34D399' }}>
-          <FileText size={10} /> Dear Doctor Letter · PA.pdf attached
+          <FileText size={10} /> Dear Doctor Letter · auto-attached per product
+        </div>
+        <div className="mt-2 pt-2 border-t text-[9px] italic" style={{ borderColor: 'rgba(255,255,255,0.05)', color: BRAND.textDim }}>
+          PRIM auto-fills these tokens at send time. Customer data never appears in any mock or marketing surface.
         </div>
       </div>
     </div>
