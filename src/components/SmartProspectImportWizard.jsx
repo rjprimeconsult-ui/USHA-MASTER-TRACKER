@@ -2,7 +2,7 @@
 import { useState, useRef, useEffect } from 'react';
 import {
   X, FileText, FileSpreadsheet, Image as ImageIcon, Sparkles,
-  Loader2, CheckCircle2, AlertCircle,
+  Loader2, CheckCircle2, AlertCircle, Database, ChevronDown, ChevronRight,
 } from 'lucide-react';
 import {
   PROSPECT_SOURCES, PROSPECT_CRMS, PROSPECT_POLICY_TYPES,
@@ -181,6 +181,7 @@ export default function SmartProspectImportWizard({ open, onClose, onImport, sta
             <div>
               <input type="file" ref={fileRef} accept=".xlsx,.xls,.csv,.pdf,image/*" onChange={onPick} className="hidden" />
               {!file ? (
+                <>
                 <div onDragOver={(e) => e.preventDefault()} onDrop={onDrop}
                   onClick={() => fileRef.current?.click()}
                   className="border-2 border-dashed border-slate-300 hover:border-indigo-400 hover:bg-indigo-50/30 rounded-xl p-12 text-center cursor-pointer transition">
@@ -193,6 +194,8 @@ export default function SmartProspectImportWizard({ open, onClose, onImport, sta
                   <div className="text-xs text-slate-500 mt-1">or click to browse</div>
                   <div className="text-[11px] text-slate-400 mt-3">XLSX · CSV · PDF · Screenshots (PNG/JPG)</div>
                 </div>
+                <MigrationHelp />
+                </>
               ) : (
                 <div className="space-y-3">
                   <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex items-center gap-3">
@@ -364,6 +367,76 @@ export default function SmartProspectImportWizard({ open, onClose, onImport, sta
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Inline migration help shown under the drop zone. Collapsed by
+ * default — one-liner header + click-to-expand. Covers the most
+ * common "where do I get a file?" question from agents coming
+ * from Airtable, Google Sheets, HubSpot, or other CRMs.
+ *
+ * Intentionally generic in tone — Smart Import handles arbitrary
+ * column layouts, so the guidance is "export → drop here" rather
+ * than CRM-specific column mapping.
+ */
+function MigrationHelp() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mt-4 border border-indigo-100 bg-indigo-50/40 rounded-xl">
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center gap-2 px-4 py-3 text-left text-sm text-slate-700 hover:bg-indigo-50/60 rounded-xl transition"
+      >
+        <Database size={14} className="text-indigo-600 flex-shrink-0" />
+        <span className="flex-1 font-medium">
+          Coming from <strong className="text-indigo-700">Airtable</strong>, Google Sheets, or another CRM?
+        </span>
+        {open
+          ? <ChevronDown size={14} className="text-slate-400 flex-shrink-0" />
+          : <ChevronRight size={14} className="text-slate-400 flex-shrink-0" />}
+      </button>
+
+      {open && (
+        <div className="px-4 pb-4 pt-1 text-xs text-slate-700 leading-relaxed space-y-3">
+          <div>
+            <div className="font-semibold text-slate-900 mb-1">Airtable</div>
+            <ol className="list-decimal ml-4 space-y-0.5">
+              <li>Open the table where you track prospects.</li>
+              <li>Switch to a view that shows <em>all</em> records (an unfiltered view) so you don&apos;t miss any.</li>
+              <li>Click the view name at the top &rarr; <strong>Download CSV</strong>.</li>
+              <li>Drop the CSV here. The AI auto-maps your columns to PRIM&apos;s prospect fields.</li>
+            </ol>
+          </div>
+
+          <div>
+            <div className="font-semibold text-slate-900 mb-1">Google Sheets / Excel</div>
+            <ol className="list-decimal ml-4 space-y-0.5">
+              <li>File &rarr; <strong>Download</strong> &rarr; CSV (Google) or save as .xlsx (Excel).</li>
+              <li>Drop it here. Headers can be anything &mdash; AI figures out which column is name, phone, email, etc.</li>
+            </ol>
+          </div>
+
+          <div>
+            <div className="font-semibold text-slate-900 mb-1">HubSpot, Pipedrive, Salesforce, others</div>
+            <p className="ml-0">
+              Every major CRM exports a CSV of your contacts/deals. Find the export option (usually in Settings or on a list view) &rarr; download CSV &rarr; drop here. Column names don&apos;t need to match PRIM&apos;s.
+            </p>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-lg p-3 text-[11px] text-slate-600">
+            <strong className="text-slate-900">Tips:</strong>
+            <ul className="list-disc ml-4 mt-1 space-y-0.5">
+              <li>Linked records / multi-select columns import as text &mdash; you can split them later if needed.</li>
+              <li>Attachment columns are skipped (PRIM stores attachments on individual prospects, not via bulk import).</li>
+              <li>Internal IDs like Airtable&apos;s <span className="font-mono">recXXX</span> are recognized and ignored.</li>
+              <li>Re-importing the same file later is safe &mdash; duplicates are skipped by name + phone.</li>
+            </ul>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
