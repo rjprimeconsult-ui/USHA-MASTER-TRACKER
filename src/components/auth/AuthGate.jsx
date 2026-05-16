@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { Sparkles, Mail, Lock, AlertCircle, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { supabase, supabaseConfigured } from '@/lib/supabase';
@@ -7,13 +8,29 @@ import { useAuth } from './AuthProvider';
 import { OrbBackdrop } from '../motion/MotionPrimitives';
 import MigrationPrompt from './MigrationPrompt';
 
+// Routes that render fully WITHOUT authentication — marketing /
+// pricing / legal pages. Everything else stays gated. Match by
+// prefix so nested routes inherit (e.g. /landing/* ).
+const PUBLIC_ROUTE_PREFIXES = ['/landing', '/pricing', '/privacy', '/terms'];
+
+function isPublicRoute(pathname) {
+  if (!pathname) return false;
+  return PUBLIC_ROUTE_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+}
+
 /**
  * AuthGate — wraps the app and shows the sign-in / sign-up screen until the
  * user is authenticated. If Supabase isn't configured yet (no env vars), it
- * lets the app render in "local-only" mode for development.
+ * lets the app render in "local-only" mode for development. Public routes
+ * (landing, pricing, legal) skip the gate entirely so unauth visitors can
+ * see them.
  */
 export default function AuthGate({ children }) {
   const { user, loading } = useAuth();
+  const pathname = usePathname();
+
+  // Public marketing/legal pages bypass auth completely.
+  if (isPublicRoute(pathname)) return children;
 
   if (!supabaseConfigured()) {
     // Dev fallback — show a banner but let the app run on localStorage
