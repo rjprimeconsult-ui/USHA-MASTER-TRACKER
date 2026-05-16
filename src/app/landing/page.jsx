@@ -402,8 +402,17 @@ function FeatureStack() {
         </p>
       </div>
 
-      {/* Stacked cards */}
-      <div className="relative" style={{ paddingBottom: `${features.length * 70}vh` }}>
+      {/* Stacked cards.
+          Each card needs ~one viewport of scroll to layer in. Previous
+          formula (features.length * 70vh) left a trailing void after
+          the last card settled because the container kept scrolling
+          past the final layering range. New formula:
+            (length - 1) * 55vh + 40vh
+          = 5 * 55 + 40 = 315vh for 6 cards. The "(length - 1)" piece
+          covers the layer-in transitions; the trailing 40vh gives
+          the last card a brief moment to read at full scale before
+          the next section comes up. */}
+      <div className="relative" style={{ paddingBottom: `${(features.length - 1) * 55 + 40}vh` }}>
         {features.map((f, i) => {
           const range = [i / features.length, (i + 1) / features.length];
           return (
