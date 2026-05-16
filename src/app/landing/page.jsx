@@ -566,11 +566,21 @@ function MockProspects() {
     { name: 'CONFIRMED', count: 6, color: '#F59E0B' },
     { name: 'APPT SET', count: 3, color: '#10B981' },
   ];
+  // Rotating sources show PRIM's color-coded lead-source diversity —
+  // each card gets a different source pill so the kanban looks real
+  // (multiple lead sources flowing through one pipeline) instead of
+  // a single-source demo.
+  const sources = [
+    { label: 'AGED LEAD',       color: '#3B82F6' },  // blue
+    { label: 'BOUGHT LEAD',     color: '#F59E0B' },  // amber
+    { label: 'ELITE EXCLUSIVE', color: '#10B981' },  // emerald
+    { label: 'PREMIUM SHARED',  color: '#8B5CF6' },  // violet
+  ];
   return (
     <div className="w-full rounded-xl border p-4 text-xs"
       style={{ background: BRAND.surfaceRaise, borderColor: BRAND.border }}>
       <div className="grid grid-cols-3 gap-2">
-        {cols.map((c) => (
+        {cols.map((c, colIdx) => (
           <div key={c.name} className="rounded-lg p-2"
             style={{ background: 'rgba(0,0,0,0.3)' }}>
             <div className="flex items-center gap-1.5 mb-2">
@@ -579,15 +589,21 @@ function MockProspects() {
               <span className="ml-auto text-[10px]" style={{ color: BRAND.textDim }}>{c.count}</span>
             </div>
             <div className="space-y-1.5">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="rounded p-1.5" style={{ background: 'rgba(255,255,255,0.04)', borderLeft: `2px solid ${c.color}` }}>
-                  <div className="text-[10px] text-white font-semibold truncate">
-                    Sample prospect
+              {Array.from({ length: 3 }).map((_, i) => {
+                // Pick a source per card — offset by column so each
+                // column starts from a different source, avoiding
+                // a horizontal "matching colors" pattern.
+                const src = sources[(i + colIdx) % sources.length];
+                return (
+                  <div key={i} className="rounded p-1.5" style={{ background: 'rgba(255,255,255,0.04)', borderLeft: `2px solid ${c.color}` }}>
+                    <div className="text-[10px] text-white font-semibold truncate">
+                      Sample prospect
+                    </div>
+                    <div className="text-[9px] mt-0.5 inline-block px-1.5 py-0.5 rounded font-bold"
+                      style={{ background: `${src.color}22`, color: src.color }}>{src.label}</div>
                   </div>
-                  <div className="text-[9px] mt-0.5 inline-block px-1.5 py-0.5 rounded font-bold"
-                    style={{ background: `${c.color}22`, color: c.color }}>BENEPATH</div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         ))}
