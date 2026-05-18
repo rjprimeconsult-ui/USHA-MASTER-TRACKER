@@ -1,7 +1,7 @@
 'use client';
 import { useMemo, useState, memo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LabelList } from 'recharts';
-import { DollarSign, TrendingUp, Percent, Target, Package, Plus, Edit2, Trash2, Phone, Calendar, Presentation, Trophy, Info, Sparkles, ChevronDown, ChevronUp, Wallet } from 'lucide-react';
+import { DollarSign, TrendingUp, Percent, Target, Package, Plus, Edit2, Trash2, Phone, Calendar, Presentation, Trophy, Info, Sparkles, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Wallet } from 'lucide-react';
 import { fmt, fmt2, getWeekStart, weekAgo, weekLabel, weekRangeLabel, usDate } from '@/lib/utils';
 import {
   productPremium,
@@ -431,13 +431,38 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
         </div>
         {kpiPeriod === 'week' && (
           <>
-            <input
-              type="date"
-              value={kpiWeekStart}
-              onChange={e => e.target.value && setKpiWeekStart(getWeekStart(e.target.value))}
-              className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm"
-              title="Pick any date; it snaps to the Fri-Thu week it belongs to."
-            />
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => {
+                  const d = new Date(kpiWeekStart + 'T00:00:00');
+                  d.setDate(d.getDate() - 7);
+                  setKpiWeekStart(getWeekStart(d.toISOString().slice(0, 10)));
+                }}
+                title="Previous week"
+                className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <input
+                type="date"
+                value={kpiWeekStart}
+                onChange={e => e.target.value && setKpiWeekStart(getWeekStart(e.target.value))}
+                className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm"
+                title="Pick any date; it snaps to the Fri-Thu week it belongs to."
+              />
+              <button
+                onClick={() => {
+                  const d = new Date(kpiWeekStart + 'T00:00:00');
+                  d.setDate(d.getDate() + 7);
+                  setKpiWeekStart(getWeekStart(d.toISOString().slice(0, 10)));
+                }}
+                disabled={kpiWeekStart >= thisWeek}
+                title="Next week"
+                className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
             <button
               onClick={() => setKpiWeekStart(thisWeek)}
               className="text-xs text-indigo-600 hover:underline"
