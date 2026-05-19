@@ -16,7 +16,7 @@ import { motion, useScroll, useTransform, useInView } from 'framer-motion';
 import {
   Sparkles, BarChart3, Mail, Calculator, Users, Upload, Brain,
   Check, ChevronDown, ArrowRight, Zap, Lock, Star, DollarSign,
-  LineChart, FileText, Phone, Calendar, TrendingUp, Award,
+  LineChart, FileText, Phone, Calendar, TrendingUp, Award, Play,
 } from 'lucide-react';
 
 // ----------------------------------------------------------------
@@ -709,6 +709,185 @@ function MockFounder() {
 }
 
 // ============================================================
+// SEE IT IN ACTION — 30s promo video. Lazy-mounts on intersection
+// so we don't ship a 5-10MB MP4 on first paint. Falls back to a
+// styled placeholder if the MP4 hasn't been uploaded yet.
+// ============================================================
+function SeeItInAction() {
+  const ref = useRef(null);
+  const inView = useInView(ref, { once: true, margin: '-15% 0px' });
+  const [videoMissing, setVideoMissing] = useState(false);
+
+  const bullets = [
+    { icon: BarChart3,  text: 'Real CPA — invested, earned, ROI, true net.' },
+    { icon: Users,      text: 'Every deal auto-reconciled by source + campaign.' },
+    { icon: Mail,       text: 'Post-sale emails that fire themselves on close.' },
+    { icon: Calculator, text: 'Model splits + tiers without touching a spreadsheet.' },
+  ];
+
+  return (
+    <section
+      ref={ref}
+      id="see-it"
+      className="relative py-32"
+      style={{ background: BRAND.bg }}
+    >
+      {/* decorative orb */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        <div
+          className="absolute top-[20%] left-[-10%] w-[40vw] h-[40vw] rounded-full"
+          style={{
+            background: `radial-gradient(circle, ${BRAND.accent}1A 0%, transparent 60%)`,
+            filter: 'blur(80px)',
+          }}
+        />
+        <div
+          className="absolute bottom-[10%] right-[-10%] w-[35vw] h-[35vw] rounded-full"
+          style={{
+            background: `radial-gradient(circle, ${BRAND.accent2}1A 0%, transparent 60%)`,
+            filter: 'blur(80px)',
+          }}
+        />
+      </div>
+
+      <div className="relative max-w-7xl mx-auto px-6">
+        {/* heading */}
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          animate={inView ? { opacity: 1, y: 0 } : {}}
+          transition={{ duration: 0.6 }}
+          className="text-center mb-14"
+        >
+          <div
+            className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold tracking-widest uppercase mb-5"
+            style={{
+              color: BRAND.accent,
+              background: 'rgba(99,102,241,0.10)',
+              border: `1px solid ${BRAND.border}`,
+            }}
+          >
+            <Play size={11} fill={BRAND.accent} /> See it in action
+          </div>
+          <h2 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-4" style={{ color: BRAND.textPrimary }}>
+            A 30-second tour of your new control panel.
+          </h2>
+          <p className="text-lg max-w-2xl mx-auto" style={{ color: BRAND.textMuted }}>
+            Real screens, real workflows, demo numbers. Watch every part of PRIM —
+            dashboard, deals, pipeline, platforms, calculator — work together in one
+            place.
+          </p>
+        </motion.div>
+
+        {/* video frame */}
+        <motion.div
+          initial={{ opacity: 0, y: 32 }}
+          animate={inView ? { opacity: 1, y: 0 } : {}}
+          transition={{ duration: 0.7, delay: 0.1 }}
+          className="relative rounded-2xl overflow-hidden mx-auto"
+          style={{
+            maxWidth: '1100px',
+            background: BRAND.surface,
+            border: `1px solid ${BRAND.borderStrong}`,
+            boxShadow: `0 40px 120px -20px rgba(99,102,241,0.25), 0 20px 60px rgba(0,0,0,0.6)`,
+          }}
+        >
+          {/* macOS-style window chrome */}
+          <div
+            className="flex items-center gap-1.5 px-4 py-2.5"
+            style={{ background: 'rgba(15,23,41,0.6)', borderBottom: `1px solid ${BRAND.border}` }}
+          >
+            <div className="w-3 h-3 rounded-full" style={{ background: '#FF5F57' }} />
+            <div className="w-3 h-3 rounded-full" style={{ background: '#FEBC2E' }} />
+            <div className="w-3 h-3 rounded-full" style={{ background: '#28C840' }} />
+            <div className="ml-3 text-xs" style={{ color: BRAND.textDim }}>
+              primtracker.com
+            </div>
+          </div>
+
+          {/* video — only mount once the section scrolls into view */}
+          <div className="relative" style={{ aspectRatio: '16 / 9', background: BRAND.bg }}>
+            {inView && !videoMissing ? (
+              <video
+                autoPlay
+                muted
+                loop
+                playsInline
+                preload="metadata"
+                poster="/marketing/prim-promo-poster.jpg"
+                onError={() => setVideoMissing(true)}
+                className="absolute inset-0 w-full h-full object-cover"
+              >
+                <source src="/marketing/prim-promo.mp4" type="video/mp4" />
+                <source src="/marketing/prim-promo.webm" type="video/webm" />
+              </video>
+            ) : null}
+
+            {/* fallback placeholder — shown until MP4 ships, or if it errors */}
+            {(!inView || videoMissing) && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div
+                  className="absolute inset-0"
+                  style={{
+                    background: `linear-gradient(135deg, ${BRAND.surface} 0%, ${BRAND.surfaceRaise} 100%)`,
+                  }}
+                />
+                <div className="absolute inset-0 opacity-50" style={{
+                  background: `radial-gradient(circle at 50% 50%, ${BRAND.accent}33 0%, transparent 60%)`,
+                }} />
+                <div className="relative flex flex-col items-center gap-4">
+                  <div
+                    className="w-20 h-20 rounded-full flex items-center justify-center"
+                    style={{
+                      background: `linear-gradient(135deg, ${BRAND.accent}, ${BRAND.accent2})`,
+                      boxShadow: `0 20px 50px ${BRAND.accent}66`,
+                    }}
+                  >
+                    <Play size={32} fill="#fff" color="#fff" />
+                  </div>
+                  <div className="text-sm font-semibold" style={{ color: BRAND.textPrimary }}>
+                    Product walkthrough — 30s
+                  </div>
+                  <div className="text-xs" style={{ color: BRAND.textDim }}>
+                    Coming this week
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </motion.div>
+
+        {/* what you'll see */}
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          animate={inView ? { opacity: 1, y: 0 } : {}}
+          transition={{ duration: 0.6, delay: 0.25 }}
+          className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-10 max-w-5xl mx-auto"
+        >
+          {bullets.map((b, i) => (
+            <div
+              key={i}
+              className="rounded-xl p-4 flex items-start gap-3"
+              style={{ background: BRAND.surface, border: `1px solid ${BRAND.border}` }}
+            >
+              <div
+                className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                style={{ background: `linear-gradient(135deg, ${BRAND.accent}, ${BRAND.accent2})` }}
+              >
+                <b.icon size={15} color="#fff" />
+              </div>
+              <div className="text-xs leading-relaxed" style={{ color: BRAND.textMuted }}>
+                {b.text}
+              </div>
+            </div>
+          ))}
+        </motion.div>
+      </div>
+    </section>
+  );
+}
+
+
+// ============================================================
 // HOW IT WORKS
 // ============================================================
 function HowItWorks() {
@@ -987,6 +1166,7 @@ export default function LandingPage() {
       <Hero />
       <StatsStrip />
       <FeatureStack />
+      <SeeItInAction />
       <HowItWorks />
       <PricingTeaser />
       <FAQ />
