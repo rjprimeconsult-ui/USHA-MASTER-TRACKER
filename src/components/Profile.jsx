@@ -873,9 +873,7 @@ function AppearanceSection({ agentProfile, updateAgent }) {
         <div className="flex items-center gap-4">
           {/* Mini header preview */}
           <div className="flex items-center gap-2 bg-white rounded-lg p-2.5 border border-slate-200 flex-1">
-            <div className="w-7 h-7 rounded-md bg-accent-gradient flex items-center justify-center text-white shadow-sm">
-              <PrimMark size={15} />
-            </div>
+            <PrimAppIcon size={28} className="rounded-md shadow-sm" />
             <div className="text-xs">
               <div className="font-bold text-slate-900 leading-tight">PRIM</div>
               <div className="text-[10px] text-slate-500 leading-tight">Your header</div>
