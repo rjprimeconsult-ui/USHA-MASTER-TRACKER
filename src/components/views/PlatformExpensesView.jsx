@@ -142,9 +142,23 @@ function PlatformExpensesView({ expenses, onAdd, onUpdate, onDelete, onBulkAdd, 
     notes: '',
   });
 
+  const [platformFilter, setPlatformFilter] = useState('all');
+
   const monthExpenses = useMemo(
     () => expenses.filter(e => ymOf(e.date) === activeMonth).sort((a, b) => a.date.localeCompare(b.date)),
     [expenses, activeMonth]
+  );
+
+  const filteredMonthExpenses = useMemo(
+    () => platformFilter === 'all'
+      ? monthExpenses
+      : monthExpenses.filter(e => e.platform === platformFilter),
+    [monthExpenses, platformFilter]
+  );
+
+  const filteredTotal = useMemo(
+    () => filteredMonthExpenses.reduce((s, e) => s + Number(e.amount || 0), 0),
+    [filteredMonthExpenses]
   );
 
   // Per-platform totals for active month
@@ -550,9 +564,23 @@ function PlatformExpensesView({ expenses, onAdd, onUpdate, onDelete, onBulkAdd, 
               </span>
             )}
           </h3>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <select
+              value={platformFilter}
+              onChange={(e) => setPlatformFilter(e.target.value)}
+              title="Filter daily entries by platform"
+              className="text-xs font-semibold border border-slate-200 rounded-lg px-2 py-1 bg-white text-slate-700 hover:border-slate-300"
+            >
+              <option value="all">All platforms</option>
+              {PLATFORMS.map(p => (
+                <option key={p.id} value={p.id}>{p.label || p.id}</option>
+              ))}
+            </select>
             <span className="text-xs text-slate-500">
-              {monthExpenses.length} entr{monthExpenses.length === 1 ? 'y' : 'ies'} · {fmt2(monthTotal)} total
+              {filteredMonthExpenses.length} entr{filteredMonthExpenses.length === 1 ? 'y' : 'ies'} · {fmt2(filteredTotal)}
+              {platformFilter !== 'all' && monthExpenses.length !== filteredMonthExpenses.length && (
+                <span className="text-slate-400"> of {monthExpenses.length} · {fmt2(monthTotal)}</span>
+              )}
             </span>
             {isPeriodClosed('platforms', activeMonth) ? (
               <button
@@ -615,7 +643,7 @@ function PlatformExpensesView({ expenses, onAdd, onUpdate, onDelete, onBulkAdd, 
                 </tr>
               </thead>
               <tbody>
-                {monthExpenses.map(e => {
+                {filteredMonthExpenses.map(e => {
                   const rowLocked = isPeriodClosed('platforms', e.date);
                   const lockedUpdate = (patch) => {
                     if (rowLocked) {
@@ -691,8 +719,10 @@ function PlatformExpensesView({ expenses, onAdd, onUpdate, onDelete, onBulkAdd, 
               </tbody>
               <tfoot>
                 <tr className="border-t-2 border-slate-300 font-bold">
-                  <td className="py-2 px-2 text-xs text-slate-500 uppercase tracking-wider" colSpan={2}>Month total</td>
-                  <td className="py-2 px-2 text-right text-slate-900">{fmt2(monthTotal)}</td>
+                  <td className="py-2 px-2 text-xs text-slate-500 uppercase tracking-wider" colSpan={2}>
+                    {platformFilter === 'all' ? 'Month total' : `${platformFilter} total`}
+                  </td>
+                  <td className="py-2 px-2 text-right text-slate-900">{fmt2(filteredTotal)}</td>
                   <td colSpan={3}></td>
                 </tr>
               </tfoot>
