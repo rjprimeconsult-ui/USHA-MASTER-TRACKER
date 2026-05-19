@@ -874,7 +874,7 @@ function AppearanceSection({ agentProfile, updateAgent }) {
           {/* Mini header preview */}
           <div className="flex items-center gap-2 bg-white rounded-lg p-2.5 border border-slate-200 flex-1">
             <div className="w-7 h-7 rounded-md bg-accent-gradient flex items-center justify-center text-white shadow-sm">
-              <Sparkles size={14} />
+              <PrimMark size={15} />
             </div>
             <div className="text-xs">
               <div className="font-bold text-slate-900 leading-tight">PRIM</div>

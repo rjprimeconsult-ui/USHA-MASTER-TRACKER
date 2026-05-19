@@ -1,7 +1,8 @@
 'use client';
 import { useState } from 'react';
 import { usePathname } from 'next/navigation';
-import { Sparkles, Mail, Lock, AlertCircle, Loader2 } from 'lucide-react';
+import { Mail, Lock, AlertCircle, Loader2 } from 'lucide-react';
+import { PrimMark } from '@/components/PrimLogo';
 import { motion } from 'framer-motion';
 import { supabase, supabaseConfigured } from '@/lib/supabase';
 import { useAuth } from './AuthProvider';
@@ -108,7 +109,7 @@ function SignInScreen() {
             transition={{ type: 'spring', stiffness: 200, damping: 14 }}
             className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white shadow-lg shadow-indigo-500/30"
           >
-            <Sparkles size={22} />
+            <PrimMark size={26} />
           </motion.div>
           <div>
             <h1 className="text-2xl font-bold text-slate-900 leading-none tracking-tight">PRIM</h1>

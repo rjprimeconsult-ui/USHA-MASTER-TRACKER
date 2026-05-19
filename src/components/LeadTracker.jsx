@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Calculator, Repeat, CheckSquare, LayoutDashboard, Users, Columns, Upload, Settings, Sparkles, DollarSign, BookOpen, LogOut, UserPlus, User as UserIcon,
 } from 'lucide-react';
+import { PrimMark } from '@/components/PrimLogo';
 import { storage, onStorageError } from '@/lib/storage';
 import { deleteAttachment as deleteAttachmentFromIdb } from '@/lib/attachments';
 import { mkLead, migrateLead, SEED_LEADS, SEED_INVESTMENTS, SEED_ACTIVITIES } from '@/lib/seed';
@@ -1330,7 +1331,7 @@ export default function LeadTracker() {
               whileHover={{ rotate: 6, scale: 1.05 }}
               className="w-9 h-9 rounded-lg bg-accent-gradient flex items-center justify-center text-white shadow-lg shadow-indigo-500/30"
             >
-              <Sparkles size={18} />
+              <PrimMark size={20} />
             </motion.div>
             <div>
               <h1 className="font-bold text-slate-900 leading-none tracking-tight">PRIM</h1>

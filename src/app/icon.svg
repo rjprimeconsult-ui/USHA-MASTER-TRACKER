@@ -1,0 +1,28 @@
+<svg width="180" height="180" viewBox="0 0 180 180" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="frame" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0F172A"/>
+      <stop offset="100%" stop-color="#1E1B4B"/>
+    </linearGradient>
+    <linearGradient id="prismLeft" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#4338CA"/>
+      <stop offset="100%" stop-color="#3730A3"/>
+    </linearGradient>
+    <linearGradient id="prismRight" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#818CF8"/>
+      <stop offset="100%" stop-color="#7C3AED"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fff" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect x="6" y="6" width="168" height="168" rx="38" fill="url(#frame)" stroke="#312E81" stroke-width="1.5"/>
+  <polygon points="48,142 90,42 90,142" fill="url(#prismLeft)"/>
+  <polygon points="90,42 132,142 90,142" fill="url(#prismRight)"/>
+  <polygon points="48,142 90,42 132,142" fill="url(#shine)"/>
+  <polygon points="48,142 90,42 132,142" fill="none" stroke="#C4B5FD" stroke-width="1.5" stroke-linejoin="round"/>
+  <line x1="118" y1="100" x2="160" y2="80"  stroke="#22D3EE" stroke-width="6" stroke-linecap="round" opacity="0.95"/>
+  <line x1="118" y1="106" x2="160" y2="106" stroke="#A78BFA" stroke-width="6" stroke-linecap="round" opacity="0.85"/>
+  <line x1="118" y1="112" x2="160" y2="132" stroke="#F472B6" stroke-width="6" stroke-linecap="round" opacity="0.75"/>
+</svg>
