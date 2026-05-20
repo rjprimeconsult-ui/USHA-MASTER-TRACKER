@@ -43,6 +43,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { useAuth } from './auth/AuthProvider';
+import { PrimAppIcon } from '@/components/PrimLogo';
 import {
   useSubscription,
   openCustomerPortal,
