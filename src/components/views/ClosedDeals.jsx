@@ -59,6 +59,29 @@ function buildCatData(items) {
     }));
 }
 
+// Build the campaign drill-down donut data for one lead category.
+// Filters items to that category, counts per campaign, and colors each
+// slice from the CAMPAIGNS table — falling back to lightened tints of
+// the parent category color so sub-slices read as the same family.
+// Returns both the filtered items and the donut data.
+function buildCampaignData(items, category) {
+  const drilled = items.filter(l => effectiveLeadCategory(l) === category);
+  const campaignMap = {};
+  drilled.forEach(l => {
+    const k = l.campaign || '— No campaign';
+    campaignMap[k] = (campaignMap[k] || 0) + 1;
+  });
+  const baseColor = LEAD_CATEGORIES.find(c => c.id === category)?.color || '#6366f1';
+  const data = Object.entries(campaignMap)
+    .sort((a, b) => b[1] - a[1])
+    .map(([k, v], i, arr) => {
+      const campaignDef = CAMPAIGNS.find(c => c.id === k);
+      const fallback = lighten(baseColor, 0.15 + (i / Math.max(arr.length - 1, 1)) * 0.45);
+      return { name: k, value: v, color: campaignDef?.color || fallback };
+    });
+  return { items: drilled, data };
+}
+
 // activeShape renderer: when a slice is hovered, render an enlarged
 // version with a subtle outer ring so the focused slice pops without
 // distorting the whole chart layout.
@@ -268,8 +291,11 @@ function ClosedDeals({ leads, onEdit, onUpdate, onDelete, onImportFromScreenshot
 
   // "Big Picture" panel — collapsible QTD / YTD breakdowns pinned above
   // the month sections. Closed by default; bigRange picks which window.
+  // bigDrill holds the drilled-into lead category (or null) for the
+  // Big Picture Lead Type donut — applies to whichever range is active.
   const [showBigPicture, setShowBigPicture] = useState(false);
   const [bigRange, setBigRange] = useState('ytd'); // 'qtd' | 'ytd'
+  const [bigDrill, setBigDrill] = useState(null);  // lead category or null
 
   // Inline edit helper — patches a single field on a lead and saves via
   // the parent's onUpdate. No-ops when onUpdate isn't passed (defensive
@@ -338,6 +364,9 @@ function ClosedDeals({ leads, onEdit, onUpdate, onDelete, onImportFromScreenshot
 
   const bigActive = bigRange === 'qtd' ? bigPicture.qtd : bigPicture.ytd;
   const bigActiveLabel = bigRange === 'qtd' ? bigPicture.quarterLabel : bigPicture.yearLabel;
+  // Campaign drill-down for the Big Picture Lead Type donut — recomputed
+  // against the active window so QTD vs YTD shows the right campaigns.
+  const bigCampaign = bigDrill ? buildCampaignData(bigActive.items, bigDrill) : null;
 
   if (grouped.length === 0) {
     return (
@@ -451,13 +480,25 @@ function ClosedDeals({ leads, onEdit, onUpdate, onDelete, onImportFromScreenshot
                 data={bigActive.crm}
                 emptyMessage="No deals in this window yet"
               />
-              <LeadAnalyticsDonut
-                title="Lead Type"
-                subtitle={`${bigActiveLabel} · ${bigActive.items.length} deal${bigActive.items.length !== 1 ? 's' : ''}`}
-                totalLabel="Deals"
-                data={bigActive.cat}
-                emptyMessage="No deals in this window yet"
-              />
+              {bigDrill ? (
+                <LeadAnalyticsDonut
+                  title={`${bigDrill} Campaigns`}
+                  subtitle={`${bigActiveLabel} · ${bigCampaign.items.length} ${bigDrill} deal${bigCampaign.items.length !== 1 ? 's' : ''} by campaign`}
+                  totalLabel={bigDrill}
+                  data={bigCampaign.data}
+                  onBack={() => setBigDrill(null)}
+                  emptyMessage="No campaign data for these leads"
+                />
+              ) : (
+                <LeadAnalyticsDonut
+                  title="Lead Type"
+                  subtitle={`${bigActiveLabel} · click any slice to drill into campaigns`}
+                  totalLabel="Deals"
+                  data={bigActive.cat}
+                  onSliceClick={(slice) => setBigDrill(slice.name)}
+                  emptyMessage="No deals in this window yet"
+                />
+              )}
             </div>
           </div>
         )}
@@ -476,29 +517,11 @@ function ClosedDeals({ leads, onEdit, onUpdate, onDelete, onImportFromScreenshot
         const catData = buildCatData(items);
 
         // When a category is drilled into for THIS month, build the
-        // campaign breakdown for just those leads. Inherit the parent
-        // category's color as a base, lightened across slices so the
-        // sub-pie reads as part of the same family.
+        // campaign breakdown for just those leads.
         const drilledCategory = drillByMonth[ym] || null;
-        const drilledItems = drilledCategory
-          ? items.filter(l => effectiveLeadCategory(l) === drilledCategory)
-          : [];
-        const campaignMap = {};
-        drilledItems.forEach(l => {
-          const k = l.campaign || '— No campaign';
-          campaignMap[k] = (campaignMap[k] || 0) + 1;
-        });
-        const baseColor = LEAD_CATEGORIES.find(c => c.id === drilledCategory)?.color || '#6366f1';
-        const campaignData = Object.entries(campaignMap)
-          .sort((a, b) => b[1] - a[1])
-          .map(([k, v], i, arr) => {
-            // Pull the campaign's own color when defined; otherwise
-            // shade a tint of the parent category color so all sub-slices
-            // visually belong together.
-            const campaignDef = CAMPAIGNS.find(c => c.id === k);
-            const fallback = lighten(baseColor, 0.15 + (i / Math.max(arr.length - 1, 1)) * 0.45);
-            return { name: k, value: v, color: campaignDef?.color || fallback };
-          });
+        const { items: drilledItems, data: campaignData } = drilledCategory
+          ? buildCampaignData(items, drilledCategory)
+          : { items: [], data: [] };
 
         return (
           <div key={ym} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
