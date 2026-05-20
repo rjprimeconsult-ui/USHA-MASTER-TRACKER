@@ -6,6 +6,7 @@ import {
 } from '@/lib/constants';
 import { US_STATES } from '@/lib/commission';
 import { timezoneFromState } from '@/lib/prospects';
+import { formatPhoneInput, formatCurrencyInput } from '@/lib/utils';
 
 const inp = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500';
 
@@ -67,7 +68,7 @@ export default function ProspectForm({ open, prospect, stages, customFields = []
               <input className={inp} value={form.name || ''} onChange={e => set({ name: e.target.value })} placeholder="John Doe" />
             </Field>
             <Field label="Phone" required>
-              <input className={inp} value={form.phone || ''} onChange={e => set({ phone: e.target.value })} placeholder="(305) 555-1234" />
+              <input className={inp} value={form.phone || ''} onChange={e => set({ phone: formatPhoneInput(e.target.value) })} placeholder="(305) 555-1234" inputMode="tel" />
             </Field>
             <Field label="Email">
               <input type="email" className={inp} value={form.email || ''} onChange={e => set({ email: e.target.value })} placeholder="john@example.com" />
@@ -104,7 +105,7 @@ export default function ProspectForm({ open, prospect, stages, customFields = []
           {/* Numbers */}
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             <Field label="Income">
-              <input className={inp} value={form.income || ''} onChange={e => set({ income: e.target.value })} placeholder="$ 75,000/yr" />
+              <input className={inp} value={form.income || ''} onChange={e => set({ income: formatCurrencyInput(e.target.value) })} placeholder="$75,000" inputMode="numeric" />
             </Field>
             <Field label="Quote Size">
               <input className={inp} value={form.quoteSize || ''} onChange={e => set({ quoteSize: e.target.value })} placeholder="$ 350/mo premium" />

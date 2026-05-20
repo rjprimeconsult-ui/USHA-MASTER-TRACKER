@@ -6,6 +6,29 @@ export const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString().
 export const fmt  = (n) => '$' + (n || 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
 export const fmt2 = (n) => '$' + (Number(n) || 0).toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: 2 });
 
+// Live formatter for phone-number inputs — turns whatever the agent
+// types or pastes into "(XXX) XXX-XXXX". Strips non-digits, drops a
+// leading US country-code 1 on pasted 11-digit numbers, and formats
+// progressively so partial entry still reads cleanly.
+export const formatPhoneInput = (input) => {
+  let digits = String(input || '').replace(/\D/g, '');
+  if (digits.length === 11 && digits.startsWith('1')) digits = digits.slice(1);
+  digits = digits.slice(0, 10);
+  if (digits.length === 0) return '';
+  if (digits.length < 4) return `(${digits}`;
+  if (digits.length < 7) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+};
+
+// Live formatter for whole-dollar currency inputs (income, etc.) —
+// turns "120000" into "$120,000" as the agent types or pastes. Drops
+// any non-digit so existing "$"/commas don't compound on re-edit.
+export const formatCurrencyInput = (input) => {
+  const digits = String(input || '').replace(/\D/g, '');
+  if (digits.length === 0) return '';
+  return '$' + Number(digits).toLocaleString('en-US');
+};
+
 export const getWeekStart = (d) => {
   if (!d || typeof d !== 'string') return '';
   // Normalize various accepted forms to YYYY-MM-DD before parsing

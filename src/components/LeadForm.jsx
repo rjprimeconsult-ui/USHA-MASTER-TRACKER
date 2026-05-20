@@ -8,7 +8,7 @@ import {
   productPremium,
 } from '@/lib/constants';
 import { US_STATES, projectCommission, DEFAULT_ADVANCE_MONTHS } from '@/lib/commission';
-import { today, fmt2 } from '@/lib/utils';
+import { today, fmt2, formatPhoneInput } from '@/lib/utils';
 import { useLeadOptionsAll, addCustomLeadOption, ADD_CUSTOM_VALUE } from '@/lib/customLeadOptions';
 import SendWelcomeEmail from './SendWelcomeEmail';
 import LeadEmailAuditPanel from './LeadEmailAuditPanel';
@@ -153,7 +153,7 @@ export default function LeadForm({ open, lead, tier = 'WA', onSave, onClose, onD
               <input className={inp} value={form.email} onChange={e => set({ email: e.target.value })} placeholder="client@example.com" />
             </Field>
             <Field label="Phone">
-              <input className={inp} value={form.phone} onChange={e => set({ phone: e.target.value })} placeholder="(555) 555-5555" />
+              <input className={inp} value={form.phone} onChange={e => set({ phone: formatPhoneInput(e.target.value) })} placeholder="(555) 555-5555" inputMode="tel" />
             </Field>
             <Field label="Age">
               <div className="space-y-1">
