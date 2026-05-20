@@ -16,6 +16,7 @@
  */
 
 import { supabase, supabaseConfigured } from './supabase';
+import { mergeArrayStores } from './mergeStore.mjs';
 
 const hasLS = () => typeof window !== 'undefined' && !!window.localStorage;
 
@@ -35,7 +36,7 @@ function attachAuthListener() {
 }
 attachAuthListener();
 
-const useCloud = () => supabaseConfigured() && !!cachedUserId;
+const cloudActive = () => supabaseConfigured() && !!cachedUserId;
 
 // ---------- Quota error notification ----------
 let quotaListener = null;
@@ -109,27 +110,96 @@ async function cloudRemove(key) {
   if (error) console.warn('cloudRemove failed', key, error);
 }
 
+// ---------- Merge-on-save (multi-tab / multi-device safety) ----------
+// These keys hold arrays of id'd records. They get merge-on-save so a
+// record another tab/device added is never overwritten away by a stale
+// snapshot. See mergeStore.mjs for the merge rules.
+const MERGEABLE_KEYS = new Set(['leads_v5', 'prospects_v1']);
+
+// Per-session baseline: every record id this session has loaded or
+// written for a mergeable key. Lets the merge tell "another session
+// added this" (keep) from "this session deleted this" (drop). Lives for
+// the page lifetime; resets on reload.
+const sessionBaseline = new Map(); // key -> Set<id>
+
+function baselineFor(key) {
+  let s = sessionBaseline.get(key);
+  if (!s) { s = new Set(); sessionBaseline.set(key, s); }
+  return s;
+}
+function recordBaseline(key, arr) {
+  if (!Array.isArray(arr)) return;
+  const s = baselineFor(key);
+  for (const r of arr) { if (r && r.id != null) s.add(r.id); }
+}
+
+// Re-read the remote array and merge this session's local array into it.
+// Returns the array to write, OR undefined when a plain write should be
+// used instead (parse failure, remote unreadable, or un-mergeable shape).
+async function mergeOnSave(key, value) {
+  let local;
+  try { local = JSON.parse(value); } catch { return undefined; }
+  if (!Array.isArray(local)) return undefined;
+
+  // Everything we're about to write joins our baseline, so a later
+  // delete of one of these ids reads as an intentional delete.
+  recordBaseline(key, local);
+
+  const remote = await cloudGet(key); // undefined on error, null if absent
+  if (remote === undefined) return undefined; // remote unreadable → plain write
+  if (remote === null) return local;          // nothing remote yet → local is the truth
+
+  let remoteArr = remote;
+  if (typeof remoteArr === 'string') {
+    try { remoteArr = JSON.parse(remoteArr); } catch { return undefined; }
+  }
+  const merged = mergeArrayStores(local, remoteArr, baselineFor(key));
+  if (merged === null) return undefined;      // un-mergeable (missing ids) → plain write
+  return merged;
+}
+
 // ---------- Public API ----------
 export const storage = {
   async getItem(key) {
-    if (useCloud()) {
+    let result = null;
+    if (cloudActive()) {
       try {
         const value = await cloudGet(key);
         if (value !== undefined && value !== null) {
           // Mirror to local for offline reads
           try { localSet(key, JSON.stringify(value)); } catch {}
-          return JSON.stringify(value);
+          result = JSON.stringify(value);
         }
       } catch (e) {
         console.warn('storage.getItem cloud path failed, falling back', e);
       }
     }
-    return localGet(key);
+    if (result === null) result = localGet(key);
+    // Seed the merge baseline with whatever this session just loaded.
+    if (result != null && MERGEABLE_KEYS.has(key)) {
+      try { recordBaseline(key, JSON.parse(result)); } catch {}
+    }
+    return result;
   },
   async setItem(key, value) {
-    // Always save locally first — fast UI, offline safety
+    // Merge-on-save for array stores: fold in any records another
+    // tab/device added so a stale snapshot can't erase them.
+    if (cloudActive() && MERGEABLE_KEYS.has(key)) {
+      try {
+        const merged = await mergeOnSave(key, value);
+        if (merged !== undefined) {
+          const str = JSON.stringify(merged);
+          const localOk = localSet(key, str);
+          await cloudSet(key, merged);
+          return localOk;
+        }
+      } catch (e) {
+        console.warn('storage.setItem merge failed, plain write', key, e);
+      }
+    }
+    // Plain write — non-mergeable keys, signed out, or merge fell back.
     const localOk = localSet(key, value);
-    if (useCloud()) {
+    if (cloudActive()) {
       try {
         let parsed;
         try { parsed = JSON.parse(value); } catch { parsed = value; }
@@ -142,7 +212,7 @@ export const storage = {
   },
   async removeItem(key) {
     localRemove(key);
-    if (useCloud()) {
+    if (cloudActive()) {
       try { await cloudRemove(key); } catch (e) { console.warn(e); }
     }
   },
@@ -181,7 +251,7 @@ const APP_KEYS = [
   'setup_checklist_v1',
 ];
 export async function migrateLocalToCloud() {
-  if (!useCloud()) throw new Error('Not signed in');
+  if (!cloudActive()) throw new Error('Not signed in');
   let migrated = 0, skipped = 0;
   for (const key of APP_KEYS) {
     const raw = localGet(key);
@@ -216,7 +286,7 @@ export async function inspectStorage() {
       } catch {}
     }
   }
-  if (useCloud()) {
+  if (cloudActive()) {
     const { data, error } = await supabase
       .from('user_kv')
       .select('key, value')
