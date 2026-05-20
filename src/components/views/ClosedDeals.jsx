@@ -1,7 +1,7 @@
 'use client';
-import { useMemo, memo, useState } from 'react';
+import { useMemo, memo, useState, useId } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Sector } from 'recharts';
-import { Edit2, Trash2, CheckCircle2, Clock, ImageUp, ArrowLeft, MousePointer2, Trophy } from 'lucide-react';
+import { Edit2, Trash2, CheckCircle2, Clock, ImageUp, ArrowLeft, MousePointer2, Trophy, BarChart3, ChevronDown } from 'lucide-react';
 import EmptyState from '../EmptyState';
 import { CRMS, CAMPAIGNS, LEAD_CATEGORIES, STAGES, effectiveLeadCategory } from '@/lib/constants';
 import { fmt, fmt2, usDate, monthLabel } from '@/lib/utils';
@@ -24,6 +24,39 @@ function lighten(hex, pct = 0.25) {
   const lg = Math.round(g + (255 - g) * pct);
   const lb = Math.round(b + (255 - b) * pct);
   return `#${lr.toString(16).padStart(2, '0')}${lg.toString(16).padStart(2, '0')}${lb.toString(16).padStart(2, '0')}`;
+}
+
+// Build the CRM Source donut data from a list of leads — counts per
+// CRM, sorted desc, colored from the CRMS table. Items without a CRM
+// bucket as "— Unassigned" so they don't silently vanish.
+function buildCrmData(items) {
+  const crmMap = {};
+  items.forEach(l => {
+    const k = l.crm || '— Unassigned';
+    crmMap[k] = (crmMap[k] || 0) + 1;
+  });
+  return Object.entries(crmMap)
+    .sort((a, b) => b[1] - a[1])
+    .map(([k, v]) => ({
+      name: k, value: v,
+      color: CRMS.find(c => c.id === k)?.color || '#94a3b8',
+    }));
+}
+
+// Build the Lead Type donut data — counts per top-level lead category
+// (AGED, SHARED, REFERRAL, …), sorted desc, colored from LEAD_CATEGORIES.
+function buildCatData(items) {
+  const catMap = {};
+  items.forEach(l => {
+    const cat = effectiveLeadCategory(l);
+    catMap[cat] = (catMap[cat] || 0) + 1;
+  });
+  return Object.entries(catMap)
+    .sort((a, b) => b[1] - a[1])
+    .map(([k, v]) => ({
+      name: k, value: v,
+      color: LEAD_CATEGORIES.find(c => c.id === k)?.color || '#94a3b8',
+    }));
 }
 
 // activeShape renderer: when a slice is hovered, render an enlarged
@@ -72,7 +105,10 @@ function LeadAnalyticsDonut({
 }) {
   const [hovered, setHovered] = useState(null);
   const total = useMemo(() => data.reduce((s, d) => s + (d.value || 0), 0), [data]);
-  const id = useMemo(() => `donut-${Math.random().toString(36).slice(2, 9)}`, []);
+  // Stable unique id for the per-slice <radialGradient> defs. useId is
+  // render-pure (unlike Math.random); strip colons so it stays safe
+  // inside SVG url(#…) references.
+  const id = `donut${useId().replace(/:/g, '')}`;
   const isClickable = !!onSliceClick;
 
   if (!data.length || total === 0) {
@@ -230,6 +266,11 @@ function ClosedDeals({ leads, onEdit, onUpdate, onDelete, onImportFromScreenshot
   const drillInto = (ym, category) => setDrillByMonth(p => ({ ...p, [ym]: category }));
   const drillOut  = (ym) => setDrillByMonth(p => { const n = { ...p }; delete n[ym]; return n; });
 
+  // "Big Picture" panel — collapsible QTD / YTD breakdowns pinned above
+  // the month sections. Closed by default; bigRange picks which window.
+  const [showBigPicture, setShowBigPicture] = useState(false);
+  const [bigRange, setBigRange] = useState('ytd'); // 'qtd' | 'ytd'
+
   // Inline edit helper — patches a single field on a lead and saves via
   // the parent's onUpdate. No-ops when onUpdate isn't passed (defensive
   // fallback for any caller that doesn't wire it up).
@@ -274,6 +315,29 @@ function ClosedDeals({ leads, onEdit, onUpdate, onDelete, onImportFromScreenshot
     });
     return Object.entries(m).sort((a, b) => b[0].localeCompare(a[0]));
   }, [visible]);
+
+  // QTD + YTD windows relative to today. QTD = deals closed in the
+  // current calendar quarter; YTD = deals closed in the current year.
+  // Both count Issued + Pending, matching the per-month pie charts.
+  const bigPicture = useMemo(() => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const curQuarter = Math.floor(now.getMonth() / 3); // 0-3
+    const ytdItems = visible.filter(l => (l.closedDate || '').slice(0, 4) === String(year));
+    const qtdItems = ytdItems.filter(l => {
+      const m = parseInt((l.closedDate || '').slice(5, 7), 10);
+      return Number.isFinite(m) && Math.floor((m - 1) / 3) === curQuarter;
+    });
+    return {
+      quarterLabel: `Q${curQuarter + 1} ${year}`,
+      yearLabel: `${year} YTD`,
+      qtd: { items: qtdItems, crm: buildCrmData(qtdItems), cat: buildCatData(qtdItems) },
+      ytd: { items: ytdItems, crm: buildCrmData(ytdItems), cat: buildCatData(ytdItems) },
+    };
+  }, [visible]);
+
+  const bigActive = bigRange === 'qtd' ? bigPicture.qtd : bigPicture.ytd;
+  const bigActiveLabel = bigRange === 'qtd' ? bigPicture.quarterLabel : bigPicture.yearLabel;
 
   if (grouped.length === 0) {
     return (
@@ -336,6 +400,69 @@ function ClosedDeals({ leads, onEdit, onUpdate, onDelete, onImportFromScreenshot
         </div>
       </div>
 
+      {/* Big Picture — collapsible QTD / YTD breakdowns */}
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <button
+          onClick={() => setShowBigPicture(v => !v)}
+          className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition text-left"
+        >
+          <div className="flex items-center gap-2 flex-wrap">
+            <BarChart3 size={16} className="text-indigo-600 flex-shrink-0" />
+            <span className="font-bold text-slate-900 text-sm">Big Picture — QTD &amp; YTD</span>
+            <span className="text-xs text-slate-400">
+              See how your sources and lead types perform over the quarter and the year
+            </span>
+          </div>
+          <ChevronDown
+            size={18}
+            className={`text-slate-400 flex-shrink-0 transition-transform ${showBigPicture ? 'rotate-180' : ''}`}
+          />
+        </button>
+
+        {showBigPicture && (
+          <div className="px-4 pb-4 border-t border-slate-100">
+            {/* QTD / YTD toggle */}
+            <div className="flex items-center gap-3 flex-wrap pt-4 pb-3">
+              <div className="flex border border-slate-200 rounded-lg overflow-hidden text-sm">
+                <button
+                  onClick={() => setBigRange('qtd')}
+                  className={`px-3 py-1.5 font-medium ${bigRange === 'qtd' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+                >
+                  {bigPicture.quarterLabel}
+                </button>
+                <button
+                  onClick={() => setBigRange('ytd')}
+                  className={`px-3 py-1.5 font-medium ${bigRange === 'ytd' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+                >
+                  {bigPicture.yearLabel}
+                </button>
+              </div>
+              <span className="text-xs text-slate-500">
+                {bigActive.items.length} deal{bigActive.items.length !== 1 ? 's' : ''} in this window
+              </span>
+            </div>
+
+            {/* Donuts — CRM Source + Lead Type for the selected window */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <LeadAnalyticsDonut
+                title="CRM Source"
+                subtitle={`${bigActiveLabel} · ${bigActive.items.length} deal${bigActive.items.length !== 1 ? 's' : ''}`}
+                totalLabel="Deals"
+                data={bigActive.crm}
+                emptyMessage="No deals in this window yet"
+              />
+              <LeadAnalyticsDonut
+                title="Lead Type"
+                subtitle={`${bigActiveLabel} · ${bigActive.items.length} deal${bigActive.items.length !== 1 ? 's' : ''}`}
+                totalLabel="Deals"
+                data={bigActive.cat}
+                emptyMessage="No deals in this window yet"
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Month sections */}
       {grouped.map(([ym, items]) => {
         const issuedItems = items.filter(l => l.stage === 'Issued');
@@ -343,33 +470,10 @@ function ClosedDeals({ leads, onEdit, onUpdate, onDelete, onImportFromScreenshot
         const totLeadCost = items.reduce((s, l) => s + (l.leadCost || 0), 0);
         const totProfit = totCommission - totLeadCost;
 
-        // CRM source breakdown — counts per CRM. Items without a CRM
-        // ("—") get bucketed as Unassigned so they don't disappear.
-        const crmMap = {};
-        items.forEach(l => {
-          const k = l.crm || '— Unassigned';
-          crmMap[k] = (crmMap[k] || 0) + 1;
-        });
-        const crmData = Object.entries(crmMap)
-          .sort((a, b) => b[1] - a[1])
-          .map(([k, v]) => ({
-            name: k, value: v,
-            color: CRMS.find(c => c.id === k)?.color || '#94a3b8',
-          }));
-
-        // LEAD TYPE breakdown by category (top-level grouping like AGED,
-        // SHARED, REFERRAL). The chart drills into campaigns when clicked.
-        const catMap = {};
-        items.forEach(l => {
-          const cat = effectiveLeadCategory(l);
-          catMap[cat] = (catMap[cat] || 0) + 1;
-        });
-        const catData = Object.entries(catMap)
-          .sort((a, b) => b[1] - a[1])
-          .map(([k, v]) => ({
-            name: k, value: v,
-            color: LEAD_CATEGORIES.find(c => c.id === k)?.color || '#94a3b8',
-          }));
+        // CRM source + Lead Type breakdowns for this month. Lead Type
+        // drills into campaigns when a slice is clicked (see below).
+        const crmData = buildCrmData(items);
+        const catData = buildCatData(items);
 
         // When a category is drilled into for THIS month, build the
         // campaign breakdown for just those leads. Inherit the parent
