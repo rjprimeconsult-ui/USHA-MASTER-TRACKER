@@ -221,11 +221,6 @@ export default function TakenRateCalculator({
         {/* Gauge */}
         <div className="flex flex-col items-center justify-center">
           <div className="relative w-44 h-44">
-            {/* Soft glow behind the ring, tinted to the rate color */}
-            <div
-              className="absolute inset-7 rounded-full pointer-events-none"
-              style={{ background: colors.stroke, opacity: 0.2, filter: 'blur(26px)' }}
-            />
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
@@ -244,7 +239,7 @@ export default function TakenRateCalculator({
               </PieChart>
             </ResponsiveContainer>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <div className={`text-4xl font-extrabold tracking-tight tabular-nums ${colors.text}`}>{rate.toFixed(1)}%</div>
+              <div className={`text-3xl font-bold tabular-nums ${colors.text}`}>{rate.toFixed(1)}%</div>
               <div className="text-[11px] font-medium text-slate-500 mt-0.5">{issued} of {total}</div>
             </div>
           </div>
