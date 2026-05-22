@@ -80,3 +80,57 @@ test('resolvePeriod custom — uses provided from/to', () => {
   assert.equal(r.from, '2026-02-10');
   assert.equal(r.to, '2026-03-15');
 });
+
+import { toISO, inRange, money, buildLeadsSoldReport } from './reports.mjs';
+
+test('toISO — accepts ISO and US M/D/YYYY', () => {
+  assert.equal(toISO('2026-05-10'), '2026-05-10');
+  assert.equal(toISO('5/10/2026'), '2026-05-10');
+  assert.equal(toISO('5/9/26'), '2026-05-09');
+  assert.equal(toISO(''), '');
+  assert.equal(toISO('garbage'), '');
+});
+
+test('inRange — inclusive on both ends', () => {
+  const range = { from: '2026-05-01', to: '2026-05-31' };
+  assert.equal(inRange('2026-05-01', range), true);
+  assert.equal(inRange('2026-05-31', range), true);
+  assert.equal(inRange('2026-04-30', range), false);
+  assert.equal(inRange('2026-06-01', range), false);
+});
+
+test('money — whole-dollar formatting', () => {
+  assert.equal(money(1234.56), '$1,235');
+  assert.equal(money(0), '$0');
+  assert.equal(money(-1200), '-$1,200');
+});
+
+test('buildLeadsSoldReport — filters to Issued in range, totals sum the rows', () => {
+  const leads = [
+    { name: 'A', stage: 'Issued', closedDate: '2026-05-10',
+      products: [{ id: 'PA', premium: 400 }, { id: 'MG', premium: 100 }],
+      crm: 'RINGY', campaign: 'AGED', dealValue: 600, leadCost: 25 },
+    { name: 'B', stage: 'Issued', closedDate: '2026-05-20',
+      products: [{ id: 'PC', premium: 300 }], crm: 'TD', campaign: 'AGED',
+      dealValue: 350, leadCost: 8 },
+    { name: 'C', stage: 'Pending', closedDate: '2026-05-15', products: [], dealValue: 0, leadCost: 0 },
+    { name: 'D', stage: 'Issued', closedDate: '2026-04-01', products: [], dealValue: 999, leadCost: 0 },
+  ];
+  const rep = buildLeadsSoldReport(leads, { from: '2026-05-01', to: '2026-05-31' });
+  assert.equal(rep.layout, 'table');
+  assert.equal(rep.rows.length, 2);          // A + B only (C pending, D out of range)
+  assert.equal(rep.empty, false);
+  // KPI 0 is "# Deals"
+  assert.equal(rep.kpis[0].value, '2');
+  // totalsRow last cells: premium 800, advance 950, leadCost 33, net 917
+  const totalsText = rep.totalsRow.map(c => c.text);
+  assert.ok(totalsText.includes('$800'));    // total premium
+  assert.ok(totalsText.includes('$950'));    // total advance
+  assert.ok(totalsText.includes('$33'));     // total lead cost
+});
+
+test('buildLeadsSoldReport — empty when no deals match', () => {
+  const rep = buildLeadsSoldReport([], { from: '2026-05-01', to: '2026-05-31' });
+  assert.equal(rep.empty, true);
+  assert.equal(rep.rows.length, 0);
+});

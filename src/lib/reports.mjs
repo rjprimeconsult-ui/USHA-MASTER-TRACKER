@@ -1,3 +1,5 @@
+import { SEMANTIC, REPORT_IDENTITY } from './reportColors.mjs';
+
 /**
  * PRIM Reports — pure aggregation. Turns the in-memory data stores plus a
  * date range into uniform report view-models. No UI, no storage writes.
@@ -49,4 +51,108 @@ export function resolvePeriod(presetId, now = new Date(), custom = null) {
 // whether the Expenses report shows its "vs Budget" indicator).
 export function isSingleMonth(presetId) {
   return presetId === 'thisMonth' || presetId === 'lastMonth';
+}
+
+// Normalize a date string to ISO YYYY-MM-DD. Accepts ISO already, or US
+// M/D/YYYY (chargeback/override `period` strings look like "4/16/2026").
+// Returns '' when unparseable.
+export function toISO(dateStr) {
+  if (!dateStr) return '';
+  const s = String(dateStr).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+  if (!m) return '';
+  let [, mm, dd, yy] = m;
+  if (yy.length === 2) yy = (Number(yy) > 50 ? '19' : '20') + yy;
+  return `${yy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+}
+
+// Is an (any-format) date string within [range.from, range.to] inclusive?
+// ISO YYYY-MM-DD strings compare correctly with <=/>=.
+export function inRange(dateStr, range) {
+  const d = toISO(dateStr);
+  if (!d) return false;
+  return d >= range.from && d <= range.to;
+}
+
+// Whole-dollar currency string: 1234.56 -> "$1,235", -1200 -> "-$1,200".
+export function money(n) {
+  const v = Math.round(Number(n) || 0);
+  const sign = v < 0 ? '-' : '';
+  return `${sign}$${Math.abs(v).toLocaleString('en-US')}`;
+}
+
+// Sum of a lead's product premiums (monthly). Leads store products as an
+// array of { id, premium }; there is no top-level premium field.
+function leadPremium(lead) {
+  return (lead.products || []).reduce((s, p) => s + (Number(p?.premium) || 0), 0);
+}
+
+// --- Report 1: Leads Sold -------------------------------------------------
+export function buildLeadsSoldReport(leads, range) {
+  const sold = (leads || [])
+    .filter(l => l && l.stage === 'Issued' && inRange(l.closedDate, range))
+    .map(l => ({
+      name: l.name || '—',
+      products: (l.products || []).map(p => p?.id).filter(Boolean).join(', ') || '—',
+      dateSold: toISO(l.closedDate),
+      crm: l.crm || '—',
+      campaign: l.campaign || '—',
+      premium: leadPremium(l),
+      advance: Number(l.dealValue) || 0,
+      leadCost: Number(l.leadCost) || 0,
+    }))
+    .sort((a, b) => b.dateSold.localeCompare(a.dateSold));
+
+  const t = sold.reduce((acc, r) => ({
+    premium: acc.premium + r.premium,
+    advance: acc.advance + r.advance,
+    leadCost: acc.leadCost + r.leadCost,
+  }), { premium: 0, advance: 0, leadCost: 0 });
+  const netProfit = t.advance - t.leadCost;
+
+  return {
+    layout: 'table',
+    title: 'Leads Sold',
+    identityColor: REPORT_IDENTITY.leadsSold,
+    kpis: [
+      { label: '# Deals',         value: String(sold.length), color: SEMANTIC.neutral },
+      { label: 'Total Premium',   value: money(t.premium),    color: SEMANTIC.good },
+      { label: 'Total Advance',   value: money(t.advance),    color: SEMANTIC.good },
+      { label: 'Total Lead Cost', value: money(t.leadCost),   color: SEMANTIC.neutral },
+      { label: 'Net Profit',      value: money(netProfit),    color: netProfit >= 0 ? SEMANTIC.good : SEMANTIC.bad },
+    ],
+    columns: [
+      { label: 'Client', align: 'left' },
+      { label: 'Product(s)', align: 'left' },
+      { label: 'Date Sold', align: 'left' },
+      { label: 'CRM', align: 'left' },
+      { label: 'Campaign', align: 'left' },
+      { label: 'Premium', align: 'right' },
+      { label: 'Advance', align: 'right' },
+      { label: 'Lead Cost', align: 'right' },
+    ],
+    rows: sold.map(r => [
+      { text: r.name, color: SEMANTIC.neutral, align: 'left' },
+      { text: r.products, color: SEMANTIC.neutral, align: 'left' },
+      { text: r.dateSold, color: SEMANTIC.neutral, align: 'left' },
+      { text: r.crm, color: SEMANTIC.neutral, align: 'left' },
+      { text: r.campaign, color: SEMANTIC.neutral, align: 'left' },
+      { text: money(r.premium), color: SEMANTIC.good, align: 'right' },
+      { text: money(r.advance), color: SEMANTIC.good, align: 'right' },
+      { text: money(r.leadCost), color: SEMANTIC.neutral, align: 'right' },
+    ]),
+    totalsRow: [
+      { text: 'Totals', align: 'left' },
+      { text: '', align: 'left' },
+      { text: '', align: 'left' },
+      { text: '', align: 'left' },
+      { text: '', align: 'left' },
+      { text: money(t.premium), color: SEMANTIC.good, align: 'right' },
+      { text: money(t.advance), color: SEMANTIC.good, align: 'right' },
+      { text: money(t.leadCost), color: SEMANTIC.neutral, align: 'right' },
+    ],
+    empty: sold.length === 0,
+    emptyMessage: 'No deals sold in this period.',
+  };
 }
