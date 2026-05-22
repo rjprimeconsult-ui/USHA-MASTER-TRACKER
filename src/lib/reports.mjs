@@ -341,9 +341,14 @@ export function buildExpensesReport(expenses, range, opts = {}) {
 }
 
 // --- Report 5: P&L Summary ----------------------------------------------
-// data: { leads, overrides, chargebacks, expenses }
+// data: { leads, overrides, chargebacks, expenses, abDetail, businessIncome }
+//   abDetail       — association-bonus residual rows (association_bonus_detail_v1)
+//   businessIncome — Books income entries (business_income_v1)
 export function buildPnlReport(data, range) {
-  const { leads = [], overrides = [], chargebacks = [], expenses = [] } = data || {};
+  const {
+    leads = [], overrides = [], chargebacks = [], expenses = [],
+    abDetail = [], businessIncome = [],
+  } = data || {};
 
   const commissions = leads
     .filter(l => l && l.stage === 'Issued' && inRange(l.closedDate, range))
@@ -351,6 +356,17 @@ export function buildPnlReport(data, range) {
   const overrideIncome = overrides
     .filter(o => o && inRange(o.period, range))
     .reduce((s, o) => s + (Number(o.amount) || 0), 0);
+  // Association Bonus residuals — monthly income, not advances. Each row
+  // is scoped by its applied date, falling back to the 1st of its
+  // production month. asEarned is summed including negative adjustments
+  // so the figure is the true net residual income.
+  const associationIncome = abDetail
+    .filter(r => r && inRange(r.appliedDate || (r.period ? `${r.period}-01` : ''), range))
+    .reduce((s, r) => s + (Number(r.asEarned) || 0), 0);
+  // Other income logged in Books (production bonuses, misc income).
+  const booksIncome = businessIncome
+    .filter(e => e && inRange(e.date, range))
+    .reduce((s, e) => s + (Number(e.amount) || 0), 0);
   const chargebackTotal = chargebacks
     .filter(c => c && inRange(c.period, range))
     .reduce((s, c) => s + (Number(c.amount) || 0), 0);
@@ -364,7 +380,7 @@ export function buildPnlReport(data, range) {
     else booksExp += amt;
   }
 
-  const totalIn = commissions + overrideIncome;
+  const totalIn = commissions + overrideIncome + associationIncome + booksIncome;
   const totalOut = chargebackTotal + platformExp + booksExp;
   const net = totalIn - totalOut;
 
@@ -383,6 +399,8 @@ export function buildPnlReport(data, range) {
         lines: [
           { label: 'Commissions (issued advances)', amount: money(commissions), color: SEMANTIC.good },
           { label: 'Override income', amount: money(overrideIncome), color: SEMANTIC.good },
+          { label: 'Association Bonus (residuals)', amount: money(associationIncome), color: SEMANTIC.good },
+          { label: 'Other income (Books)', amount: money(booksIncome), color: SEMANTIC.good },
         ],
         subtotal: { label: 'Total In', amount: money(totalIn), color: SEMANTIC.good },
       },

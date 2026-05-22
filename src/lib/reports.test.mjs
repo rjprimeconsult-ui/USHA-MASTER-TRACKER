@@ -273,3 +273,39 @@ test('buildLeadsSoldReport — portal-imported lead: premium is mainProductPremi
   const rep = buildLeadsSoldReport(leads, { from: '2026-05-01', to: '2026-05-31' });
   assert.equal(rep.rows[0][5].text, '$504');        // matches the USHA portal
 });
+
+test('buildPnlReport — income includes association residuals + Books income', () => {
+  const data = {
+    leads: [{ stage: 'Issued', closedDate: '2026-05-10', products: [], dealValue: 1000, leadCost: 0 }],
+    overrides: [{ amount: 200, period: '2026-05-12' }],
+    chargebacks: [],
+    expenses: [],
+    abDetail: [
+      { period: '2026-05', appliedDate: '2026-05-15', asEarned: 150 },
+      { period: '2026-05', appliedDate: '2026-05-20', asEarned: -10 },  // adjustment nets in
+      { period: '2026-02', appliedDate: '2026-02-10', asEarned: 999 },  // out of range
+    ],
+    businessIncome: [
+      { date: '2026-05-08', amount: 300 },
+      { date: '2026-04-01', amount: 999 },                              // out of range
+    ],
+  };
+  const rep = buildPnlReport(data, { from: '2026-05-01', to: '2026-05-31' });
+  // In = 1000 + 200 + (150 - 10) + 300 = 1640
+  assert.equal(rep.net.amount, '$1,640');
+  assert.equal(rep.sections[0].lines.length, 4);
+  assert.equal(rep.sections[0].lines[2].label, 'Association Bonus (residuals)');
+  assert.equal(rep.sections[0].lines[2].amount, '$140');
+  assert.equal(rep.sections[0].lines[3].label, 'Other income (Books)');
+  assert.equal(rep.sections[0].lines[3].amount, '$300');
+});
+
+test('buildPnlReport — association residual scoped by period when appliedDate is null', () => {
+  const data = {
+    leads: [], overrides: [], chargebacks: [], expenses: [],
+    abDetail: [{ period: '2026-05', appliedDate: null, asEarned: 75 }],
+    businessIncome: [],
+  };
+  const rep = buildPnlReport(data, { from: '2026-05-01', to: '2026-05-31' });
+  assert.equal(rep.sections[0].lines[2].amount, '$75');
+});

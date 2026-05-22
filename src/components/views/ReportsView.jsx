@@ -37,6 +37,7 @@ const PRESETS = [
  */
 export default function ReportsView({
   leads = [], overrides = [], chargebacks = [], businessExpenses = [],
+  abDetail = [], businessIncome = [],
 }) {
   const [reportId, setReportId] = useState('leadsSold');
   const [presetId, setPresetId] = useState('thisMonth');
@@ -85,12 +86,13 @@ export default function ReportsView({
         showBudget: isSingleMonth(presetId),
       });
       case 'pnl':         return buildPnlReport(
-        { leads, overrides, chargebacks, expenses: businessExpenses }, period);
+        { leads, overrides, chargebacks, expenses: businessExpenses, abDetail, businessIncome },
+        period);
       case 'leadsSold':
       default:            return buildLeadsSoldReport(leads, period);
     }
   }, [reportId, period, presetId, leads, overrides, chargebacks,
-      businessExpenses, categoryLabels, platformBudget]);
+      businessExpenses, abDetail, businessIncome, categoryLabels, platformBudget]);
 
   const downloadPdf = () => {
     const prev = document.title;
