@@ -1,4 +1,4 @@
-import { SEMANTIC, REPORT_IDENTITY, budgetStatus } from './reportColors.mjs';
+import { SEMANTIC, REPORT_IDENTITY, budgetStatus, identityForPnl, netColor } from './reportColors.mjs';
 
 /**
  * PRIM Reports — pure aggregation. Turns the in-memory data stores plus a
@@ -325,5 +325,66 @@ export function buildExpensesReport(expenses, range, opts = {}) {
     ],
     empty: scoped.length === 0,
     emptyMessage: 'No expenses recorded in this period.',
+  };
+}
+
+// --- Report 5: P&L Summary ----------------------------------------------
+// data: { leads, overrides, chargebacks, expenses }
+export function buildPnlReport(data, range) {
+  const { leads = [], overrides = [], chargebacks = [], expenses = [] } = data || {};
+
+  const commissions = leads
+    .filter(l => l && l.stage === 'Issued' && inRange(l.closedDate, range))
+    .reduce((s, l) => s + (Number(l.dealValue) || 0), 0);
+  const overrideIncome = overrides
+    .filter(o => o && inRange(o.period, range))
+    .reduce((s, o) => s + (Number(o.amount) || 0), 0);
+  const chargebackTotal = chargebacks
+    .filter(c => c && inRange(c.period, range))
+    .reduce((s, c) => s + (Number(c.amount) || 0), 0);
+
+  let platformExp = 0;
+  let booksExp = 0;
+  for (const e of expenses) {
+    if (!e || !inRange(e.date, range)) continue;
+    const amt = Number(e.amount) || 0;
+    if (String(e.category || '').startsWith('PLATFORM_')) platformExp += amt;
+    else booksExp += amt;
+  }
+
+  const totalIn = commissions + overrideIncome;
+  const totalOut = chargebackTotal + platformExp + booksExp;
+  const net = totalIn - totalOut;
+
+  return {
+    layout: 'summary',
+    title: 'P&L Summary',
+    identityColor: identityForPnl(net),
+    kpis: [
+      { label: 'Total In', value: money(totalIn), color: SEMANTIC.good },
+      { label: 'Total Out', value: money(totalOut), color: SEMANTIC.bad },
+      { label: 'Net Result', value: money(net), color: netColor(net) },
+    ],
+    sections: [
+      {
+        title: 'Income',
+        lines: [
+          { label: 'Commissions (issued advances)', amount: money(commissions), color: SEMANTIC.good },
+          { label: 'Override income', amount: money(overrideIncome), color: SEMANTIC.good },
+        ],
+        subtotal: { label: 'Total In', amount: money(totalIn), color: SEMANTIC.good },
+      },
+      {
+        title: 'Outflow',
+        lines: [
+          { label: 'Chargebacks', amount: money(chargebackTotal), color: SEMANTIC.bad },
+          { label: 'Platform expenses', amount: money(platformExp), color: SEMANTIC.neutral },
+          { label: 'Books expenses', amount: money(booksExp), color: SEMANTIC.neutral },
+        ],
+        subtotal: { label: 'Total Out', amount: money(totalOut), color: SEMANTIC.bad },
+      },
+    ],
+    net: { label: 'Net Result', amount: money(net), color: netColor(net) },
+    empty: false,
   };
 }

@@ -216,3 +216,33 @@ test('buildExpensesReport — empty input', () => {
     { categoryLabels: {}, budget: 0, showBudget: false });
   assert.equal(rep.empty, true);
 });
+
+import { buildPnlReport } from './reports.mjs';
+
+test('buildPnlReport — net = total in minus total out', () => {
+  const data = {
+    leads: [{ stage: 'Issued', closedDate: '2026-05-10', products: [], dealValue: 3000, leadCost: 0 }],
+    overrides: [{ amount: 500, period: '2026-05-12' }],
+    chargebacks: [{ amount: 200, period: '2026-05-15' }],
+    expenses: [
+      { date: '2026-05-03', amount: 300, category: 'PLATFORM_RINGY' },
+      { date: '2026-05-08', amount: 100, category: 'SOFTWARE' },
+    ],
+  };
+  const rep = buildPnlReport(data, { from: '2026-05-01', to: '2026-05-31' });
+  assert.equal(rep.layout, 'summary');
+  // In = 3000 + 500 = 3500; Out = 200 + 300 + 100 = 600; Net = 2900
+  assert.equal(rep.net.amount, '$2,900');
+  assert.equal(rep.net.color, '#059669');           // good — positive
+});
+
+test('buildPnlReport — negative net flips color to red', () => {
+  const data = {
+    leads: [], overrides: [],
+    chargebacks: [{ amount: 500, period: '2026-05-15' }],
+    expenses: [{ date: '2026-05-03', amount: 200, category: 'SOFTWARE' }],
+  };
+  const rep = buildPnlReport(data, { from: '2026-05-01', to: '2026-05-31' });
+  assert.equal(rep.net.amount, '-$700');
+  assert.equal(rep.net.color, '#DC2626');           // bad — negative
+});
