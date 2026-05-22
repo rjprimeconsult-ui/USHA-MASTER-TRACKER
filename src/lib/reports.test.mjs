@@ -134,3 +134,23 @@ test('buildLeadsSoldReport — empty when no deals match', () => {
   assert.equal(rep.empty, true);
   assert.equal(rep.rows.length, 0);
 });
+
+import { buildOverridesReport } from './reports.mjs';
+
+test('buildOverridesReport — filters by period, totals sum amounts', () => {
+  const overrides = [
+    { amount: 120, period: '2026-05-05', customer: 'Client A' },
+    { amount: 80,  period: '5/18/2026', source: 'Sub-agent B' },
+    { amount: 500, period: '2026-03-01' },          // out of range
+  ];
+  const rep = buildOverridesReport(overrides, { from: '2026-05-01', to: '2026-05-31' });
+  assert.equal(rep.rows.length, 2);
+  assert.equal(rep.kpis[0].value, '2');             // # Entries
+  assert.equal(rep.kpis[1].value, '$200');          // Total Override Income
+  assert.equal(rep.empty, false);
+});
+
+test('buildOverridesReport — empty input', () => {
+  const rep = buildOverridesReport([], { from: '2026-05-01', to: '2026-05-31' });
+  assert.equal(rep.empty, true);
+});

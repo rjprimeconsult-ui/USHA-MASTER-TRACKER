@@ -156,3 +156,44 @@ export function buildLeadsSoldReport(leads, range) {
     emptyMessage: 'No deals sold in this period.',
   };
 }
+
+// --- Report 2: Overrides --------------------------------------------------
+export function buildOverridesReport(overrides, range) {
+  const rows = (overrides || [])
+    .filter(o => o && inRange(o.period, range))
+    .map(o => ({
+      date: toISO(o.period),
+      source: o.label || o.source || o.customer || o.writingAgent || o.note || '—',
+      amount: Number(o.amount) || 0,
+    }))
+    .sort((a, b) => b.date.localeCompare(a.date));
+
+  const total = rows.reduce((s, r) => s + r.amount, 0);
+
+  return {
+    layout: 'table',
+    title: 'Overrides',
+    identityColor: REPORT_IDENTITY.overrides,
+    kpis: [
+      { label: '# Entries', value: String(rows.length), color: SEMANTIC.neutral },
+      { label: 'Total Override Income', value: money(total), color: SEMANTIC.good },
+    ],
+    columns: [
+      { label: 'Date', align: 'left' },
+      { label: 'Source', align: 'left' },
+      { label: 'Amount', align: 'right' },
+    ],
+    rows: rows.map(r => [
+      { text: r.date, color: SEMANTIC.neutral, align: 'left' },
+      { text: r.source, color: SEMANTIC.neutral, align: 'left' },
+      { text: money(r.amount), color: SEMANTIC.good, align: 'right' },
+    ]),
+    totalsRow: [
+      { text: 'Total', align: 'left' },
+      { text: '', align: 'left' },
+      { text: money(total), color: SEMANTIC.good, align: 'right' },
+    ],
+    empty: rows.length === 0,
+    emptyMessage: 'No override income recorded in this period.',
+  };
+}
