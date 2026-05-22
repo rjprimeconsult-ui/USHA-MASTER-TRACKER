@@ -246,3 +246,27 @@ test('buildPnlReport — negative net flips color to red', () => {
   assert.equal(rep.net.amount, '-$700');
   assert.equal(rep.net.color, '#DC2626');           // bad — negative
 });
+
+test('buildLeadsSoldReport — premium = mainProductPremium + add-ons + association', () => {
+  const leads = [{
+    name: 'A', stage: 'Issued', closedDate: '2026-05-10',
+    mainProductPremium: 450,
+    products: [{ id: 'MG', premium: 100 }],
+    associationPlan: 'EXEC_DIAMOND',
+    dealValue: 600, leadCost: 0,
+  }];
+  const rep = buildLeadsSoldReport(leads, { from: '2026-05-01', to: '2026-05-31' },
+    { associationPremiumOf: (id) => (id === 'EXEC_DIAMOND' ? 89.95 : 0) });
+  // 450 + 100 + 89.95 = 639.95 -> rounds to $640. Column index 5 = Premium.
+  assert.equal(rep.rows[0][5].text, '$640');
+});
+
+test('buildLeadsSoldReport — premium without associationPremiumOf omits association', () => {
+  const leads = [{
+    name: 'A', stage: 'Issued', closedDate: '2026-05-10',
+    mainProductPremium: 450, products: [], associationPlan: 'EXEC_DIAMOND',
+    dealValue: 600, leadCost: 0,
+  }];
+  const rep = buildLeadsSoldReport(leads, { from: '2026-05-01', to: '2026-05-31' });
+  assert.equal(rep.rows[0][5].text, '$450');        // main product only
+});
