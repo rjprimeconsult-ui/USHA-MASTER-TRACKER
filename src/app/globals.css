@@ -397,3 +397,27 @@ body {
 .dark .tier-default {
   background-image: linear-gradient(110deg, #818cf8 0%, #a5b4fc 50%, #6366f1 100%);
 }
+
+/* ---- Reports: print / Save-as-PDF isolation -------------------------- */
+@media print {
+  /* Hide everything, then reveal only the report sheet. */
+  body * { visibility: hidden; }
+  .report-sheet, .report-sheet * { visibility: visible; }
+  .report-sheet {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    border: none;
+    box-shadow: none;
+    border-radius: 0;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  .report-no-print { display: none !important; }
+  /* Repeat table headers on every page; never split a row. */
+  .report-sheet thead { display: table-header-group; }
+  .report-sheet tr { break-inside: avoid; }
+  @page { size: letter; margin: 0.5in; }
+}

@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  Calculator, Repeat, CheckSquare, LayoutDashboard, Users, Columns, Upload, Settings, Sparkles, DollarSign, BookOpen, LogOut, UserPlus, User as UserIcon,
+  Calculator, Repeat, CheckSquare, LayoutDashboard, Users, Columns, Upload, Settings, Sparkles, DollarSign, BookOpen, LogOut, UserPlus, User as UserIcon, FileText,
 } from 'lucide-react';
 import { PrimAppIcon } from '@/components/PrimLogo';
 import { storage, onStorageError } from '@/lib/storage';
@@ -27,6 +27,7 @@ import Pipeline from './views/Pipeline';
 import UploadView from './views/UploadView';
 import PlatformExpensesView from './views/PlatformExpensesView';
 import BusinessBooksView from './views/BusinessBooksView';
+import ReportsView from './views/ReportsView';
 import ProspectsView from './views/ProspectsView';
 import CommissionCalculator from './views/CommissionCalculator';
 import LeadForm from './LeadForm';
@@ -54,7 +55,7 @@ import { fireConfetti, FadeIn, OrbBackdrop } from './motion/MotionPrimitives';
 import { useAuth } from './auth/AuthProvider';
 import { motion } from 'framer-motion';
 
-const ICONS = { Calculator, Repeat, CheckSquare, LayoutDashboard, Users, Columns, Upload, DollarSign, BookOpen, UserPlus };
+const ICONS = { Calculator, Repeat, CheckSquare, LayoutDashboard, Users, Columns, Upload, DollarSign, BookOpen, UserPlus, FileText };
 
 const LEADS_KEY = 'leads_v5';
 const LEADS_KEY_V4 = 'leads_v4';
@@ -1522,6 +1523,16 @@ export default function LeadTracker() {
             }}
             onBulkAddPlatforms={onBulkAddPlatformsViaBooks}
             smartImportOpenSignal={smartImportOpenSignal}
+          />
+        </ViewMount>
+        <ViewMount visible={view === 'reports'} viewKey="reports">
+          <ReportsView
+            leads={leads}
+            overrides={overrides}
+            chargebacks={chargebacks}
+            businessExpenses={businessExpenses}
+            agentName={''}
+            platformBudget={0}
           />
         </ViewMount>
         <ViewMount visible={view === 'calculator'} viewKey="calculator">

@@ -218,6 +218,7 @@ export const NAV_TABS = [
   { id: 'prospects',    label: 'Prospects',     icon: 'UserPlus' },
   { id: 'platforms',    label: 'Platforms',     icon: 'DollarSign' },
   { id: 'books',        label: 'Books',         icon: 'BookOpen' },
+  { id: 'reports',      label: 'Reports',       icon: 'FileText' },
   { id: 'calculator',   label: 'Calculator',    icon: 'Calculator' },
   { id: 'upload',       label: 'Upload',        icon: 'Upload' },
 ];
