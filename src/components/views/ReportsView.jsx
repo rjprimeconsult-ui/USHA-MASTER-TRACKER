@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Download, FileText } from 'lucide-react';
 import ReportSheet from './ReportSheet';
-import { EXPENSE_CATEGORIES, productPremium } from '@/lib/constants';
+import { EXPENSE_CATEGORIES } from '@/lib/constants';
 import { storage } from '@/lib/storage';
 import { loadAgentProfile } from '@/lib/agentProfile';
 import {
@@ -87,9 +87,7 @@ export default function ReportsView({
       case 'pnl':         return buildPnlReport(
         { leads, overrides, chargebacks, expenses: businessExpenses }, period);
       case 'leadsSold':
-      default:            return buildLeadsSoldReport(leads, period, {
-        associationPremiumOf: productPremium,
-      });
+      default:            return buildLeadsSoldReport(leads, period);
     }
   }, [reportId, period, presetId, leads, overrides, chargebacks,
       businessExpenses, categoryLabels, platformBudget]);

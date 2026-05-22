@@ -82,24 +82,26 @@ export function money(n) {
   return `${sign}$${Math.abs(v).toLocaleString('en-US')}`;
 }
 
-// Total monthly premium for a lead — matches CpaDashboard's formula:
-//   main product premium + association plan premium + add-on premiums.
-// `mainProductPremium` is a field on the lead; the `products` array holds
-// only ADD-ONS as { id, premium }. associationPremiumOf, when provided,
-// resolves an association plan id to its monthly premium.
-function leadPremium(lead, associationPremiumOf) {
+// Total monthly premium for a lead = main product premium + add-on premiums.
+//
+// `mainProductPremium` holds the policy's monthly premium. For screenshot/
+// portal imports — PRIM's dominant path — this is the USHA portal's
+// "Monthly Premium" figure, which ALREADY folds in every product and the
+// association membership. For manually-entered leads it is the main
+// product only, with add-ons carrying their own premiums (screenshot
+// imports store add-ons with premium 0, so adding them is harmless).
+//
+// The association plan premium is deliberately NOT added separately: doing
+// so double-counts portal-imported leads (their mainProductPremium already
+// includes it). Association is its own monthly stream — see the spec.
+function leadPremium(lead) {
   const main = Number(lead.mainProductPremium) || 0;
   const addons = (lead.products || []).reduce((s, p) => s + (Number(p?.premium) || 0), 0);
-  const assoc = associationPremiumOf
-    ? (Number(associationPremiumOf(lead.associationPlan)) || 0)
-    : 0;
-  return main + addons + assoc;
+  return main + addons;
 }
 
 // --- Report 1: Leads Sold -------------------------------------------------
-// opts: { associationPremiumOf?: (associationPlanId) => number }
-export function buildLeadsSoldReport(leads, range, opts = {}) {
-  const { associationPremiumOf = null } = opts;
+export function buildLeadsSoldReport(leads, range) {
   const sold = (leads || [])
     .filter(l => l && l.stage === 'Issued' && inRange(l.closedDate, range))
     .map(l => ({
@@ -108,7 +110,7 @@ export function buildLeadsSoldReport(leads, range, opts = {}) {
       dateSold: toISO(l.closedDate),
       crm: l.crm || '—',
       campaign: l.campaign || '—',
-      premium: leadPremium(l, associationPremiumOf),
+      premium: leadPremium(l),
       advance: Number(l.dealValue) || 0,
       leadCost: Number(l.leadCost) || 0,
     }))
