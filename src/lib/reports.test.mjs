@@ -154,3 +154,24 @@ test('buildOverridesReport — empty input', () => {
   const rep = buildOverridesReport([], { from: '2026-05-01', to: '2026-05-31' });
   assert.equal(rep.empty, true);
 });
+
+import { buildChargebacksReport } from './reports.mjs';
+
+test('buildChargebacksReport — filters by period, totals + own/override split', () => {
+  const cbs = [
+    { customer: 'A', policyId: 'P1', productDesc: 'PA', amount: 200, period: '2026-05-04', isOwn: true },
+    { customer: 'B', policyId: 'P2', productDesc: 'PC', amount: 150, period: '5/19/2026', isOwn: false },
+    { customer: 'C', policyId: 'P3', productDesc: 'SA', amount: 999, period: '2026-01-01', isOwn: true },
+  ];
+  const rep = buildChargebacksReport(cbs, { from: '2026-05-01', to: '2026-05-31' });
+  assert.equal(rep.rows.length, 2);
+  assert.equal(rep.kpis[0].value, '2');        // # Chargebacks
+  assert.equal(rep.kpis[1].value, '$350');     // Total Clawed Back
+  assert.equal(rep.empty, false);
+});
+
+test('buildChargebacksReport — empty input shows good-news message', () => {
+  const rep = buildChargebacksReport([], { from: '2026-05-01', to: '2026-05-31' });
+  assert.equal(rep.empty, true);
+  assert.match(rep.emptyMessage, /good news/i);
+});

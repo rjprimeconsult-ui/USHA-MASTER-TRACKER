@@ -197,3 +197,60 @@ export function buildOverridesReport(overrides, range) {
     emptyMessage: 'No override income recorded in this period.',
   };
 }
+
+// --- Report 3: Chargebacks ------------------------------------------------
+export function buildChargebacksReport(chargebacks, range) {
+  const rows = (chargebacks || [])
+    .filter(c => c && inRange(c.period, range))
+    .map(c => ({
+      date: toISO(c.period),
+      customer: c.customer || '—',
+      policyId: c.policyId || '—',
+      productDesc: c.productDesc || '—',
+      type: c.isOwn ? 'Own' : 'Override',
+      amount: Number(c.amount) || 0,
+    }))
+    .sort((a, b) => b.date.localeCompare(a.date));
+
+  const total = rows.reduce((s, r) => s + r.amount, 0);
+  const ownTotal = rows.filter(r => r.type === 'Own').reduce((s, r) => s + r.amount, 0);
+  const ovrTotal = total - ownTotal;
+
+  return {
+    layout: 'table',
+    title: 'Chargebacks',
+    identityColor: REPORT_IDENTITY.chargebacks,
+    kpis: [
+      { label: '# Chargebacks', value: String(rows.length), color: SEMANTIC.neutral },
+      { label: 'Total Clawed Back', value: money(total), color: SEMANTIC.bad },
+      { label: 'Own', value: money(ownTotal), color: SEMANTIC.bad },
+      { label: 'Override', value: money(ovrTotal), color: SEMANTIC.bad },
+    ],
+    columns: [
+      { label: 'Date', align: 'left' },
+      { label: 'Client', align: 'left' },
+      { label: 'Policy', align: 'left' },
+      { label: 'Product', align: 'left' },
+      { label: 'Type', align: 'left' },
+      { label: 'Amount', align: 'right' },
+    ],
+    rows: rows.map(r => [
+      { text: r.date, color: SEMANTIC.neutral, align: 'left' },
+      { text: r.customer, color: SEMANTIC.neutral, align: 'left' },
+      { text: r.policyId, color: SEMANTIC.neutral, align: 'left' },
+      { text: r.productDesc, color: SEMANTIC.neutral, align: 'left' },
+      { text: r.type, color: SEMANTIC.neutral, align: 'left' },
+      { text: money(r.amount), color: SEMANTIC.bad, align: 'right' },
+    ]),
+    totalsRow: [
+      { text: 'Total', align: 'left' },
+      { text: '', align: 'left' },
+      { text: '', align: 'left' },
+      { text: '', align: 'left' },
+      { text: '', align: 'left' },
+      { text: money(total), color: SEMANTIC.bad, align: 'right' },
+    ],
+    empty: rows.length === 0,
+    emptyMessage: 'No chargebacks in this period — good news.',
+  };
+}
