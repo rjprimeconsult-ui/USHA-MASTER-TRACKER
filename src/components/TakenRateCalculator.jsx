@@ -150,20 +150,22 @@ export default function TakenRateCalculator({
   };
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-4">
+    <div className="premium-card p-4 space-y-4">
       <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <Target size={16} className="text-indigo-600" />
-          <h3 className="font-semibold text-slate-900">{title}</h3>
+        <div className="flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded-lg bg-accent-gradient flex items-center justify-center text-white shadow-md">
+            <Target size={15} />
+          </div>
+          <h3 className="font-bold text-slate-900 text-[15px] tracking-tight">{title}</h3>
         </div>
         <p className="text-xs text-slate-500">{subtitle}</p>
-        {/* Period toggle — always visible, full width */}
-        <div className="flex border border-slate-200 rounded-lg overflow-hidden text-sm w-full max-w-md">
+        {/* Period toggle — segmented control, always visible, full width */}
+        <div className="flex bg-slate-100 dark:bg-slate-800 rounded-lg p-1 gap-1 text-sm w-full max-w-md">
           {PERIODS.map(p => (
             <button
               key={p.id}
               onClick={() => setPeriod(p.id)}
-              className={`flex-1 px-3 py-1.5 font-medium transition ${period === p.id ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+              className={`flex-1 px-3 py-1.5 font-semibold rounded-md transition ${period === p.id ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-white/70 dark:hover:bg-slate-700/60'}`}
               title={p.desc}
             >
               {p.label}
@@ -219,6 +221,11 @@ export default function TakenRateCalculator({
         {/* Gauge */}
         <div className="flex flex-col items-center justify-center">
           <div className="relative w-44 h-44">
+            {/* Soft glow behind the ring, tinted to the rate color */}
+            <div
+              className="absolute inset-7 rounded-full pointer-events-none"
+              style={{ background: colors.stroke, opacity: 0.2, filter: 'blur(26px)' }}
+            />
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
@@ -237,11 +244,14 @@ export default function TakenRateCalculator({
               </PieChart>
             </ResponsiveContainer>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <div className={`text-3xl font-bold ${colors.text}`}>{rate.toFixed(1)}%</div>
-              <div className="text-xs text-slate-500 mt-0.5">{issued} of {total}</div>
+              <div className={`text-4xl font-extrabold tracking-tight tabular-nums ${colors.text}`}>{rate.toFixed(1)}%</div>
+              <div className="text-[11px] font-medium text-slate-500 mt-0.5">{issued} of {total}</div>
             </div>
           </div>
-          <div className={`mt-2 px-3 py-1 rounded-full border text-xs font-semibold ${colors.bg} ${colors.text} ${colors.border}`}>
+          <div
+            className={`mt-3 px-3.5 py-1 rounded-full border text-xs font-bold ${colors.bg} ${colors.text} ${colors.border}`}
+            style={{ boxShadow: `0 6px 18px -6px ${colors.stroke}55` }}
+          >
             {colors.label}
           </div>
         </div>
@@ -254,9 +264,15 @@ export default function TakenRateCalculator({
             return (
               <div key={stage} className="flex items-center gap-3 text-sm">
                 <span className="w-24 text-slate-700">{stage}</span>
-                <div className="flex-1 h-5 bg-slate-100 rounded overflow-hidden">
-                  <div className="h-full rounded transition-all duration-300"
-                       style={{ width: `${pct}%`, background: barColors[stage] }} />
+                <div className="flex-1 h-5 bg-slate-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-500"
+                    style={{
+                      width: `${pct}%`,
+                      background: barColors[stage],
+                      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.35), inset 0 -3px 6px rgba(0,0,0,0.14)',
+                    }}
+                  />
                 </div>
                 <span className="w-10 text-right font-medium text-slate-900">{count}</span>
                 <span className="w-14 text-right text-xs text-slate-500">{pct.toFixed(1)}%</span>
@@ -294,8 +310,8 @@ export default function TakenRateCalculator({
           className="w-full accent-indigo-600"
         />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-800 mb-1">
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 shadow-sm">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-800 mb-1 uppercase tracking-wide">
               <Info size={12} /> Clean-issue scenario
             </div>
             {total === 0 ? (
@@ -308,8 +324,8 @@ export default function TakenRateCalculator({
               </div>
             )}
           </div>
-          <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3">
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-indigo-800 mb-1">
+          <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3.5 shadow-sm">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-800 mb-1 uppercase tracking-wide">
               <Info size={12} /> Realistic path to {target}%
             </div>
             {total === 0 ? (
