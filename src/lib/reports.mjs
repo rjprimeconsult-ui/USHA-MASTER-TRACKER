@@ -341,12 +341,17 @@ export function buildExpensesReport(expenses, range, opts = {}) {
 }
 
 // --- Report 5: P&L Summary ----------------------------------------------
-// data: { leads, overrides, chargebacks, expenses, abDetail, businessIncome }
+// data: { leads, overrides, expenses, abDetail, businessIncome }
 //   abDetail       — association-bonus residual rows (association_bonus_detail_v1)
 //   businessIncome — Books income entries (business_income_v1)
+//
+// Chargebacks are intentionally NOT part of the P&L: they draw from the
+// agent's USHA-managed reserve account, not their take-home income — USHA
+// handles that on their side, and PRIM does not track the reserve. See
+// the standalone Chargebacks report for that data.
 export function buildPnlReport(data, range) {
   const {
-    leads = [], overrides = [], chargebacks = [], expenses = [],
+    leads = [], overrides = [], expenses = [],
     abDetail = [], businessIncome = [],
   } = data || {};
 
@@ -367,9 +372,6 @@ export function buildPnlReport(data, range) {
   const booksIncome = businessIncome
     .filter(e => e && inRange(e.date, range))
     .reduce((s, e) => s + (Number(e.amount) || 0), 0);
-  const chargebackTotal = chargebacks
-    .filter(c => c && inRange(c.period, range))
-    .reduce((s, c) => s + (Number(c.amount) || 0), 0);
 
   let platformExp = 0;
   let booksExp = 0;
@@ -381,7 +383,7 @@ export function buildPnlReport(data, range) {
   }
 
   const totalIn = commissions + overrideIncome + associationIncome + booksIncome;
-  const totalOut = chargebackTotal + platformExp + booksExp;
+  const totalOut = platformExp + booksExp;
   const net = totalIn - totalOut;
 
   return {
@@ -407,7 +409,6 @@ export function buildPnlReport(data, range) {
       {
         title: 'Outflow',
         lines: [
-          { label: 'Chargebacks', amount: money(chargebackTotal), color: SEMANTIC.bad },
           { label: 'Platform expenses', amount: money(platformExp), color: SEMANTIC.neutral },
           { label: 'Books expenses', amount: money(booksExp), color: SEMANTIC.neutral },
         ],
@@ -415,6 +416,7 @@ export function buildPnlReport(data, range) {
       },
     ],
     net: { label: 'Net Result', amount: money(net), color: netColor(net) },
+    note: 'Chargebacks are not included — they draw from your USHA-managed reserve account, not your take-home income. See the Chargebacks report to review them.',
     empty: false,
   };
 }

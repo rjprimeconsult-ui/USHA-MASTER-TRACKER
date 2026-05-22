@@ -86,7 +86,7 @@ export default function ReportsView({
         showBudget: isSingleMonth(presetId),
       });
       case 'pnl':         return buildPnlReport(
-        { leads, overrides, chargebacks, expenses: businessExpenses, abDetail, businessIncome },
+        { leads, overrides, expenses: businessExpenses, abDetail, businessIncome },
         period);
       case 'leadsSold':
       default:            return buildLeadsSoldReport(leads, period);

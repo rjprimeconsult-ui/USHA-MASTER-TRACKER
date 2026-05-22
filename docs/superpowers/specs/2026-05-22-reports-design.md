@@ -182,20 +182,31 @@ double-counted.
 INCOME
   Commissions (issued advances)        + $ 0,000   🟢
   Override income                      + $ 0,000   🟢
+  Association Bonus (residuals)        + $ 0,000   🟢
+  Other income (Books)                 + $ 0,000   🟢
   ----------------------------------------------------
   Total In                               $ 0,000   🟢
 
 OUTFLOW
-  Chargebacks                          − $ 0,000   🔴
   Platform expenses                    − $ 0,000   ⚪
   Books expenses                       − $ 0,000   ⚪
   ----------------------------------------------------
   Total Out                              $ 0,000   🔴
 
 NET RESULT                               $ 0,000   🟢 / 🔴  (large)
+
+Note: Chargebacks are not included — see below.
 ```
 
 - **Net** = Total In − Total Out, shown large in emerald (≥ 0) or red (< 0).
+- **Income** includes all non-advance income: override income, Association
+  Bonus residuals (`association_bonus_detail_v1`, scoped by applied date /
+  production month, netted of adjustments), and other income logged in Books
+  (`business_income_v1` — production bonuses, misc income).
+- **Chargebacks are intentionally excluded from the P&L.** They draw from the
+  agent's USHA-managed reserve account, not take-home income — USHA handles
+  that on their side and PRIM does not track the reserve. A footnote on the
+  report states this. The standalone Chargebacks report still shows them.
 - "Platform expenses" and "Books expenses" are both drawn from the single
   `business_expenses_v1` store, split by the `PLATFORM_` category prefix —
   shown as two lines purely for clarity.

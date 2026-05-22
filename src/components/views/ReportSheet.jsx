@@ -169,6 +169,11 @@ function SummaryBody({ report }) {
           {report.net.amount}
         </span>
       </div>
+      {report.note && (
+        <p className="text-[11px] text-slate-500 italic leading-relaxed mt-3">
+          {report.note}
+        </p>
+      )}
     </div>
   );
 }

@@ -219,11 +219,11 @@ test('buildExpensesReport — empty input', () => {
 
 import { buildPnlReport } from './reports.mjs';
 
-test('buildPnlReport — net = total in minus total out', () => {
+test('buildPnlReport — net = total in minus total out, chargebacks excluded', () => {
   const data = {
     leads: [{ stage: 'Issued', closedDate: '2026-05-10', products: [], dealValue: 3000, leadCost: 0 }],
     overrides: [{ amount: 500, period: '2026-05-12' }],
-    chargebacks: [{ amount: 200, period: '2026-05-15' }],
+    chargebacks: [{ amount: 200, period: '2026-05-15' }],   // must NOT affect the P&L
     expenses: [
       { date: '2026-05-03', amount: 300, category: 'PLATFORM_RINGY' },
       { date: '2026-05-08', amount: 100, category: 'SOFTWARE' },
@@ -231,19 +231,23 @@ test('buildPnlReport — net = total in minus total out', () => {
   };
   const rep = buildPnlReport(data, { from: '2026-05-01', to: '2026-05-31' });
   assert.equal(rep.layout, 'summary');
-  // In = 3000 + 500 = 3500; Out = 200 + 300 + 100 = 600; Net = 2900
-  assert.equal(rep.net.amount, '$2,900');
+  // In = 3000 + 500 = 3500; Out = 300 + 100 = 400 (chargeback ignored); Net = 3100
+  assert.equal(rep.net.amount, '$3,100');
   assert.equal(rep.net.color, '#059669');           // good — positive
+  // Outflow has exactly 2 lines — no Chargebacks line.
+  const outflow = rep.sections.find(s => s.title === 'Outflow');
+  assert.equal(outflow.lines.length, 2);
+  assert.equal(outflow.lines.some(l => /chargeback/i.test(l.label)), false);
 });
 
 test('buildPnlReport — negative net flips color to red', () => {
   const data = {
     leads: [], overrides: [],
-    chargebacks: [{ amount: 500, period: '2026-05-15' }],
+    chargebacks: [{ amount: 500, period: '2026-05-15' }],   // ignored
     expenses: [{ date: '2026-05-03', amount: 200, category: 'SOFTWARE' }],
   };
   const rep = buildPnlReport(data, { from: '2026-05-01', to: '2026-05-31' });
-  assert.equal(rep.net.amount, '-$700');
+  assert.equal(rep.net.amount, '-$200');            // 0 in - 200 expenses
   assert.equal(rep.net.color, '#DC2626');           // bad — negative
 });
 
