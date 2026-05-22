@@ -1,4 +1,4 @@
-import { SEMANTIC, REPORT_IDENTITY } from './reportColors.mjs';
+import { SEMANTIC, REPORT_IDENTITY, budgetStatus } from './reportColors.mjs';
 
 /**
  * PRIM Reports — pure aggregation. Turns the in-memory data stores plus a
@@ -252,5 +252,78 @@ export function buildChargebacksReport(chargebacks, range) {
     ],
     empty: rows.length === 0,
     emptyMessage: 'No chargebacks in this period — good news.',
+  };
+}
+
+// --- Report 4: Expenses --------------------------------------------------
+// opts: { categoryLabels: { id: label }, budget: number, showBudget: boolean }
+export function buildExpensesReport(expenses, range, opts = {}) {
+  const { categoryLabels = {}, budget = 0, showBudget = false } = opts;
+  const isPlatform = (catId) => String(catId || '').startsWith('PLATFORM_');
+
+  const scoped = (expenses || []).filter(e => e && inRange(e.date, range));
+
+  // Group by category id.
+  const groups = new Map(); // catId -> { count, total }
+  let platformTotal = 0;
+  let booksTotal = 0;
+  for (const e of scoped) {
+    const catId = e.category || 'OTHER_EXPENSE';
+    const amt = Number(e.amount) || 0;
+    if (!groups.has(catId)) groups.set(catId, { count: 0, total: 0 });
+    const g = groups.get(catId);
+    g.count += 1;
+    g.total += amt;
+    if (isPlatform(catId)) platformTotal += amt; else booksTotal += amt;
+  }
+  const grandTotal = platformTotal + booksTotal;
+  const overBudget = showBudget && budget > 0 && platformTotal > budget;
+
+  const groupRows = [...groups.entries()]
+    .map(([catId, g]) => ({
+      label: categoryLabels[catId] || catId,
+      group: isPlatform(catId) ? 'Platform' : 'Books',
+      count: g.count,
+      total: g.total,
+    }))
+    .sort((a, b) => b.total - a.total);
+
+  const kpis = [
+    { label: 'Total Spent', value: money(grandTotal),
+      color: overBudget ? SEMANTIC.bad : SEMANTIC.neutral },
+    { label: 'Books', value: money(booksTotal), color: SEMANTIC.neutral },
+    { label: 'Platform', value: money(platformTotal), color: SEMANTIC.neutral },
+  ];
+  if (showBudget && budget > 0) {
+    const bs = budgetStatus(platformTotal, budget);
+    const pct = Math.round((platformTotal / budget) * 100);
+    kpis.push({ label: 'vs Budget', value: `${pct}% of ${money(budget)}`, color: bs.color });
+  }
+
+  return {
+    layout: 'table',
+    title: 'Expenses',
+    identityColor: REPORT_IDENTITY.expenses,
+    kpis,
+    columns: [
+      { label: 'Category', align: 'left' },
+      { label: 'Group', align: 'left' },
+      { label: '# Items', align: 'right' },
+      { label: 'Total', align: 'right' },
+    ],
+    rows: groupRows.map(r => [
+      { text: r.label, color: SEMANTIC.neutral, align: 'left' },
+      { text: r.group, color: SEMANTIC.neutral, align: 'left' },
+      { text: String(r.count), color: SEMANTIC.neutral, align: 'right' },
+      { text: money(r.total), color: SEMANTIC.neutral, align: 'right' },
+    ]),
+    totalsRow: [
+      { text: 'Grand Total', align: 'left' },
+      { text: '', align: 'left' },
+      { text: String(scoped.length), color: SEMANTIC.neutral, align: 'right' },
+      { text: money(grandTotal), color: overBudget ? SEMANTIC.bad : SEMANTIC.neutral, align: 'right' },
+    ],
+    empty: scoped.length === 0,
+    emptyMessage: 'No expenses recorded in this period.',
   };
 }

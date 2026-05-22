@@ -175,3 +175,44 @@ test('buildChargebacksReport — empty input shows good-news message', () => {
   assert.equal(rep.empty, true);
   assert.match(rep.emptyMessage, /good news/i);
 });
+
+import { buildExpensesReport } from './reports.mjs';
+
+const CAT_LABELS = {
+  PLATFORM_RINGY: 'Ringy',
+  SOFTWARE: 'Software',
+  OFFICE: 'Office Supplies',
+};
+
+test('buildExpensesReport — groups by category, splits Platform vs Books', () => {
+  const exp = [
+    { date: '2026-05-03', amount: 100, category: 'PLATFORM_RINGY' },
+    { date: '2026-05-09', amount: 100, category: 'PLATFORM_RINGY' },
+    { date: '2026-05-12', amount: 60,  category: 'SOFTWARE' },
+    { date: '2026-04-01', amount: 999, category: 'OFFICE' },   // out of range
+  ];
+  const rep = buildExpensesReport(exp, { from: '2026-05-01', to: '2026-05-31' },
+    { categoryLabels: CAT_LABELS, budget: 0, showBudget: false });
+  assert.equal(rep.rows.length, 2);                 // Ringy group + Software group
+  assert.equal(rep.kpis[0].value, '$260');          // Total Spent
+  // Platform subtotal = 200, Books subtotal = 60
+  assert.ok(rep.kpis.some(k => k.label === 'Platform' && k.value === '$200'));
+  assert.ok(rep.kpis.some(k => k.label === 'Books' && k.value === '$60'));
+});
+
+test('buildExpensesReport — vs Budget KPI appears only when showBudget', () => {
+  const exp = [{ date: '2026-05-03', amount: 1200, category: 'PLATFORM_RINGY' }];
+  const range = { from: '2026-05-01', to: '2026-05-31' };
+  const withBudget = buildExpensesReport(exp, range,
+    { categoryLabels: CAT_LABELS, budget: 1000, showBudget: true });
+  assert.ok(withBudget.kpis.some(k => k.label === 'vs Budget'));
+  const without = buildExpensesReport(exp, range,
+    { categoryLabels: CAT_LABELS, budget: 1000, showBudget: false });
+  assert.equal(without.kpis.some(k => k.label === 'vs Budget'), false);
+});
+
+test('buildExpensesReport — empty input', () => {
+  const rep = buildExpensesReport([], { from: '2026-05-01', to: '2026-05-31' },
+    { categoryLabels: {}, budget: 0, showBudget: false });
+  assert.equal(rep.empty, true);
+});
