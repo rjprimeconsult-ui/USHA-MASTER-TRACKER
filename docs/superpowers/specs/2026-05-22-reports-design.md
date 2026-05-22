@@ -154,13 +154,22 @@ strip** (big summary numbers) above a **detail table**, then a **totals row**.
 
 ### 6.4 Expenses
 
-- **Source:** `business_expenses_v1` (Books) + `platform_expenses_v1` (Platforms),
-  records dated in the range.
+- **Source:** `business_expenses_v1` — the single canonical expense store. Each
+  record: `{ id, date, vendor, amount, category, reason, notes }` (`date` is
+  ISO `YYYY-MM-DD`). Platform spend lives in this *same* store under the
+  `PLATFORM_RINGY` / `PLATFORM_TEXTDRIP` / `PLATFORM_VANILLASOFT` categories —
+  there is no separate platform store (legacy `platform_expenses_v1` is
+  auto-migrated into Books on load).
+- **Books vs Platform split:** a category id starting with `PLATFORM_` is
+  Platform spend; everything else is Books spend.
+- **Category labels:** resolved from `EXPENSE_CATEGORIES` in `constants.js`
+  (id → label); unknown ids fall back to the raw id.
 - **KPI strip:** Total Spent · Books subtotal · Platform subtotal · **vs Budget**
-  — only when a platform monthly budget is configured: 🟢 under / 🟠 within 10% /
-  🔴 over.
-- **Detail:** grouped by category. Columns: Category · Source (Books / Platform)
-  · # Items · Total ⚪ (🔴 if the grand total is over budget).
+  — shown only when the period is a single calendar month AND a platform
+  monthly budget (`platform_budget_v1`) is set: compares Platform spend to that
+  budget, 🟢 under / 🟠 within 10% / 🔴 over.
+- **Detail:** grouped by category. Columns: Category (label) · Group
+  (Books / Platform) · # Items · Total ⚪ (🔴 when over budget).
 - **Totals row:** Grand Total.
 - **Empty state:** "No expenses recorded in this period."
 
@@ -187,6 +196,9 @@ NET RESULT                               $ 0,000   🟢 / 🔴  (large)
 ```
 
 - **Net** = Total In − Total Out, shown large in emerald (≥ 0) or red (< 0).
+- "Platform expenses" and "Books expenses" are both drawn from the single
+  `business_expenses_v1` store, split by the `PLATFORM_` category prefix —
+  shown as two lines purely for clarity.
 - Lead cost is intentionally **not** an outflow line here — it is reflected in
   the Leads Sold report's Net Profit. Keeping it out of the P&L avoids any
   double-count with platform spend. (Decision — revisit if agents want it in.)
