@@ -284,7 +284,7 @@ function PlatformExpensesView({ expenses, onAdd, onUpdate, onDelete, onBulkAdd, 
           />
         </StaggerItem>
         <StaggerItem>
-          <TiltCard className="bg-white rounded-xl border border-slate-200 p-3 shine-on-hover glow-ring cursor-default">
+          <TiltCard className="premium-card p-3 shine-on-hover glow-ring cursor-default">
             <div className="flex items-center justify-between">
               <div className="text-xs font-bold text-slate-500 tracking-wider">MONTHLY BUDGET</div>
               <input
@@ -315,7 +315,7 @@ function PlatformExpensesView({ expenses, onAdd, onUpdate, onDelete, onBulkAdd, 
           const entries = monthExpenses.filter(e => e.platform === p.id).length;
           return (
             <StaggerItem key={p.id}>
-              <TiltCard className="bg-white rounded-xl border border-slate-200 p-4 shine-on-hover glow-ring cursor-default">
+              <TiltCard className="premium-card p-4 shine-on-hover glow-ring cursor-default">
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center gap-2">
                     <div className="w-2.5 h-2.5 rounded-full" style={{ background: p.color }} />
@@ -339,7 +339,7 @@ function PlatformExpensesView({ expenses, onAdd, onUpdate, onDelete, onBulkAdd, 
       </Stagger>
 
       {/* Multi-year history strip — prev/next year arrows, click any month to jump */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4">
+      <div className="premium-card p-4">
         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
           <div className="flex items-center gap-2">
             <button
@@ -487,7 +487,7 @@ function PlatformExpensesView({ expenses, onAdd, onUpdate, onDelete, onBulkAdd, 
       />
 
       {/* Quick add */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4">
+      <div className="premium-card p-4">
         <div className="flex items-center gap-2 mb-3">
           <Plus size={16} className="text-indigo-600" />
           <h3 className="font-semibold text-slate-900">Add expense entry</h3>
@@ -554,7 +554,7 @@ function PlatformExpensesView({ expenses, onAdd, onUpdate, onDelete, onBulkAdd, 
       </div>
 
       {/* Daily entries table */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4">
+      <div className="premium-card p-4">
         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
           <h3 className="font-semibold text-slate-900 flex items-center gap-2">
             {ymLabel(activeMonth)} — Daily entries
@@ -631,7 +631,7 @@ function PlatformExpensesView({ expenses, onAdd, onUpdate, onDelete, onBulkAdd, 
           />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm premium-table">
               <thead>
                 <tr className="border-b border-slate-200 text-left">
                   <th className="py-2 px-2 text-xs font-bold text-slate-500 uppercase tracking-wider">Date</th>
@@ -787,7 +787,7 @@ function PlatformExpensesView({ expenses, onAdd, onUpdate, onDelete, onBulkAdd, 
                       All {importPreview.duplicate.length} entries in the file are already in your tracker.
                     </div>
                   ) : (
-                    <table className="w-full text-sm">
+                    <table className="w-full text-sm premium-table">
                       <thead>
                         <tr className="border-b border-slate-200 text-left">
                           <th className="py-2 px-2 w-8"></th>
@@ -906,10 +906,10 @@ function Stat({ icon, label, value, numeric, decimals = 2, isCurrency = true, su
     </>
   );
   return tilt ? (
-    <TiltCard className="bg-white rounded-xl border border-slate-200 p-3 shine-on-hover glow-ring cursor-default">
+    <TiltCard className="premium-card p-3 shine-on-hover glow-ring cursor-default">
       {Inner}
     </TiltCard>
   ) : (
-    <div className="bg-white rounded-xl border border-slate-200 p-3">{Inner}</div>
+    <div className="premium-card p-3">{Inner}</div>
   );
 }

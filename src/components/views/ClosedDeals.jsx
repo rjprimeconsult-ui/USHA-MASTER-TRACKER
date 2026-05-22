@@ -377,7 +377,7 @@ function ClosedDeals({ leads, onEdit, onUpdate, onDelete, onImportFromScreenshot
             <p className="text-sm text-slate-500 mt-0.5">Pending + Issued deals grouped by month</p>
           </div>
         </div>
-        <div className="bg-white rounded-xl border border-slate-200">
+        <div className="premium-card">
           <EmptyState
             icon={Trophy}
             title="No closed deals yet"
@@ -430,7 +430,7 @@ function ClosedDeals({ leads, onEdit, onUpdate, onDelete, onImportFromScreenshot
       </div>
 
       {/* Big Picture — collapsible QTD / YTD breakdowns */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <div className="premium-card overflow-hidden">
         <button
           onClick={() => setShowBigPicture(v => !v)}
           className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition text-left"
@@ -524,7 +524,7 @@ function ClosedDeals({ leads, onEdit, onUpdate, onDelete, onImportFromScreenshot
           : { items: [], data: [] };
 
         return (
-          <div key={ym} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div key={ym} className="premium-card overflow-hidden">
             <div className="bg-yellow-300 px-4 py-1.5 font-bold text-slate-900 text-sm tracking-wider border-b-2 border-yellow-500">
               {monthLabel(ym)} · {items.length} DEAL{items.length !== 1 ? 'S' : ''}
               {issuedItems.length !== items.length && (
@@ -565,7 +565,7 @@ function ClosedDeals({ leads, onEdit, onUpdate, onDelete, onImportFromScreenshot
               <div className="overflow-x-auto">
                 {/* min-w forces horizontal scroll when needed instead of
                     squeezing columns into illegible slivers. */}
-                <table className="text-sm" style={{ minWidth: '1180px', width: '100%' }}>
+                <table className="text-sm premium-table" style={{ minWidth: '1180px', width: '100%' }}>
                   <thead className="bg-slate-50 text-slate-600 text-xs">
                     <tr>
                       <th className="text-left p-2 sticky left-0 bg-slate-50 z-10" style={{ minWidth: '160px' }}>Name</th>

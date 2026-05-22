@@ -339,12 +339,12 @@ function AssociationsView({
           onCancel={onCancel}
         />
       ) : (
-      <div className="bg-white rounded-xl border border-slate-200">
+      <div className="premium-card">
         <div className="p-4 border-b border-slate-200">
           <h3 className="font-semibold text-slate-900">All Association Clients</h3>
         </div>
         <div className="overflow-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm premium-table">
             <thead className="bg-slate-50 text-slate-600 text-xs">
               <tr>
                 <th className="text-left p-2">Client</th>
@@ -459,7 +459,7 @@ function ResidualBookTable({ fullBook, leads, onEdit, onPause, onResume, onCance
   const totalPaidAll = enriched.reduce((s, p) => s + (p.totalPaid || 0), 0);
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200">
+    <div className="premium-card">
       <div className="p-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="font-semibold text-slate-900">Full Residual Book</h3>
@@ -488,7 +488,7 @@ function ResidualBookTable({ fullBook, leads, onEdit, onPause, onResume, onCance
       </div>
 
       <div className="overflow-auto">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm premium-table">
           <thead className="bg-slate-50 text-slate-600 text-xs">
             <tr>
               <th className="text-left p-2">Customer</th>

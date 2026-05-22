@@ -700,7 +700,7 @@ function BusinessBooksView({
       {/* Top stat strip — YTD income, YTD expenses, True Net, Active month */}
       <Stagger className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StaggerItem>
-          <TiltCard className="bg-white rounded-xl border border-slate-200 p-3 shine-on-hover glow-ring cursor-default">
+          <TiltCard className="premium-card p-3 shine-on-hover glow-ring cursor-default">
             <div className="flex items-center gap-2">
               <ArrowUpCircle size={16} className="text-emerald-600" />
               <div className="text-xs font-bold text-slate-500 tracking-wider">YTD INCOME</div>
@@ -716,7 +716,7 @@ function BusinessBooksView({
           </TiltCard>
         </StaggerItem>
         <StaggerItem>
-          <TiltCard className="bg-white rounded-xl border border-slate-200 p-3 shine-on-hover glow-ring cursor-default">
+          <TiltCard className="premium-card p-3 shine-on-hover glow-ring cursor-default">
             <div className="flex items-center gap-2">
               <ArrowDownCircle size={16} className="text-red-500" />
               <div className="text-xs font-bold text-slate-500 tracking-wider">YTD EXPENSES</div>
@@ -735,7 +735,7 @@ function BusinessBooksView({
           </TiltCard>
         </StaggerItem>
         <StaggerItem>
-          <TiltCard className="bg-white rounded-xl border border-slate-200 p-3 shine-on-hover glow-ring cursor-default">
+          <TiltCard className="premium-card p-3 shine-on-hover glow-ring cursor-default">
             <div className="flex items-center gap-2">
               <Wallet size={16} className={ytdNet >= 0 ? 'text-emerald-600' : 'text-red-500'} />
               <div className="text-xs font-bold text-slate-500 tracking-wider">NET (YTD)</div>
@@ -749,7 +749,7 @@ function BusinessBooksView({
           </TiltCard>
         </StaggerItem>
         <StaggerItem>
-          <TiltCard className="bg-white rounded-xl border border-slate-200 p-3 shine-on-hover glow-ring cursor-default">
+          <TiltCard className="premium-card p-3 shine-on-hover glow-ring cursor-default">
             <div className="flex items-center gap-2">
               <Calendar size={16} className="text-amber-600" />
               <div className="text-xs font-bold text-slate-500 tracking-wider">{ymLabel(activeMonth)}</div>
@@ -880,7 +880,7 @@ function BusinessBooksView({
 
       {/* Tab toggle + utilities row */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="bg-white rounded-xl border border-slate-200 p-1 inline-flex">
+        <div className="premium-card p-1 inline-flex">
           <button
             onClick={() => flipTab('expenses')}
             className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${tab === 'expenses' ? 'bg-red-500 text-white shadow' : 'text-slate-600 hover:bg-slate-50'}`}
@@ -943,7 +943,7 @@ function BusinessBooksView({
         {cats.map(c => {
           const total = monthByCategory[c.id] || 0;
           return (
-            <div key={c.id} className="bg-white rounded-xl border border-slate-200 p-3">
+            <div key={c.id} className="premium-card p-3">
               <div className="flex items-center gap-2 mb-1">
                 <div className="w-2 h-2 rounded-full" style={{ background: c.color }} />
                 <div className="text-[11px] font-bold text-slate-500 tracking-wider truncate">{c.label}</div>
@@ -955,7 +955,7 @@ function BusinessBooksView({
       </div>
 
       {/* Quick add */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4">
+      <div className="premium-card p-4">
         <div className="flex items-center gap-2 mb-3">
           <Plus size={16} className="text-indigo-600" />
           <h3 className="font-semibold text-slate-900">
@@ -1056,7 +1056,7 @@ function BusinessBooksView({
       </div>
 
       {/* Daily entries table */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4">
+      <div className="premium-card p-4">
         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
           <h3 className="font-semibold text-slate-900 flex items-center gap-2">
             {ymLabel(activeMonth)} — {tab === 'expenses' ? 'Expenses' : 'Income'}
@@ -1191,7 +1191,7 @@ function BusinessBooksView({
           />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm premium-table">
               <thead>
                 <tr className="border-b border-slate-200 text-left">
                   <th className="py-2 px-2 w-8 text-center">
@@ -1392,7 +1392,7 @@ function BusinessBooksView({
               {rescanPreview.length === 0 ? (
                 <div className="text-center text-slate-500 text-sm py-8">All entries are categorized correctly.</div>
               ) : (
-                <table className="w-full text-sm">
+                <table className="w-full text-sm premium-table">
                   <thead>
                     <tr className="border-b border-slate-200 text-left text-xs">
                       <th className="py-2 px-2 w-8"></th>
@@ -1604,7 +1604,7 @@ function PreviewSection({ title, rows, cats, selected, onToggle, onUpdate, vendo
   return (
     <div>
       <h3 className="font-semibold text-slate-900 mb-2">{title}</h3>
-      <table className="w-full text-sm">
+      <table className="w-full text-sm premium-table">
         <thead>
           <tr className="border-b border-slate-200 text-left">
             <th className="py-2 px-2 w-8"></th>
@@ -1690,7 +1690,7 @@ function AiRescanPreview({ proposals, onTogglePick, onApply, onClose, expCat }) 
               Every expense looks correctly categorized. Nothing to change.
             </div>
           ) : (
-            <table className="w-full text-xs">
+            <table className="w-full text-xs premium-table">
               <thead className="bg-slate-50 sticky top-0">
                 <tr className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">
                   <th className="px-2 py-2 w-8 text-center">Apply</th>

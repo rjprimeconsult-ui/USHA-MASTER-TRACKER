@@ -784,7 +784,7 @@ function DetailRow({ Icon, label, value, valueClass = '' }) {
 
 function DetailSection({ title, children }) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-4">
+    <div className="premium-card p-4">
       <h3 className="text-sm font-bold text-slate-900 mb-2">{title}</h3>
       <div className="divide-y divide-slate-100 -my-1.5">{children}</div>
     </div>
@@ -1471,7 +1471,7 @@ export default function ProspectsView({
           Click any row to open the read-only detail bubble. */}
       {prospects.length > 0 && view === 'list' && (
         <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-          <table className="w-full text-sm border-collapse">
+          <table className="w-full text-sm border-collapse premium-table">
             <thead>
               <tr className="bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500">
                 <th className="px-3 py-2.5 text-left border-b-2 border-slate-200 border-r border-slate-200 w-10">

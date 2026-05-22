@@ -193,7 +193,7 @@ function LeadsView({ leads, onNew, onEdit, onDelete, onBulkDelete, onBulkStage, 
   return (
     <div className="space-y-4">
       {/* Filter bar */}
-      <div className="bg-white rounded-xl border border-slate-200 p-3 flex flex-wrap gap-2 items-center">
+      <div className="premium-card p-3 flex flex-wrap gap-2 items-center">
         <div className="relative flex-1 min-w-[200px]">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search name, email, phone, notes…"
@@ -287,8 +287,8 @@ function LeadsView({ leads, onNew, onEdit, onDelete, onBulkDelete, onBulkStage, 
       )}
 
       {/* Table */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-auto">
-        <table className="w-full text-sm">
+      <div className="premium-card overflow-auto">
+        <table className="w-full text-sm premium-table">
           <thead className="bg-slate-50 text-slate-600 text-xs">
             <tr>
               <th className="p-2 w-8">

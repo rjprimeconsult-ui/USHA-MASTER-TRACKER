@@ -11,7 +11,7 @@ function Pipeline({ leads, onStageChange, onEdit, onDelete, onNew }) {
 
   if (leads.length === 0) {
     return (
-      <div className="bg-white rounded-xl border border-slate-200">
+      <div className="premium-card">
         <EmptyState
           icon={Columns}
           title="Your pipeline is empty"

@@ -462,7 +462,7 @@ function HistoryImport({ onImport, onUndoImport, lastImportBatch, leads = [], on
               <div className="px-4 py-2 border-b border-slate-200 bg-slate-50 text-xs font-bold text-slate-500 tracking-wider">
                 PREVIEW (first {preview.sample.length} rows)
               </div>
-              <table className="w-full text-sm">
+              <table className="w-full text-sm premium-table">
                 <thead className="bg-slate-50 text-slate-600 text-xs">
                   <tr>
                     <th className="text-left p-2">Name</th>
@@ -528,7 +528,7 @@ function HistoryImport({ onImport, onUndoImport, lastImportBatch, leads = [], on
                 <details className="mt-3">
                   <summary className="cursor-pointer text-xs text-indigo-700 hover:underline">Show sample updates</summary>
                   <div className="mt-2 bg-white border border-indigo-200 rounded-lg overflow-auto max-h-60">
-                    <table className="w-full text-xs">
+                    <table className="w-full text-xs premium-table">
                       <thead className="bg-indigo-50 text-slate-600 sticky top-0">
                         <tr>
                           <th className="text-left p-2">Lead</th>
@@ -1018,7 +1018,7 @@ function StatementReconcile({ leads, onApply }) {
                 <div className="px-3 py-1.5 bg-emerald-50 text-xs font-bold text-emerald-900 tracking-wider">
                   WILL BE ADDED TO BOOKS → OTHER INCOME
                 </div>
-                <table className="w-full text-sm">
+                <table className="w-full text-sm premium-table">
                   <thead className="bg-slate-50 text-slate-500 text-xs">
                     <tr>
                       <th className="text-left p-2">Date</th>
@@ -1046,7 +1046,7 @@ function StatementReconcile({ leads, onApply }) {
               <details className="mt-3 text-xs">
                 <summary className="cursor-pointer text-emerald-900 font-medium select-none">Show per-statement breakdown ({statements.length} files)</summary>
                 <div className="mt-2 bg-white border border-emerald-200 rounded-lg overflow-auto">
-                  <table className="w-full text-xs">
+                  <table className="w-full text-xs premium-table">
                     <thead className="bg-emerald-50 text-slate-600">
                       <tr>
                         <th className="text-left p-2">File</th>
@@ -1101,7 +1101,7 @@ function StatementReconcile({ leads, onApply }) {
             {effectivePlan.matched.length === 0 ? (
               <div className="text-sm text-slate-400 text-center py-6">No matched customers. Either the statement belongs to someone else, or the customers aren&apos;t in your tracker yet.</div>
             ) : (
-              <table className="w-full text-sm">
+              <table className="w-full text-sm premium-table">
                 <thead className="bg-slate-50 text-slate-600 text-xs">
                   <tr>
                     <th className="text-left p-2">Customer</th>
@@ -1186,7 +1186,7 @@ function StatementReconcile({ leads, onApply }) {
                 </span>
               </div>
               {plan.chargebacksMatched?.length > 0 && (
-                <table className="w-full text-sm">
+                <table className="w-full text-sm premium-table">
                   <thead className="bg-red-50 text-red-700 text-xs">
                     <tr>
                       <th className="text-left p-2">Customer (matched)</th>
@@ -1429,7 +1429,7 @@ function SalesReportGap({ leads, onApply }) {
                 </div>
               </div>
               <div className="overflow-auto max-h-96">
-                <table className="w-full text-sm">
+                <table className="w-full text-sm premium-table">
                   <thead className="bg-slate-50 text-slate-600 text-xs sticky top-0">
                     <tr>
                       <th className="p-2 w-8"></th>
@@ -1470,7 +1470,7 @@ function SalesReportGap({ leads, onApply }) {
                 </div>
               </div>
               <div className="overflow-auto max-h-96">
-                <table className="w-full text-sm">
+                <table className="w-full text-sm premium-table">
                   <thead className="bg-slate-50 text-slate-600 text-xs sticky top-0">
                     <tr>
                       <th className="p-2 w-8"></th>
@@ -1754,7 +1754,7 @@ function MonthlyPayoutUpload({ onApply }) {
           <div className="px-3 py-2 bg-emerald-50 text-xs font-bold text-emerald-900 tracking-wider">
             WILL BE ADDED TO BOOKS → OTHER INCOME (Renewal category)
           </div>
-          <table className="w-full text-sm">
+          <table className="w-full text-sm premium-table">
             <thead className="bg-slate-50 text-slate-500 text-xs">
               <tr>
                 <th className="text-left p-2">File</th>
