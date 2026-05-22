@@ -1531,8 +1531,6 @@ export default function LeadTracker() {
             overrides={overrides}
             chargebacks={chargebacks}
             businessExpenses={businessExpenses}
-            agentName={''}
-            platformBudget={0}
           />
         </ViewMount>
         <ViewMount visible={view === 'calculator'} viewKey="calculator">

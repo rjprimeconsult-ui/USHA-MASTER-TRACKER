@@ -1,8 +1,10 @@
 'use client';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Download, FileText } from 'lucide-react';
 import ReportSheet from './ReportSheet';
 import { EXPENSE_CATEGORIES } from '@/lib/constants';
+import { storage } from '@/lib/storage';
+import { loadAgentProfile } from '@/lib/agentProfile';
 import {
   resolvePeriod, isSingleMonth,
   buildLeadsSoldReport, buildOverridesReport, buildChargebacksReport,
@@ -30,15 +32,35 @@ const PRESETS = [
 /**
  * Reports page. Props are the existing in-memory data stores from LeadTracker:
  *   leads, overrides, chargebacks, businessExpenses
- * plus agentName (display name) and platformBudget (number, monthly).
+ * The agent display name and monthly platform budget are loaded directly
+ * from storage on mount (they are not held in LeadTracker's scope).
  */
 export default function ReportsView({
   leads = [], overrides = [], chargebacks = [], businessExpenses = [],
-  agentName = '', platformBudget = 0,
 }) {
   const [reportId, setReportId] = useState('leadsSold');
   const [presetId, setPresetId] = useState('thisMonth');
   const [custom, setCustom] = useState({ from: '', to: '' });
+
+  // Agent display name (report header) + monthly platform budget (the
+  // Expenses "vs Budget" KPI) — loaded once on mount. platform_budget_v1
+  // is stored as a plain numeric string; agent_profile_v1 via loadAgentProfile.
+  const [agentName, setAgentName] = useState('');
+  const [platformBudget, setPlatformBudget] = useState(0);
+
+  useEffect(() => {
+    let alive = true;
+    loadAgentProfile()
+      .then(p => { if (alive && p?.displayName) setAgentName(p.displayName); })
+      .catch(() => {});
+    storage.getItem('platform_budget_v1')
+      .then(v => {
+        const n = Number(v);
+        if (alive && Number.isFinite(n) && n > 0) setPlatformBudget(n);
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
 
   const period = useMemo(
     () => resolvePeriod(presetId, new Date(), custom),
