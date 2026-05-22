@@ -1,5 +1,5 @@
 'use client';
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { Target, TrendingUp, Info, ChevronLeft, ChevronRight } from 'lucide-react';
 import { TAKEN_STAGES, PENDING_STAGES, NOT_TAKEN_STAGES } from '@/lib/constants';
@@ -40,6 +40,17 @@ function inPeriod(iso, period, selectedMonth, now = new Date()) {
   }
   return false;
 }
+
+// Lighten a hex color toward white — used to give the gauge ring a
+// top-to-bottom gradient sheen instead of a flat fill.
+const lighten = (hex, amt = 0.32) => {
+  const h = String(hex || '#10b981').replace('#', '');
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  const L = (c) => Math.round(c + (255 - c) * amt);
+  return `#${[L(r), L(g), L(b)].map(c => c.toString(16).padStart(2, '0')).join('')}`;
+};
 
 // Colors that match taken-rate performance thresholds
 const rateColor = (rate) => {
@@ -108,6 +119,9 @@ export default function TakenRateCalculator({
   }, [leads, period, selectedMonth, productFilter, applyOver50Rule]);
 
   const colors = rateColor(rate);
+  // Stable unique id for the gauge's <linearGradient> (two calculators
+  // render on one page). Strip colons so it is safe in an SVG url(#…).
+  const gradId = `gauge-${useId().replace(/:/g, '')}`;
 
   // Gauge donut: show rate as filled slice with remainder gray
   const gaugeData = [
@@ -221,8 +235,22 @@ export default function TakenRateCalculator({
         {/* Gauge */}
         <div className="flex flex-col items-center justify-center">
           <div className="relative w-44 h-44">
+            {/* Outer halo — a soft colored glow that hugs the ring's
+                OUTER edge only. Sized to the donut's outer diameter so
+                its box-shadow blooms outward and never reaches the
+                center where the percentage sits. */}
+            <div
+              className="absolute rounded-full pointer-events-none"
+              style={{ inset: '8px', boxShadow: `0 0 22px 0 ${colors.stroke}55` }}
+            />
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
+                <defs>
+                  <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={lighten(colors.stroke, 0.35)} />
+                    <stop offset="100%" stopColor={colors.stroke} />
+                  </linearGradient>
+                </defs>
                 <Pie
                   data={gaugeData}
                   cx="50%"
@@ -231,10 +259,13 @@ export default function TakenRateCalculator({
                   endAngle={-270}
                   innerRadius={58}
                   outerRadius={80}
+                  cornerRadius={5}
                   dataKey="value"
                   stroke="none"
                 >
-                  {gaugeData.map((d, i) => <Cell key={i} fill={d.color} />)}
+                  {gaugeData.map((d, i) => (
+                    <Cell key={i} fill={i === 0 ? `url(#${gradId})` : d.color} />
+                  ))}
                 </Pie>
               </PieChart>
             </ResponsiveContainer>
