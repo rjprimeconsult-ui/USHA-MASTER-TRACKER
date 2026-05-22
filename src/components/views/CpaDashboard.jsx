@@ -20,15 +20,21 @@ import OutreachRemindersWidget from '../OutreachRemindersWidget';
 const Kpi = memo(({ label, value, numeric, isCurrency = true, isPercent = false, sub, grad, Icon, onClick, active }) => (
   <TiltCard
     onClick={onClick}
-    className={`bg-white rounded-xl p-3 border shine-on-hover glow-ring transition-shadow ${onClick ? 'cursor-pointer' : 'cursor-default'} ${active ? 'border-indigo-500 ring-2 ring-indigo-200' : 'border-slate-200'}`}
+    className={`premium-card p-4 shine-on-hover glow-ring transition-shadow ${onClick ? 'cursor-pointer' : 'cursor-default'} ${active ? 'ring-2 ring-indigo-400/70' : ''}`}
   >
-    <div className="flex items-center justify-between mb-2">
-      <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${grad} flex items-center justify-center text-white shadow-md`} style={{ transform: 'translateZ(20px)' }}>
-        <Icon size={16} />
+    <div className="flex items-center justify-between mb-3">
+      <div
+        className={`w-10 h-10 rounded-xl bg-gradient-to-br ${grad} flex items-center justify-center text-white shadow-lg`}
+        style={{ transform: 'translateZ(26px)' }}
+      >
+        <Icon size={18} />
       </div>
     </div>
-    <div className="text-xs text-slate-500">{label}</div>
-    <div className="text-xl font-bold text-slate-900" style={{ transform: 'translateZ(15px)' }}>
+    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{label}</div>
+    <div
+      className="text-2xl font-extrabold text-slate-900 tracking-tight tabular-nums mt-1"
+      style={{ transform: 'translateZ(16px)' }}
+    >
       {numeric != null
         ? <CountUp
             value={numeric}
@@ -38,7 +44,7 @@ const Kpi = memo(({ label, value, numeric, isCurrency = true, isPercent = false,
           />
         : value}
     </div>
-    {sub && <div className="text-xs text-slate-500 mt-0.5">{sub}</div>}
+    {sub && <div className="text-[11px] text-slate-500 mt-1 leading-snug">{sub}</div>}
   </TiltCard>
 ));
 Kpi.displayName = 'Kpi';
@@ -422,7 +428,7 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
       )}
 
       {/* KPI period selector */}
-      <div className="bg-white rounded-xl border border-slate-200 p-3 flex flex-wrap items-center gap-3">
+      <div className="premium-card p-3 flex flex-wrap items-center gap-3">
         <div className="text-xs font-bold text-slate-500 tracking-wider">KPI PERIOD</div>
         <div className="flex border border-slate-200 rounded-lg overflow-hidden text-sm">
           <button onClick={() => setKpiPeriod('week')} className={`px-3 py-1.5 font-medium ${kpiPeriod === 'week' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>Week</button>
@@ -740,7 +746,7 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
           </ResponsiveContainer>
         </Chart3DCard>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-4">
+        <div className="premium-card p-4">
           <h3 className="font-semibold text-slate-900 mb-3">Activity Funnel (all-time)</h3>
           <div className="space-y-3">
             {funnelRow('Dials', activityTotals.dials, Phone, 'bg-blue-100 text-blue-700')}
@@ -754,7 +760,7 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200">
+      <div className="premium-card">
         <div className="flex items-center justify-between p-4 border-b border-slate-200">
           <h3 className="font-semibold text-slate-900">Investment Log</h3>
           <button onClick={onNewInvestment} className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center gap-1">
@@ -762,7 +768,7 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
           </button>
         </div>
         <div className="overflow-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm premium-table">
             <thead className="bg-slate-50 text-slate-600 text-xs">
               <tr>
                 <th className="text-left p-2">Week</th>
@@ -833,7 +839,7 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
       </div>
 
       {/* Activity Log */}
-      <div className="bg-white rounded-xl border border-slate-200">
+      <div className="premium-card">
         <div className="flex items-center justify-between p-4 border-b border-slate-200">
           <div>
             <h3 className="font-semibold text-slate-900">Activity Log</h3>
@@ -844,7 +850,7 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
           </button>
         </div>
         <div className="overflow-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm premium-table">
             <thead className="bg-slate-50 text-slate-600 text-xs">
               <tr>
                 <th className="text-left p-2">Date</th>
@@ -922,7 +928,7 @@ function BreakdownPanel({ title, subtitle, theme = 'indigo', Icon, onClose, rows
           {/* Money in */}
           <div className={`bg-white rounded-lg border ${t.border} overflow-hidden`}>
             <div className={`${t.header} ${t.text} text-xs font-bold uppercase tracking-wider px-3 py-2`}>Money In</div>
-            <table className="w-full text-sm">
+            <table className="w-full text-sm premium-table">
               <tbody>
                 {twoColumn.in.map((row, i) => (
                   <tr key={i} className="border-t border-slate-100">
@@ -940,7 +946,7 @@ function BreakdownPanel({ title, subtitle, theme = 'indigo', Icon, onClose, rows
           {/* Money out */}
           <div className={`bg-white rounded-lg border ${t.border} overflow-hidden`}>
             <div className={`${t.header} ${t.text} text-xs font-bold uppercase tracking-wider px-3 py-2`}>Money Out</div>
-            <table className="w-full text-sm">
+            <table className="w-full text-sm premium-table">
               <tbody>
                 {twoColumn.out.map((row, i) => (
                   <tr key={i} className="border-t border-slate-100">
@@ -958,7 +964,7 @@ function BreakdownPanel({ title, subtitle, theme = 'indigo', Icon, onClose, rows
         </div>
       ) : (
         <div className={`bg-white rounded-lg border ${t.border} overflow-hidden`}>
-          <table className="w-full text-sm">
+          <table className="w-full text-sm premium-table">
             <thead className={`${t.header} ${t.text} text-xs uppercase tracking-wider`}>
               <tr>
                 <th className="text-left p-2 font-bold">Source</th>
