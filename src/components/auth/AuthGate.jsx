@@ -93,13 +93,20 @@ function SignInScreen() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 relative flex items-center justify-center p-4">
+    <div
+      className="min-h-screen relative flex items-center justify-center p-4 overflow-hidden"
+      style={{ background: 'linear-gradient(135deg, #f8fafc 0%, #eef2ff 45%, #f5f3ff 100%)' }}
+    >
       <OrbBackdrop />
       <motion.div
         initial={{ opacity: 0, y: 12, scale: 0.96 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ type: 'spring', stiffness: 320, damping: 28 }}
-        className="bg-white/85 backdrop-blur-2xl border border-white/60 rounded-2xl shadow-2xl shadow-indigo-500/10 max-w-md w-full p-8"
+        className="relative bg-white/80 backdrop-blur-2xl border border-white/70 rounded-2xl max-w-md w-full p-8"
+        style={{
+          boxShadow:
+            '0 32px 80px -24px rgba(99,102,241,0.28), 0 12px 32px -16px rgba(15,23,42,0.18), inset 0 1px 0 rgba(255,255,255,0.85)',
+        }}
       >
         {/* Brand */}
         <div className="flex items-center gap-3 mb-6">
@@ -107,23 +114,26 @@ function SignInScreen() {
             initial={{ rotate: -8, scale: 0.9 }}
             animate={{ rotate: 0, scale: 1 }}
             transition={{ type: 'spring', stiffness: 200, damping: 14 }}
-            className="shadow-lg shadow-indigo-500/30 rounded-xl"
+            className="rounded-xl"
+            style={{ boxShadow: '0 14px 38px -10px rgba(99,102,241,0.55)' }}
           >
             <PrimAppIcon size={48} />
           </motion.div>
           <div>
-            <h1 className="text-2xl font-bold text-slate-900 leading-none tracking-tight">PRIM</h1>
-            <p className="text-xs text-slate-500 mt-1">Performance · Revenue · Investment Manager</p>
+            <h1 className="text-2xl font-extrabold text-slate-900 leading-none tracking-tight">PRIM</h1>
+            <p className="text-[11px] font-semibold text-slate-500 mt-1 tracking-wide uppercase">
+              Performance · Revenue · Investment
+            </p>
           </div>
         </div>
 
-        <h2 className="text-xl font-bold text-slate-900 mb-1">
-          {mode === 'signin' ? 'Sign in' : 'Create your account'}
+        <h2 className="text-2xl font-extrabold text-slate-900 mb-1 tracking-tight">
+          {mode === 'signin' ? 'Welcome back' : 'Create your account'}
         </h2>
         <p className="text-sm text-slate-500 mb-6">
           {mode === 'signin'
-            ? 'Welcome back. Pick up where you left off.'
-            : 'Track your leads, commissions, and CPA in one place.'}
+            ? 'Pick up where you left off.'
+            : 'Track every deal, every dollar, every week.'}
         </p>
 
         <form onSubmit={submit} className="space-y-4">
@@ -172,7 +182,7 @@ function SignInScreen() {
           <button
             type="submit"
             disabled={busy}
-            className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white rounded-lg py-2.5 text-sm font-semibold transition flex items-center justify-center gap-2"
+            className="w-full bg-accent-gradient disabled:bg-slate-300 disabled:bg-none text-white rounded-lg py-2.5 text-sm font-bold transition flex items-center justify-center gap-2 shadow-accent hover:opacity-95 disabled:opacity-100 disabled:shadow-none"
           >
             {busy && <Loader2 size={14} className="animate-spin" />}
             {mode === 'signin' ? 'Sign in' : 'Create account'}
@@ -195,6 +205,14 @@ function SignInScreen() {
               </button>
             </>
           )}
+        </div>
+
+        {/* Value-prop strip — short anchor of what PRIM is */}
+        <div className="mt-6 pt-5 border-t border-slate-200/70 text-center">
+          <p className="text-[11px] text-slate-500 leading-relaxed">
+            Built for USHA agents · Track every deal, every dollar, every week ·
+            <span className="text-slate-400"> Smart Import · True CPA · Post-sale automation</span>
+          </p>
         </div>
       </motion.div>
     </div>
