@@ -105,48 +105,54 @@ export default function ReportsView({
     <div className="space-y-5">
       {/* Header */}
       <div className="report-no-print">
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-          <FileText size={22} /> Reports
+        <h1 className="text-2xl font-extrabold text-slate-900 dark:text-slate-100 flex items-center tracking-tight">
+          <span className="section-accent" />
+          <FileText size={22} className="mr-2 text-indigo-600 dark:text-indigo-400" />
+          Reports
         </h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 ml-3">
           Pick a report and a period. View it here or download it as a PDF.
         </p>
       </div>
 
-      {/* Report-type picker */}
-      <div className="report-no-print grid grid-cols-2 md:grid-cols-5 gap-2">
+      {/* Report-type picker — each card carries its identity color */}
+      <div className="report-no-print grid grid-cols-2 md:grid-cols-5 gap-3">
         {REPORT_TYPES.map(t => {
           const active = t.id === reportId;
           return (
             <button
               key={t.id}
               onClick={() => setReportId(t.id)}
-              className={`rounded-xl border-2 px-3 py-3 text-sm font-semibold text-left transition ${
-                active ? 'shadow-md' : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
-              }`}
-              style={active ? { borderColor: t.color, color: t.color } : undefined}
+              className="premium-card premium-lift px-4 py-3.5 text-sm font-bold text-left transition"
+              style={active ? {
+                borderColor: t.color,
+                boxShadow: `0 10px 28px -10px ${t.color}66, 0 1px 2px rgba(15,23,42,0.05)`,
+              } : undefined}
             >
               <span
-                className="block w-6 h-1.5 rounded-full mb-2"
-                style={{ background: t.color }}
+                className="block w-8 h-1.5 rounded-full mb-2.5"
+                style={{
+                  background: t.color,
+                  boxShadow: active ? `0 0 14px ${t.color}99` : undefined,
+                }}
               />
-              {t.label}
+              <span style={active ? { color: t.color } : undefined}>{t.label}</span>
             </button>
           );
         })}
       </div>
 
       {/* Period bar */}
-      <div className="report-no-print bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 flex flex-wrap items-center gap-2">
-        <div className="flex flex-wrap border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden text-sm">
+      <div className="report-no-print premium-card p-3 flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap bg-slate-100 dark:bg-slate-800 rounded-lg p-1 gap-1 text-sm">
           {PRESETS.map(p => (
             <button
               key={p.id}
               onClick={() => setPresetId(p.id)}
-              className={`px-3 py-1.5 font-medium ${
+              className={`px-3 py-1.5 font-semibold rounded-md transition ${
                 presetId === p.id
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-slate-600 dark:text-slate-300 hover:bg-white/70 dark:hover:bg-slate-700/60'
               }`}
             >
               {p.label}
@@ -174,7 +180,7 @@ export default function ReportsView({
 
         <button
           onClick={downloadPdf}
-          className="ml-auto bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-3 py-2 text-sm font-semibold flex items-center gap-1.5"
+          className="ml-auto bg-accent-gradient text-white rounded-lg px-3.5 py-2 text-sm font-bold flex items-center gap-1.5 shadow-accent hover:opacity-95 transition"
         >
           <Download size={14} /> Download PDF
         </button>
