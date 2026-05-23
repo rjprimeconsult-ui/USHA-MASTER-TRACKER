@@ -206,40 +206,73 @@ export function parseSalesReport(wb) {
     } else if (assocId) {
       deal.associationPlan = assocId;
       deal.associationMonthlyPremium = (assocPremiumAV > 0 ? assocPremiumAV : premiumAV) / 12;
+    } else if (/S$/i.test(appId)) {
+      // Unmapped product, but the AppID ends in 'S' — USHA's strong
+      // convention for an association-tier row (associations ship in a
+      // separate AppID family from the main policy, e.g. 72D…S vs 52Z…J).
+      // Mark as an association orphan so Pass 2 still merges it onto the
+      // customer's main deal instead of leaking out as a duplicate lead.
+      deal.associationPlan = product || 'OTHER';
+      deal.associationMonthlyPremium = (assocPremiumAV > 0 ? assocPremiumAV : premiumAV) / 12;
+      deal._debug.push(`Inferred-as-association by AppID-S: "${product}" at ${appId}`);
     } else {
       deal._debug.push(`UNMAPPED "${product}" at ${appId}`);
     }
   }
 
-  // Pass 2: merge association-only deals into the customer's nearest main deal
+  // Pass 2: merge orphan groups (no main product) into the customer's
+  // nearest main deal. Two flavors:
+  //   - orphanAssociations: recognized as association rows (associationPlan
+  //     set, either via product pattern or AppID-S fallback). Carry their
+  //     plan + premium onto the target.
+  //   - orphanNoMain: neither mainProduct nor associationPlan recognized —
+  //     stragglers from unfamiliar product strings. Still attach their
+  //     policyNumbers to the customer's main deal so they don't surface as
+  //     duplicate, empty-looking leads.
+  // Helper: pick the candidate main deal with the closest submit date.
+  const pickClosest = (orphan, candidates) => {
+    candidates.sort((a, b) => {
+      const diffA = Math.abs(new Date(a.submitDate || '1970-01-01') - new Date(orphan.submitDate || '1970-01-01'));
+      const diffB = Math.abs(new Date(b.submitDate || '1970-01-01') - new Date(orphan.submitDate || '1970-01-01'));
+      return diffA - diffB;
+    });
+    return candidates[0];
+  };
+
   const deals = [];
   const orphanAssociations = [];
+  const orphanNoMain = [];
   for (const d of byDeal.values()) {
     if (d.mainProduct) deals.push(d);
     else if (d.associationPlan) orphanAssociations.push(d);
-    else deals.push(d); // keep as-is so we don't silently drop data
+    else orphanNoMain.push(d);
   }
 
   for (const orphan of orphanAssociations) {
-    // Find the deal for this customer with the closest submit date
     const candidates = deals.filter(d => d.nameKey === orphan.nameKey && d.mainProduct);
     if (candidates.length === 0) {
       // No main deal for this customer — keep orphan as its own entry
       deals.push(orphan);
       continue;
     }
-    candidates.sort((a, b) => {
-      const diffA = Math.abs(new Date(a.submitDate || '1970-01-01') - new Date(orphan.submitDate || '1970-01-01'));
-      const diffB = Math.abs(new Date(b.submitDate || '1970-01-01') - new Date(orphan.submitDate || '1970-01-01'));
-      return diffA - diffB;
-    });
-    const target = candidates[0];
-    // Merge association onto target
+    const target = pickClosest(orphan, candidates);
     if (!target.associationPlan) {
       target.associationPlan = orphan.associationPlan;
       target.associationMonthlyPremium = orphan.associationMonthlyPremium;
     }
     target.policyNumbers.push(...orphan.policyNumbers);
+  }
+
+  for (const orphan of orphanNoMain) {
+    const candidates = deals.filter(d => d.nameKey === orphan.nameKey && d.mainProduct);
+    if (candidates.length === 0) {
+      // Truly standalone — keep as-is so we don't silently drop data.
+      deals.push(orphan);
+      continue;
+    }
+    const target = pickClosest(orphan, candidates);
+    target.policyNumbers.push(...orphan.policyNumbers);
+    target._debug.push(...orphan._debug);
   }
 
   // Finalize stages
