@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  Calculator, Repeat, CheckSquare, LayoutDashboard, Users, Columns, Upload, Settings, Sparkles, DollarSign, BookOpen, LogOut, UserPlus, User as UserIcon, FileText,
+  Calculator, Repeat, CheckSquare, LayoutDashboard, Users, Columns, Upload, Settings, Sparkles, DollarSign, BookOpen, LogOut, UserPlus, User as UserIcon, FileText, Merge,
 } from 'lucide-react';
 import { PrimAppIcon } from '@/components/PrimLogo';
 import { storage, onStorageError } from '@/lib/storage';
@@ -30,6 +30,9 @@ import BusinessBooksView from './views/BusinessBooksView';
 import ReportsView from './views/ReportsView';
 import ProspectsView from './views/ProspectsView';
 import CommissionCalculator from './views/CommissionCalculator';
+import DuplicateResolver from './DuplicateResolver';
+import { findDuplicateGroups, enumeratePairs, shouldSkipPair } from '@/lib/duplicateResolver.mjs';
+import { nameKey } from '@/lib/statement';
 import LeadForm from './LeadForm';
 import InvestmentForm from './InvestmentForm';
 import ActivityForm from './ActivityForm';
@@ -211,6 +214,10 @@ export default function LeadTracker() {
   const [showAbImport, setShowAbImport] = useState(false);
   const [toast, setToast] = useState(null);
   const [lastImportBatch, setLastImportBatch] = useState(null);
+
+  // Duplicate resolver — modal open state + a derived count of unreviewed
+  // same-name pairs, used to drive the persistent banner.
+  const [showDupResolver, setShowDupResolver] = useState(false);
 
   // modals
   const [leadForm, setLeadForm] = useState(null);    // lead obj or null
@@ -500,6 +507,18 @@ export default function LeadTracker() {
   useEffect(() => { if (loaded && prospectSettings) storage.setItem(PROSPECT_SETTINGS_KEY, JSON.stringify(prospectSettings)); }, [prospectSettings, loaded]);
   useEffect(() => { if (loaded) storage.setItem(AB_DETAIL_KEY, JSON.stringify(abDetail)); }, [abDetail, loaded]);
   useEffect(() => { if (loaded) storage.setItem(AGENT_RATES_KEY, JSON.stringify(agentRates)); }, [agentRates, loaded]);
+
+  // How many unreviewed duplicate-name pairs exist right now. Drives the
+  // banner that surfaces above the main views.
+  const dupPairCount = useMemo(() => {
+    let count = 0;
+    for (const g of findDuplicateGroups(leads || [], nameKey)) {
+      for (const p of enumeratePairs(g)) {
+        if (!shouldSkipPair(p.a, p.b)) count++;
+      }
+    }
+    return count;
+  }, [leads]);
 
   // Auto-send hook — when a lead's stage transitions to a value that any
   // enabled template is configured to auto-fire on, drop a pending send into
@@ -916,6 +935,41 @@ export default function LeadTracker() {
     }));
     showToast(`Backfilled ${updates.length} lead${updates.length !== 1 ? 's' : ''}`);
   }, [showToast]);
+
+  // Replace `winner` with merged record and delete `loser`. Single
+  // setLeads call so the persist effect fires once and the merge-on-save
+  // logic in storage.js sees a consistent state.
+  const handleDupMerge = useCallback((mergedWinner, loser) => {
+    setLeads(prev => prev
+      .filter(l => l.id !== loser.id)
+      .map(l => (l.id === mergedWinner.id ? mergedWinner : l)));
+  }, [setLeads]);
+
+  // Tag `newerLead` as a repeat of `olderLeadId`. Stamp dedupReviewedAt
+  // on both so the pair doesn't reappear.
+  const handleDupTagRepeated = useCallback((newerLead, olderLeadId) => {
+    const now = new Date().toISOString();
+    setLeads(prev => prev.map(l => {
+      if (l.id === newerLead.id) {
+        return { ...l, previousLeadId: olderLeadId, dedupReviewedAt: now };
+      }
+      if (l.id === olderLeadId) {
+        return { ...l, dedupReviewedAt: now };
+      }
+      return l;
+    }));
+  }, [setLeads]);
+
+  // Stamp dedupReviewedAt on both leads so the pair is excluded next time.
+  const handleDupDismiss = useCallback((a, b) => {
+    const now = new Date().toISOString();
+    setLeads(prev => prev.map(l => {
+      if (l.id === a.id || l.id === b.id) {
+        return { ...l, dedupReviewedAt: now };
+      }
+      return l;
+    }));
+  }, [setLeads]);
 
   const undoLastImport = useCallback(() => {
     if (!lastImportBatch) return;
@@ -1373,6 +1427,32 @@ export default function LeadTracker() {
         </nav>
       </header>
 
+      {dupPairCount > 0 && (
+        <div className="max-w-screen-2xl mx-auto px-4 pt-3">
+          <div className="premium-card flex items-center justify-between px-4 py-3 gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-lg bg-accent-gradient flex items-center justify-center text-white">
+                <Merge size={14} />
+              </div>
+              <div className="text-sm">
+                <span className="font-bold text-slate-900 dark:text-slate-100">
+                  {dupPairCount} potential duplicate{dupPairCount === 1 ? '' : 's'} to review
+                </span>
+                <span className="text-slate-500 ml-2">
+                  Merge import artifacts or tag a returning client.
+                </span>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowDupResolver(true)}
+              className="bg-accent-gradient text-white rounded-lg px-3 py-1.5 text-xs font-bold shadow-accent hover:opacity-95"
+            >
+              Review now
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Main — lazy-mount views and keep them mounted on subsequent visits.
           This preserves filter / search / sort / month-picker state across tab
           switches (was being lost when AnimatePresence unmounted views). The
@@ -1689,6 +1769,14 @@ export default function LeadTracker() {
       />
 
       {/* Modals */}
+      <DuplicateResolver
+        open={showDupResolver}
+        onClose={() => setShowDupResolver(false)}
+        leads={leads}
+        onMerge={handleDupMerge}
+        onTagRepeated={handleDupTagRepeated}
+        onDismissPair={handleDupDismiss}
+      />
       <LeadForm open={!!leadForm} lead={leadForm} tier={tier} onSave={saveLead} onClose={() => setLeadForm(null)} onDelete={deleteLead} />
       <InvestmentForm open={!!invForm} entry={invForm} autoHelper={autoHelper} onSave={saveInvestment} onClose={() => setInvForm(null)} onDelete={deleteInvestment} />
       <ActivityForm open={!!actForm} entry={actForm} onSave={saveActivity} onClose={() => setActForm(null)} onDelete={deleteActivity} />
