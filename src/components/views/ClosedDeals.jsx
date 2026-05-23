@@ -1,5 +1,6 @@
 'use client';
 import { useMemo, memo, useState, useId } from 'react';
+import RepeatedClientBadge from '@/components/RepeatedClientBadge';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Sector } from 'recharts';
 import { Edit2, Trash2, CheckCircle2, Clock, ImageUp, ArrowLeft, MousePointer2, Trophy, BarChart3, ChevronDown } from 'lucide-react';
 import EmptyState from '../EmptyState';
@@ -590,13 +591,16 @@ function ClosedDeals({ leads, onEdit, onUpdate, onDelete, onImportFromScreenshot
                       return (
                         <tr key={l.id} className={`border-t border-slate-100 ${isIssued ? 'hover:bg-slate-50' : 'bg-amber-50/30 hover:bg-amber-50'}`}>
                           <td className={`p-2 font-medium sticky left-0 z-10 ${isIssued ? 'bg-white' : 'bg-amber-50/30'}`}>
-                            <input
-                              className={inlineCell + ' font-medium text-sm'}
-                              value={l.name || ''}
-                              onChange={(e) => patch(l, 'name', e.target.value)}
-                              placeholder="—"
-                              title="Click to edit"
-                            />
+                            <div className="flex items-center gap-2">
+                              <input
+                                className={inlineCell + ' font-medium text-sm'}
+                                value={l.name || ''}
+                                onChange={(e) => patch(l, 'name', e.target.value)}
+                                placeholder="—"
+                                title="Click to edit"
+                              />
+                              <RepeatedClientBadge lead={l} />
+                            </div>
                           </td>
                           <td className="p-2">
                             {/* Stage uses StageBadge for non-edit display, switches

@@ -4,6 +4,7 @@ import { Plus, Search, Edit2, Trash2, Download, ArrowUpDown, X, Calendar, Users,
 import { STAGES, SOURCES, OWNERS, LEAD_CATEGORIES, MAIN_PRODUCTS, UNDERWRITTEN_PRODUCTS, GI_PRODUCTS } from '@/lib/constants';
 import { fmt, usDate } from '@/lib/utils';
 import { EmptyStateTableRow } from '../EmptyState';
+import RepeatedClientBadge from '@/components/RepeatedClientBadge';
 
 const StageBadge = ({ stage }) => {
   const s = STAGES.find(x => x.id === stage) || STAGES[0];
@@ -38,6 +39,7 @@ function LeadsView({ leads, onNew, onEdit, onDelete, onBulkDelete, onBulkStage, 
   const [monthF, setMonthF] = useState('');           // 'YYYY-MM' format, or '' for all
   const [issuedNoCommissionOnly, setIssuedNoCommissionOnly] = useState(false);
   const [missingStateOnly, setMissingStateOnly] = useState(false);
+  const [showRepeatedOnly, setShowRepeatedOnly] = useState(false);
   const [ageF, setAgeF] = useState(''); // '', 'over50', 'under50', 'missing'
   const [sortBy, setSortBy] = useState('closedDate');
   const [sortDir, setSortDir] = useState('desc');
@@ -77,6 +79,7 @@ function LeadsView({ leads, onNew, onEdit, onDelete, onBulkDelete, onBulkStage, 
       if (missingStateOnly) {
         if (l.state && l.state.trim() !== '') return false;
       }
+      if (showRepeatedOnly && !l.previousLeadId) return false;
       // Age bucket filter — over/under 50 mirrors the USHA senior-market line.
       // Recognizes both exact age (l.age) and bucket-only entries
       // (l.ageBucket) so agents who don't track exact age aren't penalized.
@@ -105,7 +108,7 @@ function LeadsView({ leads, onNew, onEdit, onDelete, onBulkDelete, onBulkStage, 
       return sortDir === 'asc' ? cmp : -cmp;
     });
     return out;
-  }, [leads, q, stageF, productF, monthF, issuedNoCommissionOnly, missingStateOnly, ageF, sortBy, sortDir]);
+  }, [leads, q, stageF, productF, monthF, issuedNoCommissionOnly, missingStateOnly, showRepeatedOnly, ageF, sortBy, sortDir]);
 
   const issuedNoCommissionCount = useMemo(
     () => leads.filter(l => l.stage === 'Issued' && (l.dealValue || 0) === 0).length,
@@ -255,6 +258,16 @@ function LeadsView({ leads, onNew, onEdit, onDelete, onBulkDelete, onBulkStage, 
           {missingStateOnly ? '✓ ' : ''}Missing state{' '}
           <span className="text-xs text-slate-500">({missingStateCount})</span>
         </button>
+        <button
+          onClick={() => setShowRepeatedOnly(v => !v)}
+          className={`border rounded-lg px-3 py-2 text-sm flex items-center gap-1 ${
+            showRepeatedOnly
+              ? 'bg-indigo-600 text-white border-indigo-600'
+              : 'border-slate-200 hover:bg-slate-50'
+          }`}
+        >
+          Repeated clients only
+        </button>
         <button onClick={exportCsv} className="border border-slate-200 rounded-lg px-3 py-2 text-sm hover:bg-slate-50 flex items-center gap-1">
           <Download size={14} /> Export
         </button>
@@ -331,7 +344,10 @@ function LeadsView({ leads, onNew, onEdit, onDelete, onBulkDelete, onBulkStage, 
                     />
                   </td>
                   <td className="p-2 font-medium text-slate-900 cursor-pointer" onClick={() => onEdit(l)}>
-                    {l.name || <span className="text-slate-400">— no name —</span>}
+                    <div className="flex items-center gap-2">
+                      <span>{l.name || <span className="text-slate-400">— no name —</span>}</span>
+                      <RepeatedClientBadge lead={l} />
+                    </div>
                   </td>
                   <td className="p-2 text-slate-600 text-xs cursor-pointer" onClick={() => onEdit(l)}>
                     {l.email && <div>{l.email}</div>}

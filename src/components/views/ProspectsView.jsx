@@ -1,6 +1,7 @@
 'use client';
 import { useState, useMemo, useRef, useCallback, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
+import RepeatedClientBadge from '@/components/RepeatedClientBadge';
 import SendOutreachEmail from '../SendOutreachEmail';
 import OutreachRemindersWidget from '../OutreachRemindersWidget';
 import {
@@ -916,7 +917,10 @@ function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, o
               <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">{prospect.source}</span>
             )}
           </div>
-          <h2 className="text-2xl font-bold text-slate-900 tracking-tight">{prospect.name || '(no name)'}</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-2xl font-bold text-slate-900 tracking-tight">{prospect.name || '(no name)'}</h2>
+            <RepeatedClientBadge lead={prospect} />
+          </div>
           <div className="text-sm text-slate-500 mt-1 space-y-0.5">
             {prospect.quoteSize && (
               <div className="flex items-center gap-1.5"><DollarSign size={14} className="text-emerald-600" /><span className="text-emerald-700 font-semibold">Quote: {prospect.quoteSize}</span></div>
