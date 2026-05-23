@@ -420,6 +420,34 @@ body {
   .report-sheet thead { display: table-header-group; }
   .report-sheet tr { break-inside: avoid; }
   @page { size: letter; margin: 0.5in; }
+  /* Restore the report's color tokens to their light-mode (PDF-clean)
+     values when printing, even if the agent is viewing PRIM in dark
+     mode. Pairs with the .dark .report-sheet variants below. */
+  .report-sheet,
+  .dark .report-sheet {
+    --rs-good:  #059669 !important;
+    --rs-bad:   #DC2626 !important;
+    --rs-warn:  #D97706 !important;
+    --rs-muted: #475569 !important;
+  }
+}
+
+/* ---------- Report sheet color tokens --------------------------------- */
+/* The report sheet renders on a white "paper" in light mode and adopts a
+   dark surface in dark mode (the global bg-white override does the
+   background flip). These vars adapt the SEMANTIC text colors used by
+   the report builders so figures stay readable on both backgrounds. */
+.report-sheet {
+  --rs-good:  #059669;  /* emerald 600 — money in / good */
+  --rs-bad:   #DC2626;  /* red 600 — losses / over budget */
+  --rs-warn:  #D97706;  /* amber 600 — warning */
+  --rs-muted: #475569;  /* slate 600 — labels, dates, counts */
+}
+.dark .report-sheet {
+  --rs-good:  #34d399;  /* emerald 400 — brighter for dark surface */
+  --rs-bad:   #f87171;  /* red 400 */
+  --rs-warn:  #fbbf24;  /* amber 400 */
+  --rs-muted: #cbd5e1;  /* slate 300 — readable on dark navy */
 }
 
 /* ---------- Premium card + surface polish ---------------------------- */

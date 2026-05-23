@@ -1,9 +1,25 @@
 'use client';
 import { PrimAppIcon } from '@/components/PrimLogo';
 
+// Maps the SEMANTIC hex values from lib/reports.mjs to the per-theme
+// CSS variables defined for .report-sheet in globals.css. Lets the same
+// view-model render readable on both the white PDF sheet (light values)
+// and the dark on-screen sheet (brighter values), with print always
+// restoring to the light values. Any color not in this map (e.g. report
+// identity colors, custom tints) passes through unchanged.
+const SEMANTIC_VARS = {
+  '#059669': 'var(--rs-good)',
+  '#DC2626': 'var(--rs-bad)',
+  '#D97706': 'var(--rs-warn)',
+  '#475569': 'var(--rs-muted)',
+};
+const cv = (color) => SEMANTIC_VARS[color] || color;
+
 /**
  * Presentational report sheet — renders a view-model from lib/reports.mjs.
- * Always white-background so the on-screen view is identical to the PDF.
+ * White-background sheet in light mode, dark surface in dark mode (the
+ * global bg-white override handles the flip); semantic text colors adapt
+ * via .report-sheet CSS variables. Print always restores light values.
  * The outer .report-sheet class is what the print stylesheet isolates.
  *
  * Props:
@@ -54,7 +70,7 @@ export default function ReportSheet({ report, period, agentName }) {
                 <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
                   {k.label}
                 </div>
-                <div className="text-lg font-extrabold mt-1" style={{ color: k.color }}>
+                <div className="text-lg font-extrabold mt-1" style={{ color: cv(k.color) }}>
                   {k.value}
                 </div>
               </div>
@@ -109,7 +125,7 @@ function TableBody({ report }) {
               <td
                 key={ci}
                 className={`py-1.5 px-2 ${cell.align === 'right' ? 'text-right tabular-nums' : 'text-left'}`}
-                style={{ color: cell.color }}
+                style={{ color: cv(cell.color) }}
               >
                 {cell.text}
               </td>
@@ -124,7 +140,7 @@ function TableBody({ report }) {
               <td
                 key={ci}
                 className={`py-2 px-2 ${cell.align === 'right' ? 'text-right tabular-nums' : 'text-left'}`}
-                style={{ color: cell.color }}
+                style={{ color: cv(cell.color) }}
               >
                 {cell.text}
               </td>
@@ -147,14 +163,14 @@ function SummaryBody({ report }) {
           {sec.lines.map((ln, li) => (
             <div key={li} className="flex justify-between py-1 text-sm">
               <span className="text-slate-700">{ln.label}</span>
-              <span className="font-semibold tabular-nums" style={{ color: ln.color }}>
+              <span className="font-semibold tabular-nums" style={{ color: cv(ln.color) }}>
                 {ln.amount}
               </span>
             </div>
           ))}
           <div className="flex justify-between py-1.5 mt-1 border-t border-slate-200 text-sm font-bold">
             <span>{sec.subtotal.label}</span>
-            <span className="tabular-nums" style={{ color: sec.subtotal.color }}>
+            <span className="tabular-nums" style={{ color: cv(sec.subtotal.color) }}>
               {sec.subtotal.amount}
             </span>
           </div>
@@ -165,7 +181,7 @@ function SummaryBody({ report }) {
         style={{ background: `${report.net.color}14` }}
       >
         <span className="font-bold text-slate-900">{report.net.label}</span>
-        <span className="text-3xl font-extrabold tabular-nums" style={{ color: report.net.color }}>
+        <span className="text-3xl font-extrabold tabular-nums" style={{ color: cv(report.net.color) }}>
           {report.net.amount}
         </span>
       </div>
