@@ -401,13 +401,26 @@ export default function LeadTracker() {
           // eslint-disable-next-line no-console
           console.log(`[platform-to-books migration] Recovered ${migratedRows.length} legacy platform row(s) into Books.`);
         }
+
+        // CRITICAL: erase the legacy store IMMEDIATELY after migration so
+        // it can't re-inject the same rows on subsequent loads. The bug
+        // this fixes: agent deletes platform-category rows from Books to
+        // clean up duplicates, refreshes, and on next load the migration
+        // re-adds those rows because they're still in peInitial. Result:
+        // "my cleanup didn't save" + permanent duplicate situation.
+        //
+        // We clear PE_KEY here (not via the setPlatformExpenses useEffect,
+        // which races with `loaded` becoming true). The state is then
+        // initialised to [] below.
+        await storage.removeItem(PE_KEY);
       }
 
-      // Keep platformExpenses state in sync for any code that still reads
-      // it directly (legacy paths). After migration, the Platforms tab and
-      // True CPA both read from businessExpenses → these stay until full
-      // cleanup.
-      setPlatformExpenses(peInitial);
+      // Legacy `platformExpenses` state is retired. PlatformsView reads
+      // from `platformExpensesAsView` (derived from businessExpenses), so
+      // there is no longer a second source of truth. We keep the state
+      // declared as [] purely to avoid breaking any stray legacy reads
+      // until the next refactor pass.
+      setPlatformExpenses([]);
       setBusinessExpenses(beInitial);
       const biRaw = await storage.getItem(BI_KEY);
       setBusinessIncome(biRaw ? JSON.parse(biRaw) : []);
@@ -500,7 +513,12 @@ export default function LeadTracker() {
   useEffect(() => { if (loaded) storage.setItem(OVR_KEY, JSON.stringify(overrides)); }, [overrides, loaded]);
   useEffect(() => { if (loaded) storage.setItem(OWN_ADV_KEY, JSON.stringify(ownAdvances)); }, [ownAdvances, loaded]);
   useEffect(() => { if (loaded) storage.setItem(AM_KEY, JSON.stringify(advanceMonthsHistory)); }, [advanceMonthsHistory, loaded]);
-  useEffect(() => { if (loaded) storage.setItem(PE_KEY, JSON.stringify(platformExpenses)); }, [platformExpenses, loaded]);
+  // [retired 2026-05-26] platform_expenses_v1 is no longer a source of
+  // truth — PlatformsView reads from businessExpenses via the
+  // platformExpensesAsView memo. The legacy store is cleared during
+  // load-time migration and is never written to again. Leaving the
+  // platformExpenses state declared (initialised to []) for backwards
+  // compat with any straggler readers until the next refactor pass.
   useEffect(() => { if (loaded) storage.setItem(BE_KEY, JSON.stringify(businessExpenses)); }, [businessExpenses, loaded]);
   useEffect(() => { if (loaded) storage.setItem(BI_KEY, JSON.stringify(businessIncome)); }, [businessIncome, loaded]);
   useEffect(() => { if (loaded) storage.setItem(PROSPECTS_KEY, JSON.stringify(prospects)); }, [prospects, loaded]);
