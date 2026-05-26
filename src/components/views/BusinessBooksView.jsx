@@ -831,7 +831,11 @@ function BusinessBooksView({
             return true;
           });
           const okPlatforms = (platforms || []).filter(r => {
-            if (isPeriodClosed('platforms', r.date)) { skip.platforms++; return false; }
+            // Platforms now live inside Books — check the unified 'books'
+            // bucket so a single reopen click works for both. (The legacy
+            // 'platforms' bucket is kept in storage for backwards compat
+            // and stays in sync via closedPeriods writers.)
+            if (isPeriodClosed('books', r.date)) { skip.platforms++; return false; }
             return true;
           });
           if (okExpenses.length) onBulkAddExpenses(okExpenses);

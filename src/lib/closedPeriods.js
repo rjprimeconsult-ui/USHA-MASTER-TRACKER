@@ -69,21 +69,41 @@ export function isPeriodClosed(map, kind, dateOrYm) {
   return list.includes(ym);
 }
 
+// Books and Platforms used to be separate stores with independent
+// close/reopen decisions. After the 2026 unification, Platforms rows
+// live INSIDE Books as PLATFORM_* categories — so there is now ONE
+// monthly decision, not two. Both writers below always mutate both
+// buckets together to keep them in lockstep. Readers may still query
+// either kind; both will agree.
+//
+// This kills the silent bug where reopening April in the Books view
+// left Platforms-April locked, which caused Smart Import to silently
+// drop every platform row from the imported file.
+function syncKinds(current) {
+  const set = new Set([...(current.books || []), ...(current.platforms || [])]);
+  const sorted = Array.from(set).sort();
+  return { books: sorted, platforms: [...sorted] };
+}
+
 export async function closePeriod(kind, ym) {
   const current = await loadClosedPeriods();
-  const list = current[kind] || [];
-  if (!list.includes(ym)) {
-    current[kind] = [...list, ym].sort();
-    await saveClosedPeriods(current);
-  }
-  return current;
+  current.books    = (current.books    || []);
+  current.platforms = (current.platforms || []);
+  if (!current.books.includes(ym))    current.books.push(ym);
+  if (!current.platforms.includes(ym)) current.platforms.push(ym);
+  const next = syncKinds(current);
+  await saveClosedPeriods(next);
+  return next;
 }
 
 export async function reopenPeriod(kind, ym) {
   const current = await loadClosedPeriods();
-  current[kind] = (current[kind] || []).filter(m => m !== ym);
-  await saveClosedPeriods(current);
-  return current;
+  const next = {
+    books:    (current.books    || []).filter(m => m !== ym),
+    platforms: (current.platforms || []).filter(m => m !== ym),
+  };
+  await saveClosedPeriods(next);
+  return next;
 }
 
 /**
