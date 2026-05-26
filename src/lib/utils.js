@@ -1,6 +1,25 @@
 import { QUARTERS } from './constants';
 
-export const uid = () => Math.random().toString(36).slice(2, 10);
+// Collision-proof unique ID generator.
+//
+// The old implementation — Math.random().toString(36).slice(2, 10) —
+// was only 8 base-36 chars (~2.8e12 keyspace) AND it called Math.random
+// in tight import loops, which produces correlated values that can
+// truncate to identical 8-char strings. Result: occasional duplicate
+// IDs across heavy platform imports (Ringy CSV with many refill rows
+// imported repeatedly). Duplicate IDs break React's row reconciliation
+// — stale rows linger in the DOM when filters change.
+//
+// crypto.randomUUID() is RFC 4122 v4, ~36 chars, 122 bits of entropy.
+// Available in every modern browser and in Node 19+. The Math.random
+// fallback is kept only as a last-resort safety net for ancient runtimes.
+export const uid = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  // Fallback — exceedingly unlikely to be reached.
+  return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+};
 export const today = () => new Date().toISOString().slice(0, 10);
 export const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
 export const fmt  = (n) => '$' + (n || 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
