@@ -1175,6 +1175,25 @@ function BusinessBooksView({
             </div>
           </div>
         )}
+        {/* TEMP DIAGNOSTIC — remove after confirming the filter bug. Shows
+            what the rendered list ACTUALLY contains when a category filter
+            is active, so we can tell whether the filter logic is the
+            issue, the data is the issue, or there is a render mismatch. */}
+        {filterCategory && (
+          <div style={{
+            fontSize: 11,
+            background: '#fef3c7',
+            color: '#78350f',
+            border: '1px solid #fcd34d',
+            borderRadius: 8,
+            padding: '8px 10px',
+            marginBottom: 8,
+            fontFamily: 'ui-monospace, monospace',
+          }}>
+            <b>DIAG</b> · filterCategory: <code>{filterCategory}</code> · list.length: <b>{list.length}</b> · row categories:{' '}
+            {list.map(e => e.category || '∅').join(', ')}
+          </div>
+        )}
         {list.length === 0 ? (
           <EmptyState
             icon={tab === 'expenses' ? TrendingDown : TrendingUp}
