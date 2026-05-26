@@ -1354,8 +1354,15 @@ export default function ProspectsView({
         }}
       />
 
-      {/* Today panel */}
-      <TodayPanel prospects={prospects} onEdit={onView} />
+      {/* Calendar widget — sits right under the Follow-ups dropdown so
+          both collapsible widgets cluster at the top of the page. Click
+          any day in the expanded grid to drop down that day's
+          appointments. The legacy TodayPanel (white APPOINTMENTS +
+          OVERDUE FOLLOW-UPS box) was removed — that data already lives
+          inside the calendar dropdown and the Follow-ups widget. */}
+      {prospects.length > 0 && (
+        <CalendarPanel prospects={visible} stages={cfg.stages} onView={onView} />
+      )}
 
       {/* Bulk action bar — appears whenever something is selected, in either view */}
       {selected.size > 0 && (
@@ -1436,12 +1443,10 @@ export default function ProspectsView({
         </div>
       )}
 
-      {/* Calendar widget — compact month grid above Kanban/List. Click any
-          day to dropdown that day's appointments. Collapsible so it's out of
-          the way when not needed. */}
-      {prospects.length > 0 && (
-        <CalendarPanel prospects={visible} stages={cfg.stages} onView={onView} />
-      )}
+      {/* (Calendar widget was moved above the Toolbar so both collapsible
+          dropdowns — Follow-ups and Calendar — sit together at the top of
+          the page, and the search/filters row lands directly above the
+          kanban/list.) */}
 
       {/* Kanban — dual scrollbar (top + bottom) so users can scroll from
            wherever is closer. Top bar is a thin mirror that drives the body. */}
