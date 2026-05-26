@@ -823,41 +823,54 @@ function BusinessBooksView({
           // platforms checked against their own kind.
           const skip = { books: 0, platforms: 0, dup: 0 };
 
-          // Dedup against EXISTING rows in Books. Matches on (date | amount
-          // | category | vendor | notes-first-80). A row is only treated as
-          // a duplicate if it matches on ALL fields — conservative enough
-          // that two legitimate same-day same-amount Ringy refills with
-          // different notes ("Fund balance" vs "Fund for Jose Pena") stay
-          // as separate rows. This prevents re-importing the same Ringy or
-          // TextDrip CSV from piling on another identical set of entries.
-          const dupKey = (e, vendorField = 'vendor') => [
+          // Dedup against EXISTING rows in Books with category-aware keys.
+          //  • PLATFORM_* rows (Ringy/TextDrip/VanillaSoft): loose key
+          //    (date | amount | category). These come from TWO sources —
+          //    the platform CSV and the bank statement — same charge,
+          //    different vendor/account/notes. Treat any (date, amount,
+          //    category) match as a dup against existing Books data.
+          //  • All other rows: strict 5-field key — only blocks true
+          //    identicals.
+          const PLATFORM_CATS = new Set(['PLATFORM_RINGY', 'PLATFORM_TEXTDRIP', 'PLATFORM_VANILLASOFT']);
+          const platformKey = (e) => [
+            e.date || '',
+            Number(e.amount || 0).toFixed(2),
+            e.category || '',
+          ].join('|');
+          const strictKey = (e, vendorField = 'vendor') => [
             e.date || '',
             Number(e.amount || 0).toFixed(2),
             e.category || '',
             String(e[vendorField] || '').trim().toLowerCase(),
             String(e.notes || '').trim().toLowerCase().slice(0, 80),
           ].join('|');
-          const existingExpenseKeys = new Set((expenses || []).map(e => dupKey(e, 'vendor')));
-          const existingIncomeKeys  = new Set((income   || []).map(e => dupKey(e, 'source')));
+          const keyOf = (e, vendorField = 'vendor') =>
+            PLATFORM_CATS.has(e.category) ? platformKey(e) : strictKey(e, vendorField);
+
+          const existingExpenseKeys = new Set((expenses || []).map(e => keyOf(e, 'vendor')));
+          const existingIncomeKeys  = new Set((income   || []).map(e => keyOf(e, 'source')));
 
           const okExpenses = (importedExp || []).filter(r => {
             if (isPeriodClosed('books', r.date)) { skip.books++; return false; }
-            if (existingExpenseKeys.has(dupKey(r, 'vendor'))) { skip.dup++; return false; }
-            existingExpenseKeys.add(dupKey(r, 'vendor'));
+            const k = keyOf(r, 'vendor');
+            if (existingExpenseKeys.has(k)) { skip.dup++; return false; }
+            existingExpenseKeys.add(k);
             return true;
           });
           const okIncome = (importedInc || []).filter(r => {
             if (isPeriodClosed('books', r.date)) { skip.books++; return false; }
-            if (existingIncomeKeys.has(dupKey(r, 'source'))) { skip.dup++; return false; }
-            existingIncomeKeys.add(dupKey(r, 'source'));
+            const k = keyOf(r, 'source');
+            if (existingIncomeKeys.has(k)) { skip.dup++; return false; }
+            existingIncomeKeys.add(k);
             return true;
           });
           const okPlatforms = (importedPlat || []).filter(r => {
             // Platforms now live inside Books — check the unified 'books'
             // bucket so a single reopen click works for both.
             if (isPeriodClosed('books', r.date)) { skip.platforms++; return false; }
-            if (existingExpenseKeys.has(dupKey(r, 'vendor'))) { skip.dup++; return false; }
-            existingExpenseKeys.add(dupKey(r, 'vendor'));
+            const k = keyOf(r, 'vendor');
+            if (existingExpenseKeys.has(k)) { skip.dup++; return false; }
+            existingExpenseKeys.add(k);
             return true;
           });
           if (okExpenses.length) onBulkAddExpenses(okExpenses);

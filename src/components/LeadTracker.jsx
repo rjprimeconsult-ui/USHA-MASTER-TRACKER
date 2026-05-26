@@ -415,43 +415,119 @@ export default function LeadTracker() {
         await storage.removeItem(PE_KEY);
       }
 
+      // One-shot ID collision repair.
+      //
+      // Old uid() (Math.random based, 8 chars) could collide. When two rows
+      // share an id, React's keyed selection breaks: clicking a checkbox
+      // marks selectedIds.has(thatId) true, which renders BOTH rows as
+      // checked. Same bug also breaks per-row update/delete callbacks.
+      //
+      // Heal: any row whose id collides with an earlier row gets a fresh
+      // collision-proof UUID. Idempotent — no collisions = no writes.
+      try {
+        const seenIds = new Set();
+        let repaired = 0;
+        beInitial = beInitial.map(row => {
+          if (!row || !row.id || seenIds.has(row.id)) {
+            const next = { ...(row || {}), id: uid() };
+            seenIds.add(next.id);
+            repaired++;
+            return next;
+          }
+          seenIds.add(row.id);
+          return row;
+        });
+        if (repaired > 0) {
+          await storage.setItem(BE_KEY, JSON.stringify(beInitial));
+          // eslint-disable-next-line no-console
+          console.log(`[Books id-repair] Re-issued ${repaired} colliding id(s) on load.`);
+        }
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn('[Books id-repair] failed', e);
+      }
+
       // One-shot auto-dedup of historical duplicates in Books.
       //
-      // Root cause: Smart Import never deduped against existing rows. Every
-      // re-import of the same Ringy/TextDrip Billing History CSV added the
-      // same N rows on top of the previous N. Combined with the earlier
-      // platform-store re-injection bug, agents accumulated 2-3x duplicates
-      // of every platform-category entry.
+      // Two dedup strategies depending on category:
       //
-      // This pass groups rows by (date | amount | category | vendor | notes)
-      // and keeps only the FIRST occurrence of each group. Conservative —
-      // a duplicate must match on ALL five fields to be considered dup, so
-      // two legitimate $100 Ringy refills on the same day with different
-      // notes ("From: Fund balance" vs "Funded for Jose Pena") stay as two.
+      //  • PLATFORM_* rows (Ringy / TextDrip / VanillaSoft) — dedup by
+      //    just (date | amount | category). Agents import these from TWO
+      //    sources: the platform's billing-history CSV (vendor="TD CREDIT
+      //    REFILL", no account, no notes) AND the bank statement (vendor=
+      //    "TEXTDRIP.COM HIGHLAND MI", account="American Express", notes=
+      //    "CRM EXPENSE · CREDIT REFILL"). Same charge, two records. When
+      //    we find a group sharing (date|amount|category), we KEEP THE
+      //    RICHEST row — the one with the most metadata (account + notes)
+      //    survives, because that's the bank-reconciled version the agent
+      //    cares about.
       //
-      // Runs idempotently: if there are no duplicates, no writes happen.
+      //  • All other rows — strict dedup on (date | amount | category |
+      //    vendor | notes-first-80). A row must match on all five fields
+      //    to be considered a dup. Two legit same-day same-amount entries
+      //    with different vendors or notes stay as two.
+      //
+      // Idempotent: zero duplicates = zero writes.
       try {
-        const dedupKey = (e) => [
+        const PLATFORM_CATS = new Set(['PLATFORM_RINGY', 'PLATFORM_TEXTDRIP', 'PLATFORM_VANILLASOFT']);
+        const richnessScore = (r) => {
+          let s = 0;
+          if ((r.account || '').trim()) s += 3;
+          if ((r.notes || '').trim()) s += 2;
+          // Bank-statement vendors usually include a domain or merchant
+          // name with letters and a city/state — prefer those over the
+          // bare platform-code vendors like "TD CREDIT REFILL".
+          const v = (r.vendor || '').toLowerCase();
+          if (/\.com|\.io|highland|denver|new york|\b[a-z]{2}\b$/i.test(v)) s += 1;
+          if ((r.attachment || r.receipt)) s += 4; // receipts win
+          return s;
+        };
+        const platformKey = (e) => [
+          e.date || '',
+          Number(e.amount || 0).toFixed(2),
+          e.category || '',
+        ].join('|');
+        const strictKey = (e) => [
           e.date || '',
           Number(e.amount || 0).toFixed(2),
           e.category || '',
           String(e.vendor || '').trim().toLowerCase(),
           String(e.notes || '').trim().toLowerCase().slice(0, 80),
         ].join('|');
-        const seen = new Set();
-        const deduped = [];
-        let removed = 0;
-        for (const row of beInitial) {
-          const k = dedupKey(row);
-          if (seen.has(k)) { removed++; continue; }
-          seen.add(k);
-          deduped.push(row);
+
+        // Pass 1: split platform vs other
+        const platformRows = beInitial.filter(r => PLATFORM_CATS.has(r.category));
+        const otherRows    = beInitial.filter(r => !PLATFORM_CATS.has(r.category));
+
+        // Pass 2: dedup platform rows by loose key, keeping richest
+        const platformGroups = new Map();
+        for (const r of platformRows) {
+          const k = platformKey(r);
+          const prev = platformGroups.get(k);
+          if (!prev || richnessScore(r) > richnessScore(prev)) platformGroups.set(k, r);
         }
-        if (removed > 0) {
-          beInitial = deduped;
+        const dedupedPlatform = Array.from(platformGroups.values());
+        const platformRemoved = platformRows.length - dedupedPlatform.length;
+
+        // Pass 3: strict-dedup other rows
+        const seenOther = new Set();
+        const dedupedOther = [];
+        for (const r of otherRows) {
+          const k = strictKey(r);
+          if (seenOther.has(k)) continue;
+          seenOther.add(k);
+          dedupedOther.push(r);
+        }
+        const otherRemoved = otherRows.length - dedupedOther.length;
+
+        const totalRemoved = platformRemoved + otherRemoved;
+        if (totalRemoved > 0) {
+          beInitial = [...dedupedOther, ...dedupedPlatform].sort((a, b) =>
+            (b.date || '').localeCompare(a.date || '')
+          );
           await storage.setItem(BE_KEY, JSON.stringify(beInitial));
           // eslint-disable-next-line no-console
-          console.log(`[Books auto-dedup] Removed ${removed} duplicate Books row(s) on load.`);
+          console.log(`[Books auto-dedup] Removed ${totalRemoved} duplicate row(s) on load (${platformRemoved} platform · ${otherRemoved} other).`);
         }
       } catch (e) {
         // eslint-disable-next-line no-console
