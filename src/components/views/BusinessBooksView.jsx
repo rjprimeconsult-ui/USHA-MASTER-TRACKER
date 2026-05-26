@@ -1281,6 +1281,17 @@ function BusinessBooksView({
                           list="known-accounts"
                           value={e.account || ''}
                           onChange={(ev) => lockedUpdate({ ...e, account: ev.target.value })}
+                          onBlur={(ev) => {
+                            // Datalist picks don't always fire the input
+                            // event in every browser (Chrome quirk on
+                            // mouse-click selection), so the controlled
+                            // value can snap back to blank. Commit on
+                            // blur as a safety net.
+                            const next = ev.target.value || '';
+                            if (!rowLocked && next !== (e.account || '')) {
+                              lockedUpdate({ ...e, account: next });
+                            }
+                          }}
                           readOnly={rowLocked}
                           placeholder="—"
                           title={rowLocked ? 'Closed month — reopen to edit' : (e.paymentMethod ? `Payment method: ${e.paymentMethod}` : '')}
