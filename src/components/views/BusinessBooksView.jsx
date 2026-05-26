@@ -1175,32 +1175,6 @@ function BusinessBooksView({
             </div>
           </div>
         )}
-        {/* TEMP DIAGNOSTIC — remove after confirming the filter bug. Shows
-            what the rendered list ACTUALLY contains when a category filter
-            is active, so we can tell whether the filter logic is the
-            issue, the data is the issue, or there is a render mismatch. */}
-        {filterCategory && (
-          <div style={{
-            fontSize: 11,
-            background: '#fef3c7',
-            color: '#78350f',
-            border: '1px solid #fcd34d',
-            borderRadius: 8,
-            padding: '8px 10px',
-            marginBottom: 8,
-            fontFamily: 'ui-monospace, monospace',
-          }}>
-            <b>DIAG</b> · filterCategory: <code>{filterCategory}</code> · list.length: <b>{list.length}</b> · row categories:{' '}
-            {list.map(e => e.category || '∅').join(', ')}
-          </div>
-        )}
-        {/* TEMP DIAG — wraps the entire BBV table in a thick red border so
-            we can see exactly which rows belong to this component. Rows
-            outside this border come from somewhere else. */}
-        <div style={{ border: '3px dashed #ef4444', borderRadius: 8, padding: 4 }} data-bbv-table="true">
-          <div style={{ fontSize: 10, color: '#991b1b', marginBottom: 4, fontFamily: 'ui-monospace,monospace' }}>
-            ↓↓↓ BusinessBooksView table — list.length: {list.length} ↓↓↓
-          </div>
         {list.length === 0 ? (
           <EmptyState
             icon={tab === 'expenses' ? TrendingDown : TrendingUp}
@@ -1255,21 +1229,7 @@ function BusinessBooksView({
                   };
                   return (
                     <tr key={e.id} className={`border-b border-slate-100 ${rowLocked ? 'bg-amber-50/30' : isSelected ? 'bg-rose-50/40' : 'hover:bg-slate-50'}`}>
-                      <td className="py-2 px-2 text-center" data-bbv-row={idx + 1}>
-                        {/* TEMP DIAG — marker is now UNCONDITIONAL so every
-                            row from list.map is marked. Also tags the td
-                            with data-bbv-row so devtools can find it. */}
-                        <span style={{
-                          display: 'inline-block',
-                          background: '#10b981',
-                          color: 'white',
-                          fontSize: 9,
-                          fontWeight: 800,
-                          padding: '1px 4px',
-                          borderRadius: 3,
-                          marginRight: 4,
-                          fontFamily: 'ui-monospace, monospace',
-                        }}>#{idx + 1}</span>
+                      <td className="py-2 px-2 text-center">
                         <input
                           type="checkbox"
                           checked={isSelected}
@@ -1400,10 +1360,6 @@ function BusinessBooksView({
             </table>
           </div>
         )}
-        <div style={{ fontSize: 10, color: '#991b1b', marginTop: 4, fontFamily: 'ui-monospace,monospace', textAlign: 'right' }}>
-          ↑↑↑ end BusinessBooksView table ↑↑↑
-        </div>
-        </div>
       </div>
 
       {/* Attachment viewer modal */}
