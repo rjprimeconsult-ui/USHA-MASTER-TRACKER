@@ -818,24 +818,46 @@ function BusinessBooksView({
         onClose={() => { setShowSmartImport(false); setPendingAiFiles(null); }}
         defaultAccount={knownAccounts[0] || ''}
         initialFiles={pendingAiFiles}
-        onImport={({ expenses, income, platforms }) => {
+        onImport={({ expenses: importedExp, income: importedInc, platforms: importedPlat }) => {
           // Filter out rows whose date falls in a closed period — books vs
           // platforms checked against their own kind.
-          const skip = { books: 0, platforms: 0 };
-          const okExpenses = (expenses || []).filter(r => {
+          const skip = { books: 0, platforms: 0, dup: 0 };
+
+          // Dedup against EXISTING rows in Books. Matches on (date | amount
+          // | category | vendor | notes-first-80). A row is only treated as
+          // a duplicate if it matches on ALL fields — conservative enough
+          // that two legitimate same-day same-amount Ringy refills with
+          // different notes ("Fund balance" vs "Fund for Jose Pena") stay
+          // as separate rows. This prevents re-importing the same Ringy or
+          // TextDrip CSV from piling on another identical set of entries.
+          const dupKey = (e, vendorField = 'vendor') => [
+            e.date || '',
+            Number(e.amount || 0).toFixed(2),
+            e.category || '',
+            String(e[vendorField] || '').trim().toLowerCase(),
+            String(e.notes || '').trim().toLowerCase().slice(0, 80),
+          ].join('|');
+          const existingExpenseKeys = new Set((expenses || []).map(e => dupKey(e, 'vendor')));
+          const existingIncomeKeys  = new Set((income   || []).map(e => dupKey(e, 'source')));
+
+          const okExpenses = (importedExp || []).filter(r => {
             if (isPeriodClosed('books', r.date)) { skip.books++; return false; }
+            if (existingExpenseKeys.has(dupKey(r, 'vendor'))) { skip.dup++; return false; }
+            existingExpenseKeys.add(dupKey(r, 'vendor'));
             return true;
           });
-          const okIncome = (income || []).filter(r => {
+          const okIncome = (importedInc || []).filter(r => {
             if (isPeriodClosed('books', r.date)) { skip.books++; return false; }
+            if (existingIncomeKeys.has(dupKey(r, 'source'))) { skip.dup++; return false; }
+            existingIncomeKeys.add(dupKey(r, 'source'));
             return true;
           });
-          const okPlatforms = (platforms || []).filter(r => {
+          const okPlatforms = (importedPlat || []).filter(r => {
             // Platforms now live inside Books — check the unified 'books'
-            // bucket so a single reopen click works for both. (The legacy
-            // 'platforms' bucket is kept in storage for backwards compat
-            // and stays in sync via closedPeriods writers.)
+            // bucket so a single reopen click works for both.
             if (isPeriodClosed('books', r.date)) { skip.platforms++; return false; }
+            if (existingExpenseKeys.has(dupKey(r, 'vendor'))) { skip.dup++; return false; }
+            existingExpenseKeys.add(dupKey(r, 'vendor'));
             return true;
           });
           if (okExpenses.length) onBulkAddExpenses(okExpenses);
@@ -846,11 +868,12 @@ function BusinessBooksView({
             const newest = all.reduce((max, e) => e.date > max ? e.date : max, '');
             if (newest) setActiveMonth(newest.slice(0, 7));
           }
-          if (skip.books + skip.platforms > 0) {
+          if (skip.books + skip.platforms + skip.dup > 0) {
             const parts = [];
-            if (skip.books) parts.push(`${skip.books} books row${skip.books !== 1 ? 's' : ''}`);
-            if (skip.platforms) parts.push(`${skip.platforms} platforms row${skip.platforms !== 1 ? 's' : ''}`);
-            alert(`Skipped ${parts.join(' + ')} that fell in closed months. Reopen those months and re-import if needed.`);
+            if (skip.books) parts.push(`${skip.books} books row${skip.books !== 1 ? 's' : ''} in closed months`);
+            if (skip.platforms) parts.push(`${skip.platforms} platforms row${skip.platforms !== 1 ? 's' : ''} in closed months`);
+            if (skip.dup) parts.push(`${skip.dup} duplicate${skip.dup !== 1 ? 's' : ''} already in Books`);
+            alert(`Skipped ${parts.join(' · ')}.`);
           }
         }}
       />

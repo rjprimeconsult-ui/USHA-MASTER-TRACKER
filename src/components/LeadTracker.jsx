@@ -415,6 +415,49 @@ export default function LeadTracker() {
         await storage.removeItem(PE_KEY);
       }
 
+      // One-shot auto-dedup of historical duplicates in Books.
+      //
+      // Root cause: Smart Import never deduped against existing rows. Every
+      // re-import of the same Ringy/TextDrip Billing History CSV added the
+      // same N rows on top of the previous N. Combined with the earlier
+      // platform-store re-injection bug, agents accumulated 2-3x duplicates
+      // of every platform-category entry.
+      //
+      // This pass groups rows by (date | amount | category | vendor | notes)
+      // and keeps only the FIRST occurrence of each group. Conservative —
+      // a duplicate must match on ALL five fields to be considered dup, so
+      // two legitimate $100 Ringy refills on the same day with different
+      // notes ("From: Fund balance" vs "Funded for Jose Pena") stay as two.
+      //
+      // Runs idempotently: if there are no duplicates, no writes happen.
+      try {
+        const dedupKey = (e) => [
+          e.date || '',
+          Number(e.amount || 0).toFixed(2),
+          e.category || '',
+          String(e.vendor || '').trim().toLowerCase(),
+          String(e.notes || '').trim().toLowerCase().slice(0, 80),
+        ].join('|');
+        const seen = new Set();
+        const deduped = [];
+        let removed = 0;
+        for (const row of beInitial) {
+          const k = dedupKey(row);
+          if (seen.has(k)) { removed++; continue; }
+          seen.add(k);
+          deduped.push(row);
+        }
+        if (removed > 0) {
+          beInitial = deduped;
+          await storage.setItem(BE_KEY, JSON.stringify(beInitial));
+          // eslint-disable-next-line no-console
+          console.log(`[Books auto-dedup] Removed ${removed} duplicate Books row(s) on load.`);
+        }
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn('[Books auto-dedup] failed', e);
+      }
+
       // Legacy `platformExpenses` state is retired. PlatformsView reads
       // from `platformExpensesAsView` (derived from businessExpenses), so
       // there is no longer a second source of truth. We keep the state
