@@ -34,10 +34,30 @@ export async function loadClosedPeriods() {
     const raw = await storage.getItem(CLOSED_PERIODS_KEY);
     if (!raw) return { ...EMPTY };
     const obj = JSON.parse(raw);
-    return {
-      books: Array.isArray(obj?.books) ? obj.books : [],
-      platforms: Array.isArray(obj?.platforms) ? obj.platforms : [],
-    };
+    const books    = Array.isArray(obj?.books) ? obj.books : [];
+    const platforms = Array.isArray(obj?.platforms) ? obj.platforms : [];
+
+    // Auto-heal divergent state from the pre-unification era. Books and
+    // Platforms used to be separate decisions; they're one decision now.
+    // If the two lists disagree on a YM, the agent's most recent explicit
+    // action was almost always a REOPEN that only updated one bucket —
+    // so we resolve via INTERSECTION (closed only if BOTH lists say so).
+    // This silently fixes states like "books-April reopened by the agent,
+    // platforms-April still closed in storage" → both become open.
+    const bookSet = new Set(books);
+    const platSet = new Set(platforms);
+    const intersect = books.filter(m => platSet.has(m)).sort();
+    const wasDivergent = books.length !== intersect.length
+                       || platforms.length !== intersect.length;
+    if (wasDivergent) {
+      const healed = { books: intersect, platforms: [...intersect] };
+      // Persist the heal so subsequent loads (and other devices) see the
+      // resolved state. Best-effort — if the write fails, we still return
+      // the healed value for this session.
+      try { await saveClosedPeriods(healed); } catch {}
+      return healed;
+    }
+    return { books, platforms };
   } catch {
     return { ...EMPTY };
   }
