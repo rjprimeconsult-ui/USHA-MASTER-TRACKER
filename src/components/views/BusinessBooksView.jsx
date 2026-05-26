@@ -1214,7 +1214,11 @@ function BusinessBooksView({
                   <th className="py-2 px-2 w-10"></th>
                 </tr>
               </thead>
-              <tbody>
+              {/* Keyed tbody forces a clean remount when filter changes —
+                  guards against React reusing stale row DOM nodes from a
+                  previous filter (which was causing Ringy rows to linger
+                  after switching to another category). */}
+              <tbody key={`${tab}|${activeMonth}|${filterCategory}|${filterVendor}|${filterAccount}`}>
                 {list.map((e, idx) => {
                   const c = tab === 'expenses' ? expCat(e.category) : incCat(e.category);
                   const isSelected = selectedIds.has(e.id);
@@ -1227,8 +1231,10 @@ function BusinessBooksView({
                     }
                     onUpdate(patch);
                   };
+                  // Composite key — defense in depth against any duplicate
+                  // entry IDs in the underlying data.
                   return (
-                    <tr key={e.id} className={`border-b border-slate-100 ${rowLocked ? 'bg-amber-50/30' : isSelected ? 'bg-rose-50/40' : 'hover:bg-slate-50'}`}>
+                    <tr key={`${e.id}|${idx}`} className={`border-b border-slate-100 ${rowLocked ? 'bg-amber-50/30' : isSelected ? 'bg-rose-50/40' : 'hover:bg-slate-50'}`}>
                       <td className="py-2 px-2 text-center">
                         <input
                           type="checkbox"
