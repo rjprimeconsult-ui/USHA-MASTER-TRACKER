@@ -17,6 +17,7 @@ import {
   Sparkles, BarChart3, Mail, Calculator, Users, Upload, Brain,
   Check, ChevronDown, ArrowRight, Zap, Lock, Star, DollarSign,
   LineChart, FileText, Phone, Calendar, TrendingUp, Award, Play,
+  Volume2, VolumeX,
 } from 'lucide-react';
 
 // ----------------------------------------------------------------
@@ -709,14 +710,19 @@ function MockFounder() {
 }
 
 // ============================================================
-// SEE IT IN ACTION — 30s promo video. Lazy-mounts on intersection
-// so we don't ship a 5-10MB MP4 on first paint. Falls back to a
-// styled placeholder if the MP4 hasn't been uploaded yet.
+// SEE IT IN ACTION — 60s vertical promo video. Lazy-mounts on
+// intersection so we don't ship a 65MB MP4 on first paint. The
+// video is 9:16 (mobile-shot brand spot), rendered inside a
+// phone-bezel frame on the left, with value-prop copy + CTA on
+// the right. Falls back to a styled placeholder if the MP4
+// hasn't been uploaded yet.
 // ============================================================
 function SeeItInAction() {
   const ref = useRef(null);
   const inView = useInView(ref, { once: true, margin: '-15% 0px' });
   const [videoMissing, setVideoMissing] = useState(false);
+  const [muted, setMuted] = useState(true);
+  const videoRef = useRef(null);
 
   const bullets = [
     { icon: BarChart3,  text: 'Real CPA — invested, earned, ROI, true net.' },
@@ -725,6 +731,14 @@ function SeeItInAction() {
     { icon: Calculator, text: 'Model splits + tiers without touching a spreadsheet.' },
   ];
 
+  const toggleMute = () => {
+    const v = videoRef.current;
+    if (!v) return;
+    const next = !muted;
+    v.muted = next;
+    setMuted(next);
+  };
+
   return (
     <section
       ref={ref}
@@ -732,7 +746,7 @@ function SeeItInAction() {
       className="relative py-32"
       style={{ background: BRAND.bg }}
     >
-      {/* decorative orb */}
+      {/* decorative orbs */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         <div
           className="absolute top-[20%] left-[-10%] w-[40vw] h-[40vw] rounded-full"
@@ -751,136 +765,164 @@ function SeeItInAction() {
       </div>
 
       <div className="relative max-w-7xl mx-auto px-6">
-        {/* heading */}
-        <motion.div
-          initial={{ opacity: 0, y: 24 }}
-          animate={inView ? { opacity: 1, y: 0 } : {}}
-          transition={{ duration: 0.6 }}
-          className="text-center mb-14"
-        >
-          <div
-            className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold tracking-widest uppercase mb-5"
-            style={{
-              color: BRAND.accent,
-              background: 'rgba(99,102,241,0.10)',
-              border: `1px solid ${BRAND.border}`,
-            }}
-          >
-            <Play size={11} fill={BRAND.accent} /> See it in action
-          </div>
-          <h2 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-4" style={{ color: BRAND.textPrimary }}>
-            A 30-second tour of your new control panel.
-          </h2>
-          <p className="text-lg max-w-2xl mx-auto" style={{ color: BRAND.textMuted }}>
-            Real screens, real workflows, demo numbers. Watch every part of PRIM —
-            dashboard, deals, pipeline, platforms, calculator — work together in one
-            place.
-          </p>
-        </motion.div>
+        <div className="grid md:grid-cols-2 gap-12 lg:gap-20 items-center">
 
-        {/* video frame */}
-        <motion.div
-          initial={{ opacity: 0, y: 32 }}
-          animate={inView ? { opacity: 1, y: 0 } : {}}
-          transition={{ duration: 0.7, delay: 0.1 }}
-          className="relative rounded-2xl overflow-hidden mx-auto"
-          style={{
-            maxWidth: '1100px',
-            background: BRAND.surface,
-            border: `1px solid ${BRAND.borderStrong}`,
-            boxShadow: `0 40px 120px -20px rgba(99,102,241,0.25), 0 20px 60px rgba(0,0,0,0.6)`,
-          }}
-        >
-          {/* macOS-style window chrome */}
-          <div
-            className="flex items-center gap-1.5 px-4 py-2.5"
-            style={{ background: 'rgba(15,23,41,0.6)', borderBottom: `1px solid ${BRAND.border}` }}
+          {/* LEFT — vertical phone-bezel video frame */}
+          <motion.div
+            initial={{ opacity: 0, y: 32 }}
+            animate={inView ? { opacity: 1, y: 0 } : {}}
+            transition={{ duration: 0.7 }}
+            className="flex justify-center md:justify-end"
           >
-            <div className="w-3 h-3 rounded-full" style={{ background: '#FF5F57' }} />
-            <div className="w-3 h-3 rounded-full" style={{ background: '#FEBC2E' }} />
-            <div className="w-3 h-3 rounded-full" style={{ background: '#28C840' }} />
-            <div className="ml-3 text-xs" style={{ color: BRAND.textDim }}>
-              primtracker.com
-            </div>
-          </div>
-
-          {/* video — only mount once the section scrolls into view */}
-          <div className="relative" style={{ aspectRatio: '16 / 9', background: BRAND.bg }}>
-            {inView && !videoMissing ? (
-              <video
-                autoPlay
-                muted
-                loop
-                playsInline
-                preload="metadata"
-                poster="/marketing/prim-promo-poster.jpg"
-                onError={() => setVideoMissing(true)}
-                className="absolute inset-0 w-full h-full object-cover"
+            <div
+              className="relative rounded-[44px] overflow-hidden"
+              style={{
+                width: 'min(360px, 100%)',
+                aspectRatio: '9 / 19.5',
+                background: '#000',
+                padding: '8px',
+                border: `2px solid ${BRAND.borderStrong}`,
+                boxShadow: `0 50px 140px -20px ${BRAND.accent}66, 0 25px 70px rgba(0,0,0,0.7), inset 0 0 0 1px rgba(255,255,255,0.05)`,
+              }}
+            >
+              {/* inner screen */}
+              <div
+                className="relative w-full h-full rounded-[36px] overflow-hidden"
+                style={{ background: BRAND.bg }}
               >
-                <source src="/marketing/prim-promo.mp4" type="video/mp4" />
-                <source src="/marketing/prim-promo.webm" type="video/webm" />
-              </video>
-            ) : null}
-
-            {/* fallback placeholder — shown until MP4 ships, or if it errors */}
-            {(!inView || videoMissing) && (
-              <div className="absolute inset-0 flex items-center justify-center">
+                {/* notch */}
                 <div
-                  className="absolute inset-0"
-                  style={{
-                    background: `linear-gradient(135deg, ${BRAND.surface} 0%, ${BRAND.surfaceRaise} 100%)`,
-                  }}
+                  className="absolute top-2 left-1/2 -translate-x-1/2 w-[40%] h-6 rounded-full z-20"
+                  style={{ background: '#000' }}
                 />
-                <div className="absolute inset-0 opacity-50" style={{
-                  background: `radial-gradient(circle at 50% 50%, ${BRAND.accent}33 0%, transparent 60%)`,
-                }} />
-                <div className="relative flex flex-col items-center gap-4">
-                  <div
-                    className="w-20 h-20 rounded-full flex items-center justify-center"
+
+                {inView && !videoMissing ? (
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    muted={muted}
+                    loop
+                    playsInline
+                    preload="metadata"
+                    onError={() => setVideoMissing(true)}
+                    onClick={toggleMute}
+                    className="absolute inset-0 w-full h-full object-cover cursor-pointer"
+                  >
+                    <source src="/marketing/prim-promo-60s.mp4" type="video/mp4" />
+                  </video>
+                ) : null}
+
+                {/* fallback placeholder */}
+                {(!inView || videoMissing) && (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div
+                      className="absolute inset-0"
+                      style={{
+                        background: `linear-gradient(135deg, ${BRAND.surface} 0%, ${BRAND.surfaceRaise || BRAND.surface} 100%)`,
+                      }}
+                    />
+                    <div
+                      className="absolute inset-0 opacity-50"
+                      style={{
+                        background: `radial-gradient(circle at 50% 40%, ${BRAND.accent}33 0%, transparent 60%)`,
+                      }}
+                    />
+                    <div className="relative flex flex-col items-center gap-4">
+                      <div
+                        className="w-20 h-20 rounded-full flex items-center justify-center"
+                        style={{
+                          background: `linear-gradient(135deg, ${BRAND.accent}, ${BRAND.accent2})`,
+                          boxShadow: `0 20px 50px ${BRAND.accent}66`,
+                        }}
+                      >
+                        <Play size={32} fill="#fff" color="#fff" />
+                      </div>
+                      <div className="text-sm font-semibold" style={{ color: BRAND.textPrimary }}>
+                        Product walkthrough — 60s
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* mute toggle — bottom-right corner of the phone screen */}
+                {inView && !videoMissing && (
+                  <button
+                    onClick={toggleMute}
+                    aria-label={muted ? 'Unmute video' : 'Mute video'}
+                    className="absolute bottom-4 right-4 z-30 w-10 h-10 rounded-full flex items-center justify-center transition hover:scale-105"
                     style={{
-                      background: `linear-gradient(135deg, ${BRAND.accent}, ${BRAND.accent2})`,
-                      boxShadow: `0 20px 50px ${BRAND.accent}66`,
+                      background: 'rgba(0,0,0,0.55)',
+                      backdropFilter: 'blur(8px)',
+                      border: '1px solid rgba(255,255,255,0.15)',
                     }}
                   >
-                    <Play size={32} fill="#fff" color="#fff" />
-                  </div>
-                  <div className="text-sm font-semibold" style={{ color: BRAND.textPrimary }}>
-                    Product walkthrough — 30s
-                  </div>
-                  <div className="text-xs" style={{ color: BRAND.textDim }}>
-                    Coming this week
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </motion.div>
-
-        {/* what you'll see */}
-        <motion.div
-          initial={{ opacity: 0, y: 24 }}
-          animate={inView ? { opacity: 1, y: 0 } : {}}
-          transition={{ duration: 0.6, delay: 0.25 }}
-          className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-10 max-w-5xl mx-auto"
-        >
-          {bullets.map((b, i) => (
-            <div
-              key={i}
-              className="rounded-xl p-4 flex items-start gap-3"
-              style={{ background: BRAND.surface, border: `1px solid ${BRAND.border}` }}
-            >
-              <div
-                className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                style={{ background: `linear-gradient(135deg, ${BRAND.accent}, ${BRAND.accent2})` }}
-              >
-                <b.icon size={15} color="#fff" />
-              </div>
-              <div className="text-xs leading-relaxed" style={{ color: BRAND.textMuted }}>
-                {b.text}
+                    {muted ? <VolumeX size={16} color="#fff" /> : <Volume2 size={16} color="#fff" />}
+                  </button>
+                )}
               </div>
             </div>
-          ))}
-        </motion.div>
+          </motion.div>
+
+          {/* RIGHT — heading + bullets + CTA */}
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            animate={inView ? { opacity: 1, y: 0 } : {}}
+            transition={{ duration: 0.6, delay: 0.15 }}
+          >
+            <div
+              className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold tracking-widest uppercase mb-5"
+              style={{
+                color: BRAND.accent,
+                background: 'rgba(99,102,241,0.10)',
+                border: `1px solid ${BRAND.border}`,
+              }}
+            >
+              <Play size={11} fill={BRAND.accent} /> See it in action
+            </div>
+            <h2
+              className="text-4xl md:text-5xl font-extrabold tracking-tight mb-4"
+              style={{ color: BRAND.textPrimary, letterSpacing: '-0.02em' }}
+            >
+              A 60-second tour of your new control panel.
+            </h2>
+            <p className="text-lg mb-8" style={{ color: BRAND.textMuted }}>
+              Real screens, real workflows. Watch every part of PRIM — dashboard,
+              deals, books, reports — work together in one place. Tap to unmute.
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-8">
+              {bullets.map((b, i) => (
+                <div
+                  key={i}
+                  className="rounded-xl p-3 flex items-start gap-3"
+                  style={{ background: BRAND.surface, border: `1px solid ${BRAND.border}` }}
+                >
+                  <div
+                    className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                    style={{ background: `linear-gradient(135deg, ${BRAND.accent}, ${BRAND.accent2})` }}
+                  >
+                    <b.icon size={15} color="#fff" />
+                  </div>
+                  <div className="text-xs leading-relaxed pt-1" style={{ color: BRAND.textMuted }}>
+                    {b.text}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <a
+              href="/sign-in"
+              className="inline-flex items-center gap-2 rounded-xl px-6 py-3 font-bold text-sm transition hover:scale-[1.02]"
+              style={{
+                background: `linear-gradient(135deg, ${BRAND.accent}, ${BRAND.accent2})`,
+                color: '#fff',
+                boxShadow: `0 20px 50px -10px ${BRAND.accent}80`,
+              }}
+            >
+              Start your 7-day free trial <ArrowRight size={16} />
+            </a>
+          </motion.div>
+        </div>
       </div>
     </section>
   );
