@@ -1,20 +1,12 @@
 'use client';
-import { useMemo, useRef, useState, useEffect, memo } from 'react';
-import { Plus, Trash2, DollarSign, TrendingUp, AlertCircle, Calendar, Upload, X, Check, ChevronLeft, ChevronRight, Sparkles, Lock, Unlock, Zap } from 'lucide-react';
-import EmptyState from '../EmptyState';
-import { PLATFORMS, PLATFORM_REASONS } from '@/lib/constants';
-import { fmt, fmt2, today, uid } from '@/lib/utils';
+import { useMemo, useState, useEffect, memo } from 'react';
+import { DollarSign, TrendingUp, Calendar, ChevronLeft, ChevronRight, BookOpen, Info } from 'lucide-react';
+import { PLATFORMS } from '@/lib/constants';
+import { fmt, fmt2, today } from '@/lib/utils';
 import { storage } from '@/lib/storage';
-import { parsePlatformFile, dedupAgainst } from '@/lib/platformImport';
-import { useClosedPeriods } from '@/lib/closedPeriods';
-import { TiltCard, CountUp, Stagger, StaggerItem, MoneyCell } from '../motion/MotionPrimitives';
-import SmartImportWizard from '../SmartImportWizard';
+import { TiltCard, CountUp, Stagger, StaggerItem } from '../motion/MotionPrimitives';
 
 const BUDGET_KEY = 'platform_budget_v1';
-
-const platformLabel = (id) => PLATFORMS.find(p => p.id === id)?.label || id;
-const platformColor = (id) => PLATFORMS.find(p => p.id === id)?.color || '#64748b';
-const platformBadge = (id) => PLATFORMS.find(p => p.id === id)?.badge || 'bg-slate-200 text-slate-800';
 
 // "2026-01-15" → "2026-01"
 const ymOf = (date) => (date || '').slice(0, 7);
@@ -30,79 +22,23 @@ const daysInMonth = (ym) => {
   return new Date(y, m, 0).getDate();
 };
 
-function PlatformExpensesView({ expenses, onAdd, onUpdate, onDelete, onBulkAdd, onBulkAddBooksExpenses, onBulkAddBooksIncome }) {
-  const fileInputRef = useRef(null);
-  const [importPreview, setImportPreview] = useState(null); // { format, entries, fresh, duplicate, error }
-  const [importing, setImporting] = useState(false);
-  const [showSmartImport, setShowSmartImport] = useState(false);
-  // Files queued for handoff to Smart Import wizard when classic mode
-  // gets a PDF.
-  const [pendingAiFiles, setPendingAiFiles] = useState(null);
-  const { isClosed: isPeriodClosed, close: closePlatformMonth, reopen: reopenPlatformMonth } = useClosedPeriods();
-
-  const handleFileSelect = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    // PDFs route to Smart Import (AI) — classic CSV/XLSX parser can't
-    // read them.
-    const isPdf = file.name.toLowerCase().endsWith('.pdf') ||
-                  file.type === 'application/pdf';
-    if (isPdf) {
-      setPendingAiFiles([file]);
-      setShowSmartImport(true);
-      e.target.value = '';
-      return;
-    }
-    setImporting(true);
-    try {
-      const { format, entries } = await parsePlatformFile(file);
-      if (format === 'unknown' || format === 'empty') {
-        setImportPreview({ error: `Couldn't recognize this file. Expected a Don Julio budget sheet (Date / Platform / Amount columns) or a bank statement (Date / Description / Amount).` });
-      } else if (entries.length === 0) {
-        setImportPreview({ error: `Read the file as a ${format === 'bank' ? 'bank statement' : 'budget sheet'} but found 0 matching expenses. For bank statements, only TextDrip / Ringy / VanillaSoft charges are detected.` });
-      } else {
-        const { fresh, duplicate } = dedupAgainst(entries, expenses);
-        // Pre-mark every fresh row as selected
-        const selected = new Set(fresh.map(e => e.id));
-        setImportPreview({ format, entries, fresh, duplicate, selected });
-      }
-    } catch (err) {
-      setImportPreview({ error: `Failed to read file: ${err.message || err}` });
-    } finally {
-      setImporting(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
-  };
-
-  const togglePreviewRow = (id) => {
-    setImportPreview(p => {
-      if (!p || !p.selected) return p;
-      const next = new Set(p.selected);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return { ...p, selected: next };
-    });
-  };
-
-  const updatePreviewRow = (id, patch) => {
-    setImportPreview(p => {
-      if (!p || !p.fresh) return p;
-      return { ...p, fresh: p.fresh.map(e => e.id === id ? { ...e, ...patch } : e) };
-    });
-  };
-
-  const commitImport = () => {
-    if (!importPreview?.fresh) return;
-    const toAdd = importPreview.fresh
-      .filter(e => importPreview.selected.has(e.id))
-      .map(({ _source, ...e }) => e);
-    if (toAdd.length === 0) return;
-    onBulkAdd?.(toAdd);
-    // Jump active month to the most-recent imported month so user immediately sees results
-    const newest = toAdd.reduce((max, e) => e.date > max ? e.date : max, '');
-    if (newest) setActiveMonth(newest.slice(0, 7));
-    setImportPreview(null);
-  };
-
+/**
+ * Platforms view — READ-ONLY analytics dashboard.
+ *
+ * After the 2026 unification, platform charges (Ringy / TextDrip / VanillaSoft)
+ * are stored as PLATFORM_* categories inside Books. ALL entry, edit, and
+ * import flows happen in the Books tab. This view derives its data from
+ * Books and visualizes it: KPIs, per-platform cards, spend distribution
+ * pie charts (active month + YTD), and a multi-year history strip.
+ *
+ * Removing the entry surface here is the structural fix for the
+ * recurring duplicate-import bug class — only one tab can write platform
+ * data, so the same charge can never get double-recorded across views.
+ *
+ * The legacy onAdd/onUpdate/onDelete/onBulkAdd props are still accepted
+ * for backwards compat with the parent's wiring, but never invoked.
+ */
+function PlatformExpensesView({ expenses, onJumpToBooks }) {
   // Default current month (or whatever month has data, fall back to today)
   const allMonths = useMemo(() => {
     const set = new Set(expenses.map(e => ymOf(e.date)));
@@ -117,7 +53,7 @@ function PlatformExpensesView({ expenses, onAdd, onUpdate, onDelete, onBulkAdd, 
     if (typeof ym === 'string' && ym.length >= 4) setStripYear(ym.slice(0, 4));
   };
 
-  // Budget persists to localStorage so it survives tab navigation
+  // Budget persists to storage so it survives tab navigation + multi-device.
   const [budget, setBudget] = useState(4000);
   useEffect(() => {
     let alive = true;
@@ -133,32 +69,10 @@ function PlatformExpensesView({ expenses, onAdd, onUpdate, onDelete, onBulkAdd, 
     storage.setItem(BUDGET_KEY, String(budget));
   }, [budget]);
 
-  // Quick add form
-  const [draft, setDraft] = useState({
-    date: today(),
-    platform: 'TD',
-    amount: '',
-    reason: 'CREDIT REFILL',
-    notes: '',
-  });
-
-  const [platformFilter, setPlatformFilter] = useState('all');
-
+  // ----------- Derived data -----------
   const monthExpenses = useMemo(
-    () => expenses.filter(e => ymOf(e.date) === activeMonth).sort((a, b) => a.date.localeCompare(b.date)),
+    () => expenses.filter(e => ymOf(e.date) === activeMonth),
     [expenses, activeMonth]
-  );
-
-  const filteredMonthExpenses = useMemo(
-    () => platformFilter === 'all'
-      ? monthExpenses
-      : monthExpenses.filter(e => e.platform === platformFilter),
-    [monthExpenses, platformFilter]
-  );
-
-  const filteredTotal = useMemo(
-    () => filteredMonthExpenses.reduce((s, e) => s + Number(e.amount || 0), 0),
-    [filteredMonthExpenses]
   );
 
   // Per-platform totals for active month
@@ -176,25 +90,23 @@ function PlatformExpensesView({ expenses, onAdd, onUpdate, onDelete, onBulkAdd, 
     [monthByPlatform]
   );
 
-  // Previous-month diff
+  // Previous-month total (for the month-total diff sub-label)
   const prevMonth = useMemo(() => {
     const [y, m] = activeMonth.split('-').map(Number);
     const d = new Date(y, m - 2, 1);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   }, [activeMonth]);
-
   const prevTotal = useMemo(
     () => expenses.filter(e => ymOf(e.date) === prevMonth).reduce((s, e) => s + Number(e.amount || 0), 0),
     [expenses, prevMonth]
   );
 
-  // Weekly average for the month (total ÷ weeks elapsed, capped at 4.33)
   const weeksInMonth = useMemo(() => {
     const days = daysInMonth(activeMonth);
     return Math.max(1, days / 7);
   }, [activeMonth]);
 
-  // YTD + projected annual (run rate × 12 from elapsed months avg)
+  // YTD + projected annual (run-rate × 12)
   const yearStats = useMemo(() => {
     const yr = activeMonth.slice(0, 4);
     const yrExpenses = expenses.filter(e => (e.date || '').startsWith(yr));
@@ -202,16 +114,24 @@ function PlatformExpensesView({ expenses, onAdd, onUpdate, onDelete, onBulkAdd, 
     const monthSet = new Set(yrExpenses.map(e => ymOf(e.date)));
     const monthsLogged = monthSet.size || 1;
     const monthlyAvg = ytdTotal / monthsLogged;
-    return {
-      ytdTotal,
-      monthsLogged,
-      projected: monthlyAvg * 12,
-    };
+    return { ytdTotal, monthsLogged, projected: monthlyAvg * 12 };
+  }, [expenses, activeMonth]);
+
+  // YTD per-platform totals — feeds the second pie chart
+  const ytdByPlatform = useMemo(() => {
+    const yr = activeMonth.slice(0, 4);
+    const out = {};
+    PLATFORMS.forEach(p => { out[p.id] = 0; });
+    expenses.forEach(e => {
+      if (!(e.date || '').startsWith(yr)) return;
+      out[e.platform] = (out[e.platform] || 0) + Number(e.amount || 0);
+    });
+    return out;
   }, [expenses, activeMonth]);
 
   const remaining = budget - monthTotal;
 
-  // Years that have any expense data (sorted ascending) — for the year jump dropdown
+  // Years that have any expense data (sorted ascending)
   const yearsWithData = useMemo(() => {
     const set = new Set(expenses.map(e => (e.date || '').slice(0, 4)).filter(Boolean));
     set.add(activeMonth.slice(0, 4));
@@ -219,7 +139,7 @@ function PlatformExpensesView({ expenses, onAdd, onUpdate, onDelete, onBulkAdd, 
     return Array.from(set).sort();
   }, [expenses, activeMonth, stripYear]);
 
-  // 12-month bar history (small chart strip) — for the currently selected stripYear
+  // 12-month bar history for the selected stripYear
   const monthHistory = useMemo(() => {
     const out = [];
     for (let m = 1; m <= 12; m++) {
@@ -229,32 +149,32 @@ function PlatformExpensesView({ expenses, onAdd, onUpdate, onDelete, onBulkAdd, 
     }
     return out;
   }, [expenses, stripYear]);
-
   const maxHistory = useMemo(() => Math.max(1, ...monthHistory.map(m => m.total)), [monthHistory]);
   const stripYearTotal = useMemo(() => monthHistory.reduce((s, m) => s + m.total, 0), [monthHistory]);
 
-  const submitDraft = () => {
-    const amt = Number(draft.amount || 0);
-    if (!draft.date || amt <= 0) return;
-    if (isPeriodClosed('platforms', draft.date)) {
-      alert(`${ymLabel(ymOf(draft.date))} is closed. Reopen it before adding entries.`);
-      return;
-    }
-    onAdd({
-      id: uid(),
-      date: draft.date,
-      platform: draft.platform,
-      amount: amt,
-      reason: draft.reason,
-      notes: draft.notes || '',
-    });
-    // keep date + platform, reset amount/notes
-    setDraft(d => ({ ...d, amount: '', notes: '' }));
-  };
-
   return (
     <div className="space-y-5">
-      {/* Top stat strip */}
+      {/* Read-only banner */}
+      <div className="premium-card p-3 flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2 flex-1 min-w-[200px]">
+          <Info size={16} className="text-indigo-500 flex-shrink-0" />
+          <div className="text-xs text-slate-600">
+            Platform charges are managed in <b className="text-slate-900">Books</b> under the Ringy / TextDrip / VanillaSoft categories.
+            This page is your visual dashboard.
+          </div>
+        </div>
+        {onJumpToBooks && (
+          <button
+            onClick={onJumpToBooks}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-3 py-1.5 text-xs font-semibold transition flex items-center gap-1.5 flex-shrink-0"
+          >
+            <BookOpen size={13} />
+            Open Books
+          </button>
+        )}
+      </div>
+
+      {/* Top stat strip — YTD, Projected annual, Month total, Monthly budget */}
       <Stagger className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StaggerItem>
           <Stat
@@ -338,7 +258,23 @@ function PlatformExpensesView({ expenses, onAdd, onUpdate, onDelete, onBulkAdd, 
         })}
       </Stagger>
 
-      {/* Multi-year history strip — prev/next year arrows, click any month to jump */}
+      {/* Spend distribution — two pie charts (active month + YTD) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <DistributionPie
+          title={`${ymLabel(activeMonth)} · Spend distribution`}
+          subtitle={monthTotal > 0 ? fmt2(monthTotal) + ' total' : 'No platform spend this month'}
+          totals={monthByPlatform}
+          grandTotal={monthTotal}
+        />
+        <DistributionPie
+          title={`${activeMonth.slice(0, 4)} YTD · Spend distribution`}
+          subtitle={yearStats.ytdTotal > 0 ? fmt2(yearStats.ytdTotal) + ' total' : 'No platform spend YTD'}
+          totals={ytdByPlatform}
+          grandTotal={yearStats.ytdTotal}
+        />
+      </div>
+
+      {/* Multi-year history strip — read-only, click any month to jump */}
       <div className="premium-card p-4">
         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
           <div className="flex items-center gap-2">
@@ -405,489 +341,15 @@ function PlatformExpensesView({ expenses, onAdd, onUpdate, onDelete, onBulkAdd, 
           })}
         </div>
       </div>
-
-      {/* Upload from file */}
-      <div className="bg-gradient-to-r from-indigo-50 to-violet-50 border border-indigo-200 rounded-xl p-4">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-indigo-600 flex items-center justify-center text-white">
-              <Upload size={18} />
-            </div>
-            <div>
-              <div className="font-semibold text-slate-900">Upload from file</div>
-              <div className="text-xs text-slate-600">
-                <span className="font-semibold">Smart (AI):</span> any PDF, screenshot, or messy export — Ringy/TextDrip/VanillaSoft auto-detected.
-                <span className="block">Classic: Don Julio budget sheet or bank statement (CSV/XLSX).</span>
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowSmartImport(true)}
-              className="bg-gradient-to-br from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white rounded-lg px-4 py-2 text-sm font-semibold transition flex items-center gap-2 shadow-lg shadow-indigo-500/30"
-            >
-              <Sparkles size={14} />
-              Smart Import (AI)
-            </button>
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={importing}
-              className="border border-indigo-300 bg-white hover:bg-indigo-50 disabled:bg-slate-100 text-indigo-700 rounded-lg px-4 py-2 text-sm font-semibold transition flex items-center gap-2"
-            >
-              <Upload size={14} />
-              {importing ? 'Reading…' : 'Classic'}
-            </button>
-          </div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".csv,.xlsx,.xls,.pdf"
-            onChange={handleFileSelect}
-            className="hidden"
-          />
-        </div>
-      </div>
-
-      {/* Smart Import (AI) wizard — same as Books, but rows route correctly */}
-      <SmartImportWizard
-        open={showSmartImport}
-        onClose={() => { setShowSmartImport(false); setPendingAiFiles(null); }}
-        initialFiles={pendingAiFiles}
-        onImport={({ expenses: bookExp, income: bookInc, platforms }) => {
-          // Filter rows whose dates fall in closed months (per kind)
-          const skip = { books: 0, platforms: 0 };
-          const okPlatforms = (platforms || []).filter(r => {
-            if (isPeriodClosed('platforms', r.date)) { skip.platforms++; return false; }
-            return true;
-          });
-          const okBookExp = (bookExp || []).filter(r => {
-            if (isPeriodClosed('books', r.date)) { skip.books++; return false; }
-            return true;
-          });
-          const okBookInc = (bookInc || []).filter(r => {
-            if (isPeriodClosed('books', r.date)) { skip.books++; return false; }
-            return true;
-          });
-          if (okPlatforms.length) {
-            onBulkAdd?.(okPlatforms);
-            const newest = okPlatforms.reduce((max, e) => e.date > max ? e.date : max, '');
-            if (newest) setActiveMonth(newest.slice(0, 7));
-          }
-          // Any non-platform rows extracted from the file get routed to Books
-          // automatically — so a PDF with mixed charges Just Works.
-          if (okBookExp.length && onBulkAddBooksExpenses) onBulkAddBooksExpenses(okBookExp);
-          if (okBookInc.length && onBulkAddBooksIncome) onBulkAddBooksIncome(okBookInc);
-          if (skip.books + skip.platforms > 0) {
-            const parts = [];
-            if (skip.books) parts.push(`${skip.books} books row${skip.books !== 1 ? 's' : ''}`);
-            if (skip.platforms) parts.push(`${skip.platforms} platforms row${skip.platforms !== 1 ? 's' : ''}`);
-            alert(`Skipped ${parts.join(' + ')} that fell in closed months. Reopen those months and re-import if needed.`);
-          }
-        }}
-      />
-
-      {/* Quick add */}
-      <div className="premium-card p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <Plus size={16} className="text-indigo-600" />
-          <h3 className="font-semibold text-slate-900">Add expense entry</h3>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
-          <div>
-            <label className="text-[10px] uppercase text-slate-500 font-bold tracking-wider">Date</label>
-            <input
-              type="date"
-              value={draft.date}
-              onChange={(e) => setDraft(d => ({ ...d, date: e.target.value }))}
-              className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm"
-            />
-          </div>
-          <div>
-            <label className="text-[10px] uppercase text-slate-500 font-bold tracking-wider">Platform</label>
-            <select
-              value={draft.platform}
-              onChange={(e) => setDraft(d => ({ ...d, platform: e.target.value }))}
-              className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm"
-            >
-              {PLATFORMS.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="text-[10px] uppercase text-slate-500 font-bold tracking-wider">Amount</label>
-            <MoneyCell
-              value={draft.amount}
-              onChange={(v) => setDraft(d => ({ ...d, amount: v }))}
-              width="w-full"
-            />
-          </div>
-          <div>
-            <label className="text-[10px] uppercase text-slate-500 font-bold tracking-wider">Reason</label>
-            <select
-              value={draft.reason}
-              onChange={(e) => setDraft(d => ({ ...d, reason: e.target.value }))}
-              className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm"
-            >
-              {PLATFORM_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
-            </select>
-          </div>
-          <div className="col-span-2 md:col-span-1">
-            <label className="text-[10px] uppercase text-slate-500 font-bold tracking-wider">Notes</label>
-            <input
-              type="text"
-              placeholder="(optional)"
-              value={draft.notes}
-              onChange={(e) => setDraft(d => ({ ...d, notes: e.target.value }))}
-              className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm"
-            />
-          </div>
-          <div className="flex items-end">
-            <button
-              onClick={submitDraft}
-              disabled={!draft.amount || Number(draft.amount) <= 0 || isPeriodClosed('platforms', draft.date)}
-              title={isPeriodClosed('platforms', draft.date) ? `${ymLabel(ymOf(draft.date))} is closed — reopen to add` : ''}
-              className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white rounded-lg px-3 py-1.5 text-sm font-semibold transition flex items-center justify-center gap-1"
-            >
-              {isPeriodClosed('platforms', draft.date) ? <><Lock size={12} /> Locked</> : 'Add'}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Daily entries table */}
-      <div className="premium-card p-4">
-        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-          <h3 className="font-semibold text-slate-900 flex items-center gap-2">
-            {ymLabel(activeMonth)} — Daily entries
-            {isPeriodClosed('platforms', activeMonth) && (
-              <span title="This month is closed for editing" className="inline-flex items-center gap-1 text-[10px] font-bold uppercase bg-amber-100 text-amber-800 border border-amber-300 rounded px-1.5 py-0.5">
-                <Lock size={10} /> Closed
-              </span>
-            )}
-          </h3>
-          <div className="flex items-center gap-2 flex-wrap">
-            <select
-              value={platformFilter}
-              onChange={(e) => setPlatformFilter(e.target.value)}
-              title="Filter daily entries by platform"
-              className="text-xs font-semibold border border-slate-200 rounded-lg px-2 py-1 bg-white text-slate-700 hover:border-slate-300"
-            >
-              <option value="all">All platforms</option>
-              {PLATFORMS.map(p => (
-                <option key={p.id} value={p.id}>{p.label || p.id}</option>
-              ))}
-            </select>
-            <span className="text-xs text-slate-500">
-              {filteredMonthExpenses.length} entr{filteredMonthExpenses.length === 1 ? 'y' : 'ies'} · {fmt2(filteredTotal)}
-              {platformFilter !== 'all' && monthExpenses.length !== filteredMonthExpenses.length && (
-                <span className="text-slate-400"> of {monthExpenses.length} · {fmt2(monthTotal)}</span>
-              )}
-            </span>
-            {isPeriodClosed('platforms', activeMonth) ? (
-              <button
-                onClick={async () => {
-                  if (window.confirm(`Reopen ${ymLabel(activeMonth)} (Platforms) for editing?`)) {
-                    await reopenPlatformMonth('platforms', activeMonth);
-                  }
-                }}
-                title="Reopen this month for editing"
-                className="text-xs flex items-center gap-1 border border-amber-300 hover:border-amber-500 hover:bg-amber-50 text-amber-800 rounded-lg px-2.5 py-1 transition"
-              >
-                <Unlock size={12} /> Reopen month
-              </button>
-            ) : (
-              <button
-                onClick={async () => {
-                  if (window.confirm(`Close ${ymLabel(activeMonth)} (Platforms)? Adds, edits, deletes, and Smart Imports for this month will be blocked. You can reopen it any time.`)) {
-                    await closePlatformMonth('platforms', activeMonth);
-                  }
-                }}
-                title="Lock this month so Smart Imports and edits can't change it"
-                className="text-xs flex items-center gap-1 border border-slate-200 hover:border-slate-400 hover:bg-slate-50 text-slate-700 rounded-lg px-2.5 py-1 transition"
-              >
-                <Lock size={12} /> Close month
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Closed-month banner */}
-        {isPeriodClosed('platforms', activeMonth) && (
-          <div className="mb-3 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-900 flex items-center gap-2">
-            <Lock size={13} className="flex-shrink-0" />
-            <div className="flex-1">
-              <span className="font-semibold">{ymLabel(activeMonth)} (Platforms) is closed.</span> Smart Import skips this month, and per-row edit/delete is disabled. Click <span className="font-semibold">Reopen month</span> to make changes.
-            </div>
-          </div>
-        )}
-        {monthExpenses.length === 0 ? (
-          <EmptyState
-            icon={Zap}
-            title={`No platform charges yet for ${ymLabel(activeMonth)}`}
-            message="Track Ringy, TextDrip, and VanillaSoft spend here — it feeds True CPA so you see real per-deal costs. Drop a billing-history CSV into Smart Import and we parse it automatically."
-            actions={[
-              { label: 'Smart Import', onClick: () => setShowSmartImport(true), icon: Sparkles },
-            ]}
-            compact
-          />
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm premium-table">
-              <thead>
-                <tr className="border-b border-slate-200 text-left">
-                  <th className="py-2 px-2 text-xs font-bold text-slate-500 uppercase tracking-wider">Date</th>
-                  <th className="py-2 px-2 text-xs font-bold text-slate-500 uppercase tracking-wider">Platform</th>
-                  <th className="py-2 px-2 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Amount</th>
-                  <th className="py-2 px-2 text-xs font-bold text-slate-500 uppercase tracking-wider">Reason</th>
-                  <th className="py-2 px-2 text-xs font-bold text-slate-500 uppercase tracking-wider">Notes</th>
-                  <th className="py-2 px-2 w-10"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredMonthExpenses.map(e => {
-                  const rowLocked = isPeriodClosed('platforms', e.date);
-                  const lockedUpdate = (patch) => {
-                    if (rowLocked) {
-                      alert('This row is in a closed month. Reopen it before editing.');
-                      return;
-                    }
-                    onUpdate(patch);
-                  };
-                  return (
-                    <tr key={e.id} className={`border-b border-slate-100 ${rowLocked ? 'bg-amber-50/30' : 'hover:bg-slate-50'}`}>
-                      <td className="py-2 px-2">
-                        <input
-                          type="date"
-                          value={e.date}
-                          onChange={(ev) => lockedUpdate({ ...e, date: ev.target.value })}
-                          readOnly={rowLocked}
-                          className={`border border-transparent rounded px-1 py-0.5 text-sm bg-transparent ${rowLocked ? 'text-slate-400 cursor-not-allowed' : 'hover:border-slate-200'}`}
-                        />
-                      </td>
-                      <td className="py-2 px-2">
-                        <select
-                          value={e.platform}
-                          onChange={(ev) => lockedUpdate({ ...e, platform: ev.target.value })}
-                          disabled={rowLocked}
-                          className={`text-xs px-2 py-1 rounded font-bold ${platformBadge(e.platform)} border-0 ${rowLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
-                        >
-                          {PLATFORMS.map(p => <option key={p.id} value={p.id}>{p.id}</option>)}
-                        </select>
-                      </td>
-                      <td className="py-2 px-2 text-right">
-                        <MoneyCell
-                          value={e.amount}
-                          onChange={(v) => lockedUpdate({ ...e, amount: v })}
-                          disabled={rowLocked}
-                        />
-                      </td>
-                      <td className="py-2 px-2">
-                        <select
-                          value={e.reason}
-                          onChange={(ev) => lockedUpdate({ ...e, reason: ev.target.value })}
-                          disabled={rowLocked}
-                          className={`text-xs border border-transparent rounded px-1 py-0.5 bg-transparent ${rowLocked ? 'opacity-60 cursor-not-allowed' : 'hover:border-slate-200'}`}
-                        >
-                          {PLATFORM_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
-                        </select>
-                      </td>
-                      <td className="py-2 px-2">
-                        <input
-                          type="text"
-                          value={e.notes || ''}
-                          onChange={(ev) => lockedUpdate({ ...e, notes: ev.target.value })}
-                          readOnly={rowLocked}
-                          placeholder="—"
-                          className={`w-full border border-transparent rounded px-1 py-0.5 text-xs bg-transparent ${rowLocked ? 'text-slate-400 cursor-not-allowed' : 'text-slate-600 hover:border-slate-200'}`}
-                        />
-                      </td>
-                      <td className="py-2 px-2 text-right">
-                        {rowLocked ? (
-                          <Lock size={12} className="text-amber-500 inline" title="Closed — reopen to delete" />
-                        ) : (
-                          <button
-                            onClick={() => onDelete(e.id)}
-                            className="text-slate-400 hover:text-red-600 transition"
-                            title="Delete"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-              <tfoot>
-                <tr className="border-t-2 border-slate-300 font-bold">
-                  <td className="py-2 px-2 text-xs text-slate-500 uppercase tracking-wider" colSpan={2}>
-                    {platformFilter === 'all' ? 'Month total' : `${platformFilter} total`}
-                  </td>
-                  <td className="py-2 px-2 text-right text-slate-900">{fmt2(filteredTotal)}</td>
-                  <td colSpan={3}></td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* Import preview modal */}
-      {importPreview && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-white/90 backdrop-blur-2xl border border-white/60 rounded-2xl max-w-5xl w-full max-h-[90vh] flex flex-col shadow-2xl shadow-indigo-500/10">
-            <div className="flex items-center justify-between p-5 border-b border-slate-200">
-              <div>
-                <h2 className="font-semibold text-slate-900">Review import</h2>
-                {importPreview.format && (
-                  <div className="text-xs text-slate-500 mt-0.5">
-                    Detected as <span className="font-semibold">{importPreview.format === 'donjulio' ? 'Don Julio budget sheet' : 'Bank/credit card statement'}</span>
-                  </div>
-                )}
-              </div>
-              <button onClick={() => setImportPreview(null)} className="text-slate-400 hover:text-slate-600">
-                <X size={20} />
-              </button>
-            </div>
-
-            <div className="overflow-auto p-5 flex-1">
-              {importPreview.error ? (
-                <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-800">
-                  <div className="flex items-center gap-2 font-semibold mb-1">
-                    <AlertCircle size={16} /> Couldn&rsquo;t process file
-                  </div>
-                  <div>{importPreview.error}</div>
-                </div>
-              ) : (
-                <>
-                  <div className="grid grid-cols-3 gap-3 mb-4">
-                    <Stat
-                      icon={<Check size={16} className="text-emerald-600" />}
-                      label="New entries"
-                      value={importPreview.fresh.length}
-                      sub="will be added"
-                    />
-                    <Stat
-                      icon={<AlertCircle size={16} className="text-amber-600" />}
-                      label="Duplicates skipped"
-                      value={importPreview.duplicate.length}
-                      sub="already in tracker"
-                    />
-                    <Stat
-                      icon={<DollarSign size={16} className="text-indigo-600" />}
-                      label="Total to import"
-                      value={fmt2(importPreview.fresh
-                        .filter(e => importPreview.selected.has(e.id))
-                        .reduce((s, e) => s + Number(e.amount || 0), 0))}
-                      sub={`${importPreview.selected.size} of ${importPreview.fresh.length} selected`}
-                    />
-                  </div>
-
-                  {importPreview.fresh.length === 0 ? (
-                    <div className="text-center py-8 text-slate-400 text-sm">
-                      All {importPreview.duplicate.length} entries in the file are already in your tracker.
-                    </div>
-                  ) : (
-                    <table className="w-full text-sm premium-table">
-                      <thead>
-                        <tr className="border-b border-slate-200 text-left">
-                          <th className="py-2 px-2 w-8"></th>
-                          <th className="py-2 px-2 text-xs font-bold text-slate-500 uppercase tracking-wider">Date</th>
-                          <th className="py-2 px-2 text-xs font-bold text-slate-500 uppercase tracking-wider">Platform</th>
-                          <th className="py-2 px-2 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Amount</th>
-                          <th className="py-2 px-2 text-xs font-bold text-slate-500 uppercase tracking-wider">Reason</th>
-                          <th className="py-2 px-2 text-xs font-bold text-slate-500 uppercase tracking-wider">Notes</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {importPreview.fresh.map(e => {
-                          const checked = importPreview.selected.has(e.id);
-                          return (
-                            <tr key={e.id} className={`border-b border-slate-100 ${checked ? '' : 'opacity-40'}`}>
-                              <td className="py-2 px-2">
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={() => togglePreviewRow(e.id)}
-                                  className="w-4 h-4"
-                                />
-                              </td>
-                              <td className="py-2 px-2">
-                                <input
-                                  type="date"
-                                  value={e.date}
-                                  onChange={(ev) => updatePreviewRow(e.id, { date: ev.target.value })}
-                                  className="border border-transparent hover:border-slate-200 rounded px-1 py-0.5 text-sm bg-transparent"
-                                />
-                              </td>
-                              <td className="py-2 px-2">
-                                <select
-                                  value={e.platform}
-                                  onChange={(ev) => updatePreviewRow(e.id, { platform: ev.target.value })}
-                                  className={`text-xs px-2 py-1 rounded font-bold ${platformBadge(e.platform)} border-0`}
-                                >
-                                  {PLATFORMS.map(p => <option key={p.id} value={p.id}>{p.id}</option>)}
-                                </select>
-                              </td>
-                              <td className="py-2 px-2 text-right">
-                                <MoneyCell
-                                  value={e.amount}
-                                  onChange={(v) => updatePreviewRow(e.id, { amount: v })}
-                                />
-                              </td>
-                              <td className="py-2 px-2">
-                                <select
-                                  value={e.reason}
-                                  onChange={(ev) => updatePreviewRow(e.id, { reason: ev.target.value })}
-                                  className="text-xs border border-transparent hover:border-slate-200 rounded px-1 py-0.5 bg-transparent"
-                                >
-                                  {PLATFORM_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
-                                </select>
-                              </td>
-                              <td className="py-2 px-2">
-                                <input
-                                  type="text"
-                                  value={e.notes || ''}
-                                  onChange={(ev) => updatePreviewRow(e.id, { notes: ev.target.value })}
-                                  className="w-full border border-transparent hover:border-slate-200 rounded px-1 py-0.5 text-xs text-slate-600 bg-transparent"
-                                />
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  )}
-                </>
-              )}
-            </div>
-
-            <div className="flex items-center justify-end gap-2 p-4 border-t border-slate-200 bg-slate-50 rounded-b-2xl">
-              <button
-                onClick={() => setImportPreview(null)}
-                className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900"
-              >
-                Cancel
-              </button>
-              {!importPreview.error && importPreview.fresh?.length > 0 && (
-                <button
-                  onClick={commitImport}
-                  disabled={importPreview.selected.size === 0}
-                  className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white rounded-lg px-4 py-2 text-sm font-semibold transition flex items-center gap-2"
-                >
-                  <Check size={14} />
-                  Import {importPreview.selected.size} {importPreview.selected.size === 1 ? 'entry' : 'entries'}
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
 
 export default memo(PlatformExpensesView);
 
+// ============================================================
+// KPI tile
+// ============================================================
 function Stat({ icon, label, value, numeric, decimals = 2, isCurrency = true, sub, tilt = true }) {
   const formatNumber = (v) => {
     if (!isCurrency) return Math.round(v).toLocaleString();
@@ -911,5 +373,117 @@ function Stat({ icon, label, value, numeric, decimals = 2, isCurrency = true, su
     </TiltCard>
   ) : (
     <div className="premium-card p-3">{Inner}</div>
+  );
+}
+
+// ============================================================
+// DistributionPie — SVG donut showing % spend per platform
+//
+// Renders three colored arcs whose sweep angles are proportional to each
+// platform's total. A center label shows the grand total. A legend on
+// the right shows each platform's $ and %.
+//
+// When grandTotal is 0, renders a muted "empty" donut so the layout
+// stays consistent (no jarring placeholder card).
+// ============================================================
+function DistributionPie({ title, subtitle, totals, grandTotal }) {
+  // Build slices in PLATFORMS order (TextDrip, Ringy, VanillaSoft) so
+  // colors stay stable across the active-month and YTD donuts.
+  const slices = PLATFORMS.map(p => ({
+    id: p.id,
+    label: p.label,
+    color: p.color,
+    amount: totals[p.id] || 0,
+    pct: grandTotal > 0 ? ((totals[p.id] || 0) / grandTotal) * 100 : 0,
+  }));
+
+  const size = 140;
+  const stroke = 22;
+  const r = (size - stroke) / 2;
+  const cx = size / 2;
+  const cy = size / 2;
+  const circ = 2 * Math.PI * r;
+
+  // Compute the dasharray offset for each slice so they butt up against
+  // each other (no gaps, no overlaps). When grandTotal is 0, all slices
+  // are zero-length and we draw a single muted track instead.
+  let cumulative = 0;
+  const arcs = slices.map(s => {
+    const length = (s.pct / 100) * circ;
+    const offset = -cumulative; // negative because SVG strokes draw clockwise from 12 o'clock
+    cumulative += length;
+    return {
+      ...s,
+      dashArray: `${length} ${circ - length}`,
+      dashOffset: offset,
+    };
+  });
+
+  return (
+    <div className="premium-card p-4">
+      <div className="flex items-start justify-between gap-2 mb-3">
+        <div>
+          <div className="text-xs font-bold text-slate-500 tracking-wider uppercase">{title}</div>
+          <div className="text-xs text-slate-400 mt-0.5">{subtitle}</div>
+        </div>
+      </div>
+      <div className="flex items-center gap-5 flex-wrap">
+        {/* Donut SVG */}
+        <div className="relative flex-shrink-0">
+          <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+            {/* base muted track — visible only when no data */}
+            <circle
+              cx={cx} cy={cy} r={r}
+              fill="none"
+              stroke="#1e2538"
+              strokeWidth={stroke}
+              opacity={grandTotal > 0 ? 0 : 1}
+            />
+            {/* slices — drawn rotated -90° so they start at 12 o'clock */}
+            <g transform={`rotate(-90 ${cx} ${cy})`}>
+              {arcs.map(a => (
+                a.amount > 0 ? (
+                  <circle
+                    key={a.id}
+                    cx={cx} cy={cy} r={r}
+                    fill="none"
+                    stroke={a.color}
+                    strokeWidth={stroke}
+                    strokeDasharray={a.dashArray}
+                    strokeDashoffset={a.dashOffset}
+                    style={{ transition: 'stroke-dasharray 0.4s ease, stroke-dashoffset 0.4s ease' }}
+                  />
+                ) : null
+              ))}
+            </g>
+          </svg>
+          {/* Center label */}
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+            <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total</div>
+            <div className="text-sm font-bold text-slate-900 leading-tight">
+              {grandTotal > 0 ? fmt2(grandTotal) : '$0.00'}
+            </div>
+          </div>
+        </div>
+
+        {/* Legend */}
+        <div className="flex-1 space-y-1.5 min-w-[160px]">
+          {slices.map(s => (
+            <div key={s.id} className="flex items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: s.color }} />
+                <span className="font-semibold text-slate-700 truncate">{s.label}</span>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <span className="text-slate-500 tabular-nums">{fmt2(s.amount)}</span>
+                <span className="font-bold text-slate-900 tabular-nums w-12 text-right">
+                  {s.pct.toFixed(1)}%
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }

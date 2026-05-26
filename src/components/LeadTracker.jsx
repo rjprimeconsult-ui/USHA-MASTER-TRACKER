@@ -1676,22 +1676,14 @@ export default function LeadTracker() {
           <Pipeline leads={leads} onStageChange={changeStage} onEdit={editLead} onDelete={deleteLead} onNew={newLead} />
         </ViewMount>
         <ViewMount visible={view === 'platforms'} viewKey="platforms">
+          {/* Platforms is now a READ-ONLY analytics dashboard derived from
+              Books. The write-side props (onAdd/onUpdate/etc.) are gone —
+              all entry happens in the Books tab. The "Open Books" button
+              jumps the user to that tab so they can add/edit platform
+              charges in one click. */}
           <PlatformExpensesView
             expenses={platformExpensesAsView}
-            onAdd={onAddPlatformViaBooks}
-            onBulkAdd={onBulkAddPlatformsViaBooks}
-            onUpdate={onUpdatePlatformViaBooks}
-            onDelete={onDeletePlatformViaBooks}
-            onBulkAddBooksExpenses={(rows) => {
-              if (!rows?.length) return;
-              setBusinessExpenses(prev => [...rows, ...prev]);
-              showToast(`Also imported ${rows.length} non-platform expense${rows.length !== 1 ? 's' : ''} → Books`);
-            }}
-            onBulkAddBooksIncome={(rows) => {
-              if (!rows?.length) return;
-              setBusinessIncome(prev => [...rows, ...prev]);
-              showToast(`Also imported ${rows.length} income entr${rows.length !== 1 ? 'ies' : 'y'} → Books`);
-            }}
+            onJumpToBooks={() => setView('books')}
           />
         </ViewMount>
         <ViewMount visible={view === 'prospects'} viewKey="prospects">
