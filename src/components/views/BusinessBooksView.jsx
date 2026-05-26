@@ -1325,9 +1325,18 @@ function BusinessBooksView({
                           type="text"
                           value={e.notes || ''}
                           onChange={(ev) => lockedUpdate({ ...e, notes: ev.target.value })}
+                          onBlur={(ev) => {
+                            // Safety net for any browser quirk where the
+                            // controlled value can desync — commit on blur
+                            // if the typed value differs from state.
+                            const next = ev.target.value || '';
+                            if (!rowLocked && next !== (e.notes || '')) {
+                              lockedUpdate({ ...e, notes: next });
+                            }
+                          }}
                           readOnly={rowLocked}
                           placeholder="—"
-                          className={`w-full border border-transparent rounded px-1 py-0.5 text-xs bg-transparent ${rowLocked ? 'text-slate-400 cursor-not-allowed' : 'text-slate-600 hover:border-slate-200'}`}
+                          className={`w-full border border-transparent rounded px-1 py-0.5 text-xs bg-transparent ${rowLocked ? 'text-slate-400 cursor-not-allowed' : 'text-slate-700 hover:border-slate-300 focus:border-indigo-400 focus:ring-1 focus:ring-indigo-200'}`}
                         />
                       </td>
                       <td className="py-2 px-2">
