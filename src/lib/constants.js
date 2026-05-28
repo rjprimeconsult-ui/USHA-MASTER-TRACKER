@@ -31,8 +31,8 @@ export const OWNERS = ['You', 'Maria', 'Carlos', 'Jess'];
 
 export const CRMS = [
   { id: 'RINGY',    badge: 'bg-red-500 text-white',     color: '#ef4444' },
-  { id: 'TEXTDRIP', badge: 'bg-red-900 text-white',     color: '#7f1d1d' },
-  { id: 'VANILLA',  badge: 'bg-blue-900 text-white',    color: '#1e3a8a' },
+  { id: 'TEXTDRIP', badge: 'bg-violet-500 text-white',  color: '#8b5cf6' },
+  { id: 'VANILLA',  badge: 'bg-blue-500 text-white',    color: '#3b82f6' },
   { id: 'GOOGLE',   badge: 'bg-amber-500 text-white',   color: '#f59e0b' },
   { id: 'BENEPATH', badge: 'bg-teal-600 text-white',   color: '#0d9488' },
 ];
@@ -309,8 +309,8 @@ export const PROSPECT_POLICY_TYPES = [
 export const EXPENSE_CATEGORIES = [
   { id: 'LEAD_INVESTMENT',     label: 'Lead Investment',   color: '#dc2626', badge: 'bg-red-100 text-red-700' },
   { id: 'PLATFORM_RINGY',      label: 'Ringy',             color: '#ef4444', badge: 'bg-red-500 text-white' },
-  { id: 'PLATFORM_TEXTDRIP',   label: 'TextDrip',          color: '#7f1d1d', badge: 'bg-red-900 text-white' },
-  { id: 'PLATFORM_VANILLASOFT', label: 'VanillaSoft',      color: '#1e3a8a', badge: 'bg-blue-900 text-white' },
+  { id: 'PLATFORM_TEXTDRIP',   label: 'TextDrip',          color: '#8b5cf6', badge: 'bg-violet-500 text-white' },
+  { id: 'PLATFORM_VANILLASOFT', label: 'VanillaSoft',      color: '#3b82f6', badge: 'bg-blue-500 text-white' },
   { id: 'OFFICE_RENT',    label: 'Office Rent',       color: '#b91c1c', badge: 'bg-red-100 text-red-800' },
   { id: 'OFFICE',         label: 'Office Supplies',   color: '#0ea5e9', badge: 'bg-sky-100 text-sky-700' },
   { id: 'SOFTWARE',       label: 'Software',          color: '#6366f1', badge: 'bg-indigo-100 text-indigo-700' },
@@ -380,9 +380,9 @@ export const INCOME_CATEGORIES = [
 
 // Platform Expenses — daily texting / dialer / CRM credit log
 export const PLATFORMS = [
-  { id: 'TD',      label: 'TextDrip',    color: '#7f1d1d', badge: 'bg-red-900 text-white' },
+  { id: 'TD',      label: 'TextDrip',    color: '#8b5cf6', badge: 'bg-violet-500 text-white' },
   { id: 'RINGY',   label: 'Ringy',       color: '#ef4444', badge: 'bg-red-500 text-white' },
-  { id: 'VANILLA', label: 'VanillaSoft', color: '#1e3a8a', badge: 'bg-blue-900 text-white' },
+  { id: 'VANILLA', label: 'VanillaSoft', color: '#3b82f6', badge: 'bg-blue-500 text-white' },
 ];
 
 export const PLATFORM_REASONS = [
