@@ -695,79 +695,17 @@ function BusinessBooksView({
     });
   };
 
-  // ---------- Duplicate cleanup ----------
-  // Scans ALL rows in the current tab for duplicate groups and returns the
-  // ids of the extras (everything beyond one richest copy per group).
-  //   - PLATFORM_* rows: grouped by (date | amount | category) — the same
-  //     charge can arrive from the platform CSV and the bank statement with
-  //     different vendor/account/notes.
-  //   - All other rows: grouped by (date | amount | category | vendor |
-  //     notes-first-80) — only true content-identicals collapse.
-  // Within each group the RICHEST row (most metadata: account, notes,
-  // receipt) is kept; the rest are flagged for removal. Rows in closed
-  // months are never touched.
-  const computeDuplicateIds = () => {
-    const rows = tab === 'expenses' ? expenses : income;
-    const vendorField = tab === 'expenses' ? 'vendor' : 'source';
-    const PLATFORM_CATS = new Set(['PLATFORM_RINGY', 'PLATFORM_TEXTDRIP', 'PLATFORM_VANILLASOFT']);
-    const platformKey = (e) => [e.date || '', Number(e.amount || 0).toFixed(2), e.category || ''].join('|');
-    const strictKey = (e) => [
-      e.date || '', Number(e.amount || 0).toFixed(2), e.category || '',
-      String(e[vendorField] || '').trim().toLowerCase(),
-      String(e.notes || '').trim().toLowerCase().slice(0, 80),
-    ].join('|');
-    const keyOf = (e) => PLATFORM_CATS.has(e.category) ? platformKey(e) : strictKey(e);
-    const richness = (r) => {
-      let s = 0;
-      if ((r.account || '').trim()) s += 3;
-      if ((r.notes || '').trim()) s += 2;
-      if (r.attachment || r.receipt) s += 4;
-      return s;
-    };
-    const groups = new Map();
-    for (const r of rows) {
-      const k = keyOf(r);
-      if (!groups.has(k)) groups.set(k, []);
-      groups.get(k).push(r);
-    }
-    const toRemove = [];
-    let skippedClosed = 0;
-    for (const grp of groups.values()) {
-      if (grp.length < 2) continue;
-      const sorted = [...grp].sort((a, b) => richness(b) - richness(a));
-      for (const r of sorted.slice(1)) {
-        if (isPeriodClosed('books', r.date)) { skippedClosed++; continue; }
-        toRemove.push(r.id);
-      }
-    }
-    return { toRemove, skippedClosed };
-  };
-
-  const dupCount = useMemo(
-    () => computeDuplicateIds().toRemove.length,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [expenses, income, tab]
-  );
-
-  const cleanDuplicates = () => {
-    const { toRemove, skippedClosed } = computeDuplicateIds();
-    if (toRemove.length === 0) {
-      alert(skippedClosed > 0
-        ? `Found ${skippedClosed} duplicate(s), but they're all in closed months. Reopen those months to clean them.`
-        : 'No duplicates found. ✓');
-      return;
-    }
-    const noun = tab === 'expenses' ? 'expense' : 'income';
-    const ok = window.confirm(
-      `Found ${toRemove.length} duplicate ${noun} row${toRemove.length !== 1 ? 's' : ''} ` +
-      `(keeping one copy of each — the one with the most detail).` +
-      (skippedClosed > 0 ? ` ${skippedClosed} more are in closed months and will be skipped.` : '') +
-      `\n\nRemove them? This can't be undone.`
-    );
-    if (!ok) return;
-    for (const id of toRemove) onDelete(id);
-    alert(`Removed ${toRemove.length} duplicate ${noun} row${toRemove.length !== 1 ? 's' : ''}.`);
-  };
+  // NOTE: a content-based "Clean duplicates" button was removed (2026-05-28).
+  // Rationale (from the agent's own domain knowledge): multiple same-day,
+  // same-amount, same-vendor CRM rows are NOT duplicates — CRM platforms
+  // sell credits in fixed denominations and agents genuinely buy the same
+  // amount several times in one day. The CSV is the source of truth. The
+  // ONLY real duplicate scenario is re-importing the same file, which is
+  // handled at IMPORT time by the multiset dedup in onImport (it blocks a
+  // row only when Books already holds at least as many identical copies as
+  // the incoming batch — so a fresh file's twins all import, but a repeat
+  // import of the same data adds nothing). Collapsing by content on a
+  // standing dataset would delete real purchases, so we don't.
 
   return (
     <div className="space-y-5">
@@ -1283,18 +1221,6 @@ function BusinessBooksView({
           {hasFilters && (
             <button onClick={clearFilters} className="text-indigo-700 hover:text-indigo-900 underline-offset-2 hover:underline">
               Clear filters
-            </button>
-          )}
-          {/* Clean duplicates — scans ALL rows in this tab (every month) for
-              identical entries and removes the extras after confirmation.
-              Highlighted when duplicates exist. */}
-          {dupCount > 0 && (
-            <button
-              onClick={cleanDuplicates}
-              className="ml-1 inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-200 transition"
-              title="Remove duplicate rows (keeps one copy of each)"
-            >
-              <Sparkles size={12} /> Clean {dupCount} duplicate{dupCount !== 1 ? 's' : ''}
             </button>
           )}
           {hasFilters && (
