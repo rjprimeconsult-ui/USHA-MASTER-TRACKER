@@ -139,13 +139,23 @@ function PlatformExpensesView({ expenses, onJumpToBooks }) {
     return Array.from(set).sort();
   }, [expenses, activeMonth, stripYear]);
 
-  // 12-month bar history for the selected stripYear
+  // 12-month stacked history for the selected stripYear. Each month
+  // carries a per-platform breakdown so the strip can render as a
+  // stacked column chart (one colored segment per platform).
   const monthHistory = useMemo(() => {
     const out = [];
     for (let m = 1; m <= 12; m++) {
       const ym = `${stripYear}-${String(m).padStart(2, '0')}`;
-      const total = expenses.filter(e => ymOf(e.date) === ym).reduce((s, e) => s + Number(e.amount || 0), 0);
-      out.push({ ym, total });
+      const byPlatform = {};
+      PLATFORMS.forEach(p => { byPlatform[p.id] = 0; });
+      let total = 0;
+      for (const e of expenses) {
+        if (ymOf(e.date) !== ym) continue;
+        const amt = Number(e.amount || 0);
+        byPlatform[e.platform] = (byPlatform[e.platform] || 0) + amt;
+        total += amt;
+      }
+      out.push({ ym, total, byPlatform });
     }
     return out;
   }, [expenses, stripYear]);
@@ -303,36 +313,88 @@ function PlatformExpensesView({ expenses, onJumpToBooks }) {
               {fmt2(stripYearTotal)} total · click any month
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-500">Jump to:</span>
-            <select
-              value={activeMonth}
-              onChange={(e) => {
-                setActiveMonth(e.target.value);
-                setStripYear(e.target.value.slice(0, 4));
-              }}
-              className="border border-slate-200 rounded-lg px-2 py-1 text-sm"
-            >
-              {allMonths.map(m => <option key={m} value={m}>{ymLabel(m)}</option>)}
-            </select>
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* Legend */}
+            <div className="flex items-center gap-3">
+              {PLATFORMS.map(p => (
+                <div key={p.id} className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-sm" style={{ background: p.color }} />
+                  <span className="text-[11px] text-slate-500">{p.label}</span>
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-500">Jump to:</span>
+              <select
+                value={activeMonth}
+                onChange={(e) => {
+                  setActiveMonth(e.target.value);
+                  setStripYear(e.target.value.slice(0, 4));
+                }}
+                className="border border-slate-200 rounded-lg px-2 py-1 text-sm"
+              >
+                {allMonths.map(m => <option key={m} value={m}>{ymLabel(m)}</option>)}
+              </select>
+            </div>
           </div>
         </div>
-        <div className="grid grid-cols-12 gap-1 h-24 items-end">
+
+        {/* Stacked column chart — one column per month, each segmented by
+            platform (TextDrip / Ringy / VanillaSoft) using brand colors.
+            Column height is proportional to that month's grand total vs the
+            year's peak month. Click any column to jump the active month. */}
+        <div className="grid grid-cols-12 gap-1.5 h-44 items-end">
           {monthHistory.map(m => {
-            const h = (m.total / maxHistory) * 100;
+            const colHeightPct = (m.total / maxHistory) * 100;
             const active = m.ym === activeMonth;
             const empty = m.total === 0;
+            // Order segments bottom→top in PLATFORMS order for stable stacking.
+            const segments = PLATFORMS
+              .map(p => ({ ...p, amount: m.byPlatform[p.id] || 0 }))
+              .filter(s => s.amount > 0);
+            const tooltip = empty
+              ? `${ymLabel(m.ym)}: no spend`
+              : `${ymLabel(m.ym)}: ${fmt2(m.total)}\n` +
+                segments.map(s => `${s.label}: ${fmt2(s.amount)}`).join('\n');
             return (
               <button
                 key={m.ym}
                 onClick={() => setActiveMonth(m.ym)}
-                className="flex flex-col items-center gap-1 group"
-                title={`${ymLabel(m.ym)}: ${fmt2(m.total)}`}
+                className="flex flex-col items-center gap-1 h-full justify-end group"
+                title={tooltip}
               >
-                <div
-                  className={`w-full rounded-t transition ${active ? 'bg-indigo-600' : empty ? 'bg-slate-100 group-hover:bg-slate-200' : 'bg-slate-300 group-hover:bg-slate-400'}`}
-                  style={{ height: `${Math.max(2, h)}%` }}
-                />
+                {/* the column track fills the available height; the inner
+                    stack occupies a % of it equal to this month's share of
+                    the peak. */}
+                <div className="w-full flex flex-col justify-end" style={{ height: '100%' }}>
+                  {empty ? (
+                    <div
+                      className={`w-full rounded transition ${active ? 'bg-indigo-200' : 'bg-slate-100 group-hover:bg-slate-200'}`}
+                      style={{ height: '3px' }}
+                    />
+                  ) : (
+                    <div
+                      className={`w-full flex flex-col-reverse overflow-hidden rounded-t transition ${active ? 'ring-2 ring-indigo-500 ring-offset-1 ring-offset-transparent' : ''}`}
+                      style={{ height: `${Math.max(4, colHeightPct)}%` }}
+                    >
+                      {segments.map((s, i) => {
+                        const segPct = (s.amount / m.total) * 100;
+                        return (
+                          <div
+                            key={s.id}
+                            className="w-full transition group-hover:opacity-90"
+                            style={{
+                              height: `${segPct}%`,
+                              background: s.color,
+                              // subtle separator between stacked segments
+                              boxShadow: i > 0 ? 'inset 0 1px 0 rgba(15,23,42,0.25)' : 'none',
+                            }}
+                          />
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
                 <div className={`text-[9px] ${active ? 'text-indigo-700 font-bold' : empty ? 'text-slate-400' : 'text-slate-500'}`}>
                   {m.ym.slice(5, 7)}
                 </div>
