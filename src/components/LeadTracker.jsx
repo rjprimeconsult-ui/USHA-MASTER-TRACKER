@@ -447,92 +447,23 @@ export default function LeadTracker() {
         console.warn('[Books id-repair] failed', e);
       }
 
-      // One-shot auto-dedup of historical duplicates in Books.
+      // NOTE: content-based auto-dedup on load was REMOVED (2026-05-28).
       //
-      // Two dedup strategies depending on category:
-      //
-      //  • PLATFORM_* rows (Ringy / TextDrip / VanillaSoft) — dedup by
-      //    just (date | amount | category). Agents import these from TWO
-      //    sources: the platform's billing-history CSV (vendor="TD CREDIT
-      //    REFILL", no account, no notes) AND the bank statement (vendor=
-      //    "TEXTDRIP.COM HIGHLAND MI", account="American Express", notes=
-      //    "CRM EXPENSE · CREDIT REFILL"). Same charge, two records. When
-      //    we find a group sharing (date|amount|category), we KEEP THE
-      //    RICHEST row — the one with the most metadata (account + notes)
-      //    survives, because that's the bank-reconciled version the agent
-      //    cares about.
-      //
-      //  • All other rows — strict dedup on (date | amount | category |
-      //    vendor | notes-first-80). A row must match on all five fields
-      //    to be considered a dup. Two legit same-day same-amount entries
-      //    with different vendors or notes stay as two.
-      //
-      // Idempotent: zero duplicates = zero writes.
-      try {
-        const PLATFORM_CATS = new Set(['PLATFORM_RINGY', 'PLATFORM_TEXTDRIP', 'PLATFORM_VANILLASOFT']);
-        const richnessScore = (r) => {
-          let s = 0;
-          if ((r.account || '').trim()) s += 3;
-          if ((r.notes || '').trim()) s += 2;
-          // Bank-statement vendors usually include a domain or merchant
-          // name with letters and a city/state — prefer those over the
-          // bare platform-code vendors like "TD CREDIT REFILL".
-          const v = (r.vendor || '').toLowerCase();
-          if (/\.com|\.io|highland|denver|new york|\b[a-z]{2}\b$/i.test(v)) s += 1;
-          if ((r.attachment || r.receipt)) s += 4; // receipts win
-          return s;
-        };
-        const platformKey = (e) => [
-          e.date || '',
-          Number(e.amount || 0).toFixed(2),
-          e.category || '',
-        ].join('|');
-        const strictKey = (e) => [
-          e.date || '',
-          Number(e.amount || 0).toFixed(2),
-          e.category || '',
-          String(e.vendor || '').trim().toLowerCase(),
-          String(e.notes || '').trim().toLowerCase().slice(0, 80),
-        ].join('|');
-
-        // Pass 1: split platform vs other
-        const platformRows = beInitial.filter(r => PLATFORM_CATS.has(r.category));
-        const otherRows    = beInitial.filter(r => !PLATFORM_CATS.has(r.category));
-
-        // Pass 2: dedup platform rows by loose key, keeping richest
-        const platformGroups = new Map();
-        for (const r of platformRows) {
-          const k = platformKey(r);
-          const prev = platformGroups.get(k);
-          if (!prev || richnessScore(r) > richnessScore(prev)) platformGroups.set(k, r);
-        }
-        const dedupedPlatform = Array.from(platformGroups.values());
-        const platformRemoved = platformRows.length - dedupedPlatform.length;
-
-        // Pass 3: strict-dedup other rows
-        const seenOther = new Set();
-        const dedupedOther = [];
-        for (const r of otherRows) {
-          const k = strictKey(r);
-          if (seenOther.has(k)) continue;
-          seenOther.add(k);
-          dedupedOther.push(r);
-        }
-        const otherRemoved = otherRows.length - dedupedOther.length;
-
-        const totalRemoved = platformRemoved + otherRemoved;
-        if (totalRemoved > 0) {
-          beInitial = [...dedupedOther, ...dedupedPlatform].sort((a, b) =>
-            (b.date || '').localeCompare(a.date || '')
-          );
-          await storage.setItem(BE_KEY, JSON.stringify(beInitial));
-          // eslint-disable-next-line no-console
-          console.log(`[Books auto-dedup] Removed ${totalRemoved} duplicate row(s) on load (${platformRemoved} platform · ${otherRemoved} other).`);
-        }
-      } catch (e) {
-        // eslint-disable-next-line no-console
-        console.warn('[Books auto-dedup] failed', e);
-      }
+      // It could not distinguish a true duplicate (same content, different
+      // id, created by a re-import) from a LEGITIMATE TWIN (same content,
+      // different id, two real charges — e.g. two identical $529.32
+      // "PwP AMERICAN EXPRS" travel charges on the same day, both offset
+      // by a single points credit). Collapsing by content silently ate
+      // the agent's real second charge, AND would eat it again every time
+      // they re-added it by hand. Net harm > net good now that:
+      //   - the legacy platform-store re-injection bug is fixed
+      //   - uid() is collision-proof (crypto.randomUUID)
+      //   - Smart Import dedups against existing data at import time
+      //     (multiset — see BusinessBooksView onImport), which is the
+      //     correct place to prevent re-import duplicates
+      // The ID-collision repair above stays (it only re-issues colliding
+      // ids; it never deletes rows). Any genuine historical duplicates the
+      // agent wants gone are removed via manual bulk-select/delete.
 
       // Legacy `platformExpenses` state is retired. PlatformsView reads
       // from `platformExpensesAsView` (derived from businessExpenses), so

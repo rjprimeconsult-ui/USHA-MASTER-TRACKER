@@ -823,14 +823,25 @@ function BusinessBooksView({
           // platforms checked against their own kind.
           const skip = { books: 0, platforms: 0, dup: 0 };
 
-          // Dedup against EXISTING rows in Books with category-aware keys.
-          //  • PLATFORM_* rows (Ringy/TextDrip/VanillaSoft): loose key
-          //    (date | amount | category). These come from TWO sources —
-          //    the platform CSV and the bank statement — same charge,
-          //    different vendor/account/notes. Treat any (date, amount,
-          //    category) match as a dup against existing Books data.
-          //  • All other rows: strict 5-field key — only blocks true
-          //    identicals.
+          // MULTISET dedup against EXISTING rows in Books.
+          //
+          // Why multiset (count-based) instead of set (presence-based):
+          // an agent can legitimately have TWO identical charges on the
+          // same day (e.g. two $529.32 "PwP AMERICAN EXPRS" travel charges,
+          // both real, both offset by one points credit). A presence-based
+          // dedup would let the FIRST import add only one of them, and
+          // would block the agent from ever importing the second. Counting
+          // occurrences fixes this: we only skip an incoming row if Books
+          // ALREADY HAS at least as many copies of that key as we've seen
+          // so far in this batch. Re-importing the same file is still fully
+          // caught (existing counts match the file's counts), but a file
+          // that legitimately contains twins imports both.
+          //
+          // Key strategy is category-aware:
+          //  • PLATFORM_* rows: loose key (date | amount | category) —
+          //    the same charge can arrive from the platform CSV and the
+          //    bank statement with different vendor/account/notes.
+          //  • All other rows: strict 5-field key.
           const PLATFORM_CATS = new Set(['PLATFORM_RINGY', 'PLATFORM_TEXTDRIP', 'PLATFORM_VANILLASOFT']);
           const platformKey = (e) => [
             e.date || '',
@@ -847,30 +858,43 @@ function BusinessBooksView({
           const keyOf = (e, vendorField = 'vendor') =>
             PLATFORM_CATS.has(e.category) ? platformKey(e) : strictKey(e, vendorField);
 
-          const existingExpenseKeys = new Set((expenses || []).map(e => keyOf(e, 'vendor')));
-          const existingIncomeKeys  = new Set((income   || []).map(e => keyOf(e, 'source')));
+          // Build COUNT maps of existing rows (how many of each key exist).
+          const countMap = (rows, vendorField) => {
+            const m = new Map();
+            for (const e of rows) {
+              const k = keyOf(e, vendorField);
+              m.set(k, (m.get(k) || 0) + 1);
+            }
+            return m;
+          };
+          const expenseBudget = countMap(expenses || [], 'vendor');
+          const incomeBudget  = countMap(income || [], 'source');
+
+          // A row is a duplicate only while there is "remaining budget" of
+          // existing copies to match against. Each match consumes one unit
+          // of budget; once exhausted, further identical rows import fresh.
+          const consumeDup = (budget, key) => {
+            const remaining = budget.get(key) || 0;
+            if (remaining > 0) { budget.set(key, remaining - 1); return true; }
+            return false;
+          };
 
           const okExpenses = (importedExp || []).filter(r => {
             if (isPeriodClosed('books', r.date)) { skip.books++; return false; }
-            const k = keyOf(r, 'vendor');
-            if (existingExpenseKeys.has(k)) { skip.dup++; return false; }
-            existingExpenseKeys.add(k);
+            if (consumeDup(expenseBudget, keyOf(r, 'vendor'))) { skip.dup++; return false; }
             return true;
           });
           const okIncome = (importedInc || []).filter(r => {
             if (isPeriodClosed('books', r.date)) { skip.books++; return false; }
-            const k = keyOf(r, 'source');
-            if (existingIncomeKeys.has(k)) { skip.dup++; return false; }
-            existingIncomeKeys.add(k);
+            if (consumeDup(incomeBudget, keyOf(r, 'source'))) { skip.dup++; return false; }
             return true;
           });
           const okPlatforms = (importedPlat || []).filter(r => {
             // Platforms now live inside Books — check the unified 'books'
             // bucket so a single reopen click works for both.
             if (isPeriodClosed('books', r.date)) { skip.platforms++; return false; }
-            const k = keyOf(r, 'vendor');
-            if (existingExpenseKeys.has(k)) { skip.dup++; return false; }
-            existingExpenseKeys.add(k);
+            // Platform dups share the expense budget (same storage).
+            if (consumeDup(expenseBudget, keyOf(r, 'vendor'))) { skip.dup++; return false; }
             return true;
           });
           if (okExpenses.length) onBulkAddExpenses(okExpenses);
