@@ -57,6 +57,8 @@ You are extracting transactions from financial documents for an insurance agent'
        - VANILLA (VanillaSoft): "VanillaSoft", "Vanilla Soft", "VS Creds", "VS credits", "cami's vs", "vsoft creds".
      For these rows, output a "platformExpenses[]" entry with platformId set to TD / RINGY / VANILLA — DO NOT also add them to "transactions".
 
+     PLATFORM ROWS ARE AMOUNT-INDEPENDENT: ANY positive-charge row whose description contains TextDrip / TXTDRIP / TEXTDRIP.COM, Ringy / RINGY, or VanillaSoft / VANILLASOFT is ALWAYS a platform row — no matter how small the amount. A $4.50 TextDrip charge is just as much a platform row as a $400 one. NEVER route a TextDrip/Ringy/VanillaSoft charge into Books expenses because the amount looks small or odd. (Exception: a NEGATIVE platform-named row is a refund — see CRITICAL RULE 5b.)
+
      PLATFORM "vendor" FIELD — REQUIRED. Always copy the original transaction description from the file verbatim (e.g. "TEXTDRIP CREDS", "TEXTDRIP*MONTHLY", "RINGY CREDS REFILL"). The user reviews this in the wizard. Empty vendor strings are NOT acceptable.
 
      PLATFORM "reason" — pick using these concrete patterns (do NOT default to OTHER for platform rows):
@@ -112,7 +114,9 @@ CRITICAL RULES:
 2. Skip rows that are obviously summaries ("MONTH TOTAL", "Q1 TOTALS", "Beginning Balance", "Ending Balance").
 3. Skip rows where the description contains reserve-statement noise: "E&O Charge", "Week Ending", "Reserve Adjustment", "Chargeback Reserve".
 4. Negative amounts in spreadsheets typically mean expenses (money out). Positive amounts typically mean income (money in). Use this signal but verify against the description.
-5. For credit-card statements, charges are typically positive (money out — direction: "expense"). Payments to the card are negative (transfer — direction: "income" or skip).
+5. CREDIT-CARD STATEMENTS — positive amounts are charges (money out) → direction "expense" (or a platform row).
+5a. CARD PAYMENTS — a NEGATIVE amount that is the user paying their card bill → SKIP ENTIRELY (do not output it at all, in any bucket). Recognize by descriptions like: "PAYMENT - THANK YOU", "MOBILE PAYMENT", "ONLINE PAYMENT", "AUTOPAY", "PAYMENT RECEIVED", "ELECTRONIC PAYMENT", "THANK YOU". These move money from the user's bank to the card — they are NOT a business transaction and must never appear in transactions[] or platformExpenses[].
+5b. REFUNDS / CREDITS — a NEGATIVE amount that is a refund, return, or statement credit → output as BOOKS INCOME: a transactions[] row with direction "income", category OTHER_INCOME, amount = absolute value. Recognize by: "CREDIT", "REFUND", "RETURN", "PAY WITH POINTS", "POINTS CREDIT", "STATEMENT CREDIT", "CASHBACK", "REWARD", "ADJUSTMENT". These genuinely reduce the user's spend, so they MUST be captured (NOT skipped) — otherwise the books won't reconcile against the card's net "total spend". This applies even if the row mentions a platform (e.g. a Ringy refund): treat it as OTHER_INCOME, do NOT net it inside platformExpenses[]. The distinction between 5a and 5b is decisive: "THANK YOU / PAYMENT / AUTOPAY" = skip; everything else negative = OTHER_INCOME.
 6. Infer the year from context if dates lack one (sheet name like "JAN 26" -> 2026; "APR 25" -> 2025).
 7. Normalize dates to YYYY-MM-DD.
 8. Strip currency formatting from amounts. Use absolute value (the sign is captured in "direction").
