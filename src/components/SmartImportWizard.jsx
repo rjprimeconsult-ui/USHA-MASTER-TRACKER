@@ -388,6 +388,11 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
         amount: Math.abs(Number(p.amount) || 0),
         reason: p.reason || 'CREDIT REFILL',
         notes: [p.vendor && `From: ${p.vendor}`, p.notes].filter(Boolean).join(' · '),
+        // Apply the "Account / Card (applied to all)" field to platform
+        // rows too — they used to import with no account, forcing the
+        // agent to set it by hand on every row.
+        account: account || '',
+        vendor: p.vendor || '',
       });
       if (p.vendor && p.platformId) {
         memoryNext = recordVendor(memoryNext, {

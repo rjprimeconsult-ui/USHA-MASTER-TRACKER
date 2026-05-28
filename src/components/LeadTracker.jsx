@@ -1337,6 +1337,10 @@ export default function LeadTracker() {
     category: PLATFORM_ID_TO_CATEGORY[p.platform] || 'PLATFORM_RINGY',
     reason: p.reason || 'CREDIT REFILL',
     notes: p.notes || '',
+    // Carry the account/card through from the import wizard so platform
+    // charges land pre-tagged with the card they were paid on (e.g.
+    // "American Express") instead of blank.
+    account: p.account || '',
   }), []);
 
   const onAddPlatformViaBooks = useCallback((p) => {
