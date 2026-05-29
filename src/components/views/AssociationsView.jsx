@@ -1,7 +1,7 @@
 'use client';
 import { useMemo, useState, memo } from 'react';
 import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LabelList } from 'recharts';
-import { Users, Repeat, TrendingUp, Award, Calendar, Pause, Play, Ban, Edit2, Upload, Database, FileText, Trash2 } from 'lucide-react';
+import { Users, Repeat, TrendingUp, Award, Calendar, Pause, Play, Ban, Edit2, Upload, Database, FileText, Trash2, AlertTriangle } from 'lucide-react';
 import { ASSOCIATION_PRICING, QUARTERS, isPricedAssociation } from '@/lib/constants';
 import { fmt, fmt2, usDate, monthsActiveTotal, monthsActiveInQuarter, getCurrentQuarter, getNextQuarter } from '@/lib/utils';
 import {
@@ -156,9 +156,19 @@ function AssociationsView({
   // customer regardless of whether they're tracked as a PRIM lead). Otherwise
   // fall back to summing PRIM-tracked leads.
   const leadsActiveMonthly = activeClients.reduce((s, c) => s + clientResidual(c).monthly, 0);
-  const activeMonthly = hasBookData ? carrierBook.monthly : leadsActiveMonthly;
-  const activeCount = hasBookData ? carrierBook.count : activeClients.length;
+  // Only let the carrier book DRIVE the headline when it actually produced
+  // an active latest period with subscribers. A successful import whose
+  // latest period parses empty — unrecognized ShortName format, an
+  // adjustments-only batch, or a partial export — must NOT zero the
+  // headline. In that case we fall back to the agent's tracked clients so
+  // their numbers never vanish, and surface a warning (see bookImportWarning).
+  const bookUsable = hasBookData && carrierBook.count > 0;
+  const activeMonthly = bookUsable ? carrierBook.monthly : leadsActiveMonthly;
+  const activeCount = bookUsable ? carrierBook.count : activeClients.length;
   const yearly = activeMonthly * 12;
+  // True when rows imported but the latest period yielded no active
+  // subscribers — the "my numbers went to 0 after upload" condition.
+  const bookImportWarning = hasBookData && carrierBook.count === 0;
   const hasAgentRates = Object.keys(agentRates || {}).length > 0;
   // We have "actual YTD" when the agent has uploaded every month from
   // January through the latest period. Otherwise we fall back to the
@@ -198,7 +208,7 @@ function AssociationsView({
   // When CSV is imported, all charts use the full carrier book (every active
   // subscriber, not just PRIM-tracked leads). Without CSV we fall back to the
   // PRIM-leads-only computation so the page still renders meaningfully.
-  const quarterData = hasBookData
+  const quarterData = bookUsable
     ? QUARTERS.map(q => ({ name: q.label, value: activeMonthly * q.earningMonths.length, desc: q.desc }))
     : QUARTERS.map(q => ({
         name: q.label,
@@ -207,7 +217,7 @@ function AssociationsView({
       }));
 
   const byPlan = {};
-  if (hasBookData) {
+  if (bookUsable) {
     // From the carrier book — every active subscriber, accurate per-tier.
     for (const [planId, info] of Object.entries(carrierBook.byPlan || {})) {
       byPlan[planId] = { count: info.count, commission: info.monthly };
@@ -238,6 +248,32 @@ function AssociationsView({
         onOpenImport={onOpenImport}
         onClearResidualBook={onClearResidualBook}
       />
+
+      {/* Import-zeroed-the-snapshot safety banner. Fires when rows imported
+          but the latest period yielded no active subscribers — the exact
+          "my numbers vanished after upload" condition. Reassures the agent
+          their data is safe and explains the fallback. */}
+      {bookImportWarning && (
+        <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 flex items-start gap-3">
+          <AlertTriangle size={18} className="text-amber-600 flex-shrink-0 mt-0.5" />
+          <div className="text-sm text-amber-900">
+            <div className="font-semibold">
+              Your data is safe — we imported {abDetail.length.toLocaleString()} row{abDetail.length !== 1 ? 's' : ''}, but couldn't read any active subscribers in the most recent month.
+            </div>
+            <p className="mt-1 text-amber-800">
+              This usually means the file's production-month column was in an unexpected format, or the
+              file was an adjustments-only batch. We're showing your tracked clients below in the meantime.
+              Try re-uploading your latest CommissionDetail export — if it still shows this, send the file to support and we'll map the format.
+            </p>
+            <button
+              onClick={onOpenImport}
+              className="mt-2 inline-flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg"
+            >
+              <Upload size={12} /> Re-upload CommissionDetail
+            </button>
+          </div>
+        </div>
+      )}
 
       {abDetail.length > 0 && carrierTrend.length > 0 && (
         <Chart3DCard>

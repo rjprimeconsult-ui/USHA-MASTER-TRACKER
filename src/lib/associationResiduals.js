@@ -76,20 +76,58 @@ function usDateToIso(s) {
   return `${m[3]}-${mm}-${dd}`;
 }
 
-// "Apr-26" → "2026-04". Returns null if it doesn't look like a short-month.
+// Parse a production-month label into "YYYY-MM". Resilient to the many
+// shapes USHA (and re-saved/locale-converted exports) produce. Returns
+// null only when nothing month-like can be found.
+//
+// Handled formats (case-insensitive, any separator -, /, space):
+//   "Apr-26" "Apr 26" "Apr-2026" "Apr 2026"
+//   "April 2026" "April-26"
+//   "2026-04" "2026/04" "2026-04-01" (full ISO date → YYYY-MM)
+//   "4/2026" "04/2026" "4/1/2026" (US date → YYYY-MM)
+//
+// Previously this ONLY accepted the exact "Apr-26" pattern. Any other
+// shape returned null, which silently zeroed the entire residual
+// dashboard (active book / YTD are computed per-period, and a null
+// period drops out of every aggregation). That presented as "all my
+// numbers disappeared after upload" even though the rows imported fine.
 function shortMonthToIso(s) {
   if (!s || typeof s !== 'string') return null;
-  const months = { Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06',
-                   Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12' };
-  const m = s.trim().match(/^([A-Za-z]{3})-(\d{2})$/);
-  if (!m) return null;
-  const mm = months[m[1].slice(0, 1).toUpperCase() + m[1].slice(1, 3).toLowerCase()];
-  if (!mm) return null;
-  // Two-digit year — pivot at 70 (so '26 = 2026, but '99 = 1999). USHA
-  // exports use 20xx so this is safe.
-  const yy = Number(m[2]);
-  const yyyy = (yy >= 70 ? 1900 + yy : 2000 + yy);
-  return `${yyyy}-${mm}`;
+  const str = s.trim();
+  if (!str) return null;
+
+  const MONTHS = {
+    jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
+    jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12',
+  };
+  const toYyyy = (raw) => {
+    const n = Number(raw);
+    if (raw.length <= 2) return n >= 70 ? 1900 + n : 2000 + n; // 2-digit year pivot
+    return n;
+  };
+
+  // 1) Month-name first: "Apr 2026", "April-26", "Apr-2026", "Apr 26"
+  let m = str.match(/^([A-Za-z]{3,})[\s\-/]+(\d{2,4})$/);
+  if (m) {
+    const mm = MONTHS[m[1].slice(0, 3).toLowerCase()];
+    if (mm) return `${toYyyy(m[2])}-${mm}`;
+  }
+
+  // 2) Year-first: "2026-04", "2026/04", "2026-04-01"
+  m = str.match(/^(\d{4})[\s\-/](\d{1,2})(?:[\s\-/]\d{1,2})?$/);
+  if (m) {
+    const mm = String(Number(m[2])).padStart(2, '0');
+    if (Number(m[2]) >= 1 && Number(m[2]) <= 12) return `${m[1]}-${mm}`;
+  }
+
+  // 3) US date: "4/2026", "04/2026", "4/1/2026"
+  m = str.match(/^(\d{1,2})[\s\-/](?:\d{1,2}[\s\-/])?(\d{4})$/);
+  if (m) {
+    const mm = String(Number(m[1])).padStart(2, '0');
+    if (Number(m[1]) >= 1 && Number(m[1]) <= 12) return `${m[2]}-${mm}`;
+  }
+
+  return null;
 }
 
 // ---------- Main parse: CSV → normalized residual rows ----------
@@ -164,7 +202,22 @@ export function parseCommissionDetail(csvText) {
 
     const productCode = (productStr.match(/^\s*(\d{4})/) || [, null])[1] || null;
 
-    const period = shortMonthToIso(r[cols.short] || '') || null;
+    const effectiveDate = cols.effective >= 0 ? usDateToIso(r[cols.effective]) : null;
+    const appliedDate   = cols.applied   >= 0 ? usDateToIso(r[cols.applied])   : null;
+    const paidToDate    = cols.paid      >= 0 ? usDateToIso(r[cols.paid])      : null;
+
+    // Production period = the ShortName month ("Apr-26"). If that column is
+    // absent or in an unexpected shape, fall back to the YYYY-MM of the
+    // applied / paid / effective date so the row still lands in a period.
+    // A null period drops the row out of EVERY per-period aggregation
+    // (active book, YTD, trend) — which is exactly what made an agent's
+    // dashboard read 0 after a successful import. The fallback guarantees
+    // every row contributes to a period.
+    const period = shortMonthToIso(r[cols.short] || '')
+      || (appliedDate   ? appliedDate.slice(0, 7) : null)
+      || (paidToDate    ? paidToDate.slice(0, 7) : null)
+      || (effectiveDate ? effectiveDate.slice(0, 7) : null)
+      || null;
     if (period) periodSet.add(period);
 
     const asEarned = Number(r[cols.asEarned]) || 0;
@@ -178,9 +231,9 @@ export function parseCommissionDetail(csvText) {
       productLabel: productStr,
       planId, // null if we don't recognize the product
       period,
-      effectiveDate: cols.effective >= 0 ? usDateToIso(r[cols.effective]) : null,
-      appliedDate:   cols.applied   >= 0 ? usDateToIso(r[cols.applied])   : null,
-      paidToDate:    cols.paid      >= 0 ? usDateToIso(r[cols.paid])      : null,
+      effectiveDate,
+      appliedDate,
+      paidToDate,
       premium: cols.premium >= 0 ? (Number(r[cols.premium]) || 0) : 0,
       rate:    cols.rate    >= 0 ? (Number(r[cols.rate])    || 0) : 0,
       asEarned,
