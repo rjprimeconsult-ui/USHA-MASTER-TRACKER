@@ -55,6 +55,33 @@ export async function POST(req) {
       email: userData.user.email,
     });
 
+    const stripe = getStripe();
+
+    // Guard against double-subscribing. If this customer already has a
+    // live subscription (trialing / active / past_due / unpaid), creating
+    // another Checkout would bill them twice on the same account. Send
+    // them to the Customer Portal to manage the existing one instead.
+    try {
+      const existing = await stripe.subscriptions.list({
+        customer: customerId,
+        status: 'all',
+        limit: 10,
+      });
+      const live = (existing?.data || []).find(s =>
+        ['trialing', 'active', 'past_due', 'unpaid'].includes(s.status)
+      );
+      if (live) {
+        return jsonResponse(409, {
+          error: 'already_subscribed',
+          message: 'You already have an active subscription. Manage it from Profile → Subscription.',
+        });
+      }
+    } catch (e) {
+      // Non-fatal: if the lookup fails we fall through and let checkout
+      // proceed rather than block a legitimate new subscriber.
+      console.warn('[create-checkout-session] existing-sub check failed:', e?.message);
+    }
+
     const origin = req.headers.get('origin') || 'https://www.primtracker.com';
     // Include the session_id in the success URL so the client can call
     // /api/stripe/sync-after-checkout synchronously instead of waiting
@@ -62,7 +89,6 @@ export async function POST(req) {
     const successUrl = body.successUrl || `${origin}/?subscription=success&session_id={CHECKOUT_SESSION_ID}`;
     const cancelUrl  = body.cancelUrl  || `${origin}/pricing?canceled=1`;
 
-    const stripe = getStripe();
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       customer: customerId,

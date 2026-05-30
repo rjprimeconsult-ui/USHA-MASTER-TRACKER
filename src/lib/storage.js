@@ -114,7 +114,24 @@ async function cloudRemove(key) {
 // These keys hold arrays of id'd records. They get merge-on-save so a
 // record another tab/device added is never overwritten away by a stale
 // snapshot. See mergeStore.mjs for the merge rules.
-const MERGEABLE_KEYS = new Set(['leads_v5', 'prospects_v1']);
+//
+// Extended 2026-05 to cover the actively hand-edited array stores —
+// agents routinely use PRIM on a laptop + phone, and these were plain
+// last-write-wins, so a stale second device could silently wipe the
+// first device's edits. All four hold records with stable `id` fields
+// (uid()), which is what mergeArrayStores keys on; any row missing an id
+// makes the merge no-op to a safe plain write, so this can't regress.
+// (Import-derived stores like chargebacks/overrides/abDetail are left on
+// plain-write — they're rewritten by a dedup pass on load and aren't
+// hand-edited across devices, so merge-on-save would add risk, not safety.)
+const MERGEABLE_KEYS = new Set([
+  'leads_v5',
+  'prospects_v1',
+  'business_expenses_v1',
+  'business_income_v1',
+  'investments_v2',
+  'activities_v1',
+]);
 
 // Per-session baseline: every record id this session has loaded or
 // written for a mergeable key. Lets the merge tell "another session

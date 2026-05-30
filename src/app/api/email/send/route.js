@@ -155,9 +155,20 @@ export async function POST(req) {
       return Response.json({ error: 'post-sale emails not enabled for this account', reason: access.reason }, { status: 403 });
     }
   }
-  // 'welcome' bypasses the gate — only the system fires welcome emails
-  // (via the Stripe webhook on checkout.session.completed), not the user
-  // directly, so no per-tier gating is needed.
+  // 'welcome' bypasses the per-tier gate — but is LOCKED to the caller's
+  // own email address. Without this lock, kind:'welcome' is an open relay:
+  // any signed-in user could POST an arbitrary subject/body/recipient and
+  // send mail through our Resend domain (spam / phishing / quota abuse).
+  // The real welcome path is the Stripe webhook calling
+  // sendWelcomeEmailForUser server-side — NOT this user-facing endpoint —
+  // so a legitimate welcome request here only ever targets the user
+  // themselves.
+  if (kind === 'welcome') {
+    const self = (profile.email || '').trim().toLowerCase();
+    if (!self || recipient.trim().toLowerCase() !== self) {
+      return Response.json({ error: 'welcome emails can only be sent to your own account email' }, { status: 403 });
+    }
+  }
 
   // Either a leadId (post-sale) or a prospectId (outreach) is required.
   // Welcome emails don't need either — they're addressed to the user

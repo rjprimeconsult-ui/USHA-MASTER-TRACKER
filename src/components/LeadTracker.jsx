@@ -6,7 +6,7 @@ import {
 import { PrimAppIcon } from '@/components/PrimLogo';
 import { storage, onStorageError } from '@/lib/storage';
 import { deleteAttachment as deleteAttachmentFromIdb } from '@/lib/attachments';
-import { mkLead, migrateLead, SEED_LEADS, SEED_INVESTMENTS, SEED_ACTIVITIES } from '@/lib/seed';
+import { mkLead, migrateLead } from '@/lib/seed';
 import { today, uid, getWeekStart } from '@/lib/utils';
 import {
   isPricedAssociation,
@@ -277,16 +277,24 @@ export default function LeadTracker() {
           } catch { /* ignore */ }
         }
       }
-      // Always run migrateLead on loaded data so stage/product renames are applied
-      // idempotently even to leads_v5 records from earlier builds.
-      const loadedLeads = (leadsRaw ? JSON.parse(leadsRaw) : SEED_LEADS).map(migrateLead);
+      // Real (signed-in) accounts start EMPTY — never seeded with demo data.
+      // Previously an empty cloud fell back to SEED_LEADS/SEED_INVESTMENTS/
+      // SEED_ACTIVITIES, which (a) showed every brand-new agent fake leads
+      // ("William Stolte" etc.) and (b) persisted that fake data to their
+      // cloud, contaminating their real CPA / revenue / ROI numbers until
+      // they hunted it down and deleted it. New paying customers must see a
+      // clean, empty tracker. The First-Run Wizard is a tour overlay and
+      // works fine over an empty UI.
+      // Always run migrateLead on loaded data so stage/product renames are
+      // applied idempotently even to leads_v5 records from earlier builds.
+      const loadedLeads = (leadsRaw ? JSON.parse(leadsRaw) : []).map(migrateLead);
       setLeads(loadedLeads);
 
       const invRaw = await storage.getItem(INV_KEY);
-      setInvestments(invRaw ? JSON.parse(invRaw) : SEED_INVESTMENTS);
+      setInvestments(invRaw ? JSON.parse(invRaw) : []);
 
       const actRaw = await storage.getItem(ACT_KEY);
-      setActivities(actRaw ? JSON.parse(actRaw) : SEED_ACTIVITIES);
+      setActivities(actRaw ? JSON.parse(actRaw) : []);
 
       const tierRaw = await storage.getItem(TIER_KEY);
       if (tierRaw) setTier(tierRaw);
