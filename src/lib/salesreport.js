@@ -212,7 +212,13 @@ export function parseSalesReport(wb) {
       // separate AppID family from the main policy, e.g. 72D…S vs 52Z…J).
       // Mark as an association orphan so Pass 2 still merges it onto the
       // customer's main deal instead of leaking out as a duplicate lead.
-      deal.associationPlan = product || 'OTHER';
+      // Use the canonical 'OTHER' sentinel rather than the raw product
+      // string. The raw string (a) isn't a recognized plan tier so it
+      // never matched ASSOCIATION_PRICING anyway, and (b) could surface
+      // unmapped/raw product text (e.g. ACA WRAP wording) where a clean
+      // tier name is expected. The premium is still captured below; the
+      // raw product stays in _debug for traceability.
+      deal.associationPlan = 'OTHER';
       deal.associationMonthlyPremium = (assocPremiumAV > 0 ? assocPremiumAV : premiumAV) / 12;
       deal._debug.push(`Inferred-as-association by AppID-S: "${product}" at ${appId}`);
     } else {

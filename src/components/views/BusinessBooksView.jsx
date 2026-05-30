@@ -739,8 +739,8 @@ function BusinessBooksView({
             <div className="text-[11px] text-slate-500">
               deductible business out
               {ytdPlatformExpenses > 0 && (
-                <span title="Platforms (Ringy/TextDrip/VanillaSoft) are tracked separately and feed True CPA. Total YTD spend = Books + Platforms.">
-                  {' '}· <span className="text-indigo-600 font-semibold">+ {fmt2(ytdPlatformExpenses)} Platforms</span>
+                <span title="Platform charges (Ringy/TextDrip/VanillaSoft) live in Books and are ALREADY counted in this YTD total. Shown here only so you can see how much of it is platform spend.">
+                  {' '}· <span className="text-indigo-600 font-semibold">of which {fmt2(ytdPlatformExpenses)} Platforms</span>
                 </span>
               )}
             </div>

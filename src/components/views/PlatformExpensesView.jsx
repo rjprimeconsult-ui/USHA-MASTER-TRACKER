@@ -200,7 +200,9 @@ function PlatformExpensesView({ expenses, onJumpToBooks }) {
             label="Projected annual"
             numeric={yearStats.projected}
             decimals={0}
-            sub="Run-rate × 12"
+            sub={yearStats.monthsLogged < 2
+              ? `Run-rate × 12 · rough (only ${yearStats.monthsLogged} mo logged)`
+              : `Run-rate × 12 · ${yearStats.monthsLogged} mo avg`}
           />
         </StaggerItem>
         <StaggerItem>

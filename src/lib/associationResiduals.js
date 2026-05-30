@@ -338,11 +338,16 @@ export function deriveAgentRates(rows) {
       .map(([rate, effective]) => ({ effectiveAfter: effective, rate: Number(rate) }))
       .sort((a, b) => a.effectiveAfter.localeCompare(b.effectiveAfter));
 
-    // Current rate = the rate from the row with the most recent effective date overall.
+    // Current rate = the rate from the row with the most recent effective
+    // date overall. On a TIE (two rows share the latest effectiveDate, e.g.
+    // two policies enrolled the same day at different tiers), pick the
+    // HIGHER rate deterministically — otherwise the result depended on CSV
+    // row order and could flip by a few dollars between identical re-imports.
     let lastEffective = null;
     let currentRate = null;
     for (const o of byPlan[planId]) {
-      if (!lastEffective || o.effective > lastEffective) {
+      if (!lastEffective || o.effective > lastEffective ||
+          (o.effective === lastEffective && o.rate > currentRate)) {
         lastEffective = o.effective;
         currentRate = o.rate;
       }
@@ -596,7 +601,16 @@ export function activeBook(rows) {
   const planByPolicy = new Map();
   for (const r of inPeriod) {
     netByPolicy.set(r.policyId, (netByPolicy.get(r.policyId) || 0) + r.asEarned);
-    if (!planByPolicy.has(r.policyId)) planByPolicy.set(r.policyId, r.planId || 'OTHER');
+    // Prefer a REAL planId over 'OTHER'. A policy can have an adjustment
+    // row with planId=null appearing before its main row; first-row-wins
+    // would then bucket a real Diamond subscriber under 'OTHER'. Take the
+    // first non-null planId we see for the policy instead.
+    const existing = planByPolicy.get(r.policyId);
+    if (r.planId && (!existing || existing === 'OTHER')) {
+      planByPolicy.set(r.policyId, r.planId);
+    } else if (!planByPolicy.has(r.policyId)) {
+      planByPolicy.set(r.policyId, 'OTHER');
+    }
   }
   const byPlan = {};
   let monthly = 0;
