@@ -73,7 +73,7 @@ export default function TermsPage() {
             <h2 className="text-xl font-bold text-slate-900 mt-6 mb-3">9. Contact</h2>
             <p>R&amp;J Prime Consultancy LLC<br/>
             Attn: Juan Trejo<br/>
-            <a href="mailto:juantrejo9082@gmail.com" className="text-indigo-600 hover:underline">juantrejo9082@gmail.com</a></p>
+            <a href="mailto:rjprimeconsult@gmail.com" className="text-indigo-600 hover:underline">rjprimeconsult@gmail.com</a></p>
           </section>
         </div>
       </div>
