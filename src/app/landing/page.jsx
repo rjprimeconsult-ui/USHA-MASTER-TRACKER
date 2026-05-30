@@ -911,7 +911,7 @@ function SeeItInAction() {
             </div>
 
             <a
-              href="/sign-in"
+              href="/pricing"
               className="inline-flex items-center gap-2 rounded-xl px-6 py-3 font-bold text-sm transition hover:scale-[1.02]"
               style={{
                 background: `linear-gradient(135deg, ${BRAND.accent}, ${BRAND.accent2})`,
