@@ -1,12 +1,15 @@
 'use client';
 import { useMemo, useState } from 'react';
-import { TrendingDown, Users, Trash2, Search, Calendar, X } from 'lucide-react';
+import { TrendingDown, Users, Trash2, Search, Calendar, X, ChevronRight, ChevronDown } from 'lucide-react';
 
 export default function ChargebacksPanel({ chargebacks = [], onDelete }) {
   const [view, setView] = useState('client');   // 'client' | 'agent'
   const [kind, setKind] = useState('all');      // 'all' | 'own' | 'override'
   const [period, setPeriod] = useState('all');  // 'all' or a specific period string
   const [query, setQuery] = useState('');
+  // Collapsed by default — click the "Chargebacks" header to reveal the
+  // filters + tables, matching the calendar/follow-ups widgets in Prospecting.
+  const [collapsed, setCollapsed] = useState(true);
 
   // --- period options: every distinct period value from the chargebacks, sorted newest-first
   const periods = useMemo(() => {
@@ -87,13 +90,20 @@ export default function ChargebacksPanel({ chargebacks = [], onDelete }) {
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-4">
       <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-2">
-        <div>
+        <button
+          onClick={() => setCollapsed(c => !c)}
+          className="text-left group"
+          title={collapsed ? 'Expand chargebacks' : 'Collapse chargebacks'}
+        >
           <div className="flex items-center gap-2">
             <TrendingDown size={16} className="text-red-600" />
-            <h3 className="font-semibold text-slate-900">Chargebacks</h3>
+            <h3 className="font-semibold text-slate-900 group-hover:text-indigo-700">Chargebacks</h3>
+            {collapsed
+              ? <ChevronRight size={16} className="text-slate-400 group-hover:text-indigo-600" />
+              : <ChevronDown size={16} className="text-slate-400 group-hover:text-indigo-600" />}
           </div>
           <p className="text-xs text-slate-500 mt-0.5">Clients that cancelled before 12 months — amount pulled back from your advance or reserve.</p>
-        </div>
+        </button>
         <div className="flex gap-2 text-sm flex-wrap">
           <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-1.5">
             <span className="text-xs text-slate-500">Own: </span>
@@ -112,6 +122,7 @@ export default function ChargebacksPanel({ chargebacks = [], onDelete }) {
         </div>
       </div>
 
+      {!collapsed && (<>
       {/* Filter bar */}
       <div className="flex flex-wrap gap-2 items-center bg-slate-50 border border-slate-200 rounded-lg p-2">
         <div className="relative flex-1 min-w-[180px]">
@@ -231,6 +242,7 @@ export default function ChargebacksPanel({ chargebacks = [], onDelete }) {
           </table>
         </div>
       </details>
+      </>)}
     </div>
   );
 }
