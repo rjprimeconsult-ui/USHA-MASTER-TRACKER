@@ -973,6 +973,18 @@ export default function LeadTracker() {
     }
     const stageMap = new Map();
     stageUpdates.forEach(s => stageMap.set(s.leadId, s));
+
+    // DEDUP GATE (root cause #2 of the 2026-06-01 duplicate explosion).
+    // This path used to prepend `leadsToAdd` raw — no duplicate guard —
+    // unlike importLeads(). Re-running the gap upload, or it overlapping
+    // the Excel historical, stacked leads unbounded. Run the additions
+    // through the SAME dedup engine importLeads uses (skip mode), against
+    // the current book, so the same person can never be re-added.
+    const { fresh, duplicates } = dedupLeads(leadsToAdd, leads, { merge: false });
+
+    const batchId = `salesreport_${uid()}`;
+    const stamped = fresh.map(l => ({ ...l, importBatchId: batchId, importedAt: new Date().toISOString() }));
+
     setLeads(prev => {
       const updated = prev.map(l => {
         const s = stageMap.get(l.id);
@@ -985,16 +997,14 @@ export default function LeadTracker() {
         }
         return { ...l, ...patch };
       });
-      // Tag new leads with import batch for potential undo
-      const batchId = `salesreport_${uid()}`;
-      const stamped = leadsToAdd.map(l => ({ ...l, importBatchId: batchId, importedAt: new Date().toISOString() }));
       return [...stamped, ...updated];
     });
     const bits = [];
-    if (leadsToAdd.length) bits.push(`${leadsToAdd.length} lead${leadsToAdd.length !== 1 ? 's' : ''} added`);
+    if (fresh.length) bits.push(`${fresh.length} lead${fresh.length !== 1 ? 's' : ''} added`);
+    if (duplicates.length) bits.push(`${duplicates.length} duplicate${duplicates.length !== 1 ? 's' : ''} skipped`);
     if (stageUpdates.length) bits.push(`${stageUpdates.length} stage${stageUpdates.length !== 1 ? 's' : ''} fixed`);
-    showToast(bits.join(' · '));
-  }, [showToast]);
+    showToast(bits.join(' · ') || 'Nothing to apply');
+  }, [showToast, leads]);
 
   // Backfill mode — merge patches into existing leads (only fills empty fields)
   const backfillFromExcel = useCallback(({ updates = [] } = {}) => {

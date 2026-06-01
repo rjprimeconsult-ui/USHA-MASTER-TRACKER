@@ -61,8 +61,21 @@ function localSet(key, value) {
     window.localStorage.setItem(key, value);
     return true;
   } catch (e) {
-    if (isQuotaError(e) && quotaListener) {
-      quotaListener({ key, valueSize: typeof value === 'string' ? value.length : 0, error: e });
+    if (isQuotaError(e)) {
+      // CRITICAL distinction (root cause #1 of the 2026-06-01 incident):
+      // when signed in, Supabase is the source of truth and its write is
+      // INDEPENDENT of this localStorage mirror. A full mirror is NOT data
+      // loss, so we must NOT raise the alarming "your save wasn't persisted"
+      // toast — that false alarm made an agent re-import 1,490 leads and
+      // triggered a duplicate explosion. Only surface the quota error when
+      // signed out, where localStorage IS the only store and it's real.
+      if (cloudActive()) {
+        if (typeof console !== 'undefined') {
+          console.warn('localStorage mirror full — cloud save is the source of truth and is unaffected', key);
+        }
+      } else if (quotaListener) {
+        quotaListener({ key, valueSize: typeof value === 'string' ? value.length : 0, error: e });
+      }
     } else if (typeof console !== 'undefined') {
       console.warn('localStorage.setItem failed', key, e);
     }
@@ -207,8 +220,12 @@ export const storage = {
         if (merged !== undefined) {
           const str = JSON.stringify(merged);
           const localOk = localSet(key, str);
-          await cloudSet(key, merged);
-          return localOk;
+          const cloudOk = await cloudSet(key, merged);
+          // Signed in → the cloud write is the source of truth. Report
+          // success on it, NOT the localStorage mirror — a full mirror is
+          // not data loss (root cause #1). cloudOk||localOk so a cloud
+          // hiccup with a good local cache still reads as saved.
+          return cloudOk || localOk;
         }
       } catch (e) {
         console.warn('storage.setItem merge failed, plain write', key, e);
@@ -220,9 +237,13 @@ export const storage = {
       try {
         let parsed;
         try { parsed = JSON.parse(value); } catch { parsed = value; }
-        await cloudSet(key, parsed);
+        const cloudOk = await cloudSet(key, parsed);
+        // Same as the merge path: signed in → judge success on the cloud
+        // write, not the localStorage mirror (root cause #1).
+        return cloudOk || localOk;
       } catch (e) {
         console.warn('storage.setItem cloud sync failed (local saved)', e);
+        return localOk;
       }
     }
     return localOk;
