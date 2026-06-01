@@ -240,6 +240,36 @@ test('buildPnlReport — net = total in minus total out, chargebacks excluded', 
   assert.equal(outflow.lines.some(l => /chargeback/i.test(l.label)), false);
 });
 
+test('buildPnlReport — commissions use statement own-advances when present', () => {
+  const data = {
+    // Lead dealValue says 3000, but the weekly statements actually paid 3500.
+    leads: [{ stage: 'Issued', closedDate: '2026-05-10', products: [], dealValue: 3000, leadCost: 0 }],
+    ownAdvances: [
+      { amount: 2000, period: '2026-05-09' },
+      { amount: 1500, period: '2026-05-16' },
+    ],
+    overrides: [], expenses: [],
+  };
+  const rep = buildPnlReport(data, { from: '2026-05-01', to: '2026-05-31' });
+  const income = rep.sections.find(s => s.title === 'Income');
+  const comm = income.lines.find(l => /commission/i.test(l.label));
+  // Statement truth (3500) wins over lead dealValue (3000) — the bug fix.
+  assert.equal(comm.amount, '$3,500');
+  assert.equal(rep.net.amount, '$3,500');
+});
+
+test('buildPnlReport — falls back to lead dealValue when no statement rows in range', () => {
+  const data = {
+    leads: [{ stage: 'Issued', closedDate: '2026-05-10', products: [], dealValue: 3000, leadCost: 0 }],
+    ownAdvances: [{ amount: 999, period: '2026-04-15' }],   // out of range → ignored
+    overrides: [], expenses: [],
+  };
+  const rep = buildPnlReport(data, { from: '2026-05-01', to: '2026-05-31' });
+  const income = rep.sections.find(s => s.title === 'Income');
+  const comm = income.lines.find(l => /commission/i.test(l.label));
+  assert.equal(comm.amount, '$3,000');
+});
+
 test('buildPnlReport — negative net flips color to red', () => {
   const data = {
     leads: [], overrides: [],

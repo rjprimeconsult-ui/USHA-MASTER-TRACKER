@@ -1711,6 +1711,7 @@ export default function LeadTracker() {
             businessExpenses={businessExpenses}
             abDetail={abDetail}
             businessIncome={businessIncome}
+            ownAdvances={ownAdvances}
           />
         </ViewMount>
         <ViewMount visible={view === 'calculator'} viewKey="calculator">

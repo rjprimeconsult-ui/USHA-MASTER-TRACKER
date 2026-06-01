@@ -360,12 +360,24 @@ export function buildExpensesReport(expenses, range, opts = {}) {
 export function buildPnlReport(data, range) {
   const {
     leads = [], overrides = [], expenses = [],
-    abDetail = [], businessIncome = [],
+    abDetail = [], businessIncome = [], ownAdvances = [],
   } = data || {};
 
-  const commissions = leads
+  // Own-sales commission income. Prefer the STATEMENT TRUTH — the
+  // own_advances rows parsed straight from the weekly statements, scoped by
+  // statement period — because that's what was actually paid. Fall back to
+  // summing issued-lead dealValue only when no statement rows fall in the
+  // range (statements not imported yet, or a lead marked Issued by hand).
+  // This mirrors the CPA Dashboard's "Earned" exactly, so the P&L
+  // reconciles to the statements instead of drifting from them. (Was: lead
+  // dealValue only, which under-counted when statement advances didn't all
+  // map onto leads.)
+  const ownAdvanceRows = (ownAdvances || []).filter(a => a && inRange(a.period, range));
+  const ownFromStatements = ownAdvanceRows.reduce((s, a) => s + (Number(a.amount) || 0), 0);
+  const ownFromLeads = leads
     .filter(l => l && l.stage === 'Issued' && inRange(l.closedDate, range))
     .reduce((s, l) => s + (Number(l.dealValue) || 0), 0);
+  const commissions = ownAdvanceRows.length > 0 ? ownFromStatements : ownFromLeads;
   const overrideIncome = overrides
     .filter(o => o && inRange(o.period, range))
     .reduce((s, o) => s + (Number(o.amount) || 0), 0);
