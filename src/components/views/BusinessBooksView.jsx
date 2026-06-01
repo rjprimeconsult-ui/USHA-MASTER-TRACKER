@@ -86,6 +86,7 @@ function BusinessBooksView({
     if (smartImportOpenSignal > 0) setShowSmartImport(true);
   }, [smartImportOpenSignal]);
   const [showCategoryManager, setShowCategoryManager] = useState(false);
+  const [showAccountManager, setShowAccountManager] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [aiRescanning, setAiRescanning] = useState(false);
   const [aiRescanProgress, setAiRescanProgress] = useState({ done: 0, total: 0 });
@@ -310,6 +311,17 @@ function BusinessBooksView({
     setKnownAccounts(prev => {
       if (prev.includes(n)) return prev;
       const next = [...prev, n].sort();
+      storage.setItem(ACCOUNTS_KEY, JSON.stringify(next));
+      return next;
+    });
+  };
+  // Remove a saved account/card from the managed list. Existing entries that
+  // already reference it keep their value (we only manage the pick-list);
+  // the next auto-merge effect won't re-add it unless an entry still uses it,
+  // which is the correct behavior (a card in use stays available).
+  const removeAccount = (name) => {
+    setKnownAccounts(prev => {
+      const next = prev.filter(a => a !== name);
       storage.setItem(ACCOUNTS_KEY, JSON.stringify(next));
       return next;
     });
@@ -962,6 +974,21 @@ function BusinessBooksView({
         onChanged={() => reloadCustomCats()}
       />
 
+      {/* Manage accounts / credit cards modal */}
+      {showAccountManager && (
+        <AccountManager
+          accounts={knownAccounts}
+          usageCounts={[...expenses, ...income].reduce((m, e) => {
+            const a = (e.account || '').trim();
+            if (a) m[a] = (m[a] || 0) + 1;
+            return m;
+          }, {})}
+          onAdd={addAccount}
+          onRemove={removeAccount}
+          onClose={() => setShowAccountManager(false)}
+        />
+      )}
+
       {/* Agent settings panel */}
       <AgentSettingsPanel
         open={showSettings}
@@ -1028,6 +1055,13 @@ function BusinessBooksView({
             title="Add or edit your own custom categories"
           >
             <Tag size={12} /> Manage categories
+          </button>
+          <button
+            onClick={() => setShowAccountManager(true)}
+            className="text-xs text-indigo-700 hover:text-indigo-900 flex items-center gap-1 border border-indigo-200 hover:border-indigo-400 bg-white rounded-lg px-2.5 py-1 transition"
+            title="Add or remove your accounts / credit cards"
+          >
+            <Wallet size={12} /> Manage accounts
           </button>
           <button
             onClick={() => setShowSettings(true)}
@@ -1585,6 +1619,93 @@ function BusinessBooksView({
 }
 
 export default memo(BusinessBooksView);
+
+// ---------- Manage Accounts / Credit cards ----------
+// Lets the agent maintain their own pick-list of accounts/cards (Chase,
+// Amex Personal, Amex Business, ...) that then appear in the Account field
+// on every expense/income row + the Smart Import "apply to all" box.
+function AccountManager({ accounts = [], usageCounts = {}, onAdd, onRemove, onClose }) {
+  const [name, setName] = useState('');
+  const submit = () => {
+    const n = name.trim();
+    if (!n) return;
+    onAdd(n);
+    setName('');
+  };
+  return (
+    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-md z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white rounded-2xl border border-slate-200 w-full max-w-md shadow-2xl shadow-indigo-500/10 flex flex-col max-h-[80vh]"
+      >
+        <div className="flex items-center justify-between p-4 border-b border-slate-200">
+          <div className="flex items-center gap-2">
+            <Wallet size={16} className="text-indigo-600" />
+            <h2 className="font-semibold text-slate-900">Accounts / Credit cards</h2>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
+        </div>
+
+        <div className="p-4 border-b border-slate-100">
+          <label className="text-[10px] uppercase text-slate-500 font-bold tracking-wider">Add an account or card</label>
+          <div className="flex items-center gap-2 mt-1">
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
+              placeholder="e.g. Amex Business, Chase Debit"
+              className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400"
+            />
+            <button
+              onClick={submit}
+              disabled={!name.trim()}
+              className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white rounded-lg px-3 py-2 text-sm font-semibold flex items-center gap-1 transition"
+            >
+              <Plus size={14} /> Add
+            </button>
+          </div>
+          <p className="text-[11px] text-slate-400 mt-1.5">These show up in the Account dropdown on every entry and in Smart Import.</p>
+        </div>
+
+        <div className="overflow-y-auto p-2">
+          {accounts.length === 0 ? (
+            <div className="text-center text-slate-400 text-sm py-8">No accounts yet — add your first card above.</div>
+          ) : (
+            <ul className="divide-y divide-slate-100">
+              {accounts.map((a) => {
+                const used = usageCounts[a] || 0;
+                return (
+                  <li key={a} className="flex items-center justify-between gap-2 px-2 py-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Wallet size={13} className="text-slate-400 flex-shrink-0" />
+                      <span className="text-sm text-slate-800 truncate">{a}</span>
+                      {used > 0 && <span className="text-[10px] text-slate-400">· {used} {used === 1 ? 'entry' : 'entries'}</span>}
+                    </div>
+                    <button
+                      onClick={() => {
+                        if (used > 0 && !window.confirm(`Remove "${a}" from your account list? ${used} existing ${used === 1 ? 'entry keeps' : 'entries keep'} their value — this only takes it off the pick-list.`)) return;
+                        onRemove(a);
+                      }}
+                      className="text-slate-400 hover:text-red-600 transition p-1"
+                      title="Remove from list"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+
+        <div className="p-3 border-t border-slate-200 flex justify-end">
+          <button onClick={onClose} className="text-sm font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg px-4 py-2 transition">Done</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ---------- Row-level attach button (for entries that don't have one yet) ----------
 function RowAttachmentButton({ entry, onUpdate }) {
