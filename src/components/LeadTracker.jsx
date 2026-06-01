@@ -1675,6 +1675,7 @@ export default function LeadTracker() {
             leads={leads}
             overrides={overrides}
             ownAdvances={ownAdvances}
+            abDetail={abDetail}
             onAddExpense={(e) => { setBusinessExpenses(prev => [e, ...prev]); showToast('Expense added'); }}
             onUpdateExpense={(e) => setBusinessExpenses(prev => prev.map(x => x.id === e.id ? e : x))}
             onDeleteExpense={(id) => {

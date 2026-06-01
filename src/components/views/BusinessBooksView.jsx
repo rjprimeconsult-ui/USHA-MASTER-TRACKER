@@ -66,7 +66,7 @@ const loadAttachmentForView = async (attachment) => {
 function BusinessBooksView({
   expenses, income,
   platformExpenses = [],
-  leads = [], overrides = [], ownAdvances = [],
+  leads = [], overrides = [], ownAdvances = [], abDetail = [],
   onAddExpense, onUpdateExpense, onDeleteExpense, onBulkAddExpenses,
   onAddIncome,  onUpdateIncome,  onDeleteIncome,  onBulkAddIncome,
   onBulkAddPlatforms,
@@ -369,8 +369,21 @@ function BusinessBooksView({
   );
   const ytdCommissions = ytdOwnCommissions + ytdOverrideIncome;
 
-  // Total YTD income shown on the dashboard card = books income + commissions.
-  const ytdIncome   = ytdBooksIncome + ytdCommissions;
+  // Association Bonus residuals for the year — same source + scoping the
+  // P&L uses (scope by appliedDate, falling back to the 1st of the
+  // production month; sum asEarned including negative adjustments). Without
+  // this the Books YTD income omitted residual income, so it no longer
+  // matched the P&L Summary's Total In.
+  const ytdAssociationIncome = useMemo(
+    () => abDetail
+      .filter(r => r && inYear(r.appliedDate || (r.period ? `${r.period}-01` : '')))
+      .reduce((s, r) => s + (Number(r.asEarned) || 0), 0),
+    [abDetail, yr]
+  );
+
+  // Total YTD income = books income + commissions + association residuals.
+  // Matches the P&L Summary's Total In exactly.
+  const ytdIncome   = ytdBooksIncome + ytdCommissions + ytdAssociationIncome;
   // True YTD Net = all income − all Books expenses. Platforms now live IN
   // Books (PLATFORM_* categories) so they're already inside ytdExpenses.
   const ytdNet      = ytdIncome - ytdExpenses;
@@ -429,8 +442,16 @@ function BusinessBooksView({
     [overrides, activeMonth]
   );
   const monthCommissions = monthOwnCommissions + monthOverrideIncome;
-  // True monthly income = books income + statement advances + overrides
-  const monthIncTotal = monthBooksIncTotal + monthCommissions;
+  // Association Bonus residuals for the active month (same scoping as YTD /
+  // the P&L) so the monthly card stays consistent with the YTD card.
+  const monthAssociationIncome = useMemo(
+    () => abDetail
+      .filter(r => r && ymOf(r.appliedDate || (r.period ? `${r.period}-01` : '')) === activeMonth)
+      .reduce((s, r) => s + (Number(r.asEarned) || 0), 0),
+    [abDetail, activeMonth]
+  );
+  // True monthly income = books income + commissions/overrides + association.
+  const monthIncTotal = monthBooksIncTotal + monthCommissions + monthAssociationIncome;
   // True monthly net = income − books expenses − platforms expenses
   // Platforms now live in Books, so monthExpTotal already includes them.
   const monthNet = monthIncTotal - monthExpTotal;
@@ -721,8 +742,12 @@ function BusinessBooksView({
               <CountUp value={ytdIncome} format={(v) => '$' + v.toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: 2 })} />
             </div>
             <div className="text-[11px] text-slate-500">
-              {ytdCommissions > 0
-                ? `${fmt2(ytdCommissions)} commissions + ${fmt2(ytdBooksIncome)} other`
+              {ytdCommissions > 0 || ytdAssociationIncome > 0
+                ? [
+                    ytdCommissions > 0 && `${fmt2(ytdCommissions)} commissions`,
+                    ytdAssociationIncome > 0 && `${fmt2(ytdAssociationIncome)} residuals`,
+                    ytdBooksIncome > 0 && `${fmt2(ytdBooksIncome)} other`,
+                  ].filter(Boolean).join(' + ')
                 : 'all income for the year'}
             </div>
           </TiltCard>
