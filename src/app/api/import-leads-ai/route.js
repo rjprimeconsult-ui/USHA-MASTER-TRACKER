@@ -74,7 +74,7 @@ EXECUTIVE DIAMOND, DIAMOND, EMERALD, SAPPHIRE, RUBY, PEARL, NO ASS., ABC ELITE, 
 - "NO ASSOCIATION", "NONE", "NO ASS" all map to "NO ASS."
 - "HA ELITE" -> "ABC ELITE"; "HA EXECUTIVE" -> "ABC EXECUTIVE"; "HA ENTREPRENEUR" -> "ABC ENTREPRENEUR"
 
-CRM (lead.crm — pick one): RINGY, TEXTDRIP, VANILLA, GOOGLE, BENEPATH — leave empty if unclear. "Benepath" / "Bennys" / "Bennies" all map to BENEPATH.
+CRM (lead.crm — pick one): RINGY, TEXTDRIP, VANILLA, ONLYSALES, GOOGLE, BENEPATH — leave empty if unclear. "Benepath" / "Bennys" / "Bennies" all map to BENEPATH. "OnlySales" / "Only Sales" / "OS" map to ONLYSALES.
 SOURCE (lead.source — pick one): Website, Referral, Facebook, Google, LinkedIn, Cold Call, Event, CRM, Dialer, Other.
 LEAD CATEGORY (lead.leadCategory — pick one): AGED, SHARED, REFERRAL, DIALER, REPEAT CLIENT, JACKPOT, D7, GOOGLE LEADS, BENEPATH. Use BENEPATH when the lead source is the Benepath lead vendor (variants: "Benepath", "Bennys", "Bennies").
 PAY TYPE (lead.payType — pick one): "advance" (default — paid upfront as advance) or "as_earned" (paid monthly as client pays premium).

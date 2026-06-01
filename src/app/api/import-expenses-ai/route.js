@@ -55,9 +55,10 @@ You are extracting transactions from financial documents for an insurance agent'
        - TD (TextDrip): "Text Creds", "TextDrip", "TextDrip credits", "td credits", "TXTDRIP", any reference to TextDrip subscription/refill.
        - RINGY: "Ringy", "Ringy credits", "Ringy subscription", "RINGY.AI", "Ringy.com".
        - VANILLA (VanillaSoft): "VanillaSoft", "Vanilla Soft", "VS Creds", "VS credits", "cami's vs", "vsoft creds".
-     For these rows, output a "platformExpenses[]" entry with platformId set to TD / RINGY / VANILLA — DO NOT also add them to "transactions".
+       - OS (OnlySales): "OnlySales", "Only Sales", "OnlySales credits", "OS creds", "onlysales.com", any reference to an OnlySales subscription/refill.
+     For these rows, output a "platformExpenses[]" entry with platformId set to TD / RINGY / VANILLA / OS — DO NOT also add them to "transactions".
 
-     PLATFORM ROWS ARE AMOUNT-INDEPENDENT: ANY positive-charge row whose description contains TextDrip / TXTDRIP / TEXTDRIP.COM, Ringy / RINGY, or VanillaSoft / VANILLASOFT is ALWAYS a platform row — no matter how small the amount. A $4.50 TextDrip charge is just as much a platform row as a $400 one. NEVER route a TextDrip/Ringy/VanillaSoft charge into Books expenses because the amount looks small or odd. (Exception: a NEGATIVE platform-named row is a refund — see CRITICAL RULE 5b.)
+     PLATFORM ROWS ARE AMOUNT-INDEPENDENT: ANY positive-charge row whose description contains TextDrip / TXTDRIP / TEXTDRIP.COM, Ringy / RINGY, VanillaSoft / VANILLASOFT, or OnlySales / ONLYSALES is ALWAYS a platform row — no matter how small the amount. A $4.50 TextDrip charge is just as much a platform row as a $400 one. NEVER route a TextDrip/Ringy/VanillaSoft charge into Books expenses because the amount looks small or odd. (Exception: a NEGATIVE platform-named row is a refund — see CRITICAL RULE 5b.)
 
      PLATFORM "vendor" FIELD — REQUIRED. Always copy the original transaction description from the file verbatim (e.g. "TEXTDRIP CREDS", "TEXTDRIP*MONTHLY", "RINGY CREDS REFILL"). The user reviews this in the wizard. Empty vendor strings are NOT acceptable.
 

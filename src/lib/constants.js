@@ -33,6 +33,7 @@ export const CRMS = [
   { id: 'RINGY',    badge: 'bg-red-500 text-white',     color: '#ef4444' },
   { id: 'TEXTDRIP', badge: 'bg-violet-500 text-white',  color: '#8b5cf6' },
   { id: 'VANILLA',  badge: 'bg-blue-500 text-white',    color: '#3b82f6' },
+  { id: 'ONLYSALES', badge: 'bg-green-500 text-white',  color: '#22c55e' },
   { id: 'GOOGLE',   badge: 'bg-amber-500 text-white',   color: '#f59e0b' },
   { id: 'BENEPATH', badge: 'bg-teal-600 text-white',   color: '#0d9488' },
 ];
@@ -311,6 +312,7 @@ export const EXPENSE_CATEGORIES = [
   { id: 'PLATFORM_RINGY',      label: 'Ringy',             color: '#ef4444', badge: 'bg-red-500 text-white' },
   { id: 'PLATFORM_TEXTDRIP',   label: 'TextDrip',          color: '#8b5cf6', badge: 'bg-violet-500 text-white' },
   { id: 'PLATFORM_VANILLASOFT', label: 'VanillaSoft',      color: '#3b82f6', badge: 'bg-blue-500 text-white' },
+  { id: 'PLATFORM_ONLYSALES',  label: 'OnlySales',         color: '#22c55e', badge: 'bg-green-500 text-white' },
   { id: 'OFFICE_RENT',    label: 'Office Rent',       color: '#b91c1c', badge: 'bg-red-100 text-red-800' },
   { id: 'OFFICE',         label: 'Office Supplies',   color: '#0ea5e9', badge: 'bg-sky-100 text-sky-700' },
   { id: 'SOFTWARE',       label: 'Software',          color: '#6366f1', badge: 'bg-indigo-100 text-indigo-700' },
@@ -340,6 +342,7 @@ export const TRUE_CPA_BOOK_CATEGORIES = [
   'PLATFORM_RINGY',
   'PLATFORM_TEXTDRIP',
   'PLATFORM_VANILLASOFT',
+  'PLATFORM_ONLYSALES',
 ];
 
 // The three "platform" expense categories. Used in places where we need
@@ -349,14 +352,17 @@ export const PLATFORM_EXPENSE_CATEGORIES = [
   'PLATFORM_RINGY',
   'PLATFORM_TEXTDRIP',
   'PLATFORM_VANILLASOFT',
+  'PLATFORM_ONLYSALES',
 ];
 
 // Maps legacy `platform` field values ('TD' / 'RINGY' / 'VANILLA') to the
 // matching Books category id. Drives migration + Smart Import routing.
 export const PLATFORM_ID_TO_CATEGORY = {
-  RINGY:   'PLATFORM_RINGY',
-  TD:      'PLATFORM_TEXTDRIP',
-  VANILLA: 'PLATFORM_VANILLASOFT',
+  RINGY:     'PLATFORM_RINGY',
+  TD:        'PLATFORM_TEXTDRIP',
+  VANILLA:   'PLATFORM_VANILLASOFT',
+  OS:        'PLATFORM_ONLYSALES',
+  ONLYSALES: 'PLATFORM_ONLYSALES', // alias for AI/imports that emit the full name
 };
 
 // Inverse map — derive the platform "id" from a category. Used when we
@@ -365,6 +371,7 @@ export const CATEGORY_TO_PLATFORM_ID = {
   PLATFORM_RINGY:       'RINGY',
   PLATFORM_TEXTDRIP:    'TD',
   PLATFORM_VANILLASOFT: 'VANILLA',
+  PLATFORM_ONLYSALES:   'OS',
 };
 
 // Business Books — income categories (money IN beyond commissions)
@@ -383,6 +390,7 @@ export const PLATFORMS = [
   { id: 'TD',      label: 'TextDrip',    color: '#8b5cf6', badge: 'bg-violet-500 text-white' },
   { id: 'RINGY',   label: 'Ringy',       color: '#ef4444', badge: 'bg-red-500 text-white' },
   { id: 'VANILLA', label: 'VanillaSoft', color: '#3b82f6', badge: 'bg-blue-500 text-white' },
+  { id: 'OS',      label: 'OnlySales',   color: '#22c55e', badge: 'bg-green-500 text-white' },
 ];
 
 export const PLATFORM_REASONS = [
