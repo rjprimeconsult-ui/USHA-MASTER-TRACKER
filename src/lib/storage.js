@@ -29,14 +29,49 @@ function attachAuthListener() {
   authListenerAttached = true;
   supabase.auth.getSession().then(({ data }) => {
     cachedUserId = data.session?.user?.id || null;
+    ensureLocalOwner();
   });
   supabase.auth.onAuthStateChange((_event, session) => {
     cachedUserId = session?.user?.id || null;
+    ensureLocalOwner();
   });
 }
 attachAuthListener();
 
 const cloudActive = () => supabaseConfigured() && !!cachedUserId;
+
+// ---------- Cross-account local-mirror isolation ----------
+// localStorage is a SINGLE shared bucket per browser — it is NOT namespaced
+// by user. Without this guard, when user B signs in on a browser user A
+// used, B's empty cloud falls back to A's leftover localStorage mirror —
+// bleeding A's leads / commissions / books into B's account, and then
+// persisting them into B's cloud. (Real incident: a new agent's account
+// showed the founder's earned commissions, bonuses, and books expenses.)
+//
+// Fix: stamp the mirror with its owning user id. The moment a DIFFERENT
+// user is active, purge every app key + the in-memory merge baselines
+// before any read can return the wrong account's data, then claim
+// ownership for the current user. A returning user on their own browser
+// keeps their cache (owner matches → no purge).
+const KV_OWNER_KEY = '__prim_kv_owner_v1';
+
+function purgeLocalMirror() {
+  if (!hasLS()) return;
+  for (const key of APP_KEYS) { try { window.localStorage.removeItem(key); } catch { /* ignore */ } }
+  // Legacy keys not in the canonical APP_KEYS list.
+  for (const key of ['leads_v4']) { try { window.localStorage.removeItem(key); } catch { /* ignore */ } }
+  sessionBaseline.clear(); // drop any prior user's merge baseline
+}
+
+function ensureLocalOwner() {
+  if (!hasLS() || !cloudActive()) return;
+  let owner = null;
+  try { owner = window.localStorage.getItem(KV_OWNER_KEY); } catch { /* ignore */ }
+  if (owner !== cachedUserId) {
+    purgeLocalMirror();
+    try { window.localStorage.setItem(KV_OWNER_KEY, cachedUserId); } catch { /* ignore */ }
+  }
+}
 
 // ---------- Quota error notification ----------
 let quotaListener = null;
@@ -191,6 +226,9 @@ async function mergeOnSave(key, value) {
 // ---------- Public API ----------
 export const storage = {
   async getItem(key) {
+    // Purge a different user's leftover local mirror before any read can
+    // return it (cross-account isolation — race-safe vs the auth listener).
+    ensureLocalOwner();
     let result = null;
     if (cloudActive()) {
       try {
@@ -212,6 +250,8 @@ export const storage = {
     return result;
   },
   async setItem(key, value) {
+    // Claim/verify mirror ownership before writing (cross-account isolation).
+    ensureLocalOwner();
     // Merge-on-save for array stores: fold in any records another
     // tab/device added so a stale snapshot can't erase them.
     if (cloudActive() && MERGEABLE_KEYS.has(key)) {
