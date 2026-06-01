@@ -87,6 +87,7 @@ AGE / AGE BUCKET:
 - If context suggests under-50 ("young family", "millennial plan", "born 1990"), set ageBucket = "UNDER_50" and leave age = 0.
 - If neither signal exists, leave both empty (age = 0, ageBucket = '').
 - Do NOT guess an exact age from "senior" or similar phrases — the bucket exists for that case.
+- GROUPED BOOKS (important — common layout): agents often organize a book under demographic SECTION HEADERS, e.g. a row that just says "Over 50" (or "Under 50", "50+", "65+", "Seniors", "Medicare") followed by the clients that belong to that group. In that case: (a) SKIP the header row — it is NOT a client, never create a lead named "Over 50"; and (b) apply that grouping as the ageBucket (OVER_50 / UNDER_50) for every client listed beneath it until the next section header. This recovers the agent's intent instead of mislabeling clients.
 
 FAMILY MEMBERS — capture spouse + dependents:
 When a row indicates a family policy (Indv/Family = "Family", or notes mention "spouse", "wife", "husband", "dependent", "fam 2", "family of 3", "+ kids", etc.), populate the dependents array. Each entry has:
@@ -103,9 +104,9 @@ Sources of dependent names:
 Why it matters: if the primary applicant is declined but the spouse gets approved, USHA pays out under the SPOUSE's name on the weekly statement. Capturing them on the lead protects the commission attribution. Don't skip this when the data is in the file.
 
 CRITICAL RULES:
-1. Skip section headers, totals, subtotals, divider rows ("January", "FEBRUARY", "BOOK 2026", "TOTALS", "MONTH TOTALS", "TAKEN RATE", "UNDERWRITTEN", "HA's", etc.).
+1. Skip section headers, totals, subtotals, divider rows ("January", "FEBRUARY", "BOOK 2026", "TOTALS", "MONTH TOTALS", "TAKEN RATE", "UNDERWRITTEN", "HA's", etc.). This INCLUDES demographic/category grouping headers: "Over 50", "Under 50", "50+", "65+", "Seniors", "Medicare", "Retirees", "Aged", "Shared", "Referral", "Google Leads" — when these appear alone on a row they are GROUP labels, not people.
 2. Skip blank rows.
-3. Every lead must have at minimum a NAME. If you can't find a name, skip the row.
+3. Every lead must have at minimum a NAME, and that name must be a real PERSON'S name. NEVER use a demographic, age, or category label as a name (e.g. "Over 50", "Under 50", "Medicare", "Seniors", "Aged", "Shared", "Referral"). If a row's only name candidate is such a label, it is a section header — skip it, do NOT create a lead named after the category. (This caused a real incident: a grouped book imported dozens of clients all named "Over 50", which then looked like duplicates.)
 4. Normalize phone numbers to (XXX) XXX-XXXX format if possible.
 5. Normalize dates to YYYY-MM-DD. Spreadsheets often have m/d/yy or m/d/yyyy — interpret 2-digit years as 20XX (years 51-99 -> 19XX, 00-50 -> 20XX).
 6. State must be a 2-letter US state code if possible.
