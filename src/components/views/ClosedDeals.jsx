@@ -1,6 +1,7 @@
 'use client';
 import { useMemo, memo, useState, useId } from 'react';
 import RepeatedClientBadge from '@/components/RepeatedClientBadge';
+import PaymentAlertsWidget from '@/components/PaymentAlertsWidget';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Sector } from 'recharts';
 import { Edit2, Trash2, CheckCircle2, Clock, ImageUp, ArrowLeft, MousePointer2, Trophy, BarChart3, ChevronDown } from 'lucide-react';
 import EmptyState from '../EmptyState';
@@ -278,7 +279,7 @@ const StageBadge = ({ stage }) => {
   );
 };
 
-function ClosedDeals({ leads, onEdit, onUpdate, onDelete, onImportFromScreenshot }) {
+function ClosedDeals({ leads, onEdit, onUpdate, onDelete, onImportFromScreenshot, onMarkPaymentTaken, onPaymentHeadsUpSent }) {
   // Per-agent custom options for CRM + Campaign (inline editable here).
   const { crms: ALL_CRMS, campaigns: ALL_CAMPAIGNS, reload: reloadLeadOptions } = useLeadOptionsAll();
 
@@ -394,6 +395,15 @@ function ClosedDeals({ leads, onEdit, onUpdate, onDelete, onImportFromScreenshot
 
   return (
     <div className="space-y-5">
+      {/* Payment Alerts — deals drafting soon, so the agent can give the
+          client a heads-up and protect taken rate. Same widget as the
+          dashboard. */}
+      <PaymentAlertsWidget
+        leads={leads}
+        onMarkTaken={onMarkPaymentTaken}
+        onSentHeadsUp={onPaymentHeadsUpSent}
+      />
+
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
         <div>

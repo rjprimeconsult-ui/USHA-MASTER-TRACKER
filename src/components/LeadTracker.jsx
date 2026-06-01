@@ -654,6 +654,18 @@ export default function LeadTracker() {
     });
   }, [showToast]);
 
+  // ---- Payment Alerts lifecycle (protects Taken Rate) ----
+  // "Taken" = the first premium drafted successfully → clear the alert.
+  const markPaymentTaken = useCallback((id) => {
+    setLeads(prev => prev.map(l => l.id === id ? { ...l, paymentConfirmedAt: new Date().toISOString() } : l));
+    showToast('Marked as taken — alert cleared');
+  }, [showToast]);
+  // Stamp when the agent sends the client heads-up (row shows "messaged",
+  // stays until marked Taken).
+  const markPaymentHeadsUpSent = useCallback((id) => {
+    setLeads(prev => prev.map(l => l.id === id ? { ...l, paymentHeadsUpSentAt: new Date().toISOString() } : l));
+  }, []);
+
   const bulkDeleteLeads = useCallback((ids, onDone) => {
     if (!ids || ids.length === 0) return;
     setConfirm({
@@ -1567,6 +1579,8 @@ export default function LeadTracker() {
             onNewActivity={newActivity}
             onEditActivity={editActivity}
             onDeleteActivity={deleteActivity}
+            onMarkPaymentTaken={markPaymentTaken}
+            onPaymentHeadsUpSent={markPaymentHeadsUpSent}
           />
         </ViewMount>
         <ViewMount visible={view === 'associations'} viewKey="associations">
@@ -1602,6 +1616,8 @@ export default function LeadTracker() {
             }}
             onDelete={deleteLead}
             onImportFromScreenshot={() => setShowScreenshotImport(true)}
+            onMarkPaymentTaken={markPaymentTaken}
+            onPaymentHeadsUpSent={markPaymentHeadsUpSent}
           />
         </ViewMount>
         <ViewMount visible={view === 'dashboard'} viewKey="dashboard">

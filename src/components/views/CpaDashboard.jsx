@@ -16,6 +16,7 @@ import ChargebacksPanel from '../ChargebacksPanel';
 import { TiltCard, CountUp, FadeIn, Stagger, StaggerItem, Chart3DCard, fireConfetti } from '../motion/MotionPrimitives';
 import { useChartColors } from '@/lib/useIsDark';
 import OutreachRemindersWidget from '../OutreachRemindersWidget';
+import PaymentAlertsWidget from '../PaymentAlertsWidget';
 
 const Kpi = memo(({ label, value, numeric, isCurrency = true, isPercent = false, sub, grad, Icon, onClick, active }) => (
   <TiltCard
@@ -49,7 +50,7 @@ const Kpi = memo(({ label, value, numeric, isCurrency = true, isPercent = false,
 ));
 Kpi.displayName = 'Kpi';
 
-function CpaDashboard({ leads, investments, activities, platformExpenses = [], businessExpenses = [], businessIncome = [], chargebacks = [], overrides = [], ownAdvances = [], prospects = [], onOpenProspects, onDeleteChargeback, onEditInvestment, onDeleteInvestment, onDeleteAutoWeek, onNewInvestment, onNewActivity, onEditActivity, onDeleteActivity }) {
+function CpaDashboard({ leads, investments, activities, platformExpenses = [], businessExpenses = [], businessIncome = [], chargebacks = [], overrides = [], ownAdvances = [], prospects = [], onOpenProspects, onDeleteChargeback, onEditInvestment, onDeleteInvestment, onDeleteAutoWeek, onNewInvestment, onNewActivity, onEditActivity, onDeleteActivity, onMarkPaymentTaken, onPaymentHeadsUpSent }) {
   const chartColors = useChartColors();
   const [showHowTo, setShowHowTo] = useState(false);
   const thisWeek = getWeekStart(new Date().toISOString().slice(0, 10));
@@ -409,6 +410,15 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
         prospects={prospects}
         compact
         onOpenProspect={() => onOpenProspects?.()}
+      />
+
+      {/* Payment Alerts — deals whose first premium drafts soon. Lets the
+          agent give the client a heads-up to keep funds ready and avoid a
+          NOT TAKEN (protecting taken rate). */}
+      <PaymentAlertsWidget
+        leads={leads}
+        onMarkTaken={onMarkPaymentTaken}
+        onSentHeadsUp={onPaymentHeadsUpSent}
       />
 
       {/* How to use */}
