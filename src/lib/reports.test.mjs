@@ -263,6 +263,27 @@ test('buildLeadsSoldReport — premium = mainProductPremium + add-ons', () => {
   assert.equal(rep.rows[0][5].text, '$550');
 });
 
+test('buildLeadsSoldReport — AV column = premium × 12 (row, total, KPI)', () => {
+  const leads = [{
+    name: 'A', stage: 'Issued', closedDate: '2026-05-10',
+    mainProductPremium: 450,
+    products: [{ id: 'MG', premium: 100 }],   // premium = 550
+    dealValue: 600, leadCost: 10,
+  }];
+  const rep = buildLeadsSoldReport(leads, { from: '2026-05-01', to: '2026-05-31' });
+  // Index 5 = Premium ($550), index 6 = AV (550 × 12 = $6,600).
+  assert.equal(rep.rows[0][5].text, '$550');
+  assert.equal(rep.rows[0][6].text, '$6,600');
+  // Total AV KPI is present and correct.
+  const avKpi = rep.kpis.find(k => k.label === 'Total AV');
+  assert.ok(avKpi, 'Total AV KPI exists');
+  assert.equal(avKpi.value, '$6,600');
+  // Totals row carries both premium and AV.
+  const totalsText = rep.totalsRow.map(c => c.text);
+  assert.ok(totalsText.includes('$550'));
+  assert.ok(totalsText.includes('$6,600'));
+});
+
 test('buildLeadsSoldReport — portal-imported lead: premium is mainProductPremium, association NOT re-added', () => {
   // Screenshot/portal imports store the portal's full Monthly Premium in
   // mainProductPremium and add-ons with premium 0. The association plan

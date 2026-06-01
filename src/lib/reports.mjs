@@ -111,6 +111,9 @@ export function buildLeadsSoldReport(leads, range) {
       crm: l.crm || '—',
       campaign: l.campaign || '—',
       premium: leadPremium(l),
+      // Annualized Value — the monthly premium × 12. Agents track AV as
+      // their production number, so we surface it alongside the monthly.
+      av: leadPremium(l) * 12,
       advance: Number(l.dealValue) || 0,
       leadCost: Number(l.leadCost) || 0,
     }))
@@ -118,9 +121,10 @@ export function buildLeadsSoldReport(leads, range) {
 
   const t = sold.reduce((acc, r) => ({
     premium: acc.premium + r.premium,
+    av: acc.av + r.av,
     advance: acc.advance + r.advance,
     leadCost: acc.leadCost + r.leadCost,
-  }), { premium: 0, advance: 0, leadCost: 0 });
+  }), { premium: 0, av: 0, advance: 0, leadCost: 0 });
   const netProfit = t.advance - t.leadCost;
 
   return {
@@ -129,6 +133,7 @@ export function buildLeadsSoldReport(leads, range) {
     identityColor: REPORT_IDENTITY.leadsSold,
     kpis: [
       { label: '# Deals',         value: String(sold.length), color: SEMANTIC.neutral },
+      { label: 'Total AV',        value: money(t.av),         color: SEMANTIC.good },
       { label: 'Total Premium',   value: money(t.premium),    color: SEMANTIC.good },
       { label: 'Total Advance',   value: money(t.advance),    color: SEMANTIC.good },
       { label: 'Total Lead Cost', value: money(t.leadCost),   color: SEMANTIC.neutral },
@@ -141,6 +146,7 @@ export function buildLeadsSoldReport(leads, range) {
       { label: 'CRM', align: 'left' },
       { label: 'Campaign', align: 'left' },
       { label: 'Premium', align: 'right' },
+      { label: 'AV', align: 'right' },
       { label: 'Advance', align: 'right' },
       { label: 'Lead Cost', align: 'right' },
     ],
@@ -151,6 +157,7 @@ export function buildLeadsSoldReport(leads, range) {
       { text: r.crm, color: SEMANTIC.neutral, align: 'left' },
       { text: r.campaign, color: SEMANTIC.neutral, align: 'left' },
       { text: money(r.premium), color: SEMANTIC.good, align: 'right' },
+      { text: money(r.av), color: SEMANTIC.good, align: 'right' },
       { text: money(r.advance), color: SEMANTIC.good, align: 'right' },
       { text: money(r.leadCost), color: SEMANTIC.neutral, align: 'right' },
     ]),
@@ -161,6 +168,7 @@ export function buildLeadsSoldReport(leads, range) {
       { text: '', align: 'left' },
       { text: '', align: 'left' },
       { text: money(t.premium), color: SEMANTIC.good, align: 'right' },
+      { text: money(t.av), color: SEMANTIC.good, align: 'right' },
       { text: money(t.advance), color: SEMANTIC.good, align: 'right' },
       { text: money(t.leadCost), color: SEMANTIC.neutral, align: 'right' },
     ],
