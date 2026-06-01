@@ -56,8 +56,13 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
   const thisWeek = getWeekStart(new Date().toISOString().slice(0, 10));
 
   // Period selector — scopes the 6 KPI cards (other sections keep their own scope)
-  const [kpiPeriod, setKpiPeriod] = useState('week'); // 'week' | 'ytd' | 'all'
+  const [kpiPeriod, setKpiPeriod] = useState('week'); // 'week' | 'month' | 'ytd' | 'all' | 'custom'
   const [kpiWeekStart, setKpiWeekStart] = useState(thisWeek); // ISO Friday date
+  const thisMonth = new Date().toISOString().slice(0, 7); // 'YYYY-MM'
+  const [kpiMonth, setKpiMonth] = useState(thisMonth);     // 'YYYY-MM'
+  // Custom range — default to the current month so the inputs aren't empty.
+  const [kpiFrom, setKpiFrom] = useState(`${thisMonth}-01`);
+  const [kpiTo, setKpiTo]     = useState(new Date().toISOString().slice(0, 10));
 
   const closedByWeek = useMemo(() => {
     const m = {};
@@ -113,8 +118,16 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
   const kpiLabel = useMemo(() => {
     if (kpiPeriod === 'all') return 'All time';
     if (kpiPeriod === 'ytd') return `YTD ${new Date().getFullYear()}`;
+    if (kpiPeriod === 'month') {
+      const [y, m] = kpiMonth.split('-').map(Number);
+      return new Date(y, m - 1, 1).toLocaleString(undefined, { month: 'long', year: 'numeric' });
+    }
+    if (kpiPeriod === 'custom') {
+      if (!kpiFrom || !kpiTo) return 'Custom range';
+      return `${kpiFrom} → ${kpiTo}`;
+    }
     return `Week of ${weekRangeLabel(kpiWeekStart)}`;
-  }, [kpiPeriod, kpiWeekStart]);
+  }, [kpiPeriod, kpiWeekStart, kpiMonth, kpiFrom, kpiTo]);
 
   // All KPI math memoized in one block — was running on every parent re-render
   // (modal open/close, toast appear/disappear, ANY state change in LeadTracker).
@@ -143,6 +156,14 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
       if (kpiPeriod === 'ytd') {
         const d = new Date(iso + 'T00:00:00');
         return d.getFullYear() === new Date().getFullYear();
+      }
+      if (kpiPeriod === 'month') {
+        return iso.slice(0, 7) === kpiMonth;
+      }
+      if (kpiPeriod === 'custom') {
+        // YYYY-MM-DD string compare is correct for inclusive range bounds.
+        if (!kpiFrom || !kpiTo) return false;
+        return iso >= kpiFrom && iso <= kpiTo;
       }
       return getWeekStart(iso) === kpiWeekStart;
     };
@@ -298,7 +319,7 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
       earnedByProduct, incomeByCategory, expensesByCategory,
       inKpiPeriod: inPeriod,
     };
-  }, [leads, investments, platformsFromBooks, businessExpenses, businessIncome, overrides, ownAdvances, kpiPeriod, kpiWeekStart]);
+  }, [leads, investments, platformsFromBooks, businessExpenses, businessIncome, overrides, ownAdvances, kpiPeriod, kpiWeekStart, kpiMonth, kpiFrom, kpiTo]);
 
   // Destructure once so the rest of the component reads naturally
   const {
@@ -442,8 +463,10 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
         <div className="text-xs font-bold text-slate-500 tracking-wider">KPI PERIOD</div>
         <div className="flex border border-slate-200 rounded-lg overflow-hidden text-sm">
           <button onClick={() => setKpiPeriod('week')} className={`px-3 py-1.5 font-medium ${kpiPeriod === 'week' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>Week</button>
-          <button onClick={() => setKpiPeriod('ytd')} className={`px-3 py-1.5 font-medium ${kpiPeriod === 'ytd' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>YTD</button>
-          <button onClick={() => setKpiPeriod('all')} className={`px-3 py-1.5 font-medium ${kpiPeriod === 'all' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>All time</button>
+          <button onClick={() => setKpiPeriod('month')} className={`px-3 py-1.5 font-medium border-l border-slate-200 ${kpiPeriod === 'month' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>Month</button>
+          <button onClick={() => setKpiPeriod('ytd')} className={`px-3 py-1.5 font-medium border-l border-slate-200 ${kpiPeriod === 'ytd' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>YTD</button>
+          <button onClick={() => setKpiPeriod('all')} className={`px-3 py-1.5 font-medium border-l border-slate-200 ${kpiPeriod === 'all' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>All time</button>
+          <button onClick={() => setKpiPeriod('custom')} className={`px-3 py-1.5 font-medium border-l border-slate-200 ${kpiPeriod === 'custom' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>Custom</button>
         </div>
         {kpiPeriod === 'week' && (
           <>
@@ -487,6 +510,75 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
               Reset to current week
             </button>
           </>
+        )}
+        {kpiPeriod === 'month' && (
+          <>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => {
+                  const [y, m] = kpiMonth.split('-').map(Number);
+                  const d = new Date(y, m - 2, 1);
+                  setKpiMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+                }}
+                title="Previous month"
+                className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <input
+                type="month"
+                value={kpiMonth}
+                onChange={e => e.target.value && setKpiMonth(e.target.value)}
+                className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm"
+              />
+              <button
+                onClick={() => {
+                  const [y, m] = kpiMonth.split('-').map(Number);
+                  const d = new Date(y, m, 1);
+                  setKpiMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+                }}
+                disabled={kpiMonth >= thisMonth}
+                title="Next month"
+                className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+            <button
+              onClick={() => setKpiMonth(thisMonth)}
+              className="text-xs text-indigo-600 hover:underline"
+              disabled={kpiMonth === thisMonth}
+            >
+              Reset to current month
+            </button>
+          </>
+        )}
+        {kpiPeriod === 'custom' && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <label className="text-xs text-slate-500 flex items-center gap-1">
+              From
+              <input
+                type="date"
+                value={kpiFrom}
+                max={kpiTo || undefined}
+                onChange={e => setKpiFrom(e.target.value)}
+                className="border border-slate-200 rounded-lg px-2 py-1.5 text-sm"
+              />
+            </label>
+            <label className="text-xs text-slate-500 flex items-center gap-1">
+              To
+              <input
+                type="date"
+                value={kpiTo}
+                min={kpiFrom || undefined}
+                onChange={e => setKpiTo(e.target.value)}
+                className="border border-slate-200 rounded-lg px-2 py-1.5 text-sm"
+              />
+            </label>
+            {kpiFrom && kpiTo && kpiFrom > kpiTo && (
+              <span className="text-xs text-rose-600 font-medium">From is after To</span>
+            )}
+          </div>
         )}
         <span className="ml-auto text-xs text-slate-500">Showing: <b className="text-slate-700">{kpiLabel}</b></span>
       </div>
