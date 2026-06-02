@@ -1405,9 +1405,20 @@ export default function LeadTracker() {
     showToast('Converted to Lead — finish the details on the Leads tab');
   }, [showToast]);
 
+  // Friendly labels for the confirm dialog + toast (the raw `what` keys are
+  // camelCase / internal).
+  const CLEAR_LABELS = {
+    leads: 'leads', investments: 'weekly investments', activities: 'activities',
+    chargebacks: 'chargebacks', overrides: 'overrides', ownAdvances: 'advances',
+    prospects: 'prospects', platforms: 'platforms', books: 'books (expenses + income)',
+    everything: 'everything',
+    income: 'advances, commissions & other income',
+    booksExpenses: 'books expenses',
+  };
   const clearAll = (what) => {
+    const label = CLEAR_LABELS[what] || what;
     setConfirm({
-      title: `Clear ${what}?`,
+      title: `Clear ${label}?`,
       message: 'This cannot be undone.',
       onConfirm: async () => {
         if (what === 'leads' || what === 'everything')        { setLeads([]);        await storage.removeItem(LEADS_KEY); }
@@ -1420,9 +1431,21 @@ export default function LeadTracker() {
         if (what === 'platforms' || what === 'everything')   { setPlatformExpenses([]); await storage.removeItem(PE_KEY); }
         if (what === 'books' || what === 'everything')       { setBusinessExpenses([]); setBusinessIncome([]); await storage.removeItem(BE_KEY); await storage.removeItem(BI_KEY); }
         if (what === 'everything')                            { setAdvanceMonthsHistory([]); await storage.removeItem(AM_KEY); }
+        // Income-side cleanup: own advances (statement commissions) +
+        // overrides + Books income — for fixing a leaked/contaminated
+        // account without touching leads or expenses.
+        if (what === 'income') {
+          setOwnAdvances([]);   await storage.removeItem(OWN_ADV_KEY);
+          setOverrides([]);     await storage.removeItem(OVR_KEY);
+          setBusinessIncome([]); await storage.removeItem(BI_KEY);
+        }
+        // Books EXPENSES only (leaves Books income intact).
+        if (what === 'booksExpenses') {
+          setBusinessExpenses([]); await storage.removeItem(BE_KEY);
+        }
         setConfirm(null);
         setShowSettings(false);
-        showToast(`Cleared ${what}`);
+        showToast(`Cleared ${label}`);
       },
     });
   };
@@ -1944,7 +1967,9 @@ export default function LeadTracker() {
               <button onClick={() => clearAll('activities')} className="w-full text-left border border-slate-200 rounded-lg px-3 py-2 text-sm hover:bg-slate-50">Clear activities</button>
               <button onClick={() => clearAll('investments')} className="w-full text-left border border-slate-200 rounded-lg px-3 py-2 text-sm hover:bg-slate-50">Clear investments</button>
               <button onClick={() => clearAll('platforms')} className="w-full text-left border border-slate-200 rounded-lg px-3 py-2 text-sm hover:bg-slate-50">Clear platform expenses</button>
-              <button onClick={() => clearAll('books')} className="w-full text-left border border-slate-200 rounded-lg px-3 py-2 text-sm hover:bg-slate-50">Clear business books</button>
+              <button onClick={() => clearAll('income')} className="w-full text-left border border-slate-200 rounded-lg px-3 py-2 text-sm hover:bg-slate-50">Clear advances / commissions / other income</button>
+              <button onClick={() => clearAll('booksExpenses')} className="w-full text-left border border-slate-200 rounded-lg px-3 py-2 text-sm hover:bg-slate-50">Clear books expenses</button>
+              <button onClick={() => clearAll('books')} className="w-full text-left border border-slate-200 rounded-lg px-3 py-2 text-sm hover:bg-slate-50">Clear business books (expenses + income)</button>
               <button onClick={() => clearAll('chargebacks')} className="w-full text-left border border-slate-200 rounded-lg px-3 py-2 text-sm hover:bg-slate-50">Clear chargebacks</button>
               <button onClick={() => clearAll('overrides')} className="w-full text-left border border-slate-200 rounded-lg px-3 py-2 text-sm hover:bg-slate-50">Clear overrides</button>
               <button onClick={() => clearAll('prospects')} className="w-full text-left border border-slate-200 rounded-lg px-3 py-2 text-sm hover:bg-slate-50">Clear prospects</button>
