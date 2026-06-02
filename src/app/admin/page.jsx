@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Shield, Users, DollarSign, Database, ArrowLeft, ChevronDown, ChevronUp, AlertCircle, Loader2, RefreshCw, LogIn, Trash2, AlertTriangle, Wrench, Copy } from 'lucide-react';
+import { Shield, Users, DollarSign, Database, ArrowLeft, ChevronDown, ChevronUp, AlertCircle, Loader2, RefreshCw, LogIn, Trash2, AlertTriangle, Wrench, Copy, Send, MessageSquare, CheckCircle2 } from 'lucide-react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/components/auth/AuthProvider';
@@ -29,6 +29,11 @@ export default function AdminPage() {
   const [expandedUser, setExpandedUser] = useState(null);
   const [error, setError] = useState('');
   const [impersonatingId, setImpersonatingId] = useState('');
+  // Slack broadcast state
+  const [bcTitle, setBcTitle] = useState('');
+  const [bcMessage, setBcMessage] = useState('');
+  const [bcSending, setBcSending] = useState(false);
+  const [bcSent, setBcSent] = useState(false);
   // Phantom-bonus tool state
   const [phantomScanning, setPhantomScanning] = useState(false);
   const [phantomList, setPhantomList] = useState(null); // null=not scanned, []=clean, [...]=found
@@ -183,6 +188,26 @@ export default function AdminPage() {
     }
   };
 
+  const sendBroadcast = async () => {
+    if (!bcTitle.trim()) return;
+    setBcSending(true); setBcSent(false); setError('');
+    try {
+      const res = await adminFetch('/api/admin/broadcast', {
+        method: 'POST',
+        body: JSON.stringify({ title: bcTitle.trim(), message: bcMessage.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setBcSent(true);
+      setBcTitle(''); setBcMessage('');
+      setTimeout(() => setBcSent(false), 4000);
+    } catch (e) {
+      setError(`Broadcast failed: ${e.message || e}`);
+    } finally {
+      setBcSending(false);
+    }
+  };
+
   // Verify admin status once we know who the current user is
   useEffect(() => {
     if (authLoading) return;
@@ -323,6 +348,53 @@ export default function AdminPage() {
             <AlertCircle size={14} /> {error}
           </div>
         )}
+
+        {/* Slack broadcast */}
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="px-4 py-3 border-b border-slate-200 flex items-center gap-2">
+            <MessageSquare size={16} className="text-indigo-600" />
+            <h2 className="font-semibold text-slate-900">Broadcast to Slack</h2>
+            <span className="text-xs text-slate-400">posts to your team channel</span>
+          </div>
+          <div className="px-4 py-3 space-y-2">
+            <p className="text-xs text-slate-500">
+              Send a quick update to everyone in the PRIM Slack — a new feature is live, a bug is fixed, etc.
+              Users get a &ldquo;refresh to get it&rdquo; nudge. The title is the headline; the message is the detail.
+            </p>
+            <input
+              value={bcTitle}
+              onChange={(e) => setBcTitle(e.target.value)}
+              placeholder="Headline — e.g. Payment Alerts are live"
+              maxLength={120}
+              className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            <textarea
+              value={bcMessage}
+              onChange={(e) => setBcMessage(e.target.value)}
+              placeholder="Optional detail — what changed and what to do (refresh, where to find it)…"
+              rows={3}
+              maxLength={1500}
+              className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-y"
+            />
+            <div className="flex items-center justify-between">
+              <div className="text-xs">
+                {bcSent && (
+                  <span className="text-emerald-700 font-semibold flex items-center gap-1">
+                    <CheckCircle2 size={13} /> Posted to Slack
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={sendBroadcast}
+                disabled={bcSending || !bcTitle.trim()}
+                className="text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white px-4 py-2 rounded-lg flex items-center gap-2"
+              >
+                {bcSending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                {bcSending ? 'Posting…' : 'Post to Slack'}
+              </button>
+            </div>
+          </div>
+        </div>
 
         {/* Top stats */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">

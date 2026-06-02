@@ -40,6 +40,7 @@ import ConfirmDialog from './ConfirmDialog';
 import NoPhiBanner from './NoPhiBanner';
 import ImpersonationBanner from './ImpersonationBanner';
 import AnnouncementBanner from './AnnouncementBanner';
+import UpdateBanner from './UpdateBanner';
 import AgentChatbot from './AgentChatbot';
 import OnboardingWalkthrough from './OnboardingWalkthrough';
 import FirstRunWizard from './FirstRunWizard';
@@ -1778,6 +1779,9 @@ export default function LeadTracker() {
 
       {/* What's-new announcements (top of app, dismissed per-user via cloud sync) */}
       <AnnouncementBanner onNavigate={(v) => setView(v)} />
+
+      {/* New-deployment prompt (bottom bar, appears when this tab is on a stale build) */}
+      <UpdateBanner />
 
       {/* In-app PRIM assistant (floating chat bubble, bottom right) */}
       <AgentChatbot
