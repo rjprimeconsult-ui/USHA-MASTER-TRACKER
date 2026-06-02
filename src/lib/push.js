@@ -95,6 +95,23 @@ export async function disablePush() {
   }
 }
 
+/** Fire a test push to this user's subscribed devices. Returns { ok, sent, error }. */
+export async function sendTestPush() {
+  const token = await authToken();
+  if (!token) return { ok: false, error: 'Not signed in' };
+  try {
+    const res = await fetch('/api/push/test', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { ok: false, error: data?.error || `HTTP ${res.status}` };
+    return { ok: true, sent: data.sent ?? 0 };
+  } catch (e) {
+    return { ok: false, error: e?.message || 'Request failed' };
+  }
+}
+
 /** Is this browser currently subscribed? */
 export async function isPushEnabled() {
   if (!pushSupported() || Notification.permission !== 'granted') return false;

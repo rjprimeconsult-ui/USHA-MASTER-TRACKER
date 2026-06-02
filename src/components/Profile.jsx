@@ -45,7 +45,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from './auth/AuthProvider';
 import { PrimAppIcon } from '@/components/PrimLogo';
-import { pushSupported, pushPermission, enablePush, disablePush, isPushEnabled } from '@/lib/push';
+import { pushSupported, pushPermission, enablePush, disablePush, isPushEnabled, sendTestPush } from '@/lib/push';
 import {
   useSubscription,
   openCustomerPortal,
@@ -1117,6 +1117,22 @@ function NotificationsSection() {
           <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
             Notifications are blocked for primtracker.com in your browser. Click the lock icon in the address bar → allow Notifications, then refresh.
           </p>
+        )}
+        {enabled && (
+          <button
+            onClick={async () => {
+              setBusy(true); setMsg('');
+              const r = await sendTestPush();
+              setBusy(false);
+              setMsg(r.ok
+                ? (r.sent > 0 ? 'Test sent — you should see a pop-up in a second. 🔔' : 'No devices received it — try turning off and on again.')
+                : `Test failed: ${r.error}`);
+            }}
+            disabled={busy}
+            className="text-xs font-semibold border border-indigo-200 text-indigo-700 hover:bg-indigo-50 rounded-lg px-3 py-1.5 transition disabled:opacity-50"
+          >
+            Send me a test notification
+          </button>
         )}
         {msg && <p className="text-xs text-slate-600">{msg}</p>}
         <div className="rounded-xl border border-slate-100 bg-slate-50 p-3 text-xs text-slate-500">
