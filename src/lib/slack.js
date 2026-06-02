@@ -12,6 +12,11 @@
 
 const WEBHOOK = (process.env.SLACK_WEBHOOK_URL || '').trim();
 
+// Branding for the message author — overrides the Slack app's default avatar
+// so posts show the PRIM prism logo + name. Incoming webhooks honor these.
+const BOT_NAME = 'PRIM';
+const ICON_URL = 'https://www.primtracker.com/prim-mark.png';
+
 export function slackConfigured() {
   return WEBHOOK.startsWith('https://hooks.slack.com/');
 }
@@ -27,10 +32,13 @@ export async function postToSlack({ text, blocks } = {}) {
   if (!text && !blocks) return { ok: false, reason: 'empty' };
 
   try {
+    const payload = blocks ? { text, blocks } : { text };
+    payload.username = BOT_NAME;
+    payload.icon_url = ICON_URL;
     const res = await fetch(WEBHOOK, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(blocks ? { text, blocks } : { text }),
+      body: JSON.stringify(payload),
     });
     if (!res.ok) {
       const body = await res.text().catch(() => '');

@@ -47,7 +47,12 @@ async function main() {
     elements: [{ type: 'mrkdwn', text: '🔄 Refresh PRIM to get it · <https://www.primtracker.com|Open PRIM>' }],
   });
 
-  const payload = { text: `📣 ${title}${body ? ` — ${body}` : ''}`, blocks };
+  const payload = {
+    text: `📣 ${title}${body ? ` — ${body}` : ''}`,
+    blocks,
+    username: 'PRIM',
+    icon_url: 'https://www.primtracker.com/prim-mark.png',
+  };
 
   const res = await fetch(webhook, {
     method: 'POST',
