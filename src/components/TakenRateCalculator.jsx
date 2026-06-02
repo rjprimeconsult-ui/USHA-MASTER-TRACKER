@@ -1,14 +1,66 @@
 'use client';
-import { useId, useMemo, useState } from 'react';
+import { useId, useMemo, useState, useEffect } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import { Target, TrendingUp, Info, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Target, TrendingUp, Info, ChevronLeft, ChevronRight, Plus, Trash2 } from 'lucide-react';
 import { TAKEN_STAGES, PENDING_STAGES, NOT_TAKEN_STAGES } from '@/lib/constants';
+import { storage } from '@/lib/storage';
 
-const PERIODS = [
+const BASE_PERIODS = [
   { id: 'month', label: 'Monthly',  desc: 'Pick any month — historical or current' },
   { id: 'qtd',   label: 'QTD',      desc: 'Quarter to date' },
   { id: 'ytd',   label: 'YTD',      desc: 'Year to date' },
 ];
+
+// Storage for manually-entered prior-month counts (months that predate the
+// agent's PRIM data but still count toward the USHA bonus year). Namespaced
+// per calculator (UW vs GI) since they have different windows + numbers.
+const PRIORS_KEY = 'taken_rate_priors_v1';
+
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/**
+ * USHA bonus-year window, ending Oct 31.
+ *   - UW (startMonth = 11): Nov (prior year) → Oct (current). Over-50 excluded.
+ *   - GI (startMonth = 1):  Jan → Oct only (GI isn't sold Nov–Dec).
+ * Returns { startISO, endISO (capped at today), startYm, endYm, endYear }.
+ */
+function bonusWindow(startMonth, now = new Date()) {
+  const m = now.getMonth() + 1; // 1-12
+  let endYear = m >= 11 ? now.getFullYear() + 1 : now.getFullYear();
+  let startYear = startMonth === 11 ? endYear - 1 : endYear;
+  const pad = (n) => String(n).padStart(2, '0');
+  let startISO = `${startYear}-${pad(startMonth)}-01`;
+  const todayISO = now.toISOString().slice(0, 10);
+  // Edge: a Jan-start (GI) window can resolve to a future Jan when viewed in
+  // Nov/Dec — fall back to the just-completed bonus year so it isn't empty.
+  if (startISO > todayISO) {
+    startYear -= 1; endYear -= 1;
+    startISO = `${startYear}-${pad(startMonth)}-01`;
+  }
+  const octEndISO = `${endYear}-10-31`;
+  const endISO = todayISO < octEndISO ? todayISO : octEndISO;
+  return {
+    startISO, endISO,
+    startYm: startISO.slice(0, 7),
+    endYm: endISO.slice(0, 7),
+    endYear,
+  };
+}
+
+// Every YYYY-MM from startYm..endYm inclusive.
+function monthsBetween(startYm, endYm) {
+  const out = [];
+  let [y, m] = startYm.split('-').map(Number);
+  const [ey, em] = endYm.split('-').map(Number);
+  while (y < ey || (y === ey && m <= em)) {
+    out.push(`${y}-${String(m).padStart(2, '0')}`);
+    m += 1; if (m > 12) { m = 1; y += 1; }
+  }
+  return out;
+}
+
+const emptyPrior = () => ({ taken: 0, notTaken: 0, withdrawn: 0, declined: 0 });
+const priorSubmits = (p) => (Number(p.taken) || 0) + (Number(p.notTaken) || 0) + (Number(p.withdrawn) || 0) + (Number(p.declined) || 0);
 
 // "2026-05-15" -> "2026-05"
 const ymOf = (iso) => String(iso || '').slice(0, 7);
@@ -66,10 +118,51 @@ export default function TakenRateCalculator({
   productFilter = null, // array of main-product IDs to include; null = all
   defaultTarget = 60,
   applyOver50Rule = true, // USHA senior-market rule — applies to UW products; GI has no such exclusion
+  // Bonus-year support: set the fiscal-year start month (11 = UW Nov–Oct,
+  // 1 = GI Jan–Oct). When set, adds a "Bonus Yr" period + a manual
+  // prior-month grid. priorsKey namespaces this calc's saved priors.
+  bonusStartMonth = null,
+  priorsKey = null,
 }) {
+  const PERIODS = useMemo(
+    () => bonusStartMonth
+      ? [...BASE_PERIODS, { id: 'bonusYr', label: 'Bonus Yr', desc: `USHA bonus year (${bonusStartMonth === 11 ? 'Nov–Oct' : 'Jan–Oct'})` }]
+      : BASE_PERIODS,
+    [bonusStartMonth]
+  );
   const [period, setPeriod] = useState('month');
   const [selectedMonth, setSelectedMonth] = useState(todayYm());
   const [target, setTarget] = useState(defaultTarget);
+
+  // Manually-entered prior-month counts for the bonus year. Loaded from /
+  // saved to storage under PRIORS_KEY, namespaced by priorsKey.
+  const [priors, setPriors] = useState({}); // { 'YYYY-MM': {taken,notTaken,withdrawn,declined} }
+  const [priorsLoaded, setPriorsLoaded] = useState(false);
+  useEffect(() => {
+    if (!priorsKey) { setPriorsLoaded(true); return; }
+    let alive = true;
+    storage.getItem(PRIORS_KEY).then(v => {
+      if (!alive) return;
+      try { const all = v ? JSON.parse(v) : {}; setPriors(all[priorsKey] || {}); } catch {}
+      setPriorsLoaded(true);
+    });
+    return () => { alive = false; };
+  }, [priorsKey]);
+  const savePriors = (next) => {
+    setPriors(next);
+    if (!priorsKey) return;
+    storage.getItem(PRIORS_KEY).then(v => {
+      let all = {};
+      try { all = v ? JSON.parse(v) : {}; } catch {}
+      all[priorsKey] = next;
+      storage.setItem(PRIORS_KEY, JSON.stringify(all));
+    });
+  };
+
+  const win = useMemo(
+    () => (bonusStartMonth ? bonusWindow(bonusStartMonth) : null),
+    [bonusStartMonth]
+  );
 
   // Months that have any closed-date lead, plus current month (always).
   // Sorted newest-first so the dropdown defaults to recent activity.
@@ -81,11 +174,25 @@ export default function TakenRateCalculator({
     return Array.from(set).filter(Boolean).sort().reverse();
   }, [leads]);
 
-  const { issued, pending, notTaken, total, rate, breakdown, excludedOver50 } = useMemo(() => {
+  const { issued, pending, notTaken, total, rate, breakdown, excludedOver50, priorMonthsApplied } = useMemo(() => {
     const filterSet = productFilter ? new Set(productFilter) : null;
+    const isBonus = period === 'bonusYr' && win;
+    // For the bonus year, any month the agent entered manually OVERRIDES
+    // PRIM's leads for that month (so pre-PRIM months count, and we never
+    // double-count a month that's both manually entered and in PRIM).
+    const manualMonths = isBonus
+      ? Object.keys(priors).filter(ym => ym >= win.startYm && ym <= win.endYm)
+      : [];
+    const manualSet = new Set(manualMonths);
+
+    const inScope = (iso) => {
+      if (isBonus) return iso >= win.startISO && iso <= win.endISO && !manualSet.has(ymOf(iso));
+      return inPeriod(iso, period, selectedMonth);
+    };
+
     const scoped = leads.filter(l => {
       if (!l.closedDate) return false;
-      if (!inPeriod(l.closedDate, period, selectedMonth)) return false;
+      if (!inScope(l.closedDate)) return false;
       if (filterSet && !filterSet.has(l.mainProduct)) return false;
       return true;
     });
@@ -112,11 +219,33 @@ export default function TakenRateCalculator({
       if (l.stage in breakdown) breakdown[l.stage] += 1;
     });
 
+    // Fold in manually-entered prior months (bonus year only). These are
+    // already-final counts (no pending), so they go straight into the
+    // numerator/denominator + breakdown.
+    let priorMonthsApplied = 0;
+    if (isBonus) {
+      for (const ym of manualMonths) {
+        const p = priors[ym] || emptyPrior();
+        const t = Number(p.taken) || 0;
+        const nt = Number(p.notTaken) || 0;
+        const wd = Number(p.withdrawn) || 0;
+        const dc = Number(p.declined) || 0;
+        if (t + nt + wd + dc === 0) continue;
+        issued += t;
+        notTaken += nt + wd + dc;
+        breakdown.Issued += t;
+        breakdown['Not taken'] += nt;
+        breakdown.Withdrawn += wd;
+        breakdown.Declined += dc;
+        priorMonthsApplied += 1;
+      }
+    }
+
     const total = issued + pending + notTaken;
     const rate = total > 0 ? (issued / total) * 100 : 0;
 
-    return { issued, pending, notTaken, total, rate, breakdown, excludedOver50 };
-  }, [leads, period, selectedMonth, productFilter, applyOver50Rule]);
+    return { issued, pending, notTaken, total, rate, breakdown, excludedOver50, priorMonthsApplied };
+  }, [leads, period, selectedMonth, productFilter, applyOver50Rule, win, priors]);
 
   const colors = rateColor(rate);
   // Stable unique id for the gauge's <linearGradient> (two calculators
@@ -227,6 +356,68 @@ export default function TakenRateCalculator({
                 Jump to current
               </button>
             )}
+          </div>
+        )}
+
+        {/* Bonus-year window + manual prior-month grid */}
+        {period === 'bonusYr' && win && (
+          <div className="rounded-lg border border-indigo-200 bg-indigo-50/60 p-3 space-y-2.5">
+            <div className="text-[11px] text-indigo-900">
+              Bonus year: <b>{ymLabel(win.startYm)} → {ymLabel(win.endYm)}</b>
+              {priorMonthsApplied > 0 && <> · {priorMonthsApplied} manual month{priorMonthsApplied !== 1 ? 's' : ''} included</>}
+              <div className="text-indigo-700/80 mt-0.5">
+                Add any months from <b>before you started using PRIM</b> so your yearly taken rate is complete. A month you enter here replaces PRIM&apos;s data for that month.
+              </div>
+            </div>
+
+            {/* Existing manual rows */}
+            {Object.keys(priors).filter(ym => ym >= win.startYm && ym <= win.endYm).sort().map(ym => {
+              const p = priors[ym];
+              const num = (field) => (
+                <input
+                  type="number" min="0" step="1"
+                  value={p[field] ?? 0}
+                  onChange={e => savePriors({ ...priors, [ym]: { ...p, [field]: Math.max(0, parseInt(e.target.value) || 0) } })}
+                  className="w-12 border border-slate-200 rounded px-1 py-0.5 text-xs text-center"
+                />
+              );
+              return (
+                <div key={ym} className="flex items-center gap-1.5 flex-wrap bg-white rounded-lg border border-slate-200 px-2 py-1.5">
+                  <span className="text-xs font-semibold text-slate-700 w-20">{ymLabel(ym)}</span>
+                  <label className="text-[10px] text-slate-500 flex items-center gap-1">Taken {num('taken')}</label>
+                  <label className="text-[10px] text-slate-500 flex items-center gap-1">Not taken {num('notTaken')}</label>
+                  <label className="text-[10px] text-slate-500 flex items-center gap-1">Withdrawn {num('withdrawn')}</label>
+                  <label className="text-[10px] text-slate-500 flex items-center gap-1">Declined {num('declined')}</label>
+                  <span className="text-[10px] text-slate-400 ml-1">= {priorSubmits(p)} submits</span>
+                  <button
+                    onClick={() => { const next = { ...priors }; delete next[ym]; savePriors(next); }}
+                    className="ml-auto text-slate-400 hover:text-red-600 p-0.5"
+                    title="Remove this prior month"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              );
+            })}
+
+            {/* Add a prior month */}
+            {(() => {
+              const candidates = monthsBetween(win.startYm, win.endYm).filter(ym => !(ym in priors));
+              if (candidates.length === 0) return null;
+              return (
+                <div className="flex items-center gap-2">
+                  <select
+                    value=""
+                    onChange={e => { if (e.target.value) savePriors({ ...priors, [e.target.value]: emptyPrior() }); }}
+                    className="border border-slate-200 rounded-lg px-2 py-1 text-xs"
+                  >
+                    <option value="">+ Add a prior month…</option>
+                    {candidates.map(ym => <option key={ym} value={ym}>{ymLabel(ym)}</option>)}
+                  </select>
+                  <span className="text-[10px] text-slate-400">Enter the counts USHA shows for that month.</span>
+                </div>
+              );
+            })()}
           </div>
         )}
       </div>

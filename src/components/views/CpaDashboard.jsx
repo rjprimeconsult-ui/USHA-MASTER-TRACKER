@@ -812,6 +812,8 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
           productFilter={UNDERWRITTEN_PRODUCTS}
           defaultTarget={60}
           applyOver50Rule={true}
+          bonusStartMonth={11}
+          priorsKey="uw"
         />
         <TakenRateCalculator
           leads={leads}
@@ -820,6 +822,8 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
           productFilter={GI_PRODUCTS}
           defaultTarget={65}
           applyOver50Rule={false}
+          bonusStartMonth={1}
+          priorsKey="gi"
         />
       </div>
 
