@@ -14,9 +14,12 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
+import { computePaymentAlerts } from '@/lib/paymentAlerts';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+
+const money = (n) => '$' + (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 function isToday(iso) {
   if (!iso) return false;
@@ -38,7 +41,28 @@ function isOverdueFollowup(p) {
   return !p.appointmentTime && days > 5 && !['SOLD', 'LOST', 'GHOSTED'].includes(p.stage);
 }
 
-function htmlBody({ name, todayAppts, overdue }) {
+function paymentRowsHtml(alerts) {
+  if (!alerts || alerts.length === 0) return '';
+  const rows = alerts.map(a => {
+    const urgent = a.tier === 'urgent';
+    const when = a.daysUntil <= 0 ? 'TODAY' : a.daysUntil === 1 ? 'tomorrow' : `in ${a.daysUntil} days`;
+    return `
+      <tr>
+        <td style="padding:10px;border-bottom:1px solid #e2e8f0;">
+          <div style="font-weight:600;color:#0f172a;">${(a.lead?.name || '(no name)').replace(/[<>]/g, '')}</div>
+          <div style="font-size:12px;color:#64748b;">${(a.lead?.mainProduct || '').replace(/[<>]/g, '')} · ${money(a.premium)}/mo</div>
+        </td>
+        <td style="padding:10px;border-bottom:1px solid #e2e8f0;text-align:right;">
+          <div style="font-weight:600;color:${urgent ? '#e11d48' : '#d97706'};">Drafts ${when}</div>
+        </td>
+      </tr>`;
+  }).join('');
+  return `
+      <h3 style="font-size:11px;font-weight:700;color:#e11d48;text-transform:uppercase;letter-spacing:1px;margin:24px 0 6px 0;">Payments drafting soon — give clients a heads-up</h3>
+      <table width="100%" style="border-collapse:collapse;">${rows}</table>`;
+}
+
+function htmlBody({ name, todayAppts, overdue, paymentAlerts = [] }) {
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
   const apptRows = todayAppts.length === 0
     ? '<p style="color:#94a3b8;font-style:italic;margin:8px 0;">No appointments today.</p>'
@@ -80,6 +104,7 @@ function htmlBody({ name, todayAppts, overdue }) {
       <table width="100%" style="border-collapse:collapse;">${apptRows}</table>
       <h3 style="font-size:11px;font-weight:700;color:#f97316;text-transform:uppercase;letter-spacing:1px;margin:24px 0 6px 0;">Overdue Follow-ups</h3>
       <table width="100%" style="border-collapse:collapse;">${overdueRows}</table>
+      ${paymentRowsHtml(paymentAlerts)}
       <div style="margin-top:24px;text-align:center;">
         <a href="https://primtracker.com" style="display:inline-block;background:#4f46e5;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">Open PRIM</a>
       </div>
@@ -137,16 +162,34 @@ export async function GET(req) {
     .eq('key', 'prospects_v1');
   if (error) return new Response(JSON.stringify({ error: error.message }), { status: 500 });
 
+  // Pull every user's leads_v5 too (for payment-draft alerts), indexed by user.
+  const leadsByUser = new Map();
+  {
+    const { data: leadRows } = await supa
+      .from('user_kv')
+      .select('user_id, value')
+      .eq('key', 'leads_v5');
+    for (const r of leadRows || []) {
+      leadsByUser.set(r.user_id, Array.isArray(r.value) ? r.value : []);
+    }
+  }
+  // Some users have leads but no prospects — union the user set so they
+  // still get payment-alert emails.
+  const userIds = new Set([...(rows || []).map(r => r.user_id), ...leadsByUser.keys()]);
+  const prospectsByUser = new Map((rows || []).map(r => [r.user_id, Array.isArray(r.value) ? r.value : []]));
+
   const summary = { users: 0, sent: 0, skipped: 0, errors: [] };
 
-  for (const row of rows || []) {
-    const prospects = Array.isArray(row.value) ? row.value : [];
-    if (prospects.length === 0) continue;
+  for (const userId of userIds) {
+    const prospects = prospectsByUser.get(userId) || [];
     const todayAppts = prospects
       .filter(p => p.appointmentTime && isToday(p.appointmentTime) && !p.archivedAt)
       .sort((a, b) => String(a.appointmentTime).localeCompare(String(b.appointmentTime)));
     const overdue = prospects.filter(p => isOverdueFollowup(p) && !p.archivedAt).slice(0, 8);
-    if (todayAppts.length === 0 && overdue.length === 0) continue;
+    // Payment-draft alerts (deals drafting in the next 7 days, not yet taken).
+    const paymentAlerts = computePaymentAlerts(leadsByUser.get(userId) || []).slice(0, 12);
+    if (todayAppts.length === 0 && overdue.length === 0 && paymentAlerts.length === 0) continue;
+    const row = { user_id: userId };
 
     summary.users++;
 
@@ -160,10 +203,14 @@ export async function GET(req) {
     const name = userResp.user.user_metadata?.name || '';
 
     try {
+      const subjectBits = [];
+      if (todayAppts.length) subjectBits.push(`${todayAppts.length} appt${todayAppts.length !== 1 ? 's' : ''}`);
+      if (overdue.length) subjectBits.push(`${overdue.length} follow-up${overdue.length !== 1 ? 's' : ''}`);
+      if (paymentAlerts.length) subjectBits.push(`${paymentAlerts.length} payment${paymentAlerts.length !== 1 ? 's' : ''} drafting`);
       const result = await sendEmail(
         email,
-        `Today: ${todayAppts.length} appt${todayAppts.length !== 1 ? 's' : ''}${overdue.length ? ` · ${overdue.length} follow-up${overdue.length !== 1 ? 's' : ''}` : ''}`,
-        htmlBody({ name, todayAppts, overdue })
+        `Today: ${subjectBits.join(' · ')}`,
+        htmlBody({ name, todayAppts, overdue, paymentAlerts })
       );
       if (result.skipped) summary.skipped++;
       else summary.sent++;
