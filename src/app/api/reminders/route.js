@@ -15,11 +15,55 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { computePaymentAlerts } from '@/lib/paymentAlerts';
+import { TAKEN_STAGES, PENDING_STAGES, NOT_TAKEN_STAGES, PLATFORM_EXPENSE_CATEGORIES } from '@/lib/constants';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 const money = (n) => '$' + (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const money0 = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('en-US');
+
+// ---- Weekly digest math (Monday only) ----
+// Factual, app-matching numbers: this week's production + month-to-date
+// taken rate, production, and CPA. CPA uses the same lead-acquisition
+// invested definition as the dashboard (lead spend + CRM weekly/daily +
+// platform spend) ÷ issued this month.
+function buildDigest({ leads = [], investments = [], expenses = [], now = new Date() }) {
+  const iso = (d) => d.toISOString().slice(0, 10);
+  const ym = now.toISOString().slice(0, 7);
+  const weekAgoISO = iso(new Date(now.getTime() - 7 * 86400000));
+  const inMonth = (s) => String(s || '').slice(0, 7) === ym;
+
+  let weekIssued = 0, weekAdvance = 0;
+  let monthIssued = 0, monthSubmitted = 0, monthAdvance = 0;
+  for (const l of leads) {
+    if (!l || !l.closedDate) continue;
+    const d = String(l.closedDate).slice(0, 10);
+    const isIssued = TAKEN_STAGES.includes(l.stage);
+    const isPending = PENDING_STAGES.includes(l.stage);
+    const isNotTaken = NOT_TAKEN_STAGES.includes(l.stage);
+    if (inMonth(d)) {
+      if (isIssued || isPending || isNotTaken) monthSubmitted += 1;
+      if (isIssued) { monthIssued += 1; monthAdvance += Number(l.dealValue) || 0; }
+    }
+    if (d >= weekAgoISO && isIssued) { weekIssued += 1; weekAdvance += Number(l.dealValue) || 0; }
+  }
+
+  // Month invested (lead-acquisition slice) for CPA.
+  let monthInvested = 0;
+  for (const i of investments) {
+    if (!inMonth(i.weekStart)) continue;
+    monthInvested += (Number(i.leadSpend) || 0) + (Number(i.crmWeekly) || 0) + (Number(i.crmDaily) || 0);
+  }
+  for (const e of expenses) {
+    if (!e || !inMonth(e.date)) continue;
+    if (PLATFORM_EXPENSE_CATEGORIES.includes(e.category)) monthInvested += Number(e.amount) || 0;
+  }
+  const monthRate = monthSubmitted > 0 ? (monthIssued / monthSubmitted) * 100 : 0;
+  const cpa = monthIssued > 0 ? monthInvested / monthIssued : 0;
+
+  return { weekIssued, weekAdvance, monthIssued, monthSubmitted, monthRate, monthAdvance, monthInvested, cpa };
+}
 
 function isToday(iso) {
   if (!iso) return false;
@@ -62,7 +106,27 @@ function paymentRowsHtml(alerts) {
       <table width="100%" style="border-collapse:collapse;">${rows}</table>`;
 }
 
-function htmlBody({ name, todayAppts, overdue, paymentAlerts = [] }) {
+function digestHtml(d) {
+  if (!d) return '';
+  const stat = (label, value, sub) => `
+    <td style="padding:10px 8px;text-align:center;border:1px solid #e2e8f0;border-radius:8px;">
+      <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;">${label}</div>
+      <div style="font-size:18px;font-weight:800;color:#0f172a;margin-top:2px;">${value}</div>
+      ${sub ? `<div style="font-size:10px;color:#94a3b8;">${sub}</div>` : ''}
+    </td>`;
+  return `
+      <h3 style="font-size:11px;font-weight:700;color:#6366f1;text-transform:uppercase;letter-spacing:1px;margin:24px 0 8px 0;">Weekly Snapshot</h3>
+      <table width="100%" style="border-collapse:separate;border-spacing:6px 0;">
+        <tr>
+          ${stat('This week', `${d.weekIssued}`, `${money0(d.weekAdvance)} advance`)}
+          ${stat('MTD taken rate', `${d.monthRate.toFixed(0)}%`, `${d.monthIssued}/${d.monthSubmitted}`)}
+          ${stat('MTD production', money0(d.monthAdvance), `${d.monthIssued} issued`)}
+          ${stat('MTD CPA', d.monthIssued > 0 ? money0(d.cpa) : '—', d.monthIssued > 0 ? 'per deal' : 'no deals')}
+        </tr>
+      </table>`;
+}
+
+function htmlBody({ name, todayAppts, overdue, paymentAlerts = [], digest = null }) {
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
   const apptRows = todayAppts.length === 0
     ? '<p style="color:#94a3b8;font-style:italic;margin:8px 0;">No appointments today.</p>'
@@ -100,6 +164,7 @@ function htmlBody({ name, todayAppts, overdue, paymentAlerts = [] }) {
     </td></tr>
     <tr><td style="padding:24px;">
       <p style="margin:0 0 16px 0;font-size:14px;color:#475569;">Hey ${name ? name.split(' ')[0] : 'there'} — here's what's on your plate today.</p>
+      ${digestHtml(digest)}
       <h3 style="font-size:11px;font-weight:700;color:#6366f1;text-transform:uppercase;letter-spacing:1px;margin:16px 0 6px 0;">Appointments</h3>
       <table width="100%" style="border-collapse:collapse;">${apptRows}</table>
       <h3 style="font-size:11px;font-weight:700;color:#f97316;text-transform:uppercase;letter-spacing:1px;margin:24px 0 6px 0;">Overdue Follow-ups</h3>
@@ -178,17 +243,37 @@ export async function GET(req) {
   const userIds = new Set([...(rows || []).map(r => r.user_id), ...leadsByUser.keys()]);
   const prospectsByUser = new Map((rows || []).map(r => [r.user_id, Array.isArray(r.value) ? r.value : []]));
 
+  // Weekly digest runs Mondays only. Cron fires 12:00 UTC (7–8am ET), so the
+  // UTC weekday matches the ET weekday at that hour. Fetch the extra stores
+  // only on Mondays to keep the other days lean.
+  const isMonday = new Date().getUTCDay() === 1;
+  const investmentsByUser = new Map();
+  const expensesByUser = new Map();
+  if (isMonday) {
+    const [{ data: invRows }, { data: expRows }] = await Promise.all([
+      supa.from('user_kv').select('user_id, value').eq('key', 'investments_v2'),
+      supa.from('user_kv').select('user_id, value').eq('key', 'business_expenses_v1'),
+    ]);
+    for (const r of invRows || []) investmentsByUser.set(r.user_id, Array.isArray(r.value) ? r.value : []);
+    for (const r of expRows || []) expensesByUser.set(r.user_id, Array.isArray(r.value) ? r.value : []);
+  }
+
   const summary = { users: 0, sent: 0, skipped: 0, errors: [] };
 
   for (const userId of userIds) {
     const prospects = prospectsByUser.get(userId) || [];
+    const userLeads = leadsByUser.get(userId) || [];
     const todayAppts = prospects
       .filter(p => p.appointmentTime && isToday(p.appointmentTime) && !p.archivedAt)
       .sort((a, b) => String(a.appointmentTime).localeCompare(String(b.appointmentTime)));
     const overdue = prospects.filter(p => isOverdueFollowup(p) && !p.archivedAt).slice(0, 8);
     // Payment-draft alerts (deals drafting in the next 7 days, not yet taken).
-    const paymentAlerts = computePaymentAlerts(leadsByUser.get(userId) || []).slice(0, 12);
-    if (todayAppts.length === 0 && overdue.length === 0 && paymentAlerts.length === 0) continue;
+    const paymentAlerts = computePaymentAlerts(userLeads).slice(0, 12);
+    // Weekly digest (Mondays, for agents with any leads).
+    const digest = (isMonday && userLeads.length > 0)
+      ? buildDigest({ leads: userLeads, investments: investmentsByUser.get(userId) || [], expenses: expensesByUser.get(userId) || [] })
+      : null;
+    if (todayAppts.length === 0 && overdue.length === 0 && paymentAlerts.length === 0 && !digest) continue;
     const row = { user_id: userId };
 
     summary.users++;
@@ -207,10 +292,12 @@ export async function GET(req) {
       if (todayAppts.length) subjectBits.push(`${todayAppts.length} appt${todayAppts.length !== 1 ? 's' : ''}`);
       if (overdue.length) subjectBits.push(`${overdue.length} follow-up${overdue.length !== 1 ? 's' : ''}`);
       if (paymentAlerts.length) subjectBits.push(`${paymentAlerts.length} payment${paymentAlerts.length !== 1 ? 's' : ''} drafting`);
+      const subject = (digest && subjectBits.length === 0)
+        ? `Your weekly snapshot — ${digest.monthRate.toFixed(0)}% taken rate MTD`
+        : `Today: ${subjectBits.join(' · ')}`;
       const result = await sendEmail(
-        email,
-        `Today: ${subjectBits.join(' · ')}`,
-        htmlBody({ name, todayAppts, overdue, paymentAlerts })
+        email, subject,
+        htmlBody({ name, todayAppts, overdue, paymentAlerts, digest })
       );
       if (result.skipped) summary.skipped++;
       else summary.sent++;
