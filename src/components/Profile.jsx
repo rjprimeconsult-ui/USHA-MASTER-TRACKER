@@ -24,6 +24,7 @@ import {
   User as UserIcon,
   CreditCard,
   Mail,
+  Bell,
   Palette,
   Sliders,
   Save,
@@ -44,6 +45,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from './auth/AuthProvider';
 import { PrimAppIcon } from '@/components/PrimLogo';
+import { pushSupported, pushPermission, enablePush, disablePush, isPushEnabled } from '@/lib/push';
 import {
   useSubscription,
   openCustomerPortal,
@@ -77,6 +79,7 @@ const SECTIONS = [
   { id: 'identity',     label: 'Identity',     icon: UserIcon,   phase: 1 },
   { id: 'subscription', label: 'Subscription', icon: CreditCard, phase: 1 },
   { id: 'sender',       label: 'Email sender', icon: Mail,       phase: 1 },
+  { id: 'notifications', label: 'Notifications', icon: Bell,      phase: 1 },
   { id: 'appearance',   label: 'Appearance',   icon: Palette,    phase: 2 },
   { id: 'preferences',  label: 'Preferences',  icon: Sliders,    phase: 2 },
 ];
@@ -347,6 +350,7 @@ export default function Profile({ open, onClose }) {
                       agentName={agentProfile.displayName}
                     />
                   )}
+                  {active === 'notifications' && <NotificationsSection />}
                   {active === 'appearance' && (
                     <AppearanceSection
                       agentProfile={agentProfile}
@@ -1042,6 +1046,87 @@ function ToggleSwitch({ checked, onChange }) {
 /* ----------------------------------------------------------------
  * Shared shells
  * --------------------------------------------------------------- */
+/**
+ * Notifications — browser push opt-in. Email alerts (daily reminders +
+ * weekly digest) are always on via the cron; this toggles the per-device
+ * browser push subscription.
+ */
+function NotificationsSection() {
+  const [supported, setSupported] = useState(false);
+  const [perm, setPerm] = useState('default');
+  const [enabled, setEnabled] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  useEffect(() => {
+    setSupported(pushSupported());
+    setPerm(pushPermission());
+    isPushEnabled().then(setEnabled);
+  }, []);
+
+  const toggle = async () => {
+    setBusy(true); setMsg('');
+    try {
+      if (enabled) {
+        await disablePush();
+        setEnabled(false);
+        setMsg('Browser notifications turned off for this device.');
+      } else {
+        const r = await enablePush();
+        setPerm(pushPermission());
+        if (r.ok) { setEnabled(true); setMsg('Browser notifications are on for this device. 🔔'); }
+        else if (r.reason === 'denied') setMsg('Notifications are blocked in your browser settings — allow them for primtracker.com, then try again.');
+        else if (r.reason === 'unsupported') setMsg('This browser doesn\'t support push notifications.');
+        else setMsg('Could not enable notifications — please try again.');
+      }
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <SectionShell
+      title="Notifications"
+      description="Get alerted about payment-draft deadlines, follow-ups, and your weekly snapshot. Email alerts are always on; turn on browser pop-ups per device here."
+    >
+      <div className="space-y-4">
+        <div className="rounded-xl border border-slate-200 p-4 flex items-start justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white flex-shrink-0">
+              <Bell size={16} />
+            </div>
+            <div>
+              <div className="font-semibold text-slate-900 text-sm">Browser notifications</div>
+              <div className="text-xs text-slate-500 mt-0.5 max-w-md">
+                Pop-up alerts on this device for payments drafting soon, follow-ups due, and your Monday snapshot.
+                {!supported && ' (Not available in this browser.)'}
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={toggle}
+            disabled={!supported || busy || perm === 'denied'}
+            className={`flex-shrink-0 text-sm font-semibold rounded-lg px-4 py-2 transition ${
+              enabled
+                ? 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                : 'bg-indigo-600 text-white hover:bg-indigo-700 disabled:bg-slate-300'
+            }`}
+          >
+            {busy ? '…' : enabled ? 'Turn off' : 'Turn on'}
+          </button>
+        </div>
+        {perm === 'denied' && supported && (
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            Notifications are blocked for primtracker.com in your browser. Click the lock icon in the address bar → allow Notifications, then refresh.
+          </p>
+        )}
+        {msg && <p className="text-xs text-slate-600">{msg}</p>}
+        <div className="rounded-xl border border-slate-100 bg-slate-50 p-3 text-xs text-slate-500">
+          <b className="text-slate-700">Email alerts</b> (daily reminders + Monday weekly snapshot) are always on and go to your account email — no setup needed.
+        </div>
+      </div>
+    </SectionShell>
+  );
+}
+
 function SectionShell({ title, description, children }) {
   return (
     <motion.div

@@ -14,11 +14,43 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
+import webpush from 'web-push';
 import { computePaymentAlerts } from '@/lib/paymentAlerts';
 import { TAKEN_STAGES, PENDING_STAGES, NOT_TAKEN_STAGES, PLATFORM_EXPENSE_CATEGORIES } from '@/lib/constants';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+
+// ---- Web push setup ----
+const PUSH_KEY = 'push_subscriptions_v1';
+let pushReady = false;
+try {
+  const pub = process.env.VAPID_PUBLIC_KEY;
+  const priv = process.env.VAPID_PRIVATE_KEY;
+  if (pub && priv) {
+    webpush.setVapidDetails('mailto:rjprimeconsult@gmail.com', pub, priv);
+    pushReady = true;
+  }
+} catch (e) {
+  console.warn('[reminders] web-push not configured:', e?.message);
+}
+
+// Send a push to all of a user's subscriptions. Returns the endpoints that
+// are gone (404/410) so the caller can prune them.
+async function sendPush(subs, payload) {
+  if (!pushReady || !Array.isArray(subs) || subs.length === 0) return { dead: [] };
+  const dead = [];
+  const body = JSON.stringify(payload);
+  await Promise.all(subs.map(async (sub) => {
+    try {
+      await webpush.sendNotification(sub, body);
+    } catch (e) {
+      const code = e?.statusCode;
+      if (code === 404 || code === 410) dead.push(sub.endpoint);
+    }
+  }));
+  return { dead };
+}
 
 const money = (n) => '$' + (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const money0 = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('en-US');
@@ -238,6 +270,18 @@ export async function GET(req) {
       leadsByUser.set(r.user_id, Array.isArray(r.value) ? r.value : []);
     }
   }
+
+  // Push subscriptions per user (for browser push alongside the email).
+  const subsByUser = new Map();
+  if (pushReady) {
+    const { data: subRows } = await supa
+      .from('user_kv')
+      .select('user_id, value')
+      .eq('key', PUSH_KEY);
+    for (const r of subRows || []) {
+      subsByUser.set(r.user_id, Array.isArray(r.value) ? r.value : []);
+    }
+  }
   // Some users have leads but no prospects — union the user set so they
   // still get payment-alert emails.
   const userIds = new Set([...(rows || []).map(r => r.user_id), ...leadsByUser.keys()]);
@@ -303,6 +347,38 @@ export async function GET(req) {
       else summary.sent++;
     } catch (e) {
       summary.errors.push({ user_id: row.user_id, err: String(e.message || e) });
+    }
+
+    // Browser push (alongside the email) for users who enabled it.
+    const subs = subsByUser.get(userId) || [];
+    if (pushReady && subs.length > 0) {
+      const bits = [];
+      if (paymentAlerts.length) bits.push(`${paymentAlerts.length} payment${paymentAlerts.length !== 1 ? 's' : ''} drafting`);
+      if (todayAppts.length) bits.push(`${todayAppts.length} appt${todayAppts.length !== 1 ? 's' : ''} today`);
+      if (overdue.length) bits.push(`${overdue.length} follow-up${overdue.length !== 1 ? 's' : ''}`);
+      const pushBody = bits.length
+        ? bits.join(' · ')
+        : (digest ? `Weekly snapshot: ${digest.monthRate.toFixed(0)}% taken rate MTD` : '');
+      if (pushBody) {
+        try {
+          const { dead } = await sendPush(subs, {
+            title: 'PRIM',
+            body: pushBody,
+            url: 'https://www.primtracker.com',
+            urgent: paymentAlerts.some(a => a.tier === 'urgent'),
+          });
+          // Prune expired subscriptions so we don't keep pushing to dead endpoints.
+          if (dead.length) {
+            const alive = subs.filter(s => !dead.includes(s.endpoint));
+            await supa.from('user_kv').upsert(
+              { user_id: userId, key: PUSH_KEY, value: alive, updated_at: new Date().toISOString() },
+              { onConflict: 'user_id,key' }
+            );
+          }
+        } catch (e) {
+          summary.errors.push({ user_id: userId, err: 'push: ' + String(e.message || e) });
+        }
+      }
     }
   }
 
