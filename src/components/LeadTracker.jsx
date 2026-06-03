@@ -35,7 +35,7 @@ import { findDuplicateGroups, enumeratePairs, shouldSkipPair } from '@/lib/dupli
 import { nameKey } from '@/lib/statement';
 import {
   FOLLOWUP_PLAYBOOK_KEY, DEFAULT_PLAYBOOK,
-  ensureFollowupFields, armCadence, logTouch as engineLogTouch, snooze as engineSnooze,
+  ensureFollowupFields, armIfNeeded, armCadence, logTouch as engineLogTouch, snooze as engineSnooze,
 } from '@/lib/followupEngine.mjs';
 import LeadForm from './LeadForm';
 import InvestmentForm from './InvestmentForm';
@@ -521,11 +521,12 @@ export default function LeadTracker() {
           await storage.setItem(PROSPECTS_KEY, JSON.stringify(prMigrated));
         }
       }
-      const nowIso = new Date().toISOString();
-      setProspects(prMigrated.map(p => ensureFollowupFields(p, nowIso)));
-
       const rawPlaybook = await storage.getItem(FOLLOWUP_PLAYBOOK_KEY);
-      setFollowupPlaybook(rawPlaybook ? JSON.parse(rawPlaybook) : DEFAULT_PLAYBOOK);
+      const pb = rawPlaybook ? JSON.parse(rawPlaybook) : DEFAULT_PLAYBOOK;
+      setFollowupPlaybook(pb);
+
+      const nowIso = new Date().toISOString();
+      setProspects(prMigrated.map(p => armIfNeeded(ensureFollowupFields(p, nowIso), pb)));
 
       const psRaw = await storage.getItem(PROSPECT_SETTINGS_KEY);
       let psInitial = psRaw ? JSON.parse(psRaw) : null;
@@ -1376,9 +1377,9 @@ export default function LeadTracker() {
   }, [followupPlaybook]);
 
   const onAddProspect = useCallback((p) => {
-    setProspects(prev => [p, ...prev]);
+    setProspects(prev => [armIfNeeded(p, followupPlaybook), ...prev]);
     showToast('Prospect added');
-  }, [showToast]);
+  }, [followupPlaybook, showToast]);
   const onUpdateProspect = useCallback((p) => {
     applyProspectUpdate(p);
   }, [applyProspectUpdate]);

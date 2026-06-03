@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   CHANNELS, OUTCOMES, DEFAULT_PLAYBOOK, FOLLOWUP_PLAYBOOK_KEY,
   FOLLOWUP_DEFAULTS, playbookForStage, ensureFollowupFields,
-  armCadence, logTouch, dueStatus, snooze,
+  armCadence, armIfNeeded, logTouch, dueStatus, snooze,
 } from './followupEngine.mjs';
 
 const PB = DEFAULT_PLAYBOOK;
@@ -152,4 +152,26 @@ test('dueStatus: done when completedAt set; none when no cadence', () => {
 test('snooze sets snoozedUntil now + days', () => {
   const out = snooze(base(), 3, '2026-06-04T12:00:00.000Z');
   assert.equal(out.cadence.snoozedUntil, '2026-06-07T12:00:00.000Z');
+});
+
+test('armIfNeeded arms an un-started cadence anchored on stageEnteredAt', () => {
+  const p = { id: 'q', stage: 'GHOSTED', stageEnteredAt: '2026-06-01T00:00:00.000Z', touchLog: [], cadence: { stepIndex: 0, nextDueAt: null, snoozedUntil: null, completedAt: null } };
+  const out = armIfNeeded(p, DEFAULT_PLAYBOOK);
+  // GHOSTED step 0 afterDays:1 -> entry + 1 day
+  assert.equal(out.cadence.nextDueAt, '2026-06-02T00:00:00.000Z');
+  assert.equal(out.cadence.stepIndex, 0);
+});
+
+test('armIfNeeded leaves already-armed prospect untouched', () => {
+  const p = { id: 'r', stage: 'GHOSTED', stageEnteredAt: '2026-06-01T00:00:00.000Z', touchLog: [], cadence: { stepIndex: 0, nextDueAt: '2026-06-09T00:00:00.000Z', snoozedUntil: null, completedAt: null } };
+  assert.equal(armIfNeeded(p, DEFAULT_PLAYBOOK).cadence.nextDueAt, '2026-06-09T00:00:00.000Z');
+});
+
+test('armIfNeeded leaves touched / advanced / completed / terminal untouched', () => {
+  const touched = { id: 's', stage: 'GHOSTED', stageEnteredAt: '2026-06-01T00:00:00.000Z', touchLog: [{ id: 't', at: '2026-06-02T00:00:00.000Z', channel: 'Call', outcome: 'No answer', note: '' }], cadence: { stepIndex: 0, nextDueAt: null, snoozedUntil: null, completedAt: null } };
+  assert.equal(armIfNeeded(touched, DEFAULT_PLAYBOOK).cadence.nextDueAt, null);
+  const advanced = { id: 't2', stage: 'GHOSTED', stageEnteredAt: '2026-06-01T00:00:00.000Z', touchLog: [], cadence: { stepIndex: 2, nextDueAt: null, snoozedUntil: null, completedAt: null } };
+  assert.equal(armIfNeeded(advanced, DEFAULT_PLAYBOOK).cadence.stepIndex, 2);
+  const terminal = { id: 'u', stage: 'SOLD', stageEnteredAt: '2026-06-01T00:00:00.000Z', touchLog: [], cadence: { stepIndex: 0, nextDueAt: null, snoozedUntil: null, completedAt: null } };
+  assert.equal(armIfNeeded(terminal, DEFAULT_PLAYBOOK).cadence.nextDueAt, null);
 });

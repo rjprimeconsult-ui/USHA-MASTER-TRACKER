@@ -92,6 +92,33 @@ function addDaysIso(iso, days) {
   return d.toISOString();
 }
 
+/**
+ * Arm a cadence anchored on the prospect's existing stageEnteredAt, but ONLY
+ * if it isn't already in progress. Idempotent: leaves armed / touched /
+ * completed / advanced prospects untouched. Used on load-migration and on
+ * prospect creation so the auto-pilot has a due date without requiring a
+ * manual stage change. Anchoring on stageEnteredAt (not now) means an old
+ * untouched prospect correctly shows as overdue.
+ */
+export function armIfNeeded(prospect, playbook) {
+  const c = prospect?.cadence || {};
+  const hasTouches = Array.isArray(prospect.touchLog) && prospect.touchLog.length > 0;
+  if (c.completedAt || c.nextDueAt || hasTouches || (Number(c.stepIndex) || 0) > 0) return prospect;
+  const steps = playbookForStage(playbook, prospect.stage);
+  if (steps.length === 0) return prospect;
+  const anchor = prospect.stageEnteredAt || prospect.createdAt;
+  if (!anchor) return prospect;
+  return {
+    ...prospect,
+    cadence: {
+      stepIndex: 0,
+      nextDueAt: addDaysIso(anchor, steps[0].afterDays),
+      snoozedUntil: c.snoozedUntil ?? null,
+      completedAt: null,
+    },
+  };
+}
+
 export function armCadence(prospect, playbook, now) {
   const p = { ...prospect, stageEnteredAt: now };
   const steps = playbookForStage(playbook, p.stage);
