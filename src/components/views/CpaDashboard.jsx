@@ -16,6 +16,7 @@ import ChargebacksPanel from '../ChargebacksPanel';
 import { TiltCard, CountUp, FadeIn, Stagger, StaggerItem, Chart3DCard, fireConfetti } from '../motion/MotionPrimitives';
 import { useChartColors } from '@/lib/useIsDark';
 import { mergeFunnelTotals } from '@/lib/followupRollup.mjs';
+import { computeFollowupStats } from '@/lib/followupStats.mjs';
 import OutreachRemindersWidget from '../OutreachRemindersWidget';
 import PaymentAlertsWidget from '../PaymentAlertsWidget';
 
@@ -345,6 +346,11 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
   const activityTotalsAll = useMemo(
     () => mergeFunnelTotals(activities, prospects),
     [activities, prospects]
+  );
+
+  const followupStats = useMemo(
+    () => computeFollowupStats(prospects, new Date().toISOString()),
+    [prospects]
   );
 
   const sortedActivities = useMemo(
@@ -864,6 +870,32 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
             <Plus size={14} /> Log Activity
           </button>
         </div>
+
+        {(followupStats.totalTouches > 0 || followupStats.activeCount > 0) && (
+          <div className="bg-white rounded-xl border border-slate-200 p-4 mt-4">
+            <h3 className="font-semibold text-slate-900 mb-1">Follow-up performance</h3>
+            <p className="text-[11px] text-slate-400 mb-3">From your Prospects follow-up log</p>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <div className="text-[11px] text-slate-500">On-time</div>
+                <div className={`text-xl font-bold ${followupStats.onTimeRate == null ? 'text-slate-400' : followupStats.onTimeRate >= 0.8 ? 'text-emerald-600' : followupStats.onTimeRate >= 0.5 ? 'text-amber-600' : 'text-rose-600'}`}>
+                  {followupStats.onTimeRate == null ? '—' : `${Math.round(followupStats.onTimeRate * 100)}%`}
+                </div>
+                <div className="text-[10px] text-slate-400">{followupStats.overdueCount} overdue</div>
+              </div>
+              <div>
+                <div className="text-[11px] text-slate-500">Connect rate</div>
+                <div className="text-xl font-bold text-slate-900">{followupStats.totalTouches ? `${Math.round(followupStats.connectRate * 100)}%` : '—'}</div>
+                <div className="text-[10px] text-slate-400">{followupStats.totalTouches} touches</div>
+              </div>
+              <div>
+                <div className="text-[11px] text-slate-500">Touches → appt</div>
+                <div className="text-xl font-bold text-slate-900">{followupStats.avgTouchesToAppt == null ? '—' : (Math.round(followupStats.avgTouchesToAppt * 10) / 10)}</div>
+                <div className="text-[10px] text-slate-400">avg before booking</div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="premium-card">
