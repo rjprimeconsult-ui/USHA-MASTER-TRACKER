@@ -17,6 +17,7 @@ import { createClient } from '@supabase/supabase-js';
 import webpush from 'web-push';
 import { computePaymentAlerts } from '@/lib/paymentAlerts';
 import { TAKEN_STAGES, PENDING_STAGES, NOT_TAKEN_STAGES, PLATFORM_EXPENSE_CATEGORIES } from '@/lib/constants';
+import { dueStatus } from '@/lib/followupEngine.mjs';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -158,7 +159,7 @@ function digestHtml(d) {
       </table>`;
 }
 
-function htmlBody({ name, todayAppts, overdue, paymentAlerts = [], digest = null }) {
+function htmlBody({ name, todayAppts, overdueFollowups, paymentAlerts = [], digest = null }) {
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
   const apptRows = todayAppts.length === 0
     ? '<p style="color:#94a3b8;font-style:italic;margin:8px 0;">No appointments today.</p>'
@@ -173,18 +174,20 @@ function htmlBody({ name, todayAppts, overdue, paymentAlerts = [], digest = null
             ${p.nextSteps ? `<div style="font-size:11px;color:#64748b;">${p.nextSteps.replace(/[<>]/g, '').slice(0, 60)}</div>` : ''}
           </td>
         </tr>`).join('');
-  const overdueRows = overdue.length === 0
+  const overdueRows = overdueFollowups.length === 0
     ? '<p style="color:#94a3b8;font-style:italic;margin:8px 0;">All caught up on follow-ups.</p>'
-    : overdue.map(p => `
+    : overdueFollowups.map(({ p, s }) => {
+        const label = s.state === 'overdue' ? `${s.daysLate}d overdue` : 'due today';
+        return `
         <tr>
           <td style="padding:10px;border-bottom:1px solid #e2e8f0;">
-            <div style="font-weight:600;color:#0f172a;">${(p.name || '(no name)').replace(/[<>]/g, '')}</div>
-            <div style="font-size:12px;color:#f97316;">last contact: ${p.lastContact}</div>
+            <div style="font-weight:600;color:#0f172a;">${(p.name || 'Unnamed prospect').replace(/[<>]/g, '')}</div>
           </td>
-          <td style="padding:10px;border-bottom:1px solid #e2e8f0;text-align:right;font-size:12px;color:#64748b;">
-            ${(p.nextSteps || '').replace(/[<>]/g, '').slice(0, 80)}
+          <td style="padding:10px;border-bottom:1px solid #e2e8f0;text-align:right;">
+            <div style="font-size:12px;color:#f97316;">follow-up ${label}</div>
           </td>
-        </tr>`).join('');
+        </tr>`;
+      }).join('');
 
   return `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><title>Your Day</title></head>
@@ -199,7 +202,7 @@ function htmlBody({ name, todayAppts, overdue, paymentAlerts = [], digest = null
       ${digestHtml(digest)}
       <h3 style="font-size:11px;font-weight:700;color:#6366f1;text-transform:uppercase;letter-spacing:1px;margin:16px 0 6px 0;">Appointments</h3>
       <table width="100%" style="border-collapse:collapse;">${apptRows}</table>
-      <h3 style="font-size:11px;font-weight:700;color:#f97316;text-transform:uppercase;letter-spacing:1px;margin:24px 0 6px 0;">Overdue Follow-ups</h3>
+      <h3 style="font-size:11px;font-weight:700;color:#f97316;text-transform:uppercase;letter-spacing:1px;margin:24px 0 6px 0;">Follow-ups Due</h3>
       <table width="100%" style="border-collapse:collapse;">${overdueRows}</table>
       ${paymentRowsHtml(paymentAlerts)}
       <div style="margin-top:24px;text-align:center;">
@@ -310,14 +313,19 @@ export async function GET(req) {
     const todayAppts = prospects
       .filter(p => p.appointmentTime && isToday(p.appointmentTime) && !p.archivedAt)
       .sort((a, b) => String(a.appointmentTime).localeCompare(String(b.appointmentTime)));
-    const overdue = prospects.filter(p => isOverdueFollowup(p) && !p.archivedAt).slice(0, 8);
+    const nowIso = new Date().toISOString();
+    const overdueFollowups = (prospects || [])
+      .filter(p => !p.archivedAt && !['SOLD', 'LOST'].includes(p.stage))
+      .map(p => ({ p, s: dueStatus(p, nowIso) }))
+      .filter(x => x.s.state === 'overdue' || x.s.state === 'due_today')
+      .sort((a, b) => (b.s.daysLate || 0) - (a.s.daysLate || 0));
     // Payment-draft alerts (deals drafting in the next 7 days, not yet taken).
     const paymentAlerts = computePaymentAlerts(userLeads).slice(0, 12);
     // Weekly digest (Mondays, for agents with any leads).
     const digest = (isMonday && userLeads.length > 0)
       ? buildDigest({ leads: userLeads, investments: investmentsByUser.get(userId) || [], expenses: expensesByUser.get(userId) || [] })
       : null;
-    if (todayAppts.length === 0 && overdue.length === 0 && paymentAlerts.length === 0 && !digest) continue;
+    if (todayAppts.length === 0 && overdueFollowups.length === 0 && paymentAlerts.length === 0 && !digest) continue;
     const row = { user_id: userId };
 
     summary.users++;
@@ -334,14 +342,14 @@ export async function GET(req) {
     try {
       const subjectBits = [];
       if (todayAppts.length) subjectBits.push(`${todayAppts.length} appt${todayAppts.length !== 1 ? 's' : ''}`);
-      if (overdue.length) subjectBits.push(`${overdue.length} follow-up${overdue.length !== 1 ? 's' : ''}`);
+      if (overdueFollowups.length) subjectBits.push(`${overdueFollowups.length} follow-up${overdueFollowups.length !== 1 ? 's' : ''}`);
       if (paymentAlerts.length) subjectBits.push(`${paymentAlerts.length} payment${paymentAlerts.length !== 1 ? 's' : ''} drafting`);
       const subject = (digest && subjectBits.length === 0)
         ? `Your weekly snapshot — ${digest.monthRate.toFixed(0)}% taken rate MTD`
         : `Today: ${subjectBits.join(' · ')}`;
       const result = await sendEmail(
         email, subject,
-        htmlBody({ name, todayAppts, overdue, paymentAlerts, digest })
+        htmlBody({ name, todayAppts, overdueFollowups, paymentAlerts, digest })
       );
       if (result.skipped) summary.skipped++;
       else summary.sent++;
@@ -355,7 +363,7 @@ export async function GET(req) {
       const bits = [];
       if (paymentAlerts.length) bits.push(`${paymentAlerts.length} payment${paymentAlerts.length !== 1 ? 's' : ''} drafting`);
       if (todayAppts.length) bits.push(`${todayAppts.length} appt${todayAppts.length !== 1 ? 's' : ''} today`);
-      if (overdue.length) bits.push(`${overdue.length} follow-up${overdue.length !== 1 ? 's' : ''}`);
+      if (overdueFollowups.length) bits.push(`${overdueFollowups.length} follow-up${overdueFollowups.length !== 1 ? 's' : ''}`);
       const pushBody = bits.length
         ? bits.join(' · ')
         : (digest ? `Weekly snapshot: ${digest.monthRate.toFixed(0)}% taken rate MTD` : '');

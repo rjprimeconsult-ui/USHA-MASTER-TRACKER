@@ -33,6 +33,10 @@ import CommissionCalculator from './views/CommissionCalculator';
 import DuplicateResolver from './DuplicateResolver';
 import { findDuplicateGroups, enumeratePairs, shouldSkipPair } from '@/lib/duplicateResolver.mjs';
 import { nameKey } from '@/lib/statement';
+import {
+  FOLLOWUP_PLAYBOOK_KEY, DEFAULT_PLAYBOOK,
+  ensureFollowupFields, armIfNeeded, armCadence, logTouch as engineLogTouch, snooze as engineSnooze,
+} from '@/lib/followupEngine.mjs';
 import LeadForm from './LeadForm';
 import InvestmentForm from './InvestmentForm';
 import ActivityForm from './ActivityForm';
@@ -208,6 +212,7 @@ export default function LeadTracker() {
   const [businessIncome, setBusinessIncome] = useState([]);
   const [prospects, setProspects] = useState([]);
   const [prospectSettings, setProspectSettings] = useState(null);
+  const [followupPlaybook, setFollowupPlaybook] = useState(DEFAULT_PLAYBOOK);
   const [tier, setTier] = useState('WA');
   // Association Bonus residual data — loaded from cloud, isolated from leads.
   const [abDetail, setAbDetail] = useState([]);
@@ -516,7 +521,12 @@ export default function LeadTracker() {
           await storage.setItem(PROSPECTS_KEY, JSON.stringify(prMigrated));
         }
       }
-      setProspects(prMigrated);
+      const rawPlaybook = await storage.getItem(FOLLOWUP_PLAYBOOK_KEY);
+      const pb = rawPlaybook ? JSON.parse(rawPlaybook) : DEFAULT_PLAYBOOK;
+      setFollowupPlaybook(pb);
+
+      const nowIso = new Date().toISOString();
+      setProspects(prMigrated.map(p => armIfNeeded(ensureFollowupFields(p, nowIso), pb)));
 
       const psRaw = await storage.getItem(PROSPECT_SETTINGS_KEY);
       let psInitial = psRaw ? JSON.parse(psRaw) : null;
@@ -1356,13 +1366,23 @@ export default function LeadTracker() {
   const onNewInvestmentNoArg = useCallback(() => newInvestment(), [newInvestment]);
 
   // ----- Prospects handlers -----
+  const applyProspectUpdate = useCallback((updated) => {
+    setProspects(prev => prev.map(p => {
+      if (p.id !== updated.id) return p;
+      const stageChanged = updated.stage && updated.stage !== p.stage;
+      return stageChanged
+        ? armCadence(updated, followupPlaybook, new Date().toISOString())
+        : updated;
+    }));
+  }, [followupPlaybook]);
+
   const onAddProspect = useCallback((p) => {
-    setProspects(prev => [p, ...prev]);
+    setProspects(prev => [armIfNeeded(p, followupPlaybook), ...prev]);
     showToast('Prospect added');
-  }, [showToast]);
+  }, [followupPlaybook, showToast]);
   const onUpdateProspect = useCallback((p) => {
-    setProspects(prev => prev.map(x => x.id === p.id ? p : x));
-  }, []);
+    applyProspectUpdate(p);
+  }, [applyProspectUpdate]);
   const onDeleteProspect = useCallback((id) => {
     setProspects(prev => prev.filter(x => x.id !== id));
     showToast('Prospect deleted');
@@ -1376,6 +1396,24 @@ export default function LeadTracker() {
     setProspectSettings(next);
     showToast('Prospects settings saved');
   }, [showToast]);
+
+  const logProspectTouch = useCallback((prospectId, touch) => {
+    const now = new Date().toISOString();
+    let suggestion = null;
+    setProspects(prev => prev.map(p => {
+      if (p.id !== prospectId) return p;
+      const r = engineLogTouch(p, touch, followupPlaybook, now);
+      suggestion = r.suggestedStage;
+      return { ...r.prospect, lastContact: now.slice(0, 10) };
+    }));
+    return suggestion;
+  }, [followupPlaybook]);
+
+  const snoozeProspect = useCallback((prospectId, days) => {
+    const now = new Date().toISOString();
+    setProspects(prev => prev.map(p => p.id === prospectId ? engineSnooze(p, days, now) : p));
+  }, []);
+
   // Convert a Sold prospect into a new Lead. Pre-fills lead fields from the
   // prospect so the user only has to fill in product/premium details.
   const onConvertProspectToLead = useCallback((p) => {
@@ -1689,6 +1727,9 @@ export default function LeadTracker() {
             onBulkAdd={onBulkAddProspects}
             onSaveSettings={onSaveProspectSettings}
             onConvertToLead={onConvertProspectToLead}
+            playbook={followupPlaybook}
+            onLogTouch={logProspectTouch}
+            onSnoozeProspect={snoozeProspect}
           />
         </ViewMount>
         <ViewMount visible={view === 'books'} viewKey="books">

@@ -2,6 +2,9 @@
 import { useState, useMemo, useRef, useCallback, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import RepeatedClientBadge from '@/components/RepeatedClientBadge';
+import FollowupNextStep from '@/components/FollowupNextStep';
+import FollowupTimeline from '@/components/FollowupTimeline';
+import LogTouchSheet from '@/components/LogTouchSheet';
 import SendOutreachEmail from '../SendOutreachEmail';
 import OutreachRemindersWidget from '../OutreachRemindersWidget';
 import {
@@ -20,6 +23,7 @@ import ProspectForm from '../ProspectForm';
 import SmartProspectImportWizard from '../SmartProspectImportWizard';
 import SourceColorManager from '../SourceColorManager';
 import { useSourceColors, colorForSource } from '@/lib/sourceColors';
+import { dueStatus } from '@/lib/followupEngine.mjs';
 
 const inp = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500';
 
@@ -101,10 +105,22 @@ function isOverdueAppt(iso, stage) {
 }
 
 function isOverdueFollowup(p) {
-  if (!p.lastContact) return false;
-  const stalenessDays = (Date.now() - new Date(p.lastContact + 'T00:00:00').getTime()) / 86400000;
-  // No appt scheduled and last contact > 5 days ago → overdue follow-up
-  return !p.appointmentTime && stalenessDays > 5 && !['SOLD', 'LOST', 'GHOSTED'].includes(p.stage);
+  if (['SOLD', 'LOST'].includes(p.stage)) return false;
+  const s = dueStatus(p, new Date().toISOString());
+  return s.state === 'overdue' || s.state === 'due_today';
+}
+
+function FollowupDot({ prospect }) {
+  const s = dueStatus(prospect, new Date().toISOString());
+  const map = {
+    overdue:   { c: 'bg-rose-500',    t: 'Follow-up overdue' },
+    due_today: { c: 'bg-amber-500',   t: 'Follow-up due today' },
+    ontrack:   { c: 'bg-emerald-500', t: 'On track' },
+    snoozed:   { c: 'bg-slate-300',   t: 'Snoozed' },
+  };
+  const m = map[s.state];
+  if (!m) return null; // 'none' / 'done'
+  return <span title={m.t} className={`inline-block w-2 h-2 rounded-full ${m.c} flex-shrink-0`} />;
 }
 
 // ---------- Today Panel ----------
@@ -205,7 +221,10 @@ function KanbanCard({ prospect, onEdit, onDragStart, isSelected, onToggleSelect,
         title="Select"
       />
       <div className={`flex items-start justify-between gap-2 mb-1 ${isSelected ? 'pl-6' : ''} group-hover:pl-6 transition-all`}>
-        <div className="font-semibold text-sm text-slate-900 truncate">{prospect.name || '(no name)'}</div>
+        <div className="flex items-center gap-1.5 min-w-0">
+          <FollowupDot prospect={prospect} />
+          <div className="font-semibold text-sm text-slate-900 truncate">{prospect.name || '(no name)'}</div>
+        </div>
         {prospect.indvOrFamily === 'Family' && (
           <span className="text-[10px] font-bold text-violet-700 bg-violet-100 px-1.5 py-0.5 rounded">FAM</span>
         )}
@@ -873,7 +892,8 @@ function OutreachLogList({ log }) {
   );
 }
 
-function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, onConvertToLead, onProspectUpdate }) {
+function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, onConvertToLead, onProspectUpdate, playbook, onLogTouch, agentName }) {
+  const [logOpen, setLogOpen] = useState(false);
   if (!open || !prospect) return null;
   const stage = settings.stages.find(s => s.id === prospect.stage);
   const stageColor = stage?.color || '#64748b';
@@ -937,6 +957,15 @@ function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, o
         {/* Body sections — flex-1 + overflow-y-auto so only this middle
             region scrolls. Hero stays pinned at top, footer at bottom. */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {/* Follow-up next-step coaching card */}
+          <div className="mb-3">
+            <FollowupNextStep
+              prospect={prospect}
+              playbook={playbook}
+              agentName={agentName}
+              onLogTouch={() => setLogOpen(true)}
+            />
+          </div>
           {/* Primary Information */}
           <DetailSection title="Primary Information">
             <DetailRow Icon={User} value={prospect.indvOrFamily === 'Family' ? 'Family policy' : 'Individual'} />
@@ -998,12 +1027,10 @@ function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, o
             </DetailSection>
           )}
 
-          {/* Outreach email log — shown when at least one outreach has fired */}
-          {Array.isArray(prospect.emailLog) && prospect.emailLog.length > 0 && (
-            <DetailSection title="Outreach activity">
-              <OutreachLogList log={prospect.emailLog} />
-            </DetailSection>
-          )}
+          {/* Follow-up activity — merged touch log + email log */}
+          <DetailSection title="Follow-up activity">
+            <FollowupTimeline touchLog={prospect.touchLog} emailLog={prospect.emailLog} />
+          </DetailSection>
         </div>
 
         {/* Action footer — flex-shrink-0 keeps it pinned at the bottom
@@ -1042,7 +1069,18 @@ function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, o
     </div>
   );
 
-  return createPortal(modal, document.body);
+  return (
+    <>
+      {createPortal(modal, document.body)}
+      <LogTouchSheet
+        open={logOpen}
+        prospectName={prospect.name}
+        defaultChannel={(playbook?.stages?.[prospect.stage]?.steps?.[prospect.cadence?.stepIndex || 0]?.channel) || 'Call'}
+        onSave={(touch) => onLogTouch?.(prospect.id, touch)}
+        onClose={() => setLogOpen(false)}
+      />
+    </>
+  );
 }
 
 // ---------- Kanban Scroller ----------
@@ -1107,6 +1145,9 @@ export default function ProspectsView({
   onBulkAdd,
   onSaveSettings,
   onConvertToLead,
+  playbook = { stages: {} },
+  onLogTouch,
+  onSnoozeProspect,
 }) {
   const cfg = settings || defaultProspectSettings();
   const [view, setView] = useState('kanban'); // 'kanban' | 'list'
@@ -1578,6 +1619,9 @@ export default function ProspectsView({
         onDelete={(id) => { setViewing(null); onDeleteWrap(id); }}
         onConvertToLead={(p) => { setViewing(null); onConvertWrap(p); }}
         onProspectUpdate={(p) => { onUpdate(p); setViewing(p); }}
+        playbook={playbook}
+        onLogTouch={onLogTouch}
+        agentName={''}
       />
       <ProspectForm
         open={!!editing}
