@@ -301,7 +301,7 @@ export default function SmartLeadImportWizard({ open, onClose, onImport, existin
                     <div className="font-semibold">Found {edits.length} leads ({result.summary.format}){salesReportMode && <span className="ml-2 text-violet-700 font-semibold">· Grouped by application — AI skipped.</span>}</div>
                     <div className="mt-0.5">{result.extractedHint}</div>
                   </div>
-                  <button onClick={() => { setResult(null); setEdits([]); }}
+                  <button onClick={() => { setResult(null); setEdits([]); setSalesReportMode(false); setSkipMask(new Set()); }}
                     className="text-xs text-emerald-700 hover:text-emerald-900 underline">Try again</button>
                 </div>
               </div>
