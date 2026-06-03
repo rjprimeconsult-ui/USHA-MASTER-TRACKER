@@ -8,12 +8,35 @@ import {
   STAGES, MAIN_PRODUCTS, ASSOCIATION_PLANS, CRMS, CAMPAIGNS,
   LEAD_CATEGORIES, SOURCES, OWNERS,
 } from '@/lib/constants';
+import * as XLSX from 'xlsx';
+import { parseSalesReport, dealToLead } from '@/lib/salesreport';
 import { mkLead } from '@/lib/seed';
 import { uid } from '@/lib/utils';
 import { authedFetch } from '@/lib/authedFetch';
 import { dedupLeads } from '@/lib/leadDedup';
 
 const inp = 'w-full border border-slate-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500';
+
+// Read a spreadsheet File and decide if it is a USHA SalesReport by its headers.
+// Returns the parsed workbook if it is, else null.
+async function readSalesReportWorkbook(file) {
+  const name = (file?.name || '').toLowerCase();
+  if (!/\.(xlsx|xls|csv)$/.test(name)) return null;
+  let wb;
+  try {
+    const buf = new Uint8Array(await file.arrayBuffer());
+    wb = XLSX.read(buf, { type: 'array' });
+  } catch { return null; }
+  const sheetName = wb.SheetNames.find(n => /sales\s*report/i.test(n)) || wb.SheetNames[0];
+  const ws = wb.Sheets[sheetName];
+  if (!ws) return null;
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
+  const header = (rows[0] || []).map(h => String(h || '').toLowerCase().replace(/\s+/g, ''));
+  const has = (frag) => header.some(h => h.includes(frag));
+  // USHA SalesReport signature: AppID + Product + Status + Premium columns
+  const isSalesReport = has('appid') && has('product') && has('status') && has('premium');
+  return isSalesReport ? wb : null;
+}
 
 export default function SmartLeadImportWizard({ open, onClose, onImport, existingLeads = [] }) {
   const [file, setFile] = useState(null);
@@ -33,12 +56,13 @@ export default function SmartLeadImportWizard({ open, onClose, onImport, existin
   // Conflict mode: 'skip' = leave existing untouched (default, safe).
   // 'merge' = patch matching existing leads with extra fields from this import.
   const [conflictMode, setConflictMode] = useState('skip');
+  const [salesReportMode, setSalesReportMode] = useState(false);
   const fileRef = useRef(null);
 
   useEffect(() => {
     if (!open) {
       setFile(null); setBusy(false); setError(''); setResult(null);
-      setEdits([]); setSkipMask(new Set());
+      setEdits([]); setSkipMask(new Set()); setSalesReportMode(false);
     }
   }, [open]);
 
@@ -47,18 +71,35 @@ export default function SmartLeadImportWizard({ open, onClose, onImport, existin
   const onPick = (e) => {
     const f = e.target.files?.[0];
     if (!f) return;
-    setFile(f); setError(''); setResult(null);
+    setFile(f); setError(''); setResult(null); setSalesReportMode(false);
   };
   const onDrop = (e) => {
     e.preventDefault();
     const f = e.dataTransfer.files?.[0];
-    if (f) { setFile(f); setError(''); setResult(null); }
+    if (f) { setFile(f); setError(''); setResult(null); setSalesReportMode(false); }
   };
 
   const runExtract = async () => {
     if (!file) return;
     setBusy(true); setError('');
     try {
+      // Fast path: a USHA SalesReport export → group deterministically by
+      // AppID base (no AI, no per-product duplicates).
+      const wb = await readSalesReportWorkbook(file);
+      if (wb) {
+        const parsed = parseSalesReport(wb);
+        const leads = parsed.deals.map(d => ({ ...dealToLead(d, mkLead), _id: uid() }));
+        setSalesReportMode(true);
+        setEdits(leads);
+        setSkipMask(new Set());
+        setResult({
+          summary: { format: 'USHA SalesReport' },
+          extractedHint: `Grouped ${parsed.allRows} product rows into ${leads.length} applications by AppID — no duplicates.`,
+          leads,
+        });
+        setBusy(false);
+        return;
+      }
       const form = new FormData();
       form.append('file', file);
       // Apply agent rubric overlay for leads
@@ -112,41 +153,48 @@ export default function SmartLeadImportWizard({ open, onClose, onImport, existin
   const skipNone = () => setSkipMask(new Set());
 
   const confirm = () => {
-    const today = () => new Date().toISOString().slice(0, 10);
     const batchId = `batch_${uid()}`;
-    const candidates = edits.flatMap((l, i) => {
-      if (skipMask.has(i)) return [];
-      if (!l.name?.trim()) return [];
-      return [mkLead({
-        _batchId: batchId,
-        name: l.name.trim(),
-        age: Number(l.age) || 0,
-        phone: l.phone || '',
-        email: l.email || '',
-        state: (l.state || '').toUpperCase().slice(0, 2),
-        policyNumber: l.policyNumber || '',
-        mainProduct: l.mainProduct || '',
-        mainProductPremium: Number(l.mainProductPremium) || 0,
-        products: (l.products || []).map(p => ({ id: p, premium: 0 })),
-        associationPlan: l.associationPlan || '',
-        stage: l.stage || 'Pending',
-        closedDate: l.closedDate || (l.stage === 'Issued' ? today() : null),
-        dateAdded: l.closedDate || today(),
-        payType: l.payType || 'advance',
-        crm: l.crm || defaults.crm,
-        source: l.source || defaults.source,
-        leadCategory: l.leadCategory || defaults.leadCategory,
-        campaign: defaults.campaign,
-        owner: defaults.owner,
-        leadCost: Number(defaults.leadCost) || 0,
-        notes: l.notes || '',
-        dependents: Array.isArray(l.dependents)
-          ? l.dependents
-              .filter(d => d?.name?.trim())
-              .map(d => ({ name: d.name.trim(), relationship: d.relationship || 'other', dob: d.dob || '' }))
-          : [],
-      })];
-    });
+    let candidates;
+    if (salesReportMode) {
+      candidates = edits
+        .filter((l, i) => !skipMask.has(i) && l.name?.trim())
+        .map(({ _id, ...lead }) => ({ ...lead, _batchId: batchId }));
+    } else {
+      const today = () => new Date().toISOString().slice(0, 10);
+      candidates = edits.flatMap((l, i) => {
+        if (skipMask.has(i)) return [];
+        if (!l.name?.trim()) return [];
+        return [mkLead({
+          _batchId: batchId,
+          name: l.name.trim(),
+          age: Number(l.age) || 0,
+          phone: l.phone || '',
+          email: l.email || '',
+          state: (l.state || '').toUpperCase().slice(0, 2),
+          policyNumber: l.policyNumber || '',
+          mainProduct: l.mainProduct || '',
+          mainProductPremium: Number(l.mainProductPremium) || 0,
+          products: (l.products || []).map(p => ({ id: p, premium: 0 })),
+          associationPlan: l.associationPlan || '',
+          stage: l.stage || 'Pending',
+          closedDate: l.closedDate || (l.stage === 'Issued' ? today() : null),
+          dateAdded: l.closedDate || today(),
+          payType: l.payType || 'advance',
+          crm: l.crm || defaults.crm,
+          source: l.source || defaults.source,
+          leadCategory: l.leadCategory || defaults.leadCategory,
+          campaign: defaults.campaign,
+          owner: defaults.owner,
+          leadCost: Number(defaults.leadCost) || 0,
+          notes: l.notes || '',
+          dependents: Array.isArray(l.dependents)
+            ? l.dependents
+                .filter(d => d?.name?.trim())
+                .map(d => ({ name: d.name.trim(), relationship: d.relationship || 'other', dob: d.dob || '' }))
+            : [],
+        })];
+      });
+    }
     // Dedup against existing tracker leads + within the batch itself.
     // Note: importLeads() in LeadTracker re-runs dedup as a backstop and
     // applies the chosen conflict mode (skip vs merge).
@@ -250,10 +298,10 @@ export default function SmartLeadImportWizard({ open, onClose, onImport, existin
                 <div className="flex items-start gap-2">
                   <CheckCircle2 size={16} className="text-emerald-700 mt-0.5 flex-shrink-0" />
                   <div className="flex-1 text-xs text-emerald-900">
-                    <div className="font-semibold">Found {edits.length} leads ({result.summary.format})</div>
+                    <div className="font-semibold">Found {edits.length} leads ({result.summary.format}){salesReportMode && <span className="ml-2 text-violet-700 font-semibold">· Grouped by application — AI skipped.</span>}</div>
                     <div className="mt-0.5">{result.extractedHint}</div>
                   </div>
-                  <button onClick={() => { setResult(null); setEdits([]); }}
+                  <button onClick={() => { setResult(null); setEdits([]); setSalesReportMode(false); setSkipMask(new Set()); }}
                     className="text-xs text-emerald-700 hover:text-emerald-900 underline">Try again</button>
                 </div>
               </div>

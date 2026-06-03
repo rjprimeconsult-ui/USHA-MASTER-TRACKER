@@ -22,7 +22,7 @@
  */
 
 import * as XLSX from 'xlsx';
-import { nameKey } from './statement';
+import { nameKey } from './statement.js';
 
 // ---- product name → internal bucket
 const MAIN_PRODUCT_PATTERNS = [
