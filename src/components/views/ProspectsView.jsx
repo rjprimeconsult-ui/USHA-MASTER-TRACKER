@@ -7,6 +7,7 @@ import FollowupTimeline from '@/components/FollowupTimeline';
 import LogTouchSheet from '@/components/LogTouchSheet';
 import SendOutreachEmail from '../SendOutreachEmail';
 import OutreachRemindersWidget from '../OutreachRemindersWidget';
+import FollowupDueWidget from '../FollowupDueWidget';
 import {
   Plus, Search, LayoutGrid, List as ListIcon, Settings as SettingsIcon, Upload,
   Calendar, CalendarDays, Phone, Mail, MapPin, ArrowRight, Trash2, X, AlertCircle, Clock, GripVertical,
@@ -1385,13 +1386,27 @@ export default function ProspectsView({
         </div>
       </div>
 
-      {/* Outreach follow-ups (beta) — only renders for allowlist users
-          and only when at least one prospect has a follow-up due or
-          upcoming. Clicking a row opens that prospect's detail with
-          the next-due template auto-selected in the Send Outreach
-          picker. */}
+      {/* Playbook follow-ups (the accountability list) — prospects whose
+          next manual touch is due today or overdue, any channel. Driven by
+          the cadence engine. Sits above the email widget so "who needs a
+          touch" is the first thing agents see. */}
+      <FollowupDueWidget
+        prospects={prospects}
+        playbook={playbook}
+        onOpenProspect={(id) => {
+          const p = prospects.find(x => x.id === id);
+          if (p) onView(p);
+        }}
+      />
+
+      {/* Outreach EMAIL follow-ups (beta) — only renders for allowlist users
+          and only when at least one prospect is due for the next email in the
+          automated outreach sequence. Renamed to "Emails due" to distinguish
+          it from the playbook follow-ups above. Clicking a row opens that
+          prospect's detail with the next-due template auto-selected. */}
       <OutreachRemindersWidget
         prospects={prospects}
+        title="Emails due"
         onOpenProspect={(id) => {
           const p = prospects.find(x => x.id === id);
           if (p) onView(p);
