@@ -4,6 +4,7 @@
 
 import { uid } from './utils';
 import { DEFAULT_PROSPECT_STAGES } from './constants';
+import { FOLLOWUP_DEFAULTS } from './followupEngine.mjs';
 
 // ----- US state -> timezone mapping (covers continental US + AK/HI) -----
 const STATE_TZ = {
@@ -59,6 +60,10 @@ export function newProspect(overrides = {}) {
     createdAt: new Date().toISOString(),
     archivedAt: null,
     convertedLeadId: null,
+    // --- follow-up system (Phase 1) ---
+    touchLog: [],
+    stageEnteredAt: new Date().toISOString(),
+    cadence: { ...FOLLOWUP_DEFAULTS.cadence },
     ...overrides,
   };
 }
