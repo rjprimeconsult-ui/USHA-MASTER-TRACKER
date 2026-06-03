@@ -53,7 +53,7 @@ export default function FollowupNextStep({ prospect, playbook, agentName, onLogT
         </div>
         {dueLabel && <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${style.chip}`}>{dueLabel}</span>}
       </div>
-      <div className="text-sm text-slate-700 bg-white/70 border border-white rounded-lg p-2.5 whitespace-pre-wrap">{text}</div>
+      <div className="text-sm text-slate-900 bg-white border border-slate-200 rounded-lg p-2.5 whitespace-pre-wrap shadow-sm">{text}</div>
       <div className="flex items-center gap-2 mt-2">
         <button onClick={copy} className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 border border-slate-200 bg-white rounded-lg px-2.5 py-1.5">
           {copied ? <Check size={13} /> : <Copy size={13} />} {copied ? 'Copied' : 'Copy script'}
