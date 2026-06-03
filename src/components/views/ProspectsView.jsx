@@ -8,6 +8,7 @@ import LogTouchSheet from '@/components/LogTouchSheet';
 import SendOutreachEmail from '../SendOutreachEmail';
 import OutreachRemindersWidget from '../OutreachRemindersWidget';
 import FollowupDueWidget from '../FollowupDueWidget';
+import FollowupScorecard from '@/components/FollowupScorecard';
 import {
   Plus, Search, LayoutGrid, List as ListIcon, Settings as SettingsIcon, Upload,
   Calendar, CalendarDays, Phone, Mail, MapPin, ArrowRight, Trash2, X, AlertCircle, Clock, GripVertical,
@@ -1440,6 +1441,10 @@ export default function ProspectsView({
           inside the calendar dropdown and the Follow-ups widget. */}
       {prospects.length > 0 && (
         <CalendarPanel prospects={visible} stages={cfg.stages} onView={onView} />
+      )}
+
+      {prospects.length > 0 && (
+        <FollowupScorecard prospects={prospects} stages={cfg.stages} />
       )}
 
       {/* Bulk action bar — appears whenever something is selected, in either view */}
