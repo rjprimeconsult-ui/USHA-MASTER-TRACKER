@@ -896,6 +896,10 @@ function OutreachLogList({ log }) {
 function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, onConvertToLead, onProspectUpdate, playbook, onLogTouch, agentName, onApplyStageSuggestion, onSnooze }) {
   const [logOpen, setLogOpen] = useState(false);
   const [suggestion, setSuggestion] = useState(null);
+  // ProspectDetail stays mounted across prospects — clear any pending
+  // suggestion when the viewed prospect changes or the modal closes, so a
+  // suggestion from one prospect can never be applied to another.
+  useEffect(() => { setSuggestion(null); }, [prospect?.id, open]);
   if (!open || !prospect) return null;
   const stage = settings.stages.find(s => s.id === prospect.stage);
   const stageColor = stage?.color || '#64748b';
