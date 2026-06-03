@@ -33,6 +33,14 @@
 
 export const ANNOUNCEMENTS = [
   {
+    id: '2026-06-03-followup-coaching',
+    date: '2026-06-03',
+    emoji: '📞',
+    title: 'New: Follow-up coaching in Prospects',
+    body: 'Every prospect now shows your next move + a ready-to-send script, logs each call/text you make, and flags who\'s overdue. Look for the new "Needs a touch" list at the top of Prospects, and the next-step card when you open any prospect.',
+    cta: { label: 'Open Prospects', view: 'prospects' },
+  },
+  {
     id: '2026-05-04-monthly-residual-lag',
     date: '2026-05-04',
     emoji: '📅',
