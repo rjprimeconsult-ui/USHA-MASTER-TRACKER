@@ -33,6 +33,14 @@
 
 export const ANNOUNCEMENTS = [
   {
+    id: '2026-06-03-salesreport-dedup',
+    date: '2026-06-03',
+    emoji: '🧹',
+    title: 'No more duplicate leads from your SalesReport',
+    body: 'When you Smart Import your USHA portal SalesReport, PRIM now recognizes it and groups all of an application\'s product lines into a single lead automatically — by AppID, the way USHA tracks it. One client with 6 product rows = one lead, not six. Re-importing is safe too. Other files (book of business, screenshots) still use AI as before.',
+    cta: { label: 'Open Upload', view: 'upload' },
+  },
+  {
     id: '2026-06-03-followup-analytics',
     date: '2026-06-03',
     emoji: '📊',
