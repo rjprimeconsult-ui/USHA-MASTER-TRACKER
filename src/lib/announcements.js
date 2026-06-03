@@ -33,6 +33,14 @@
 
 export const ANNOUNCEMENTS = [
   {
+    id: '2026-06-03-followup-analytics',
+    date: '2026-06-03',
+    emoji: '📊',
+    title: 'See your follow-up game',
+    body: 'New Follow-up performance scorecard: your on-time follow-up %, connect rate, average touches-to-appointment, an outcomes breakdown, and which stages prospects are stalling in. Find it at the top of Prospects (tap to expand) and as a quick tile on your CPA Dashboard.',
+    cta: { label: 'Open Prospects', view: 'prospects' },
+  },
+  {
     id: '2026-06-03-followup-smart',
     date: '2026-06-03',
     emoji: '🎯',
