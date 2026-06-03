@@ -204,3 +204,43 @@ export function dueStatus(prospect, now) {
 export function snooze(prospect, days, now) {
   return { ...prospect, cadence: { ...prospect.cadence, snoozedUntil: addDaysIso(now, days) } };
 }
+
+const NO_CONTACT_OUTCOMES = new Set(['No answer', 'Left VM']);
+
+/** Count trailing consecutive no-contact touches (No answer / Left VM). */
+export function consecutiveNoAnswer(prospect) {
+  const log = Array.isArray(prospect?.touchLog) ? prospect.touchLog : [];
+  let n = 0;
+  for (let i = log.length - 1; i >= 0; i--) {
+    if (NO_CONTACT_OUTCOMES.has(log[i].outcome)) n++;
+    else break;
+  }
+  return n;
+}
+
+/**
+ * After a touch is logged, suggest a stage move (or null). Priority:
+ *   1. Booked appt    -> APPOINTMENT_SET
+ *   2. Not interested -> LOST
+ *   3. 3+ consecutive no-contact touches (and not already GHOSTED) -> GHOSTED
+ *   4. cadence just completed -> playbook onComplete (breakup)
+ * `prospect` is the post-log prospect; `lastTouch` is the touch just logged.
+ * Never suggests the prospect's current stage.
+ */
+export function suggestStageAfterTouch(prospect, lastTouch, playbook) {
+  const cur = prospect?.stage;
+  const mk = (stage, reason) => (stage && stage !== cur ? { stage, reason } : null);
+
+  if (lastTouch?.outcome === 'Booked appt') return mk('APPOINTMENT_SET', 'They booked — move to Appointment Set?');
+  if (lastTouch?.outcome === 'Not interested') return mk('LOST', 'Not interested — move to Lost?');
+
+  if (cur !== 'GHOSTED' && consecutiveNoAnswer(prospect) >= 3) {
+    return mk('GHOSTED', 'No contact 3 times in a row — consider Ghosted?');
+  }
+
+  if (prospect?.cadence?.completedAt) {
+    const onComplete = playbook?.stages?.[cur]?.onComplete;
+    return mk(onComplete, 'Follow-up sequence finished — move them along?');
+  }
+  return null;
+}

@@ -4,6 +4,7 @@ import {
   CHANNELS, OUTCOMES, DEFAULT_PLAYBOOK, FOLLOWUP_PLAYBOOK_KEY,
   FOLLOWUP_DEFAULTS, playbookForStage, ensureFollowupFields,
   armCadence, armIfNeeded, logTouch, dueStatus, snooze,
+  consecutiveNoAnswer, suggestStageAfterTouch,
 } from './followupEngine.mjs';
 
 const PB = DEFAULT_PLAYBOOK;
@@ -165,6 +166,56 @@ test('armIfNeeded arms an un-started cadence anchored on stageEnteredAt', () => 
 test('armIfNeeded leaves already-armed prospect untouched', () => {
   const p = { id: 'r', stage: 'GHOSTED', stageEnteredAt: '2026-06-01T00:00:00.000Z', touchLog: [], cadence: { stepIndex: 0, nextDueAt: '2026-06-09T00:00:00.000Z', snoozedUntil: null, completedAt: null } };
   assert.equal(armIfNeeded(p, DEFAULT_PLAYBOOK).cadence.nextDueAt, '2026-06-09T00:00:00.000Z');
+});
+
+const withTouches = (stage, outcomes) => ({
+  id: 'z', stage,
+  touchLog: outcomes.map((o, i) => ({ id: 't' + i, at: `2026-06-0${i + 1}T12:00:00.000Z`, channel: 'Call', outcome: o, note: '' })),
+  cadence: { stepIndex: 0, nextDueAt: null, snoozedUntil: null, completedAt: null },
+});
+
+test('consecutiveNoAnswer counts trailing No answer / Left VM touches', () => {
+  assert.equal(consecutiveNoAnswer(withTouches('GHOSTED', ['Connected', 'No answer', 'No answer'])), 2);
+  assert.equal(consecutiveNoAnswer(withTouches('GHOSTED', ['No answer', 'No answer', 'No answer'])), 3);
+  assert.equal(consecutiveNoAnswer(withTouches('GHOSTED', ['No answer', 'Connected'])), 0);
+  assert.equal(consecutiveNoAnswer({ touchLog: [] }), 0);
+});
+
+test('suggestStageAfterTouch: Booked appt -> APPOINTMENT_SET', () => {
+  const p = withTouches('PENDING_DECISION', ['Booked appt']);
+  const r = suggestStageAfterTouch(p, { outcome: 'Booked appt' }, DEFAULT_PLAYBOOK);
+  assert.equal(r.stage, 'APPOINTMENT_SET');
+  assert.ok(/appoint/i.test(r.reason));
+});
+
+test('suggestStageAfterTouch: Not interested -> LOST', () => {
+  const p = withTouches('PENDING_DECISION', ['Not interested']);
+  const r = suggestStageAfterTouch(p, { outcome: 'Not interested' }, DEFAULT_PLAYBOOK);
+  assert.equal(r.stage, 'LOST');
+});
+
+test('suggestStageAfterTouch: 3rd consecutive No answer (not already Ghosted) -> GHOSTED', () => {
+  const p = withTouches('PENDING_DECISION', ['No answer', 'No answer', 'No answer']);
+  const r = suggestStageAfterTouch(p, { outcome: 'No answer' }, DEFAULT_PLAYBOOK);
+  assert.equal(r.stage, 'GHOSTED');
+});
+
+test('suggestStageAfterTouch: already Ghosted with 3 no-answers does NOT re-suggest Ghosted', () => {
+  const p = withTouches('GHOSTED', ['No answer', 'No answer', 'No answer']);
+  const r = suggestStageAfterTouch(p, { outcome: 'No answer' }, DEFAULT_PLAYBOOK);
+  assert.equal(r, null);
+});
+
+test('suggestStageAfterTouch: cadence just completed -> playbook onComplete (breakup)', () => {
+  const p = { id: 'b', stage: 'MISSED_APPT', touchLog: [{ id: 't', at: '2026-06-09T00:00:00.000Z', channel: 'Text', outcome: 'No answer', note: '' }], cadence: { stepIndex: 4, nextDueAt: null, snoozedUntil: null, completedAt: '2026-06-09T00:00:00.000Z' } };
+  const r = suggestStageAfterTouch(p, { outcome: 'No answer' }, DEFAULT_PLAYBOOK);
+  assert.equal(r.stage, 'GHOSTED');
+});
+
+test('suggestStageAfterTouch: no rule matches -> null', () => {
+  const p = withTouches('PENDING_DECISION', ['Connected']);
+  const r = suggestStageAfterTouch(p, { outcome: 'Connected' }, DEFAULT_PLAYBOOK);
+  assert.equal(r, null);
 });
 
 test('armIfNeeded leaves touched / advanced / completed / terminal untouched', () => {

@@ -15,6 +15,7 @@ import TakenRateCalculator from '../TakenRateCalculator';
 import ChargebacksPanel from '../ChargebacksPanel';
 import { TiltCard, CountUp, FadeIn, Stagger, StaggerItem, Chart3DCard, fireConfetti } from '../motion/MotionPrimitives';
 import { useChartColors } from '@/lib/useIsDark';
+import { mergeFunnelTotals } from '@/lib/followupRollup.mjs';
 import OutreachRemindersWidget from '../OutreachRemindersWidget';
 import PaymentAlertsWidget from '../PaymentAlertsWidget';
 
@@ -341,12 +342,10 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
   const toggleBreakdown = (key) => setOpenBreakdown(prev => prev === key ? null : key);
   const closeBreakdown  = () => setOpenBreakdown(null);
 
-  const activityTotalsAll = useMemo(() => activities.reduce((a, x) => ({
-    dials: a.dials + (x.dials || 0),
-    appts: a.appts + (x.appointments || 0),
-    pitches: a.pitches + (x.pitches || 0),
-    closes: a.closes + (x.closes || 0),
-  }), { dials: 0, appts: 0, pitches: 0, closes: 0 }), [activities]);
+  const activityTotalsAll = useMemo(
+    () => mergeFunnelTotals(activities, prospects),
+    [activities, prospects]
+  );
 
   const sortedActivities = useMemo(
     () => [...activities].sort((a, b) => b.date.localeCompare(a.date)),
@@ -854,6 +853,7 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
 
         <div className="premium-card p-4">
           <h3 className="font-semibold text-slate-900 mb-3">Activity Funnel (all-time)</h3>
+          <p className="text-[11px] text-slate-400 mb-2">Includes logged prospect follow-ups (days without a manual entry).</p>
           <div className="space-y-3">
             {funnelRow('Dials', activityTotals.dials, Phone, 'bg-blue-100 text-blue-700')}
             {funnelRow('Appointments', activityTotals.appts, Calendar, 'bg-violet-100 text-violet-700')}
