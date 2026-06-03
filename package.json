@@ -8,7 +8,7 @@
     "postbuild": "node scripts/announce-deploy.mjs",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --import ./src/lib/test-loader.mjs --test src/lib/**/*.test.mjs"
+    "test": "node --test src/lib/*.test.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",
