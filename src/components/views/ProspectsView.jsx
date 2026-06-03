@@ -1072,13 +1072,16 @@ function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, o
   return (
     <>
       {createPortal(modal, document.body)}
-      <LogTouchSheet
-        open={logOpen}
-        prospectName={prospect.name}
-        defaultChannel={(playbook?.stages?.[prospect.stage]?.steps?.[prospect.cadence?.stepIndex || 0]?.channel) || 'Call'}
-        onSave={(touch) => onLogTouch?.(prospect.id, touch)}
-        onClose={() => setLogOpen(false)}
-      />
+      {createPortal(
+        <LogTouchSheet
+          open={logOpen}
+          prospectName={prospect.name}
+          defaultChannel={(playbook?.stages?.[prospect.stage]?.steps?.[prospect.cadence?.stepIndex || 0]?.channel) || 'Call'}
+          onSave={(touch) => onLogTouch?.(prospect.id, touch)}
+          onClose={() => setLogOpen(false)}
+        />,
+        document.body
+      )}
     </>
   );
 }
