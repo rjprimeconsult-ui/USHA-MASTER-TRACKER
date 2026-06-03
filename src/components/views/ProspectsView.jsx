@@ -23,6 +23,7 @@ import ProspectForm from '../ProspectForm';
 import SmartProspectImportWizard from '../SmartProspectImportWizard';
 import SourceColorManager from '../SourceColorManager';
 import { useSourceColors, colorForSource } from '@/lib/sourceColors';
+import { dueStatus } from '@/lib/followupEngine.mjs';
 
 const inp = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500';
 
@@ -104,10 +105,22 @@ function isOverdueAppt(iso, stage) {
 }
 
 function isOverdueFollowup(p) {
-  if (!p.lastContact) return false;
-  const stalenessDays = (Date.now() - new Date(p.lastContact + 'T00:00:00').getTime()) / 86400000;
-  // No appt scheduled and last contact > 5 days ago → overdue follow-up
-  return !p.appointmentTime && stalenessDays > 5 && !['SOLD', 'LOST', 'GHOSTED'].includes(p.stage);
+  if (['SOLD', 'LOST'].includes(p.stage)) return false;
+  const s = dueStatus(p, new Date().toISOString());
+  return s.state === 'overdue' || s.state === 'due_today';
+}
+
+function FollowupDot({ prospect }) {
+  const s = dueStatus(prospect, new Date().toISOString());
+  const map = {
+    overdue:   { c: 'bg-rose-500',    t: 'Follow-up overdue' },
+    due_today: { c: 'bg-amber-500',   t: 'Follow-up due today' },
+    ontrack:   { c: 'bg-emerald-500', t: 'On track' },
+    snoozed:   { c: 'bg-slate-300',   t: 'Snoozed' },
+  };
+  const m = map[s.state];
+  if (!m) return null; // 'none' / 'done'
+  return <span title={m.t} className={`inline-block w-2 h-2 rounded-full ${m.c} flex-shrink-0`} />;
 }
 
 // ---------- Today Panel ----------
@@ -208,7 +221,10 @@ function KanbanCard({ prospect, onEdit, onDragStart, isSelected, onToggleSelect,
         title="Select"
       />
       <div className={`flex items-start justify-between gap-2 mb-1 ${isSelected ? 'pl-6' : ''} group-hover:pl-6 transition-all`}>
-        <div className="font-semibold text-sm text-slate-900 truncate">{prospect.name || '(no name)'}</div>
+        <div className="flex items-center gap-1.5 min-w-0">
+          <FollowupDot prospect={prospect} />
+          <div className="font-semibold text-sm text-slate-900 truncate">{prospect.name || '(no name)'}</div>
+        </div>
         {prospect.indvOrFamily === 'Family' && (
           <span className="text-[10px] font-bold text-violet-700 bg-violet-100 px-1.5 py-0.5 rounded">FAM</span>
         )}
