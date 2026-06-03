@@ -33,6 +33,14 @@
 
 export const ANNOUNCEMENTS = [
   {
+    id: '2026-06-03-followup-smart',
+    date: '2026-06-03',
+    emoji: '🎯',
+    title: 'Follow-ups just got smarter',
+    body: 'After you log a touch, PRIM now suggests the right next move ("Booked appt → Appointment Set?", "No answer 3× → Ghosted?") — one tap to apply. Need a breather on a prospect? Snooze their follow-up 3 days or a week. And your logged calls/texts now feed the Activity Funnel on your CPA Dashboard automatically.',
+    cta: { label: 'Open Prospects', view: 'prospects' },
+  },
+  {
     id: '2026-06-03-followup-coaching',
     date: '2026-06-03',
     emoji: '📞',
