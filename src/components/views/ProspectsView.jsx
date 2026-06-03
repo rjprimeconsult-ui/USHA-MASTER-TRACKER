@@ -2,6 +2,9 @@
 import { useState, useMemo, useRef, useCallback, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import RepeatedClientBadge from '@/components/RepeatedClientBadge';
+import FollowupNextStep from '@/components/FollowupNextStep';
+import FollowupTimeline from '@/components/FollowupTimeline';
+import LogTouchSheet from '@/components/LogTouchSheet';
 import SendOutreachEmail from '../SendOutreachEmail';
 import OutreachRemindersWidget from '../OutreachRemindersWidget';
 import {
@@ -873,7 +876,8 @@ function OutreachLogList({ log }) {
   );
 }
 
-function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, onConvertToLead, onProspectUpdate }) {
+function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, onConvertToLead, onProspectUpdate, playbook, onLogTouch, agentName }) {
+  const [logOpen, setLogOpen] = useState(false);
   if (!open || !prospect) return null;
   const stage = settings.stages.find(s => s.id === prospect.stage);
   const stageColor = stage?.color || '#64748b';
@@ -937,6 +941,15 @@ function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, o
         {/* Body sections — flex-1 + overflow-y-auto so only this middle
             region scrolls. Hero stays pinned at top, footer at bottom. */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {/* Follow-up next-step coaching card */}
+          <div className="mb-3">
+            <FollowupNextStep
+              prospect={prospect}
+              playbook={playbook}
+              agentName={agentName}
+              onLogTouch={() => setLogOpen(true)}
+            />
+          </div>
           {/* Primary Information */}
           <DetailSection title="Primary Information">
             <DetailRow Icon={User} value={prospect.indvOrFamily === 'Family' ? 'Family policy' : 'Individual'} />
@@ -998,12 +1011,10 @@ function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, o
             </DetailSection>
           )}
 
-          {/* Outreach email log — shown when at least one outreach has fired */}
-          {Array.isArray(prospect.emailLog) && prospect.emailLog.length > 0 && (
-            <DetailSection title="Outreach activity">
-              <OutreachLogList log={prospect.emailLog} />
-            </DetailSection>
-          )}
+          {/* Follow-up activity — merged touch log + email log */}
+          <DetailSection title="Follow-up activity">
+            <FollowupTimeline touchLog={prospect.touchLog} emailLog={prospect.emailLog} />
+          </DetailSection>
         </div>
 
         {/* Action footer — flex-shrink-0 keeps it pinned at the bottom
@@ -1042,7 +1053,18 @@ function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, o
     </div>
   );
 
-  return createPortal(modal, document.body);
+  return (
+    <>
+      {createPortal(modal, document.body)}
+      <LogTouchSheet
+        open={logOpen}
+        prospectName={prospect.name}
+        defaultChannel={(playbook?.stages?.[prospect.stage]?.steps?.[prospect.cadence?.stepIndex || 0]?.channel) || 'Call'}
+        onSave={(touch) => onLogTouch?.(prospect.id, touch)}
+        onClose={() => setLogOpen(false)}
+      />
+    </>
+  );
 }
 
 // ---------- Kanban Scroller ----------
@@ -1107,6 +1129,9 @@ export default function ProspectsView({
   onBulkAdd,
   onSaveSettings,
   onConvertToLead,
+  playbook = { stages: {} },
+  onLogTouch,
+  onSnoozeProspect,
 }) {
   const cfg = settings || defaultProspectSettings();
   const [view, setView] = useState('kanban'); // 'kanban' | 'list'
@@ -1578,6 +1603,9 @@ export default function ProspectsView({
         onDelete={(id) => { setViewing(null); onDeleteWrap(id); }}
         onConvertToLead={(p) => { setViewing(null); onConvertWrap(p); }}
         onProspectUpdate={(p) => { onUpdate(p); setViewing(p); }}
+        playbook={playbook}
+        onLogTouch={onLogTouch}
+        agentName={''}
       />
       <ProspectForm
         open={!!editing}
