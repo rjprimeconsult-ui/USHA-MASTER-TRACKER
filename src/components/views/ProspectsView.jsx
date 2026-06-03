@@ -12,7 +12,7 @@ import {
   Plus, Search, LayoutGrid, List as ListIcon, Settings as SettingsIcon, Upload,
   Calendar, CalendarDays, Phone, Mail, MapPin, ArrowRight, Trash2, X, AlertCircle, Clock, GripVertical,
   User, Home, Briefcase, FileText, Pencil, Pill, Activity, DollarSign, Tag, Palette,
-  ChevronLeft, ChevronRight,
+  ChevronLeft, ChevronRight, Sparkles,
 } from 'lucide-react';
 import { TiltCard, FadeIn, Stagger, StaggerItem } from '../motion/MotionPrimitives';
 import { fmt2, today } from '@/lib/utils';
@@ -893,8 +893,9 @@ function OutreachLogList({ log }) {
   );
 }
 
-function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, onConvertToLead, onProspectUpdate, playbook, onLogTouch, agentName }) {
+function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, onConvertToLead, onProspectUpdate, playbook, onLogTouch, agentName, onApplyStageSuggestion, onSnooze }) {
   const [logOpen, setLogOpen] = useState(false);
+  const [suggestion, setSuggestion] = useState(null);
   if (!open || !prospect) return null;
   const stage = settings.stages.find(s => s.id === prospect.stage);
   const stageColor = stage?.color || '#64748b';
@@ -965,8 +966,21 @@ function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, o
               playbook={playbook}
               agentName={agentName}
               onLogTouch={() => setLogOpen(true)}
+              onSnooze={(days) => onSnooze?.(prospect.id, days)}
             />
           </div>
+          {suggestion && (
+            <div className="mb-3 rounded-xl border border-violet-200 bg-violet-50 p-3 flex items-center gap-2">
+              <Sparkles size={15} className="text-violet-600 flex-shrink-0" />
+              <div className="flex-1 text-sm text-slate-700">{suggestion.reason}</div>
+              <button
+                onClick={() => { onApplyStageSuggestion?.(prospect.id, suggestion.stage); setSuggestion(null); onClose?.(); }}
+                className="bg-violet-600 hover:bg-violet-700 text-white rounded-lg px-3 py-1.5 text-xs font-bold whitespace-nowrap">
+                Move to {settings.stages.find(s => s.id === suggestion.stage)?.label || suggestion.stage}
+              </button>
+              <button onClick={() => setSuggestion(null)} className="text-slate-400 hover:text-slate-700 text-xs font-semibold px-2">Dismiss</button>
+            </div>
+          )}
           {/* Primary Information */}
           <DetailSection title="Primary Information">
             <DetailRow Icon={User} value={prospect.indvOrFamily === 'Family' ? 'Family policy' : 'Individual'} />
@@ -1078,7 +1092,7 @@ function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, o
           open={logOpen}
           prospectName={prospect.name}
           defaultChannel={(playbook?.stages?.[prospect.stage]?.steps?.[prospect.cadence?.stepIndex || 0]?.channel) || 'Call'}
-          onSave={(touch) => onLogTouch?.(prospect.id, touch)}
+          onSave={(touch) => { const s = onLogTouch?.(prospect.id, touch); if (s) setSuggestion(s); }}
           onClose={() => setLogOpen(false)}
         />,
         document.body
@@ -1152,6 +1166,7 @@ export default function ProspectsView({
   playbook = { stages: {} },
   onLogTouch,
   onSnoozeProspect,
+  onApplyStageSuggestion,
 }) {
   const cfg = settings || defaultProspectSettings();
   const [view, setView] = useState('kanban'); // 'kanban' | 'list'
@@ -1640,6 +1655,8 @@ export default function ProspectsView({
         playbook={playbook}
         onLogTouch={onLogTouch}
         agentName={''}
+        onApplyStageSuggestion={onApplyStageSuggestion}
+        onSnooze={onSnoozeProspect}
       />
       <ProspectForm
         open={!!editing}

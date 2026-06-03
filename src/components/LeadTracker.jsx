@@ -35,7 +35,7 @@ import { findDuplicateGroups, enumeratePairs, shouldSkipPair } from '@/lib/dupli
 import { nameKey } from '@/lib/statement';
 import {
   FOLLOWUP_PLAYBOOK_KEY, DEFAULT_PLAYBOOK,
-  ensureFollowupFields, armIfNeeded, armCadence, logTouch as engineLogTouch, snooze as engineSnooze,
+  ensureFollowupFields, armIfNeeded, armCadence, logTouch as engineLogTouch, snooze as engineSnooze, suggestStageAfterTouch,
 } from '@/lib/followupEngine.mjs';
 import LeadForm from './LeadForm';
 import InvestmentForm from './InvestmentForm';
@@ -1376,6 +1376,13 @@ export default function LeadTracker() {
     }));
   }, [followupPlaybook]);
 
+  const applyStageSuggestion = useCallback((prospectId, stage) => {
+    setProspects(prev => prev.map(p => {
+      if (p.id !== prospectId) return p;
+      return armCadence({ ...p, stage }, followupPlaybook, new Date().toISOString());
+    }));
+  }, [followupPlaybook]);
+
   const onAddProspect = useCallback((p) => {
     setProspects(prev => [armIfNeeded(p, followupPlaybook), ...prev]);
     showToast('Prospect added');
@@ -1403,7 +1410,7 @@ export default function LeadTracker() {
     setProspects(prev => prev.map(p => {
       if (p.id !== prospectId) return p;
       const r = engineLogTouch(p, touch, followupPlaybook, now);
-      suggestion = r.suggestedStage;
+      suggestion = suggestStageAfterTouch(r.prospect, { ...touch }, followupPlaybook);
       return { ...r.prospect, lastContact: now.slice(0, 10) };
     }));
     return suggestion;
@@ -1730,6 +1737,7 @@ export default function LeadTracker() {
             playbook={followupPlaybook}
             onLogTouch={logProspectTouch}
             onSnoozeProspect={snoozeProspect}
+            onApplyStageSuggestion={applyStageSuggestion}
           />
         </ViewMount>
         <ViewMount visible={view === 'books'} viewKey="books">

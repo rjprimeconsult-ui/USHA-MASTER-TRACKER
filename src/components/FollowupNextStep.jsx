@@ -1,5 +1,5 @@
 'use client';
-import { Copy, Check, Clock, CheckCircle2 } from 'lucide-react';
+import { Copy, Check, Clock, CheckCircle2, BellOff } from 'lucide-react';
 import { useState } from 'react';
 import { playbookForStage, dueStatus } from '@/lib/followupEngine.mjs';
 
@@ -18,7 +18,7 @@ function mergeScript(script, prospect, agentName) {
   return String(script).replace(/{first}/g, first).replace(/{agent}/g, agentName || 'your agent').replace(/{time}/g, time);
 }
 
-export default function FollowupNextStep({ prospect, playbook, agentName, onLogTouch, now = new Date().toISOString() }) {
+export default function FollowupNextStep({ prospect, playbook, agentName, onLogTouch, onSnooze, now = new Date().toISOString() }) {
   const [copied, setCopied] = useState(false);
   const steps = playbookForStage(playbook, prospect.stage);
   if (steps.length === 0) return null;
@@ -62,6 +62,13 @@ export default function FollowupNextStep({ prospect, playbook, agentName, onLogT
           Log touch
         </button>
       </div>
+      {onSnooze && (
+        <div className="flex items-center gap-2 mt-2 text-xs text-slate-500">
+          <BellOff size={12} /> Snooze:
+          <button onClick={() => onSnooze(3)} className="font-semibold text-slate-600 hover:text-slate-900 underline">3 days</button>
+          <button onClick={() => onSnooze(7)} className="font-semibold text-slate-600 hover:text-slate-900 underline">1 week</button>
+        </div>
+      )}
     </div>
   );
 }
