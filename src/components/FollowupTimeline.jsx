@@ -24,7 +24,7 @@ function rel(at) {
 export default function FollowupTimeline({ touchLog = [], emailLog = [] }) {
   const items = [
     ...touchLog.map(t => ({ kind: 'touch', at: t.at, channel: t.channel, outcome: t.outcome, note: t.note })),
-    ...emailLog.map(e => ({ kind: 'email', at: e.sentAt || e.at, label: e.name || `Email ${e.step ?? ''}`.trim() })),
+    ...emailLog.map(e => ({ kind: 'email', at: e.sentAt || e.at, label: e.templateName || e.name || 'Outreach email' })),
   ].filter(i => i.at).sort((a, b) => new Date(b.at) - new Date(a.at));
 
   if (items.length === 0) return <div className="text-xs text-slate-400 italic">No follow-up activity yet.</div>;
