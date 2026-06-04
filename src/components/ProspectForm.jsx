@@ -21,15 +21,16 @@ const Field = ({ label, children, required }) => (
 
 export default function ProspectForm({ open, prospect, stages, customFields = [], onSave, onClose, onDelete, onConvertToLead }) {
   const [form, setForm] = useState(prospect);
+  const [customSource, setCustomSource] = useState(!!prospect?.source && !PROSPECT_SOURCES.includes(prospect.source));
 
   useEffect(() => { setForm(prospect); }, [prospect]);
 
   if (!open || !form) return null;
 
   const set = (patch) => setForm(f => ({ ...f, ...patch }));
-  // Custom lead-source support: when the source isn't one of the presets
-  // (or the agent explicitly picks "Custom…"), show a free-text input.
-  const [customSource, setCustomSource] = useState(!!prospect?.source && !PROSPECT_SOURCES.includes(prospect.source));
+  // Custom lead-source: show a free-text input when the source isn't one of
+  // the presets (or the agent explicitly picks "Custom…"). (customSource state
+  // is declared with the other hooks above, before the early return.)
   const sourceIsCustom = customSource || (!!form.source && !PROSPECT_SOURCES.includes(form.source));
   const setCustom = (id, val) => setForm(f => ({ ...f, custom: { ...(f.custom || {}), [id]: val } }));
 
