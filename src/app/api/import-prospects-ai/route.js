@@ -289,7 +289,9 @@ export async function POST(req) {
         },
       ];
       extractedHint = `Sent ${imageFiles.length} screenshot(s) to vision.`;
-      model = 'claude-sonnet-4-5';
+      // Stay on Haiku for vision — fast enough for the import UX and fits the
+      // function time budget. (Sonnet was materially slower on screenshots and
+      // risked timing out.) The detailed CRM rubric does the heavy lifting.
     } else {
       // Non-image: operate on first file only (xlsx/csv/pdf)
       const { buffer, filename, type: fileType } = fileInfos[0];
