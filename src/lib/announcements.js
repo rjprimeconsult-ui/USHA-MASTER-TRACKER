@@ -33,6 +33,14 @@
 
 export const ANNOUNCEMENTS = [
   {
+    id: '2026-06-04-crm-screenshot-import',
+    date: '2026-06-04',
+    emoji: '📸',
+    title: 'Import leads from other CRMs by screenshot',
+    body: 'Prospects → Smart Import (AI) now reads screenshots from VanillaSoft and Ringy. Drop a lead\'s screenshot (and even its SMS conversation) and PRIM pulls the name, contact info, lead vendor, and notes — and from a text thread it can grab family size, ages, health needs, and a set appointment. You pick the stage on the review screen. Drop multiple screenshots of the same lead together and they merge into one.',
+    cta: { label: 'Open Prospects', view: 'prospects' },
+  },
+  {
     id: '2026-06-03-salesreport-dedup',
     date: '2026-06-03',
     emoji: '🧹',
