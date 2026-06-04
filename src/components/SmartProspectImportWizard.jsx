@@ -13,7 +13,7 @@ import { authedFetch } from '@/lib/authedFetch';
 const inp = 'w-full bg-white text-slate-900 border border-slate-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500';
 
 export default function SmartProspectImportWizard({ open, onClose, onImport, stages = [], existingProspects = [] }) {
-  const [file, setFile] = useState(null);
+  const [files, setFiles] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
@@ -23,7 +23,7 @@ export default function SmartProspectImportWizard({ open, onClose, onImport, sta
 
   useEffect(() => {
     if (!open) {
-      setFile(null); setBusy(false); setError(''); setResult(null);
+      setFiles([]); setBusy(false); setError(''); setResult(null);
       setEdits([]); setSkipMask(new Set());
     }
   }, [open]);
@@ -31,22 +31,22 @@ export default function SmartProspectImportWizard({ open, onClose, onImport, sta
   if (!open) return null;
 
   const onPick = (e) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    setFile(f); setError(''); setResult(null);
+    const picked = Array.from(e.target.files || []);
+    if (!picked.length) return;
+    setFiles(picked); setError(''); setResult(null);
   };
   const onDrop = (e) => {
     e.preventDefault();
-    const f = e.dataTransfer.files?.[0];
-    if (f) { setFile(f); setError(''); setResult(null); }
+    const dropped = Array.from(e.dataTransfer.files || []);
+    if (dropped.length) { setFiles(dropped); setError(''); setResult(null); }
   };
 
   const runExtract = async () => {
-    if (!file) return;
+    if (!files.length) return;
     setBusy(true); setError('');
     try {
       const form = new FormData();
-      form.append('file', file);
+      for (const f of files) form.append('file', f);
       // Agent rubric overlay
       try {
         const { loadUserRubric } = await import('@/lib/userRubric');
@@ -69,8 +69,8 @@ export default function SmartProspectImportWizard({ open, onClose, onImport, sta
         const { recordImport } = await import('@/lib/importHistory');
         await recordImport({
           kind: 'prospects',
-          filename: file?.name || 'upload',
-          size: file?.size || 0,
+          filename: files.map(f => f.name).join(', ').slice(0, 200) || 'upload',
+          size: files.reduce((s, f) => s + (f.size || 0), 0),
           counts: { prospects: data.prospects?.length || 0 },
           usage: data.usage,
           durationMs: data.durationMs,
@@ -124,6 +124,7 @@ export default function SmartProspectImportWizard({ open, onClose, onImport, sta
         startDate: p.startDate || '',
         source: p.source || '',
         referrer: p.referrer || '',
+        leadVendor: p.leadVendor || '',
         crm: p.crm || 'None',
         stage: p.stage || (stages[0]?.id || 'PENDING_DECISION'),
         appointmentTime: p.appointmentTime || '',
@@ -179,8 +180,8 @@ export default function SmartProspectImportWizard({ open, onClose, onImport, sta
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
           {!result && (
             <div>
-              <input type="file" ref={fileRef} accept=".xlsx,.xls,.csv,.pdf,image/*" onChange={onPick} className="hidden" />
-              {!file ? (
+              <input type="file" ref={fileRef} accept=".xlsx,.xls,.csv,.pdf,image/*" multiple onChange={onPick} className="hidden" />
+              {!files.length ? (
                 <>
                 <div onDragOver={(e) => e.preventDefault()} onDrop={onDrop}
                   onClick={() => fileRef.current?.click()}
@@ -198,15 +199,23 @@ export default function SmartProspectImportWizard({ open, onClose, onImport, sta
                 </>
               ) : (
                 <div className="space-y-3">
-                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex items-center gap-3">
-                    {file.name.toLowerCase().match(/\.(pdf)$/) ? <FileText size={20} className="text-red-500" /> :
-                      file.name.toLowerCase().match(/\.(png|jpg|jpeg|webp|gif)$/) ? <ImageIcon size={20} className="text-violet-500" /> :
-                      <FileSpreadsheet size={20} className="text-emerald-500" />}
-                    <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-sm text-slate-900 truncate">{file.name}</div>
-                      <div className="text-xs text-slate-500">{(file.size / 1024).toFixed(0)} KB</div>
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-semibold text-sm text-slate-900">{files.length} file{files.length !== 1 ? 's' : ''} selected</span>
+                      <button onClick={() => setFiles([])} className="text-slate-400 hover:text-slate-700 text-xs underline">Clear</button>
                     </div>
-                    <button onClick={() => setFile(null)} className="text-slate-400 hover:text-slate-700 text-xs underline">Change</button>
+                    {files.map((f, fi) => (
+                      <div key={fi} className="flex items-center gap-3">
+                        {f.name.toLowerCase().match(/\.(pdf)$/) ? <FileText size={16} className="text-red-500 flex-shrink-0" /> :
+                          f.name.toLowerCase().match(/\.(png|jpg|jpeg|webp|gif)$/) ? <ImageIcon size={16} className="text-violet-500 flex-shrink-0" /> :
+                          <FileSpreadsheet size={16} className="text-emerald-500 flex-shrink-0" />}
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-xs text-slate-900 truncate">{f.name}</div>
+                          <div className="text-[11px] text-slate-500">{(f.size / 1024).toFixed(0)} KB</div>
+                        </div>
+                      </div>
+                    ))}
+                    <button onClick={() => fileRef.current?.click()} className="text-xs text-indigo-600 hover:text-indigo-800 underline pt-1">Add / change files</button>
                   </div>
                   <button onClick={runExtract} disabled={busy}
                     className="w-full bg-gradient-to-br from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 disabled:from-slate-300 disabled:to-slate-300 text-white rounded-xl py-3 font-semibold flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/30">
@@ -274,6 +283,15 @@ export default function SmartProspectImportWizard({ open, onClose, onImport, sta
                 <button onClick={skipAll} className="border border-slate-200 hover:bg-slate-50 px-3 py-1.5 rounded-lg font-semibold">Skip all</button>
               </div>
 
+              {/* Set stage for all */}
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xs font-semibold text-slate-600">Set stage for all:</span>
+                <select className={inp + ' w-auto'} value="" onChange={e => { const v = e.target.value; if (v) setEdits(prev => prev.map(p => ({ ...p, stage: v }))); }}>
+                  <option value="">— choose —</option>
+                  {stageOptions.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                </select>
+              </div>
+
               {/* Prospects table */}
               <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
                 <div className="overflow-x-auto">
@@ -287,6 +305,7 @@ export default function SmartProspectImportWizard({ open, onClose, onImport, sta
                         <th className="px-2 py-2 text-left w-14">St</th>
                         <th className="px-2 py-2 text-left w-32">Stage</th>
                         <th className="px-2 py-2 text-left w-32">Source</th>
+                        <th className="px-2 py-2 text-left w-32">Lead Vendor</th>
                         <th className="px-2 py-2 text-left w-44">Appointment</th>
                         <th className="px-2 py-2 text-right w-24">Quote</th>
                         <th className="px-2 py-2 text-left min-w-[200px]">Situation</th>
@@ -324,6 +343,9 @@ export default function SmartProspectImportWizard({ open, onClose, onImport, sta
                               </select>
                             </td>
                             <td className="px-2 py-1.5">
+                              <input className={inp} value={p.leadVendor || ''} onChange={e => setEdit(i, { leadVendor: e.target.value })} disabled={skipped} title={p.leadVendor} />
+                            </td>
+                            <td className="px-2 py-1.5">
                               <input type="datetime-local" className={inp} value={p.appointmentTime || ''} onChange={e => setEdit(i, { appointmentTime: e.target.value })} disabled={skipped} />
                             </td>
                             <td className="px-2 py-1.5">
@@ -337,7 +359,7 @@ export default function SmartProspectImportWizard({ open, onClose, onImport, sta
                         );
                       })}
                       {edits.length === 0 && (
-                        <tr><td colSpan="10" className="px-3 py-6 text-center text-slate-400 italic">No prospects extracted.</td></tr>
+                        <tr><td colSpan="11" className="px-3 py-6 text-center text-slate-400 italic">No prospects extracted.</td></tr>
                       )}
                     </tbody>
                   </table>
