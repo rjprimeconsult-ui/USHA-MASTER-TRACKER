@@ -97,6 +97,27 @@ CRITICAL RULES:
 11. Quote Size: a dollar amount, often the monthly premium. Keep currency formatting in the source string but extract the number into quoteSize.
 
 Return an empty prospects array if the document has no extractable prospect-level data.
+
+CRM SCREENSHOT RECOGNITION
+You will often receive screenshots from agents' dialer CRMs. Recognize these layouts and map them to prospect fields. IGNORE all UI chrome, buttons, call scripts, and post-call DISPOSITION controls — those are NOT the prospect's stage.
+
+VANILLASOFT (single-lead detail card):
+- Left card: Name; mailing address (city/STATE/zip); E-Mail; phone(s). "Lead Source" here is the VENDOR (e.g. "Julio Fernandez Leads") → put it in leadVendor. "Added on" date → use for the aged rule below. IGNORE Contact ID, Contact Owner, Agent Name, Contact Team, Lead Tier.
+- Middle "Primary Info" table: Age, DOB → dobs; Household Income → income; Medication Taken → meds (health notes); "Best Phone"/"All Phone String" → phone; Campaign → note it in situation; Comment / Agent Remarks → situation.
+- Right "Comments" panel: the agent's conversation notes → fold into situation. Health conditions/medications mentioned → meds.
+- IGNORE the call-script flowchart and the right-side disposition button rail (.reTRY, DNC, IDNC, No Show, Snooze 7/30/90, DISC/Wrong, Has USHA, Unins, MED, Obama, Spanish, NoLicense, Denies Req, Duplicate).
+
+RINGY ("View Lead" card, often with an SMS HISTORY screenshot):
+- Card: Name; phone; email; address (city/STATE/zip); BIRTHDAY → dobs; Quote → quoteSize; Local time → timezone. The notes box text (e.g. "BENEPATH LEAD") → leadVendor + situation.
+- TAGS drive the source/vendor: a "Marketplace Aged" tag → source = "Aged Lead". A "Marketplace Paid" / "Marketplace" tag → a fresh paid marketplace lead; if the notes name a vendor (e.g. Benepath) set source to that vendor when it's one of the allowed sources, else "Web Lead"; always record the vendor + paid/aged in leadVendor. "Received on" date → use for the aged rule.
+- IGNORE: Sale amount, Commission, Cost for lead, Click-to-call / Disposition buttons, NEW FIELD, and workflow tags like "Active Conversation", "Not called", "No SMS drips", "Text Back(No 1st Response)".
+- SMS HISTORY screenshots: summarize the conversation into situation (concise, ≤500 chars). Also extract clearly-stated details: if multiple household members are mentioned set indvOrFamily = "Family" and list their ages/genders in dobs/situation; health needs (e.g. "wants medical insurance", conditions) → meds; any budget/premium figure → quoteSize; if an appointment was clearly agreed (e.g. "Friday at 2pm") set appointmentTime (ISO 8601, infer the date relative to the conversation dates). Do NOT invent data not present.
+
+AGED-LEAD RULE (both CRMs): if the lead's "Added on" / "Received on" date is more than 30 days before today, set source = "Aged Lead" (this overrides). Otherwise use the vendor/tag logic above.
+
+STAGE: for a freshly-imported CRM lead with no clear PRIM stage, default stage to "PENDING_DECISION". The agent will choose the real stage during import review — do not infer stage from CRM dispositions.
+
+NEVER reference or add ACA WRAP (it is a supplementary product excluded from PRIM); if a conversation mentions ACA/marketplace/"Obama", treat it only as the prospect's need context, not a product to record.
 `.trim();
 
 const PROSPECT_SCHEMA = {
@@ -123,6 +144,7 @@ const PROSPECT_SCHEMA = {
           startDate: { type: 'string', description: 'YYYY-MM-DD or empty' },
           source: { type: 'string', enum: ['', ...SOURCES] },
           referrer: { type: 'string', description: 'Name of referrer if source = Referral' },
+          leadVendor: { type: 'string', description: 'Who the lead came from + type if shown, e.g. "Benepath · paid", "Julio Fernandez Leads · exclusive", "Marketplace Aged". Empty if unknown.' },
           crm: { type: 'string', enum: CRMS },
           stage: { type: 'string', enum: DEFAULT_STAGES },
           appointmentTime: { type: 'string', description: 'ISO 8601 datetime or YYYY-MM-DD or empty' },
@@ -220,12 +242,12 @@ export async function POST(req) {
     }, { status: 503 });
   }
 
-  let file;
+  let files;
   let userRubric = '';
   try {
     const form = await req.formData();
-    file = form.get('file');
-    if (!file || typeof file === 'string') {
+    files = form.getAll('file').filter(f => f && typeof f !== 'string');
+    if (!files.length) {
       return Response.json({ error: 'No file uploaded.' }, { status: 400 });
     }
     const rubricRaw = form.get('userRubric');
@@ -234,9 +256,16 @@ export async function POST(req) {
     return Response.json({ error: `Couldn't read upload: ${e.message}` }, { status: 400 });
   }
 
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const filename = file.name || 'upload';
-  const fileType = detectFileType(filename, buffer);
+  let fileInfos;
+  try {
+    fileInfos = await Promise.all(files.map(async f => {
+      const buffer = Buffer.from(await f.arrayBuffer());
+      const filename = f.name || 'upload';
+      return { buffer, filename, type: detectFileType(filename, buffer) };
+    }));
+  } catch (e) {
+    return Response.json({ error: `Couldn't read upload: ${e.message}` }, { status: 400 });
+  }
 
   // Agent's free-form rubric overlay — appended to user message.
   const userRubricText = userRubric.trim()
@@ -245,55 +274,60 @@ export async function POST(req) {
 
   let userContent;
   let extractedHint = '';
+  let model = 'claude-haiku-4-5';
 
   try {
-    if (fileType === 'xlsx' || fileType === 'csv') {
-      const text = extractXlsxText(buffer);
-      const truncated = text.length > 200000 ? text.slice(0, 200000) + '\n[...truncated]' : text;
-      userContent = [{
-        type: 'text',
-        text: `File: ${filename}\nType: ${fileType.toUpperCase()}\n\nExtract every prospect as structured JSON.${userRubricText}\n\n--- FILE CONTENT ---\n${truncated}`,
-      }];
-      extractedHint = `Parsed ${text.split('\n').length} rows from spreadsheet.`;
-    } else if (fileType === 'pdf') {
-      const pdfText = await extractPdfText(buffer).catch(() => '');
-      const cleanText = pdfText.replace(/\s+/g, ' ').trim();
-      if (cleanText.length > 200) {
-        userContent = [{
-          type: 'text',
-          text: `File: ${filename}\nType: PDF (text-extractable)\n\nExtract every prospect as structured JSON.${userRubricText}\n\n--- FILE CONTENT ---\n${pdfText.slice(0, 200000)}`,
-        }];
-        extractedHint = `Extracted ${cleanText.length} chars of text from PDF.`;
-      } else {
-        const base64 = buffer.toString('base64');
-        userContent = [
-          {
-            type: 'document',
-            source: { type: 'base64', media_type: 'application/pdf', data: base64 },
-          },
-          {
-            type: 'text',
-            text: `File: ${filename}\nType: PDF (image-based — sent for vision processing).\n\nExtract every prospect as structured JSON.${userRubricText}`,
-          },
-        ];
-        extractedHint = `Sent ${(buffer.length / 1024).toFixed(0)}KB PDF to vision.`;
-      }
-    } else if (fileType === 'image') {
-      const base64 = buffer.toString('base64');
-      const mediaType = imageMediaType(filename);
+    if (fileInfos.some(fi => fi.type === 'image')) {
+      const imageFiles = fileInfos.filter(fi => fi.type === 'image');
       userContent = [
-        {
+        ...imageFiles.map(fi => ({
           type: 'image',
-          source: { type: 'base64', media_type: mediaType, data: base64 },
-        },
+          source: { type: 'base64', media_type: imageMediaType(fi.filename), data: fi.buffer.toString('base64') },
+        })),
         {
           type: 'text',
-          text: `File: ${filename}\nType: Image (sent for vision processing).\n\nExtract every prospect visible in this image as structured JSON.${userRubricText}`,
+          text: `${imageFiles.length} screenshot(s) attached. Extract every prospect as structured JSON. IMPORTANT: multiple screenshots may show the SAME person (e.g. a CRM lead card PLUS that person's SMS conversation) — MERGE those into ONE prospect by matching name/phone. Different people = separate prospects.${userRubricText}`,
         },
       ];
-      extractedHint = `Sent ${(buffer.length / 1024).toFixed(0)}KB image to vision.`;
+      extractedHint = `Sent ${imageFiles.length} screenshot(s) to vision.`;
+      model = 'claude-sonnet-4-5';
     } else {
-      return Response.json({ error: `Unsupported file type. Got "${filename}". Supported: .xlsx, .xls, .csv, .pdf, .png, .jpg, .webp.` }, { status: 400 });
+      // Non-image: operate on first file only (xlsx/csv/pdf)
+      const { buffer, filename, type: fileType } = fileInfos[0];
+      if (fileType === 'xlsx' || fileType === 'csv') {
+        const text = extractXlsxText(buffer);
+        const truncated = text.length > 200000 ? text.slice(0, 200000) + '\n[...truncated]' : text;
+        userContent = [{
+          type: 'text',
+          text: `File: ${filename}\nType: ${fileType.toUpperCase()}\n\nExtract every prospect as structured JSON.${userRubricText}\n\n--- FILE CONTENT ---\n${truncated}`,
+        }];
+        extractedHint = `Parsed ${text.split('\n').length} rows from spreadsheet.`;
+      } else if (fileType === 'pdf') {
+        const pdfText = await extractPdfText(buffer).catch(() => '');
+        const cleanText = pdfText.replace(/\s+/g, ' ').trim();
+        if (cleanText.length > 200) {
+          userContent = [{
+            type: 'text',
+            text: `File: ${filename}\nType: PDF (text-extractable)\n\nExtract every prospect as structured JSON.${userRubricText}\n\n--- FILE CONTENT ---\n${pdfText.slice(0, 200000)}`,
+          }];
+          extractedHint = `Extracted ${cleanText.length} chars of text from PDF.`;
+        } else {
+          const base64 = buffer.toString('base64');
+          userContent = [
+            {
+              type: 'document',
+              source: { type: 'base64', media_type: 'application/pdf', data: base64 },
+            },
+            {
+              type: 'text',
+              text: `File: ${filename}\nType: PDF (image-based — sent for vision processing).\n\nExtract every prospect as structured JSON.${userRubricText}`,
+            },
+          ];
+          extractedHint = `Sent ${(buffer.length / 1024).toFixed(0)}KB PDF to vision.`;
+        }
+      } else {
+        return Response.json({ error: `Unsupported file type. Got "${filename}". Supported: .xlsx, .xls, .csv, .pdf, .png, .jpg, .webp.` }, { status: 400 });
+      }
     }
   } catch (e) {
     return Response.json({ error: `Couldn't extract file content: ${e.message}` }, { status: 400 });
@@ -305,7 +339,7 @@ export async function POST(req) {
   try {
     // Streaming required at 32K max_tokens to avoid the SDK's 10-min cap.
     const stream = client.messages.stream({
-      model: 'claude-haiku-4-5',
+      model,
       // 32K so big prospect pipelines don't truncate
       max_tokens: 32000,
       system: [
@@ -343,7 +377,9 @@ export async function POST(req) {
     }, { status: 500 });
   }
 
-  console.log(`[import-prospects-ai] file=${filename} type=${fileType} prospects=${parsed.prospects?.length || 0} input=${resp.usage.input_tokens} cached_read=${resp.usage.cache_read_input_tokens || 0} output=${resp.usage.output_tokens}`);
+  const logFilename = fileInfos.map(fi => fi.filename).join(', ');
+  const logType = fileInfos.map(fi => fi.type).join(', ');
+  console.log(`[import-prospects-ai] file=${logFilename} type=${logType} model=${model} prospects=${parsed.prospects?.length || 0} input=${resp.usage.input_tokens} cached_read=${resp.usage.cache_read_input_tokens || 0} output=${resp.usage.output_tokens}`);
 
   return Response.json({
     prospects: parsed.prospects || [],
