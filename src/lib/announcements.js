@@ -33,6 +33,13 @@
 
 export const ANNOUNCEMENTS = [
   {
+    id: '2026-06-04-statement-manager',
+    date: '2026-06-04',
+    emoji: '🗂️',
+    title: 'Manage your uploaded statements',
+    body: 'In Settings → Uploaded statements you can now view every statement\'s data and delete it cleanly — a whole week, a whole month, a single row, or everything in a custom date range (with a preview of what will be removed). Great for undoing a wrong or duplicate upload without clearing everything. It updates your Earned/CPA/Books totals and never touches manually-entered income.',
+  },
+  {
     id: '2026-06-04-crm-screenshot-import',
     date: '2026-06-04',
     emoji: '📸',
