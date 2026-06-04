@@ -33,6 +33,8 @@ import CommissionCalculator from './views/CommissionCalculator';
 import DuplicateResolver from './DuplicateResolver';
 import { findDuplicateGroups, enumeratePairs, shouldSkipPair } from '@/lib/duplicateResolver.mjs';
 import { nameKey } from '@/lib/statement';
+import StatementManager from './StatementManager';
+import { statementsInRange, isStatementIncome } from '@/lib/statementManager.mjs';
 import {
   FOLLOWUP_PLAYBOOK_KEY, DEFAULT_PLAYBOOK,
   ensureFollowupFields, armIfNeeded, armCadence, logTouch as engineLogTouch, snooze as engineSnooze, suggestStageAfterTouch,
@@ -957,6 +959,7 @@ export default function LeadTracker() {
             amount: b.amount,
             source: b.label || 'Production Bonus',
             notes: noteParts.join(' · '),
+            fromStatement: true,
             account: '',
             paymentMethod: null,
             attachment: null,
@@ -1271,6 +1274,37 @@ export default function LeadTracker() {
   // memoized view components below can skip re-render when only unrelated
   // state changes (toast, modal open/close, view switch).
   const onDeleteChargeback = useCallback((id) => setChargebacks(prev => prev.filter(c => c.id !== id)), []);
+
+  const deleteStatementRange = useCallback((from, to) => {
+    const sel = statementsInRange({ ownAdvances, overrides, chargebacks, businessIncome }, from, to);
+    setOwnAdvances(prev => prev.filter(r => !sel.ownIds.has(r.id)));
+    setOverrides(prev => prev.filter(r => !sel.overrideIds.has(r.id)));
+    setChargebacks(prev => prev.filter(r => !sel.chargebackIds.has(r.id)));
+    setBusinessIncome(prev => prev.filter(r => !sel.monthlyIds.has(r.id)));
+    showToast('Deleted statements in range');
+  }, [ownAdvances, overrides, chargebacks, businessIncome, showToast]);
+
+  const deleteStatementWeek = useCallback((period) => {
+    const p = String(period).slice(0, 10);
+    setOwnAdvances(prev => prev.filter(r => String(r.period).slice(0, 10) !== p));
+    setOverrides(prev => prev.filter(r => String(r.period).slice(0, 10) !== p));
+    setChargebacks(prev => prev.filter(r => String(r.period).slice(0, 10) !== p));
+    showToast(`Deleted week ${p}`);
+  }, [showToast]);
+
+  const deleteStatementMonth = useCallback((month) => {
+    const m = String(month).slice(0, 7);
+    setBusinessIncome(prev => prev.filter(r => !(isStatementIncome(r) && String(r.date).slice(0, 7) === m)));
+    showToast(`Deleted payouts for ${m}`);
+  }, [showToast]);
+
+  const deleteStatementRow = useCallback((store, id) => {
+    if (store === 'own')             setOwnAdvances(prev => prev.filter(r => r.id !== id));
+    else if (store === 'override')   setOverrides(prev => prev.filter(r => r.id !== id));
+    else if (store === 'chargeback') setChargebacks(prev => prev.filter(r => r.id !== id));
+    else if (store === 'income')     setBusinessIncome(prev => prev.filter(r => r.id !== id));
+  }, []);
+
   const onAddPlatformExpense = useCallback((e) => { setPlatformExpenses(prev => [e, ...prev]); showToast('Entry added'); }, [showToast]);
   const onBulkAddPlatformExpenses = useCallback((rows) => {
     if (!rows?.length) return;
@@ -2013,6 +2047,20 @@ export default function LeadTracker() {
                   <div className="text-[11px] text-slate-500 mt-0.5">Full 12-step walkthrough of every tab.</div>
                 </button>
               </div>
+            </div>
+
+            <div className="mb-4">
+              <div className="text-sm font-bold text-slate-900 mb-2">Uploaded statements</div>
+              <StatementManager
+                ownAdvances={ownAdvances}
+                overrides={overrides}
+                chargebacks={chargebacks}
+                businessIncome={businessIncome}
+                onDeleteRange={deleteStatementRange}
+                onDeleteWeek={deleteStatementWeek}
+                onDeleteMonth={deleteStatementMonth}
+                onDeleteRow={deleteStatementRow}
+              />
             </div>
 
             <div className="text-xs font-bold text-slate-500 tracking-wider mb-2">DATA</div>
