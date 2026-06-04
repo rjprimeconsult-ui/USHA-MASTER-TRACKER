@@ -27,6 +27,10 @@ export default function ProspectForm({ open, prospect, stages, customFields = []
   if (!open || !form) return null;
 
   const set = (patch) => setForm(f => ({ ...f, ...patch }));
+  // Custom lead-source support: when the source isn't one of the presets
+  // (or the agent explicitly picks "Custom…"), show a free-text input.
+  const [customSource, setCustomSource] = useState(!!prospect?.source && !PROSPECT_SOURCES.includes(prospect.source));
+  const sourceIsCustom = customSource || (!!form.source && !PROSPECT_SOURCES.includes(form.source));
   const setCustom = (id, val) => setForm(f => ({ ...f, custom: { ...(f.custom || {}), [id]: val } }));
 
   const onStateChange = (state) => {
@@ -121,11 +125,24 @@ export default function ProspectForm({ open, prospect, stages, customFields = []
           {/* Source + CRM + Stage */}
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             <Field label="Lead Source">
-              <select className={inp} value={form.source || ''} onChange={e => set({ source: e.target.value })}>
+              <select className={inp}
+                value={sourceIsCustom ? '__custom__' : (form.source || '')}
+                onChange={e => {
+                  const v = e.target.value;
+                  if (v === '__custom__') { setCustomSource(true); set({ source: '' }); }
+                  else { setCustomSource(false); set({ source: v }); }
+                }}>
                 <option value="">—</option>
                 {PROSPECT_SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
+                <option value="__custom__">Custom…</option>
               </select>
             </Field>
+            {sourceIsCustom && (
+              <Field label="Custom source">
+                <input className={inp} value={form.source || ''} onChange={e => set({ source: e.target.value })}
+                  placeholder="Type your own source" autoFocus />
+              </Field>
+            )}
             {form.source === 'Referral' && (
               <Field label="Referrer">
                 <input className={inp} value={form.referrer || ''} onChange={e => set({ referrer: e.target.value })} placeholder="Name of referrer" />

@@ -258,6 +258,8 @@ export const PROSPECT_SOURCES = [
   'Bizz Lead',
   'Benepath',
   'Cold Call',
+  'Dialer',
+  'Bought Lead',
   'Other',
 ];
 

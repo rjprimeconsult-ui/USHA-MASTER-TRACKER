@@ -117,6 +117,8 @@ AGED-LEAD RULE (both CRMs): if the lead's "Added on" / "Received on" date is mor
 
 STAGE: for a freshly-imported CRM lead with no clear PRIM stage, default stage to "PENDING_DECISION". The agent will choose the real stage during import review — do not infer stage from CRM dispositions.
 
+SITUATION: capture ONLY meaningful qualifying context — the prospect's coverage needs, timing, budget, objections, and household. Do NOT copy UI labels, field names, button/tag text, disposition names, call-script wording, or boilerplate. If there's no real qualifying context, leave it short or empty.
+
 NEVER reference or add ACA WRAP (it is a supplementary product excluded from PRIM); if a conversation mentions ACA/marketplace/"Obama", treat it only as the prospect's need context, not a product to record.
 `.trim();
 
@@ -140,7 +142,7 @@ const PROSPECT_SCHEMA = {
           quoteSize: { type: 'string' },
           policyType: { type: 'string', enum: ['', ...POLICY_TYPES] },
           meds: { type: 'string', description: 'Health notes — general impressions only, avoid clinical PHI' },
-          situation: { type: 'string', description: 'Free-form context, ≤500 chars' },
+          situation: { type: 'string', description: 'Qualifying context ONLY — needs, timing, budget, objections, household. No UI labels/buttons/boilerplate. ≤500 chars.' },
           startDate: { type: 'string', description: 'YYYY-MM-DD or empty' },
           source: { type: 'string', enum: ['', ...SOURCES] },
           referrer: { type: 'string', description: 'Name of referrer if source = Referral' },
@@ -302,7 +304,7 @@ Return ONLY a JSON object inside a single \`\`\`json code block (no prose, no pr
       "indvOrFamily": "Indv" | "Family" | "Small Bizz" | "Employer 5-10",
       "dobs": string, "income": string, "quoteSize": string,
       "policyType": "" or one of [${POLICY_TYPES.map(s => `"${s}"`).join(', ')}],
-      "meds": "general health notes only", "situation": "free-form context, <=500 chars",
+      "meds": "general health notes only", "situation": "qualifying context ONLY (needs/timing/budget/objections/household) — no UI labels/buttons/boilerplate, <=500 chars",
       "startDate": "YYYY-MM-DD or ''",
       "source": "" or one of [${SOURCES.map(s => `"${s}"`).join(', ')}],
       "referrer": string, "leadVendor": string,
