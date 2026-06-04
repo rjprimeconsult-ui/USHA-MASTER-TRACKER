@@ -998,7 +998,7 @@ function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, o
           </DetailSection>
 
           {/* Pipeline Activity */}
-          {(prospect.lastContact || prospect.appointmentTime || prospect.nextSteps || prospect.crm) && (
+          {(prospect.lastContact || prospect.appointmentTime || prospect.nextSteps || prospect.crm || prospect.leadVendor) && (
             <DetailSection title="Pipeline Activity">
               {prospect.appointmentTime && (
                 <DetailRow Icon={Clock} label="Appointment" value={apptD?.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} valueClass="font-semibold" />
@@ -1014,6 +1014,9 @@ function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, o
               )}
               {prospect.referrer && (
                 <DetailRow Icon={User} label="Referred By" value={prospect.referrer} />
+              )}
+              {prospect.leadVendor && (
+                <DetailRow Icon={Tag} label="Lead Vendor" value={prospect.leadVendor} />
               )}
             </DetailSection>
           )}
