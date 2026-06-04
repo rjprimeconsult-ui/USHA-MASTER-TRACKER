@@ -10,7 +10,7 @@ import {
 import { newProspect, prospectDedupKey } from '@/lib/prospects';
 import { authedFetch } from '@/lib/authedFetch';
 
-const inp = 'w-full border border-slate-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500';
+const inp = 'w-full bg-white text-slate-900 border border-slate-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500';
 
 export default function SmartProspectImportWizard({ open, onClose, onImport, stages = [], existingProspects = [] }) {
   const [file, setFile] = useState(null);
