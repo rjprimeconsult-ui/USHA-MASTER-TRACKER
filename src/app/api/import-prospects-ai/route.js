@@ -159,10 +159,9 @@ const PROSPECT_SCHEMA = {
       type: 'object',
       properties: {
         totalProspects: { type: 'integer' },
-        byStage: { type: 'object', additionalProperties: { type: 'integer' } },
         format: { type: 'string', description: '"pipeline spreadsheet", "CRM export", "screenshot", etc.' },
       },
-      required: ['totalProspects', 'byStage', 'format'],
+      required: ['totalProspects', 'format'],
       additionalProperties: false,
     },
   },
