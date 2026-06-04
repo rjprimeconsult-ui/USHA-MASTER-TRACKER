@@ -51,6 +51,7 @@ export function newProspect(overrides = {}) {
     startDate: '',
     source: '',
     referrer: '',         // only meaningful when source = Referral
+    leadVendor: '',       // free text, e.g. "Benepath · paid"
     crm: 'None',
     stage: 'PENDING_DECISION',
     appointmentTime: '',  // ISO datetime string

@@ -131,6 +131,10 @@ export default function ProspectForm({ open, prospect, stages, customFields = []
                 <input className={inp} value={form.referrer || ''} onChange={e => set({ referrer: e.target.value })} placeholder="Name of referrer" />
               </Field>
             )}
+            <Field label="Lead Vendor">
+              <input className={inp} value={form.leadVendor || ''} onChange={e => set({ leadVendor: e.target.value })}
+                placeholder="e.g. Benepath · paid, Julio Fernandez Leads · exclusive" />
+            </Field>
             <Field label="CRM">
               <select className={inp} value={form.crm || 'None'} onChange={e => set({ crm: e.target.value })}>
                 {PROSPECT_CRMS.map(c => <option key={c} value={c}>{c}</option>)}
