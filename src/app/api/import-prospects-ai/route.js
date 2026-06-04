@@ -273,10 +273,16 @@ export async function POST(req) {
 
   let userContent;
   let extractedHint = '';
-  let model = 'claude-haiku-4-5';
+  const model = 'claude-haiku-4-5';
+  // Vision + output_config/json_schema causes constrained-sampling HANGS on
+  // Vercel (function spins to the timeout with no Anthropic error) — confirmed
+  // in /api/extract-screenshot-ai. So for image uploads we DON'T use
+  // output_config; we ask for JSON in a fenced block and parse it. Text/
+  // spreadsheet/PDF uploads keep using output_config (reliable for text).
+  const hasImages = fileInfos.some(fi => fi.type === 'image');
 
   try {
-    if (fileInfos.some(fi => fi.type === 'image')) {
+    if (hasImages) {
       const imageFiles = fileInfos.filter(fi => fi.type === 'image');
       userContent = [
         ...imageFiles.map(fi => ({
@@ -285,13 +291,32 @@ export async function POST(req) {
         })),
         {
           type: 'text',
-          text: `${imageFiles.length} screenshot(s) attached. Extract every prospect as structured JSON. IMPORTANT: multiple screenshots may show the SAME person (e.g. a CRM lead card PLUS that person's SMS conversation) — MERGE those into ONE prospect by matching name/phone. Different people = separate prospects.${userRubricText}`,
+          text: `${imageFiles.length} screenshot(s) attached. Extract every prospect. IMPORTANT: multiple screenshots may show the SAME person (e.g. a CRM lead card PLUS that person's SMS conversation) — MERGE those into ONE prospect by matching name/phone. Different people = separate prospects. Follow the CRM SCREENSHOT RECOGNITION rules in the system prompt for field mapping.
+
+Return ONLY a JSON object inside a single \`\`\`json code block (no prose, no preamble):
+{
+  "prospects": [
+    {
+      "name": string, "phone": string, "email": string,
+      "state": "XX (2-letter)", "zip": string, "timezone": string,
+      "indvOrFamily": "Indv" | "Family" | "Small Bizz" | "Employer 5-10",
+      "dobs": string, "income": string, "quoteSize": string,
+      "policyType": "" or one of [${POLICY_TYPES.map(s => `"${s}"`).join(', ')}],
+      "meds": "general health notes only", "situation": "free-form context, <=500 chars",
+      "startDate": "YYYY-MM-DD or ''",
+      "source": "" or one of [${SOURCES.map(s => `"${s}"`).join(', ')}],
+      "referrer": string, "leadVendor": string,
+      "crm": one of [${CRMS.map(s => `"${s}"`).join(', ')}],
+      "stage": one of [${DEFAULT_STAGES.map(s => `"${s}"`).join(', ')}],
+      "appointmentTime": "ISO 8601 datetime or YYYY-MM-DD or ''",
+      "nextSteps": string, "lastContact": "YYYY-MM-DD or ''"
+    }
+  ],
+  "summary": { "totalProspects": integer, "format": "screenshot" }
+}${userRubricText}`,
         },
       ];
       extractedHint = `Sent ${imageFiles.length} screenshot(s) to vision.`;
-      // Stay on Haiku for vision — fast enough for the import UX and fits the
-      // function time budget. (Sonnet was materially slower on screenshots and
-      // risked timing out.) The detailed CRM rubric does the heavy lifting.
     } else {
       // Non-image: operate on first file only (xlsx/csv/pdf)
       const { buffer, filename, type: fileType } = fileInfos[0];
@@ -339,18 +364,22 @@ export async function POST(req) {
   let resp;
   try {
     // Streaming required at 32K max_tokens to avoid the SDK's 10-min cap.
-    const stream = client.messages.stream({
+    const streamParams = {
       model,
       // 32K so big prospect pipelines don't truncate
       max_tokens: 32000,
       system: [
         { type: 'text', text: PROSPECT_RUBRIC, cache_control: { type: 'ephemeral' } },
       ],
-      output_config: {
-        format: { type: 'json_schema', schema: PROSPECT_SCHEMA },
-      },
       messages: [{ role: 'user', content: userContent }],
-    });
+    };
+    // Structured outputs (output_config) only for TEXT inputs. For images it
+    // hangs (constrained-sampling on Vercel) — the image prompt asks for fenced
+    // JSON instead, parsed below.
+    if (!hasImages) {
+      streamParams.output_config = { format: { type: 'json_schema', schema: PROSPECT_SCHEMA } };
+    }
+    const stream = client.messages.stream(streamParams);
     resp = await stream.finalMessage();
   } catch (e) {
     console.error('[import-prospects-ai] Anthropic call failed:', e);
@@ -369,7 +398,12 @@ export async function POST(req) {
 
   let parsed;
   try {
-    parsed = JSON.parse(textBlock.text);
+    // Strip a ```json … ``` fence if present (the image path returns fenced
+    // JSON; the output_config path returns raw JSON — both handled here).
+    let jsonText = textBlock.text.trim();
+    const fence = jsonText.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    if (fence) jsonText = fence[1].trim();
+    parsed = JSON.parse(jsonText);
   } catch (e) {
     return Response.json({
       error: `AI returned invalid JSON: ${e.message}`,
