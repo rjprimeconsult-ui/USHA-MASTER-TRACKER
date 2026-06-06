@@ -94,7 +94,7 @@ export function money(n) {
 // The association plan premium is deliberately NOT added separately: doing
 // so double-counts portal-imported leads (their mainProductPremium already
 // includes it). Association is its own monthly stream — see the spec.
-function leadPremium(lead) {
+export function leadPremium(lead) {
   const main = Number(lead.mainProductPremium) || 0;
   const addons = (lead.products || []).reduce((s, p) => s + (Number(p?.premium) || 0), 0);
   return main + addons;

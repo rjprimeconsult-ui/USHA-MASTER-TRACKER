@@ -3,6 +3,7 @@ import { useState, useMemo, memo } from 'react';
 import { Plus, Search, Edit2, Trash2, Download, ArrowUpDown, X, Calendar, Users, Upload } from 'lucide-react';
 import { STAGES, SOURCES, OWNERS, LEAD_CATEGORIES, MAIN_PRODUCTS, UNDERWRITTEN_PRODUCTS, GI_PRODUCTS } from '@/lib/constants';
 import { fmt, usDate } from '@/lib/utils';
+import { leadPremium } from '@/lib/reports.mjs';
 import { EmptyStateTableRow } from '../EmptyState';
 import RepeatedClientBadge from '@/components/RepeatedClientBadge';
 
@@ -321,6 +322,7 @@ function LeadsView({ leads, onNew, onEdit, onDelete, onBulkDelete, onBulkStage, 
               <th className="text-left p-2">Category</th>
               <th className="text-left p-2">{sortBtn('mainProduct', 'Product')}</th>
               <th className="text-left p-2">Policy #</th>
+              <th className="text-right p-2" title="Annualized Value = monthly premium × 12">AV</th>
               <th className="text-right p-2">{sortBtn('dealValue', 'Advance')}</th>
               <th className="text-left p-2" title="Date the deal was submitted / sold — drives Taken Rate + period filters">{sortBtn('closedDate', 'Added')}</th>
               <th className="text-left p-2" title="When you purchased the lead from your vendor">{sortBtn('dateAdded', 'Purchased')}</th>
@@ -389,6 +391,9 @@ function LeadsView({ leads, onNew, onEdit, onDelete, onBulkDelete, onBulkStage, 
                   <td className="p-2 cursor-pointer" onClick={() => onEdit(l)}><ProductBadge id={l.mainProduct} /></td>
                   <td className="p-2 text-slate-700 text-xs font-mono cursor-pointer" onClick={() => onEdit(l)} title={l.policyNumber || ''}>
                     {l.policyNumber || <span className="text-slate-300 font-sans">—</span>}
+                  </td>
+                  <td className="text-right p-2 text-indigo-700 font-semibold cursor-pointer" onClick={() => onEdit(l)} title="Annualized Value = monthly premium × 12">
+                    {leadPremium(l) > 0 ? fmt(leadPremium(l) * 12) : <span className="text-slate-300 font-normal">—</span>}
                   </td>
                   <td className="text-right p-2 text-emerald-700 font-semibold cursor-pointer" onClick={() => onEdit(l)}>{fmt(l.dealValue)}</td>
                   <td className="p-2 text-slate-500 text-xs cursor-pointer" onClick={() => onEdit(l)}>{l.closedDate ? usDate(l.closedDate) : <span className="text-slate-300">—</span>}</td>
