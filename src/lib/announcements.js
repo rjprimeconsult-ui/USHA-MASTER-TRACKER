@@ -33,6 +33,14 @@
 
 export const ANNOUNCEMENTS = [
   {
+    id: '2026-06-04-bob-av-column',
+    date: '2026-06-04',
+    emoji: '📈',
+    title: 'AV now shows in your Book of Business',
+    body: 'Your Book of Business table now has an AV column (Annualized Value = monthly premium × 12) right between Policy # and Advance — so you can see each deal\'s production value at a glance. It matches the AV in your Reports.',
+    cta: { label: 'Open Book of Business', view: 'leads' },
+  },
+  {
     id: '2026-06-04-statement-manager',
     date: '2026-06-04',
     emoji: '🗂️',
