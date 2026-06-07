@@ -19,6 +19,7 @@ import {
   LineChart, FileText, Phone, Calendar, TrendingUp, Award, Play,
   Volume2, VolumeX,
 } from 'lucide-react';
+import { PrimMark } from '@/components/PrimLogo';
 
 // ----------------------------------------------------------------
 // Brand tokens — matched to PRIM's app accent palette so the
@@ -73,7 +74,7 @@ function Hero() {
         <div className="flex items-center gap-2">
           <div className="w-9 h-9 rounded-lg flex items-center justify-center text-white"
             style={{ background: `linear-gradient(135deg, ${BRAND.accent}, ${BRAND.accent2})` }}>
-            <Sparkles size={18} />
+            <PrimMark size={18} />
           </div>
           <div className="text-white font-bold text-lg tracking-tight">PRIM</div>
         </div>
@@ -1187,7 +1188,7 @@ function Footer() {
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-md flex items-center justify-center text-white"
             style={{ background: `linear-gradient(135deg, ${BRAND.accent}, ${BRAND.accent2})` }}>
-            <Sparkles size={14} />
+            <PrimMark size={14} />
           </div>
           <div className="text-white font-bold text-sm">PRIM</div>
           <span className="text-xs" style={{ color: BRAND.textDim }}>· Performance · Revenue · Investment</span>
