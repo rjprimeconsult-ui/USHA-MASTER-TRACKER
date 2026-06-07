@@ -19,23 +19,34 @@ import {
   LineChart, FileText, Phone, Calendar, TrendingUp, Award, Play,
   Volume2, VolumeX,
 } from 'lucide-react';
+import { PrimMark } from '@/components/PrimLogo';
 
 // ----------------------------------------------------------------
 // Brand tokens — matched to PRIM's app accent palette so the
 // marketing site and product feel like the same brand.
 // ----------------------------------------------------------------
+// Single committed accent. Flip ACCENT_KEY to preview the alternative.
+const ACCENTS = {
+  indigo: { base: '#6366F1', deep: '#4F46E5', soft: '#A5B4FC', glow: '99,102,241' },
+  cyan:   { base: '#06B6D4', deep: '#0891B2', soft: '#67E8F9', glow: '6,182,212' },
+};
+const ACCENT_KEY = 'indigo'; // ← swap to 'cyan' to preview the other accent
+const A = ACCENTS[ACCENT_KEY];
+
 const BRAND = {
-  bg: '#070B17',        // page background — deeper than the app's dark mode for theatrical contrast
+  bg: '#070B17',
   surface: '#0F1730',
   surfaceRaise: '#1A2447',
-  border: 'rgba(99,102,241,0.18)',
-  borderStrong: 'rgba(99,102,241,0.35)',
+  border: `rgba(${A.glow},0.18)`,
+  borderStrong: `rgba(${A.glow},0.35)`,
   textPrimary: '#F1F5F9',
   textMuted: '#94A3B8',
   textDim: '#64748B',
-  accent: '#6366F1',
-  accent2: '#8B5CF6',
-  accent3: '#EC4899',
+  accent: A.base,
+  accent2: A.deep,     // was violet — now a deeper shade of the single accent
+  accent3: A.base,     // was pink — collapsed to the single accent (no rainbow)
+  accentSoft: A.soft,  // light tint for chips/labels (was hardcoded #A5B4FC)
+  glow: A.glow,        // "r,g,b" string for rgba() glows/shadows/washes
   emerald: '#10B981',
 };
 
@@ -45,14 +56,17 @@ const BRAND = {
 function Hero() {
   return (
     <section className="relative overflow-hidden" style={{ background: BRAND.bg }}>
-      {/* Decorative orbs */}
+      {/* Decoration: one restrained glow + a subtle grid (Cool-Tech, no rainbow orbs) */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute top-[-20%] left-[-10%] w-[55vw] h-[55vw] rounded-full"
-          style={{ background: `radial-gradient(circle, ${BRAND.accent}22 0%, transparent 60%)`, filter: 'blur(60px)' }} />
-        <div className="absolute bottom-[-30%] right-[-10%] w-[60vw] h-[60vw] rounded-full"
-          style={{ background: `radial-gradient(circle, ${BRAND.accent2}1F 0%, transparent 60%)`, filter: 'blur(80px)' }} />
-        <div className="absolute top-[40%] left-[30%] w-[30vw] h-[30vw] rounded-full"
-          style={{ background: `radial-gradient(circle, ${BRAND.accent3}15 0%, transparent 60%)`, filter: 'blur(80px)' }} />
+        <div className="absolute top-[-25%] left-1/2 -translate-x-1/2 w-[70vw] h-[45vw] rounded-full"
+          style={{ background: `radial-gradient(ellipse at center, rgba(${BRAND.glow},0.18) 0%, transparent 65%)`, filter: 'blur(80px)' }} />
+        <div className="absolute inset-0"
+          style={{
+            backgroundImage: `linear-gradient(rgba(${BRAND.glow},0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(${BRAND.glow},0.06) 1px, transparent 1px)`,
+            backgroundSize: '48px 48px',
+            maskImage: 'radial-gradient(ellipse 80% 50% at 50% 0%, #000 30%, transparent 75%)',
+            WebkitMaskImage: 'radial-gradient(ellipse 80% 50% at 50% 0%, #000 30%, transparent 75%)',
+          }} />
       </div>
 
       {/* Top nav */}
@@ -60,7 +74,7 @@ function Hero() {
         <div className="flex items-center gap-2">
           <div className="w-9 h-9 rounded-lg flex items-center justify-center text-white"
             style={{ background: `linear-gradient(135deg, ${BRAND.accent}, ${BRAND.accent2})` }}>
-            <Sparkles size={18} />
+            <PrimMark size={18} />
           </div>
           <div className="text-white font-bold text-lg tracking-tight">PRIM</div>
         </div>
@@ -90,8 +104,8 @@ function Hero() {
           {/* Eyebrow chip */}
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider mb-7"
             style={{
-              background: 'rgba(99,102,241,0.12)',
-              color: '#A5B4FC',
+              background: `rgba(${BRAND.glow},0.12)`,
+              color: BRAND.accentSoft,
               border: `1px solid ${BRAND.borderStrong}`,
             }}>
             <Sparkles size={11} />
@@ -103,7 +117,7 @@ function Hero() {
             Full control of your<br />
             <span className="relative inline-block">
               <span className="relative z-10" style={{
-                background: `linear-gradient(135deg, ${BRAND.accent} 0%, ${BRAND.accent2} 50%, ${BRAND.accent3} 100%)`,
+                background: `linear-gradient(135deg, ${BRAND.accent}, ${BRAND.accent2})`,
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
                 backgroundClip: 'text',
@@ -122,7 +136,7 @@ function Hero() {
               className="inline-flex items-center gap-2 text-white font-semibold px-6 py-3.5 rounded-xl shadow-2xl transition-transform hover:scale-[1.02]"
               style={{
                 background: `linear-gradient(135deg, ${BRAND.accent} 0%, ${BRAND.accent2} 100%)`,
-                boxShadow: '0 12px 32px -8px rgba(99,102,241,0.55)',
+                boxShadow: `0 12px 32px -8px rgba(${BRAND.glow},0.55)`,
               }}>
               Start your 7-day trial <ArrowRight size={16} />
             </a>
@@ -172,7 +186,7 @@ function HeroDashboardMockup() {
   const kpis = [
     { label: 'Revenue', value: '$48,290', up: '+18%', accent: '#10B981' },
     { label: 'CPA',     value: '$127',   up: '-12%', accent: '#06B6D4' },
-    { label: 'Won',     value: '34',     up: '+6',   accent: '#8B5CF6' },
+    { label: 'Won',     value: '34',     up: '+6',   accent: BRAND.accent },
   ];
   return (
     <div className="relative">
@@ -276,7 +290,7 @@ function StatsStrip() {
     <section ref={ref} className="relative py-20" style={{ background: BRAND.bg, borderTop: `1px solid ${BRAND.border}`, borderBottom: `1px solid ${BRAND.border}` }}>
       <div className="max-w-7xl mx-auto px-6">
         <div className="text-center mb-12">
-          <div className="text-[11px] uppercase tracking-[0.2em] font-bold mb-2" style={{ color: '#A5B4FC' }}>Trusted by producers</div>
+          <div className="text-[11px] uppercase tracking-[0.2em] font-bold mb-2" style={{ color: BRAND.accentSoft }}>Trusted by producers</div>
           <h2 className="text-white text-3xl md:text-4xl font-bold tracking-tight">
             Agents are already getting paid faster.
           </h2>
@@ -377,7 +391,7 @@ function FeatureStack() {
       title: 'Welcome customers in your brand.',
       body: 'When a deal closes, PRIM fires a polished post-sale email from your domain — with the policy details, your contact info, and the right Dear Doctor Letter attached. Set it once. Never forget again.',
       Mock: MockEmail,
-      gradient: `linear-gradient(135deg, #8B5CF6, ${BRAND.accent3})`,
+      gradient: `linear-gradient(135deg, ${BRAND.accent}, ${BRAND.accent2})`,
     },
     {
       icon: Award,
@@ -393,7 +407,7 @@ function FeatureStack() {
     <section id="features" ref={container} className="relative" style={{ background: BRAND.bg }}>
       {/* Sticky header */}
       <div className="relative max-w-7xl mx-auto px-6 pt-24 pb-8 text-center">
-        <div className="text-[11px] uppercase tracking-[0.2em] font-bold mb-3" style={{ color: '#A5B4FC' }}>What you get</div>
+        <div className="text-[11px] uppercase tracking-[0.2em] font-bold mb-3" style={{ color: BRAND.accentSoft }}>What you get</div>
         <h2 className="text-white font-bold tracking-tight"
           style={{ fontSize: 'clamp(2rem, 5vw, 3.5rem)', letterSpacing: '-0.02em' }}>
           Six tools your spreadsheet<br /> was never going to give you.
@@ -447,7 +461,7 @@ function FeatureCard({ i, total, feature, progress, range }) {
                 style={{ background: gradient, boxShadow: `0 12px 24px -8px ${gradient.match(/#[0-9A-F]{6}/i)?.[0] || BRAND.accent}55` }}>
                 <Icon size={20} />
               </div>
-              <div className="text-[11px] uppercase tracking-[0.18em] font-bold" style={{ color: '#A5B4FC' }}>{tag}</div>
+              <div className="text-[11px] uppercase tracking-[0.18em] font-bold" style={{ color: BRAND.accentSoft }}>{tag}</div>
             </div>
             <h3 className="text-white font-bold tracking-tight" style={{ fontSize: 'clamp(1.65rem, 3.2vw, 2.5rem)', letterSpacing: '-0.02em' }}>{title}</h3>
             <p className="mt-5 text-lg leading-relaxed" style={{ color: BRAND.textMuted }}>{body}</p>
@@ -480,10 +494,10 @@ function MockSmartImport() {
       <div className="space-y-1.5">
         {[
           ['Advance · Premier Advantage',     '$1,250.00', '#34D399'],
-          ['Renewal · Health Access III',     '$28.00',    '#A5B4FC'],
+          ['Renewal · Health Access III',     '$28.00',    BRAND.accentSoft],
           ['Chargeback · Secure Advantage',   '-$485.00',  '#FB7185'],
-          ['Override · Premier Choice',       '$320.00',   '#A5B4FC'],
-          ['Renewal · Premier Advantage',     '$28.00',    '#A5B4FC'],
+          ['Override · Premier Choice',       '$320.00',   BRAND.accentSoft],
+          ['Renewal · Premier Advantage',     '$28.00',    BRAND.accentSoft],
         ].map(([row, amt, color]) => (
           <div key={row} className="flex items-center justify-between px-3 py-1.5 rounded-md"
             style={{ background: 'rgba(0,0,0,0.25)' }}>
@@ -505,7 +519,7 @@ function MockCpaDashboard() {
     <div className="w-full rounded-xl border p-4 text-xs"
       style={{ background: BRAND.surfaceRaise, borderColor: BRAND.border }}>
       <div className="grid grid-cols-3 gap-2 mb-3">
-        {[['Revenue', '$48,290', '#34D399'], ['CPA', '$127', '#06B6D4'], ['Net', '$31,840', '#A5B4FC']].map(([l, v, c]) => (
+        {[['Revenue', '$48,290', '#34D399'], ['CPA', '$127', '#06B6D4'], ['Net', '$31,840', BRAND.accentSoft]].map(([l, v, c]) => (
           <div key={l} className="rounded-lg p-2.5" style={{ background: 'rgba(0,0,0,0.3)' }}>
             <div className="text-[9px] uppercase tracking-wider font-bold" style={{ color: BRAND.textDim }}>{l}</div>
             <div className="font-bold mt-0.5" style={{ color: c, fontSize: 14 }}>{v}</div>
@@ -531,7 +545,7 @@ function MockCpaDashboard() {
 function MockCalculator() {
   const tiers = [
     ['WA', '$680',  '#94A3B8'],
-    ['CA', '$1,020', '#A5B4FC'],
+    ['CA', '$1,020', BRAND.accentSoft],
     ['FTA', '$1,360', '#C4B5FD'],
     ['FSL', '$1,700', '#34D399'],
   ];
@@ -541,7 +555,7 @@ function MockCalculator() {
       <div className="flex items-center justify-between mb-3">
         <span className="text-white font-semibold">Premier Advantage · $289/mo</span>
         <span className="text-[10px] font-bold px-2 py-0.5 rounded"
-          style={{ background: 'rgba(99,102,241,0.18)', color: '#A5B4FC' }}>7.5 mo advance</span>
+          style={{ background: `rgba(${BRAND.glow},0.18)`, color: BRAND.accentSoft }}>7.5 mo advance</span>
       </div>
       <div className="space-y-1.5">
         {tiers.map(([tier, val, c]) => (
@@ -575,7 +589,7 @@ function MockProspects() {
     { label: 'AGED LEAD',       color: '#3B82F6' },  // blue
     { label: 'BOUGHT LEAD',     color: '#F59E0B' },  // amber
     { label: 'ELITE EXCLUSIVE', color: '#10B981' },  // emerald
-    { label: 'PREMIUM SHARED',  color: '#8B5CF6' },  // violet
+    { label: 'PREMIUM SHARED',  color: BRAND.accent },  // single accent (was violet)
   ];
   return (
     <div className="w-full rounded-xl border p-4 text-xs"
@@ -632,18 +646,18 @@ function MockEmail() {
       </div>
       <div className="p-3">
         <div className="text-white font-medium mb-2">
-          Hi <span className="font-mono" style={{ color: '#A5B4FC' }}>{'{customer_first_name}'}</span>,
+          Hi <span className="font-mono" style={{ color: BRAND.accentSoft }}>{'{customer_first_name}'}</span>,
         </div>
         <p className="leading-relaxed mb-3" style={{ color: BRAND.textMuted, fontSize: 11 }}>
           It was a pleasure helping you find a new health insurance plan. I would like to thank you for your business...
         </p>
-        <div className="rounded p-2 mb-2" style={{ background: 'rgba(99,102,241,0.10)', borderLeft: `3px solid ${BRAND.accent}` }}>
+        <div className="rounded p-2 mb-2" style={{ background: `rgba(${BRAND.glow},0.10)`, borderLeft: `3px solid ${BRAND.accent}` }}>
           <div className="text-[9px] uppercase tracking-wider font-bold mb-1" style={{ color: BRAND.textPrimary }}>Your Policy</div>
           <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
             <span style={{ color: BRAND.textDim }}>Plan</span>
-            <span className="font-mono" style={{ color: '#A5B4FC' }}>{'{main_product}'}</span>
+            <span className="font-mono" style={{ color: BRAND.accentSoft }}>{'{main_product}'}</span>
             <span style={{ color: BRAND.textDim }}>Policy</span>
-            <span className="font-mono" style={{ color: '#A5B4FC' }}>{'{policy_number}'}</span>
+            <span className="font-mono" style={{ color: BRAND.accentSoft }}>{'{policy_number}'}</span>
           </div>
         </div>
         <div className="flex items-center gap-1.5 text-[10px]" style={{ color: '#34D399' }}>
@@ -694,7 +708,7 @@ function MockFounder() {
       />
       {/* Caption block at the bottom */}
       <div className="absolute inset-x-0 bottom-0 p-6">
-        <div className="text-[10px] uppercase tracking-[0.15em] font-bold mb-1.5" style={{ color: '#A5B4FC' }}>
+        <div className="text-[10px] uppercase tracking-[0.15em] font-bold mb-1.5" style={{ color: BRAND.accentSoft }}>
           Founder
         </div>
         <div className="text-white font-bold text-xl">Juan Trejo</div>
@@ -746,19 +760,12 @@ function SeeItInAction() {
       className="relative py-32"
       style={{ background: BRAND.bg }}
     >
-      {/* decorative orbs */}
+      {/* decoration: one restrained single-accent glow */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         <div
           className="absolute top-[20%] left-[-10%] w-[40vw] h-[40vw] rounded-full"
           style={{
-            background: `radial-gradient(circle, ${BRAND.accent}1A 0%, transparent 60%)`,
-            filter: 'blur(80px)',
-          }}
-        />
-        <div
-          className="absolute bottom-[10%] right-[-10%] w-[35vw] h-[35vw] rounded-full"
-          style={{
-            background: `radial-gradient(circle, ${BRAND.accent2}1A 0%, transparent 60%)`,
+            background: `radial-gradient(circle, rgba(${BRAND.glow},0.10) 0%, transparent 60%)`,
             filter: 'blur(80px)',
           }}
         />
@@ -873,7 +880,7 @@ function SeeItInAction() {
               className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold tracking-widest uppercase mb-5"
               style={{
                 color: BRAND.accent,
-                background: 'rgba(99,102,241,0.10)',
+                background: `rgba(${BRAND.glow},0.10)`,
                 border: `1px solid ${BRAND.border}`,
               }}
             >
@@ -942,7 +949,7 @@ function HowItWorks() {
     <section id="how" className="relative py-32" style={{ background: BRAND.bg }}>
       <div className="max-w-7xl mx-auto px-6">
         <div className="text-center mb-16">
-          <div className="text-[11px] uppercase tracking-[0.2em] font-bold mb-3" style={{ color: '#A5B4FC' }}>How it works</div>
+          <div className="text-[11px] uppercase tracking-[0.2em] font-bold mb-3" style={{ color: BRAND.accentSoft }}>How it works</div>
           <h2 className="text-white font-bold tracking-tight" style={{ fontSize: 'clamp(2rem, 5vw, 3.5rem)', letterSpacing: '-0.02em' }}>
             Three steps. Under five minutes.
           </h2>
@@ -960,8 +967,8 @@ function HowItWorks() {
             >
               <div className="flex items-center justify-between mb-5">
                 <div className="w-12 h-12 rounded-xl flex items-center justify-center"
-                  style={{ background: 'rgba(99,102,241,0.12)', border: `1px solid ${BRAND.borderStrong}` }}>
-                  <s.icon size={20} style={{ color: '#A5B4FC' }} />
+                  style={{ background: `rgba(${BRAND.glow},0.12)`, border: `1px solid ${BRAND.borderStrong}` }}>
+                  <s.icon size={20} style={{ color: BRAND.accentSoft }} />
                 </div>
                 <div className="font-bold font-mono"
                   style={{
@@ -1018,7 +1025,7 @@ function PricingTeaser() {
     <section id="pricing" className="relative py-32" style={{ background: BRAND.bg }}>
       <div className="max-w-7xl mx-auto px-6">
         <div className="text-center mb-16">
-          <div className="text-[11px] uppercase tracking-[0.2em] font-bold mb-3" style={{ color: '#A5B4FC' }}>Pricing</div>
+          <div className="text-[11px] uppercase tracking-[0.2em] font-bold mb-3" style={{ color: BRAND.accentSoft }}>Pricing</div>
           <h2 className="text-white font-bold tracking-tight" style={{ fontSize: 'clamp(2rem, 5vw, 3.5rem)', letterSpacing: '-0.02em' }}>
             Pick the plan that fits.
           </h2>
@@ -1031,7 +1038,7 @@ function PricingTeaser() {
             <div key={t.name}
               className="relative rounded-2xl border p-8 flex flex-col"
               style={{
-                background: t.highlight ? `linear-gradient(180deg, rgba(99,102,241,0.10), ${BRAND.surface})` : BRAND.surface,
+                background: t.highlight ? `linear-gradient(180deg, rgba(${BRAND.glow},0.10), ${BRAND.surface})` : BRAND.surface,
                 borderColor: t.highlight ? BRAND.borderStrong : BRAND.border,
                 boxShadow: t.highlight ? `0 24px 60px -16px ${BRAND.accent}40` : 'none',
               }}>
@@ -1096,7 +1103,7 @@ function FAQ() {
     <section id="faq" className="relative py-32" style={{ background: BRAND.bg }}>
       <div className="max-w-3xl mx-auto px-6">
         <div className="text-center mb-12">
-          <div className="text-[11px] uppercase tracking-[0.2em] font-bold mb-3" style={{ color: '#A5B4FC' }}>FAQ</div>
+          <div className="text-[11px] uppercase tracking-[0.2em] font-bold mb-3" style={{ color: BRAND.accentSoft }}>FAQ</div>
           <h2 className="text-white font-bold tracking-tight" style={{ fontSize: 'clamp(2rem, 5vw, 3rem)', letterSpacing: '-0.02em' }}>
             Questions, answered.
           </h2>
@@ -1181,7 +1188,7 @@ function Footer() {
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-md flex items-center justify-center text-white"
             style={{ background: `linear-gradient(135deg, ${BRAND.accent}, ${BRAND.accent2})` }}>
-            <Sparkles size={14} />
+            <PrimMark size={14} />
           </div>
           <div className="text-white font-bold text-sm">PRIM</div>
           <span className="text-xs" style={{ color: BRAND.textDim }}>· Performance · Revenue · Investment</span>
