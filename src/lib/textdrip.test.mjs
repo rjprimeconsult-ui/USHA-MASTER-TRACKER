@@ -438,6 +438,18 @@ test('normalizeContactDetail: accepts "birthday" field variant', () => {
   assert.equal(detail.birthdate, '1990-07-04');
 });
 
+test('normalizeContactDetail: TextDrip get-contact-detail real shape (birthdate + zipcode)', () => {
+  // The actual TextDrip response uses `birthdate` and `zipcode` — this locks
+  // the field-name mapping that an earlier bug got wrong.
+  const rec = { email: 'toxaway@verizon.net', state: 'GA', zipcode: '30189', birthdate: '1967-07-12' };
+  const detail = normalizeContactDetail(rec);
+  assert.equal(detail.email, 'toxaway@verizon.net');
+  assert.equal(detail.state, 'GA');
+  assert.equal(detail.zip, '30189');
+  assert.equal(detail.birthdate, '1967-07-12');
+  assert.ok(detail.age >= 58, 'age computed from birthdate');
+});
+
 test('normalizeContactDetail: accepts "date_of_birth" variant', () => {
   const rec = { date_of_birth: '1975-01-01' };
   const detail = normalizeContactDetail(rec);

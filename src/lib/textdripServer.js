@@ -150,7 +150,7 @@ export async function getContact(apiKey, phone) {
   const e164 = digits.startsWith('1') && digits.length === 11
     ? `+${digits}`
     : `+1${digits}`;
-  const data = await tdFetch(apiKey, '/get-contact', { phone: e164 });
+  const data = await tdFetch(apiKey, '/get-contact-detail', { phone: e164 });
   return data?.contact ?? null;
 }
 

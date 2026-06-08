@@ -64,7 +64,8 @@ function buildTranscript(messages) {
   const chronological = [...messages].reverse();
   return chronological.map(m => {
     const speaker = m.direction === 'out' ? 'Agent' : 'Contact';
-    return `${speaker}: ${m.body || ''}`;
+    const when = m.at ? `[${m.at}] ` : '';
+    return `${when}${speaker}: ${m.body || ''}`;
   }).join('\n');
 }
 

@@ -176,7 +176,7 @@ export function normalizeContactDetail(rec) {
     return { email: '', state: '', zip: '', city: '', birthdate: null, age: null };
   }
   // TextDrip may store birthdate as "dob", "birthday", "birth_date", "date_of_birth"
-  const rawDob = rec.dob || rec.birthday || rec.birth_date || rec.date_of_birth || null;
+  const rawDob = rec.birthdate || rec.dob || rec.birthday || rec.birth_date || rec.date_of_birth || null;
   // Normalise to YYYY-MM-DD: strip time component if present
   let birthdate = null;
   if (rawDob && typeof rawDob === 'string') {
@@ -299,7 +299,7 @@ export function mapToProspect(contact, defaultStage, conversation, now, timezone
     zip,
     timezone: tz,
     indvOrFamily: 'Indv',
-    dobs: '',
+    dobs: detail?.birthdate || '',
     income: '',
     quoteSize: '',
     policyType: '',
@@ -364,13 +364,17 @@ export function mergeConversationIntoProspect(prospect, contactOrConversation, n
   const incomingTdId = isContact ? arg.textdripContactId : null;
   const detail = isContact ? (arg.detail || null) : null;
 
+  const tz = isContact ? arg.timezone : null;
+
   // Layer A: fill-only-if-empty (never overwrite agent edits)
   const detailPatch = {};
   if (detail) {
-    if (!prospect.email  && detail.email)  detailPatch.email  = detail.email;
-    if (!prospect.state  && detail.state)  detailPatch.state  = detail.state;
-    if (!prospect.zip    && detail.zip)    detailPatch.zip    = detail.zip;
-    if (!prospect.age    && detail.age != null) detailPatch.age = String(detail.age);
+    if (!prospect.email  && detail.email)     detailPatch.email = detail.email;
+    if (!prospect.state  && detail.state)     detailPatch.state = detail.state;
+    if (!prospect.zip    && detail.zip)       detailPatch.zip   = detail.zip;
+    if (!prospect.dobs   && detail.birthdate) detailPatch.dobs  = detail.birthdate;
+    if (!prospect.age    && detail.age != null) detailPatch.age  = String(detail.age);
+    if (!prospect.timezone && tz)             detailPatch.timezone = tz;
   }
 
   return {
