@@ -35,8 +35,8 @@ const Kpi = memo(({ label, value, numeric, isCurrency = true, isPercent = false,
     </div>
     <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{label}</div>
     <div
-      className="text-2xl font-extrabold text-slate-900 tracking-tight tabular-nums mt-1"
-      style={{ transform: 'translateZ(16px)' }}
+      className="text-2xl font-normal text-slate-900 tracking-tight tabular-nums mt-1"
+      style={{ transform: 'translateZ(16px)', fontFamily: 'var(--font-sora)' }}
     >
       {numeric != null
         ? <CountUp
