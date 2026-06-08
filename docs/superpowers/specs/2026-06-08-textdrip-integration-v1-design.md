@@ -31,10 +31,23 @@ PRIM's **server** talks to TextDrip (never the browser) so the API key stays sec
 - **`POST /api/textdrip/connect`** — body `{ apiKey, importTag, defaultStage }`; validates the key with a lightweight TextDrip call; on success stores secret + config; returns `{ connected, last4, importTag, defaultStage }`.
 - **`GET /api/textdrip/status`** — returns config (connected, last4, importTag, defaultStage, lastSyncAt). Never the raw key.
 - **`POST /api/textdrip/disconnect`** — clears secret + config.
-- **`POST /api/textdrip/sync`** — loads secret + config; calls TextDrip to fetch contacts carrying `importTag` + each one's conversation; normalizes; returns `{ contacts: [{ name, phone, phoneKey, tags, textdripContactId, conversation }], counts }`. Soft cap (e.g. 200 contacts/sync) logged if exceeded. The CLIENT upserts + dedups + shows review.
+- **`POST /api/textdrip/sync`** — loads secret + config; runs the **import scan** (below); returns `{ contacts: [{ name, phone, phoneKey, tags, textdripContactId, conversation:{messages,lastMessageAt} }], scanned, matchedTag, lastMessageAtMax, counts }`. The CLIENT upserts + dedups + shows review, then saves `lastSyncAt = lastMessageAtMax`.
 
-### TextDrip API contract — CONFIRM AT BUILD (Step 0, see below)
-Capabilities are confirmed (Zapier actions: Get Phone Number List, Get All Tags, Get Contact Details, Get All Conversations / Get Chats, etc.); exact base URL, auth header, endpoint paths, params, and response shapes MUST be confirmed from the Postman docs (https://documenter.getpostman.com/view/19538898/UVeKqQb1) or the TextDrip MCP before writing the client. Treat unobtainable contract as a blocker to surface.
+### Import mechanism (revised — there is NO "contacts by tag" endpoint)
+TextDrip exposes contacts only via `get-conversations` (newest-first, 7/page). So sync **scans conversations newest-first and filters by the chosen tag title**:
+1. Page through `/get-conversations` from page 1 (newest).
+2. For each conversation whose `tags[].title` includes `importTag` → it's an import candidate; fetch its thread via `/get-chats?phone=` (cap 50 messages) and normalize.
+3. **Stop** when: a conversation's parsed `last_message_date` is **older than `lastSyncAt`** (incremental), OR a **first-sync page cap** is hit (no prior `lastSyncAt` → scan up to `FIRST_SYNC_MAX_PAGES`, default 30 pages ≈ 210 recent conversations). Log/report how far it scanned.
+This gives "recent + incremental": first sync grabs recent tagged contacts; later syncs only scan new activity. Known limitation (accepted): a tagged contact with no recent message activity beyond the scan window won't import. Respect rate limits: small delay between pages; only fetch `get-chats` for tag-matched candidates.
+
+### TextDrip API contract — CONFIRMED LIVE 2026-06-08 (via MCP introspection)
+- **Base URL:** `https://api.textdrip.com/api`
+- **Auth (PRIM REST):** per-agent **API key** as a Bearer token. (The MCP itself uses OAuth; the REST API uses the account API key — confirm the exact header name from Postman, default `Authorization: Bearer <key>`.) This is the ONE remaining unknown for the implementer to verify against Postman.
+- **`GET /get-conversations?page=N&search=`** → `{ contacts: { data: [ { id, name, last_name, phone, last_message, last_message_date, last_message_id, unread_message_count, tags: [{ id, title, color }], pipeline: { pipeline_id } } ], current_page, last_page, next_page_url, total }, total_unread_count }`. **Newest-first, per_page = 7.** `phone` is 11-digit, leading `1`, no `+` (e.g. `19416851718`).
+- **`GET /get-chats?phone=+1XXXXXXXXXX&page=N`** → `{ contact_id, chats: { data: [ { message, type, date, delivery_status, is_drip, media_html } ], current_page, last_page, total } }`. **per_page = 15.** Direction: `type === 'receiver'` = OUTBOUND (agent→contact); `type === 'sender'` = INBOUND (contact→agent).
+- **`GET /get-all-tags?page=N`** → tag list; **`id` is null in this endpoint** — real tag ids only appear on conversation `tags[]`. Match the import tag by **title** (e.g. `APPT SET PRIM`), not id. Used to populate the tag picker.
+- **Dates** are human strings like `"8th Jun, 2026 6:29 PM"` — parse to ISO (strip ordinal suffix) for sorting/`lastMessageAt`/incremental cutoff.
+- **Phone normalization:** digits-only, drop leading `1` → match against PRIM's normalized phones.
 
 ## Pure lib — `src/lib/textdrip.mjs` (+ `textdrip.test.mjs`, node:test)
 - `phoneKey(raw)` — digits-only, drop leading US `1` → canonical match key.
