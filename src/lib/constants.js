@@ -260,6 +260,7 @@ export const PROSPECT_SOURCES = [
   'Cold Call',
   'Dialer',
   'Bought Lead',
+  'TextDrip',
   'Other',
 ];
 

@@ -65,6 +65,9 @@ import { loadAgentProfile } from '@/lib/agentProfile';
 import { fireConfetti, FadeIn, OrbBackdrop } from './motion/MotionPrimitives';
 import { useAuth } from './auth/AuthProvider';
 import { motion } from 'framer-motion';
+import TextDripReviewModal from './TextDripReviewModal';
+import { supabase, supabaseConfigured } from '@/lib/supabase';
+import { classifyImport, mapToProspect, mergeConversationIntoProspect } from '@/lib/textdrip.mjs';
 
 const ICONS = { Calculator, Repeat, CheckSquare, LayoutDashboard, Users, Columns, Upload, DollarSign, BookOpen, UserPlus, FileText };
 
@@ -227,6 +230,10 @@ export default function LeadTracker() {
   // Duplicate resolver — modal open state + a derived count of unreviewed
   // same-name pairs, used to drive the persistent banner.
   const [showDupResolver, setShowDupResolver] = useState(false);
+
+  // TextDrip review modal state
+  const [tdReviewItems, setTdReviewItems] = useState([]);  // { contact, matchedProspect }[]
+  const [showTdReview, setShowTdReview] = useState(false);
 
   // modals
   const [leadForm, setLeadForm] = useState(null);    // lead obj or null
@@ -1461,6 +1468,158 @@ export default function LeadTracker() {
     setProspects(prev => prev.map(p => p.id === prospectId ? resolveTouchReminder(p, touchId, now) : p));
   }, []);
 
+  // ---- TextDrip sync ----
+  const syncTextDrip = useCallback(async (syncPayload) => {
+    // syncPayload can be provided directly (from the TextDripSettings card inside
+    // ProspectsView) or undefined (from the Sync button in ProspectsView header,
+    // which calls syncTextDrip() without arguments).
+    // When called without a payload we need to fetch status first to get defaultStage.
+    const nowIso = new Date().toISOString();
+
+    // Helper: get bearer token
+    const getBearer = async () => {
+      if (!supabaseConfigured()) return null;
+      try {
+        const { data } = await supabase.auth.getSession();
+        return data.session?.access_token || null;
+      } catch { return null; }
+    };
+    const authedPost = async (url) => {
+      const token = await getBearer();
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      return json;
+    };
+    const authedGet = async (url) => {
+      const token = await getBearer();
+      const res = await fetch(url, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      return json;
+    };
+
+    let payload = syncPayload;
+    let defaultStage = 'PENDING_DECISION';
+
+    try {
+      // If no payload provided, do the sync call ourselves
+      if (!payload) {
+        // First get status for defaultStage
+        let statusData;
+        try {
+          statusData = await authedGet('/api/textdrip/status');
+          defaultStage = statusData.defaultStage || 'PENDING_DECISION';
+        } catch { /* proceed with default */ }
+
+        try {
+          payload = await authedPost('/api/textdrip/sync');
+        } catch (e) {
+          showToast(e.message || 'TextDrip sync failed', 'error');
+          return;
+        }
+      } else {
+        // payload was passed in (from TextDripSettings card's onSyncDone)
+        // get defaultStage from a quick status check
+        try {
+          const s = await authedGet('/api/textdrip/status');
+          defaultStage = s.defaultStage || 'PENDING_DECISION';
+        } catch { /* proceed with default */ }
+      }
+    } catch (e) {
+      showToast(e.message || 'TextDrip sync failed', 'error');
+      return;
+    }
+
+    const { contacts = [], scanned = 0 } = payload || {};
+
+    if (contacts.length === 0) {
+      showToast(`TextDrip: scanned ${scanned} conversation${scanned !== 1 ? 's' : ''} — nothing new`);
+      return;
+    }
+
+    let created = 0;
+    let updated = 0;
+    const reviewItems = [];
+
+    // Read current prospects to classify
+    setProspects(prevProspects => {
+      const toCreate = [];
+      const toUpdate = [];
+
+      for (const contact of contacts) {
+        const classification = classifyImport(contact, prevProspects);
+        if (classification.action === 'create') {
+          const newP = mapToProspect(contact, defaultStage, contact.conversation, nowIso);
+          toCreate.push(newP);
+          created++;
+        } else if (classification.action === 'update') {
+          const matched = prevProspects.find(p => p.id === classification.matchId);
+          if (matched) {
+            toUpdate.push(mergeConversationIntoProspect(matched, contact, nowIso));
+            updated++;
+          }
+        } else {
+          // review
+          const matched = prevProspects.find(p => p.id === classification.matchId);
+          if (matched) {
+            reviewItems.push({ contact, matchedProspect: matched });
+          }
+        }
+      }
+
+      // Apply creates + updates in one atomic state update
+      const updateById = new Map(toUpdate.map(p => [p.id, p]));
+      const withUpdates = prevProspects.map(p => updateById.get(p.id) || p);
+      return [...toCreate, ...withUpdates];
+    });
+
+    // Show review modal if needed
+    if (reviewItems.length > 0) {
+      setTdReviewItems(reviewItems);
+      setShowTdReview(true);
+    }
+
+    // Toast
+    const bits = [];
+    if (created > 0) bits.push(`Imported ${created}`);
+    if (updated > 0) bits.push(`updated ${updated}`);
+    if (reviewItems.length > 0) bits.push(`${reviewItems.length} to review`);
+    if (bits.length === 0) bits.push(`scanned ${scanned}, nothing new`);
+    showToast(bits.join(' · '));
+  }, [showToast]);
+
+  // Apply TextDrip review choices (merge/skip)
+  const handleTdReviewResolve = useCallback((results) => {
+    const nowIso = new Date().toISOString();
+    const mergeItems = results.filter(r => r.action === 'merge');
+    if (mergeItems.length === 0) { setShowTdReview(false); return; }
+
+    setProspects(prev => {
+      let next = [...prev];
+      for (const item of mergeItems) {
+        next = next.map(p => {
+          if (p.id !== item.matchedProspect.id) return p;
+          return mergeConversationIntoProspect(p, item.contact, nowIso);
+        });
+      }
+      return next;
+    });
+    setShowTdReview(false);
+    showToast(`Applied ${mergeItems.length} merge${mergeItems.length !== 1 ? 's' : ''} from TextDrip`);
+  }, [showToast]);
+
   // Convert a Sold prospect into a new Lead. Pre-fills lead fields from the
   // prospect so the user only has to fill in product/premium details.
   const onConvertProspectToLead = useCallback((p) => {
@@ -1779,6 +1938,7 @@ export default function LeadTracker() {
             onSnoozeProspect={snoozeProspect}
             onApplyStageSuggestion={applyStageSuggestion}
             onResolveReminder={resolveProspectReminder}
+            onSyncTextDrip={() => syncTextDrip()}
           />
         </ViewMount>
         <ViewMount visible={view === 'books'} viewKey="books">
@@ -1993,6 +2153,12 @@ export default function LeadTracker() {
         onMerge={handleDupMerge}
         onTagRepeated={handleDupTagRepeated}
         onDismissPair={handleDupDismiss}
+      />
+      <TextDripReviewModal
+        open={showTdReview}
+        items={tdReviewItems}
+        onResolve={handleTdReviewResolve}
+        onClose={() => setShowTdReview(false)}
       />
       <LeadForm open={!!leadForm} lead={leadForm} tier={tier} onSave={saveLead} onClose={() => setLeadForm(null)} onDelete={deleteLead} />
       <InvestmentForm open={!!invForm} entry={invForm} autoHelper={autoHelper} onSave={saveInvestment} onClose={() => setInvForm(null)} onDelete={deleteInvestment} />

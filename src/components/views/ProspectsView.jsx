@@ -125,6 +125,62 @@ function FollowupDot({ prospect }) {
   return <span title={m.t} className={`inline-block w-2 h-2 rounded-full ${m.c} flex-shrink-0`} />;
 }
 
+// ---------- TextDrip Chat Section ----------
+function TextDripChatSection({ chat }) {
+  const msgs = chat?.messages || [];
+  if (msgs.length === 0) return null;
+  const synced = chat.syncedAt
+    ? new Date(chat.syncedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+    : null;
+  return (
+    <div className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+      <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-800/60 px-4 py-2.5 border-b border-slate-200 dark:border-slate-700">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-bold text-slate-700 dark:text-slate-200">Texts (TextDrip)</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300 px-1.5 py-0.5 rounded">
+            {msgs.length} msg{msgs.length !== 1 ? 's' : ''}
+          </span>
+        </div>
+        {synced && (
+          <span className="text-[10px] text-slate-400">synced {synced}</span>
+        )}
+      </div>
+      <div className="p-3 space-y-2 max-h-72 overflow-y-auto bg-white dark:bg-slate-900">
+        {/* Display chronologically (oldest first for readability) */}
+        {[...msgs].reverse().map((msg, i) => (
+          <TextBubble key={i} msg={msg} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TextBubble({ msg }) {
+  const isOut = msg.direction === 'out';
+  const timeStr = msg.at
+    ? new Date(msg.at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+    : null;
+  return (
+    <div className={`flex ${isOut ? 'justify-end' : 'justify-start'}`}>
+      <div
+        className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm shadow-sm ${
+          isOut
+            ? 'bg-indigo-600 text-white rounded-br-sm'
+            : 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 rounded-bl-sm'
+        }`}
+      >
+        <div className="whitespace-pre-wrap break-words leading-relaxed">{msg.body}</div>
+        <div className={`flex items-center gap-1.5 mt-1 text-[10px] ${isOut ? 'text-indigo-200 justify-end' : 'text-slate-400 justify-start'}`}>
+          {timeStr && <span>{timeStr}</span>}
+          {msg.isDrip && (
+            <span className={`uppercase tracking-wider font-bold ${isOut ? 'text-indigo-300' : 'text-slate-400'}`}>drip</span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ---------- Today Panel ----------
 function TodayPanel({ prospects, onEdit }) {
   const todayAppts = prospects
@@ -530,7 +586,7 @@ function CalendarPanel({ prospects, stages, onView }) {
 }
 
 // ---------- Settings Modal ----------
-function SettingsModal({ open, settings, onSave, onClose }) {
+function SettingsModal({ open, settings, onSave, onClose, onSyncTextDrip }) {
   const [draft, setDraft] = useState(settings);
   if (!open) return null;
 
@@ -615,6 +671,16 @@ function SettingsModal({ open, settings, onSave, onClose }) {
               ))}
             </div>
           </section>
+
+          {/* TextDrip integration */}
+          <section>
+            <div className="flex items-center gap-2 mb-2">
+              <h3 className="text-sm font-bold text-slate-900">TextDrip Integration</h3>
+              <span className="text-[10px] font-bold uppercase tracking-wider bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded">v1</span>
+            </div>
+            <p className="text-[11px] text-slate-500 mb-3">Connect your TextDrip API key to pull tagged contacts into Prospects as leads with their SMS conversations.</p>
+            <TextDripSettingsSection stages={draft.stages} onSyncTextDrip={onSyncTextDrip} />
+          </section>
         </div>
         <div className="flex justify-end gap-2 p-5 border-t border-slate-200">
           <button onClick={onClose} className="border border-slate-200 hover:bg-slate-50 px-4 py-2 rounded-lg text-sm font-semibold">Cancel</button>
@@ -622,6 +688,25 @@ function SettingsModal({ open, settings, onSave, onClose }) {
         </div>
       </div>
     </div>
+  );
+}
+
+// Thin wrapper that renders TextDripSettings inside the SettingsModal.
+// It lives here to avoid circular imports (ProspectsView imports from itself).
+function TextDripSettingsSection({ stages, onSyncTextDrip }) {
+  // Lazily imported so it doesn't affect the initial bundle for agents who
+  // haven't connected TextDrip.
+  const [Comp, setComp] = useState(null);
+  useEffect(() => {
+    import('@/components/TextDripSettings').then(m => setComp(() => m.default));
+  }, []);
+  if (!Comp) return <div className="text-xs text-slate-400 italic">Loading…</div>;
+  return (
+    <Comp
+      stages={stages}
+      onSyncDone={onSyncTextDrip}
+      onStatus={() => {}}
+    />
   );
 }
 
@@ -1058,6 +1143,11 @@ function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, o
               onResolveReminder={onResolveReminder ? (touchId) => onResolveReminder(prospect.id, touchId) : undefined}
             />
           </DetailSection>
+
+          {/* TextDrip SMS thread — only shown when chat data exists */}
+          {prospect.textdripChat?.messages?.length > 0 && (
+            <TextDripChatSection chat={prospect.textdripChat} />
+          )}
         </div>
 
         {/* Action footer — flex-shrink-0 keeps it pinned at the bottom
@@ -1186,6 +1276,7 @@ export default function ProspectsView({
   onSnoozeProspect,
   onApplyStageSuggestion,
   onResolveReminder,
+  onSyncTextDrip,
 }) {
   const cfg = settings || defaultProspectSettings();
   const [view, setView] = useState('kanban'); // 'kanban' | 'list'
@@ -1395,6 +1486,15 @@ export default function ProspectsView({
         </div>
         <div className="flex items-center gap-2">
           <input type="file" ref={fileRef} accept=".csv,.xlsx,.xls" onChange={onPickFile} className="hidden" />
+          {onSyncTextDrip && (
+            <button
+              onClick={onSyncTextDrip}
+              className="border border-violet-200 hover:border-violet-400 hover:bg-violet-50 text-violet-700 rounded-lg px-3 py-2 text-sm font-semibold flex items-center gap-1.5"
+              title="Pull tagged contacts from TextDrip into Prospects"
+            >
+              💬 Sync TextDrip
+            </button>
+          )}
           <button onClick={() => setShowSmartImport(true)}
             className="bg-gradient-to-br from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white rounded-lg px-3 py-2 text-sm font-semibold flex items-center gap-1.5 shadow-md shadow-indigo-500/30"
             title="Drop any pipeline file (Excel, CSV, PDF, screenshot) — AI extracts every prospect">
@@ -1692,7 +1792,7 @@ export default function ProspectsView({
         onDelete={onDeleteWrap}
         onConvertToLead={onConvertWrap}
       />
-      <SettingsModal open={showSettings} settings={cfg} onSave={onSaveSettings} onClose={() => setShowSettings(false)} />
+      <SettingsModal open={showSettings} settings={cfg} onSave={onSaveSettings} onClose={() => setShowSettings(false)} onSyncTextDrip={onSyncTextDrip} />
       <ImportWizard open={!!importFile} file={importFile} settings={cfg} prospects={prospects}
         onImport={onImportDone} onClose={() => setImportFile(null)} />
       <SmartProspectImportWizard
