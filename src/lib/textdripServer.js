@@ -22,14 +22,18 @@ function authHeader(apiKey) {
 }
 
 // ---- Low-level fetch helper ----
-async function tdFetch(apiKey, path) {
+// TextDrip's REST endpoints are POST with a JSON body; auth is a Bearer token
+// in the Authorization header (confirmed against the Postman collection).
+async function tdFetch(apiKey, path, body = {}) {
   const url = `${BASE_URL}${path}`;
   const res = await fetch(url, {
-    method: 'GET',
+    method: 'POST',
     headers: {
+      'Accept': 'application/json',
       'Content-Type': 'application/json',
       ...authHeader(apiKey),
     },
+    body: JSON.stringify(body || {}),
   });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
@@ -57,9 +61,9 @@ function delay(ms) {
  * @returns {Promise<string[]>}  Array of tag title strings.
  */
 export async function getAllTags(apiKey) {
-  const data = await tdFetch(apiKey, '/get-all-tags?page=1');
-  // The response shape can vary — normalise defensively.
-  const items = data?.data ?? data?.tags ?? data?.contacts?.data ?? [];
+  const data = await tdFetch(apiKey, '/get-all-tags', { page: '1' });
+  // Response shape: { status, tags: { data: [...] } }
+  const items = data?.tags?.data ?? data?.data ?? [];
   if (!Array.isArray(items)) return [];
   return items.map((t) => t?.title).filter(Boolean);
 }
@@ -75,7 +79,7 @@ export async function getAllTags(apiKey) {
  * @returns {Promise<object>}  The raw `contacts` object { data, current_page, last_page, ... }
  */
 export async function getConversationsPage(apiKey, page) {
-  const data = await tdFetch(apiKey, `/get-conversations?page=${page}`);
+  const data = await tdFetch(apiKey, '/get-conversations', { search: '', page: String(page) });
   return data?.contacts ?? data;
 }
 
@@ -104,7 +108,7 @@ export async function getChats(apiKey, phone, maxPages = 4) {
 
   const allChats = [];
   for (let page = 1; page <= maxPages; page++) {
-    const data = await tdFetch(apiKey, `/get-chats?phone=${encodeURIComponent(e164)}&page=${page}`);
+    const data = await tdFetch(apiKey, '/get-chats', { phone: e164, page: String(page) });
     const chatPage = data?.chats?.data ?? [];
     allChats.push(...chatPage);
     const lastPage = data?.chats?.last_page ?? 1;
