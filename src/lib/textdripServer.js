@@ -50,6 +50,18 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// ---- Run an async fn over items in bounded-concurrency batches ----
+async function inBatches(items, size, fn) {
+  const out = [];
+  for (let i = 0; i < items.length; i += size) {
+    const chunk = items.slice(i, i + size);
+    const res = await Promise.all(chunk.map(fn));
+    out.push(...res);
+    if (i + size < items.length) await delay(40);
+  }
+  return out;
+}
+
 // ============================================================
 // getAllTags(apiKey)
 // ============================================================
@@ -140,67 +152,62 @@ export async function getChats(apiKey, phone, maxPages = 1) {
  */
 export async function runImportScan(apiKey, tagTitle, _lastSyncAt, opts = {}) {
   // Scan the most-recent `maxPages` of conversations every time and import all
-  // tag matches found. We deliberately do NOT apply a time-based incremental
-  // cutoff: re-syncs simply re-scan the recent window and dedup/update via
-  // classifyImport (by phone), so already-imported contacts just refresh.
-  // (A deep/full-history sweep is a separate backfill, not this scan.)
-  const { maxPages = 25 } = opts;
+  // tag matches found. No time-based incremental cutoff: re-syncs re-scan the
+  // recent window and dedup/update via classifyImport (by phone). Conversation
+  // PAGES and per-contact CHATS are fetched in bounded-concurrency batches so
+  // the scan finishes several-fold faster than one-at-a-time.
+  const { maxPages = 25, concurrency = 6 } = opts;
 
-  const contacts = [];
+  // 1) First page tells us how many pages exist.
+  const first = await getConversationsPage(apiKey, 1);
+  const lastPage = first?.last_page ?? 1;
+  const totalPages = Math.max(1, Math.min(maxPages, lastPage));
+
+  // 2) Fetch the remaining pages in parallel batches.
+  const restNums = [];
+  for (let p = 2; p <= totalPages; p++) restNums.push(p);
+  const restPages = await inBatches(restNums, concurrency, (p) =>
+    getConversationsPage(apiKey, p).catch((err) => {
+      console.warn(`[textdrip/sync] page ${p} failed: ${err.message}`);
+      return null;
+    })
+  );
+  const allPages = [first, ...restPages.filter(Boolean)];
+
+  // 3) Collect all tag-matched contacts across the scanned pages.
   let scanned = 0;
-  let pagesScanned = 0;
-  let lastMessageAtMax = null;
-
-  for (let page = 1; page <= maxPages; page++) {
-    let pageData;
-    try {
-      pageData = await getConversationsPage(apiKey, page);
-    } catch (err) {
-      if (contacts.length > 0) {
-        console.warn(`[textdrip/sync] page ${page} failed; returning partial: ${err.message}`);
-        break;
-      }
-      throw new Error(`TextDrip scan failed on page ${page}: ${err.message}`);
-    }
-
-    const convs = pageData?.data ?? [];
-    pagesScanned = page;
-    if (convs.length === 0) break;
-
-    // Collect tag-matched contacts on this page.
-    const matched = [];
-    for (const conv of convs) {
+  const matched = [];
+  for (const pg of allPages) {
+    for (const conv of (pg?.data ?? [])) {
       scanned++;
       const contact = normalizeContact(conv);
       if (contactHasTag(contact, tagTitle)) matched.push({ contact, phone: conv.phone });
     }
-
-    // Fetch chats for matched contacts in PARALLEL (1 page ≈ 15 recent msgs each).
-    const fetched = await Promise.all(matched.map(m =>
-      getChats(apiKey, m.phone)
-        .then(chats => ({ m, chats }))
-        .catch(err => {
-          console.warn(`[textdrip/sync] chats failed for ${m.contact.textdripContactId}: ${err.message}`);
-          return { m, chats: [] };
-        })
-    ));
-
-    for (const { m, chats } of fetched) {
-      const conversation = normalizeConversation(chats);
-      if (conversation.lastMessageAt) {
-        const t = new Date(conversation.lastMessageAt).getTime();
-        if (!lastMessageAtMax || t > new Date(lastMessageAtMax).getTime()) {
-          lastMessageAtMax = conversation.lastMessageAt;
-        }
-      }
-      contacts.push({ ...m.contact, conversation });
-    }
-
-    const lastPage = pageData?.last_page ?? 1;
-    if (page >= lastPage) break;
-    await delay(60);
   }
 
-  console.log(`[textdrip/sync] scan complete: pages=${pagesScanned} scanned=${scanned} matched=${contacts.length}`);
-  return { contacts, scanned, pagesScanned, lastMessageAtMax };
+  // 4) Fetch each matched contact's chats in parallel batches.
+  const fetched = await inBatches(matched, concurrency, (m) =>
+    getChats(apiKey, m.phone)
+      .then((chats) => ({ m, chats }))
+      .catch((err) => {
+        console.warn(`[textdrip/sync] chats failed for ${m.contact.textdripContactId}: ${err.message}`);
+        return { m, chats: [] };
+      })
+  );
+
+  const contacts = [];
+  let lastMessageAtMax = null;
+  for (const { m, chats } of fetched) {
+    const conversation = normalizeConversation(chats);
+    if (conversation.lastMessageAt) {
+      const t = new Date(conversation.lastMessageAt).getTime();
+      if (!lastMessageAtMax || t > new Date(lastMessageAtMax).getTime()) {
+        lastMessageAtMax = conversation.lastMessageAt;
+      }
+    }
+    contacts.push({ ...m.contact, conversation });
+  }
+
+  console.log(`[textdrip/sync] scan complete: pages=${totalPages} scanned=${scanned} matched=${contacts.length}`);
+  return { contacts, scanned, pagesScanned: totalPages, lastMessageAtMax };
 }
