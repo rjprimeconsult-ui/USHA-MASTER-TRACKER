@@ -17,6 +17,7 @@ import { TiltCard, CountUp, FadeIn, Stagger, StaggerItem, Chart3DCard, fireConfe
 import { useChartColors } from '@/lib/useIsDark';
 import { mergeFunnelTotals } from '@/lib/followupRollup.mjs';
 import { computeFollowupStats } from '@/lib/followupStats.mjs';
+import { leadPremium } from '@/lib/reports.mjs';
 import OutreachRemindersWidget from '../OutreachRemindersWidget';
 import PaymentAlertsWidget from '../PaymentAlertsWidget';
 
@@ -208,10 +209,10 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
     // Total commission income (own + override) = what the agent's "Earned" really is.
     const scopedEarned          = scopedOwnEarned + scopedOverrideIncome;
     const scopedAutoDealCount   = scopedIssued.length;
-    const scopedPremiums = scopedIssued.reduce((s, l) => {
-      const addon = (l.products || []).reduce((a, p) => a + (p.premium || 0), 0);
-      return s + (l.mainProductPremium || 0) + productPremium(l.associationPlan) + addon;
-    }, 0);
+    // Use the same premium definition as Reports + Book of Business AV
+    // (main + add-ons). Association is already folded into mainProductPremium
+    // for portal-imported leads, so adding it separately double-counts.
+    const scopedPremiums = scopedIssued.reduce((s, l) => s + leadPremium(l), 0);
     const scopedNet = scopedEarned - scopedInvestedLeadAcq;
     const scopedBusinessExpenses = businessExpenses.filter(e => inPeriod(e.date)).reduce((s, e) => s + Number(e.amount || 0), 0);
     const scopedBusinessIncome   = businessIncome.filter(e => inPeriod(e.date)).reduce((s, e) => s + Number(e.amount || 0), 0);

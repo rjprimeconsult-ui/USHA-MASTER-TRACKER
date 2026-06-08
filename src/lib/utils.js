@@ -20,8 +20,13 @@ export const uid = () => {
   // Fallback — exceedingly unlikely to be reached.
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 };
-export const today = () => new Date().toISOString().slice(0, 10);
-export const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
+// Local calendar date (YYYY-MM-DD) in the user's timezone — NOT UTC. Using
+// toISOString() (UTC) made evening actions roll over to "tomorrow" for US
+// agents (e.g. 9pm ET = next-day UTC), misfiling deals/touches into the wrong
+// week/period. ymdLocal keeps dates in the agent's actual day.
+export const ymdLocal = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+export const today = () => ymdLocal(new Date());
+export const daysAgo = (n) => ymdLocal(new Date(Date.now() - n * 86400000));
 export const fmt  = (n) => '$' + (n || 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
 export const fmt2 = (n) => '$' + (Number(n) || 0).toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: 2 });
 
@@ -64,19 +69,19 @@ export const getWeekStart = (d) => {
   const day = date.getDay();
   const offset = -((day - 5 + 7) % 7);
   date.setDate(date.getDate() + offset);
-  return date.toISOString().slice(0, 10);
+  return ymdLocal(date);
 };
 
 export const getWeekEnd = (friIso) => {
   const d = new Date(friIso + 'T00:00:00');
   d.setDate(d.getDate() + 6);
-  return d.toISOString().slice(0, 10);
+  return ymdLocal(d);
 };
 
 export const weekAgo = (n) => {
   const d = new Date();
   d.setDate(d.getDate() - n * 7);
-  return getWeekStart(d.toISOString().slice(0, 10));
+  return getWeekStart(ymdLocal(d));
 };
 
 export const weekLabel = (iso) =>

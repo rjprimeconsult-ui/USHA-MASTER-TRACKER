@@ -10,7 +10,9 @@
  * outcome also = 1 appointment. Pitches/closes are NOT inferred.
  */
 
-function dayKey(iso) { return new Date(iso).toISOString().slice(0, 10); }
+// Local calendar date (NOT UTC) so an evening touch buckets to the agent's
+// actual day and matches today()/manual-activity dates.
+function dayKey(iso) { const d = new Date(iso); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
 
 /** Map of 'YYYY-MM-DD' -> { dials, appointments } derived from touch logs. */
 export function followupDailyActivity(prospects) {
