@@ -70,7 +70,7 @@ export default function ReportSheet({ report, period, agentName }) {
                 <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
                   {k.label}
                 </div>
-                <div className="text-lg font-extrabold mt-1" style={{ color: cv(k.color) }}>
+                <div className="text-lg kpi-num mt-1" style={{ color: cv(k.color) }}>
                   {k.value}
                 </div>
               </div>
@@ -181,7 +181,7 @@ function SummaryBody({ report }) {
         style={{ background: `${report.net.color}14` }}
       >
         <span className="font-bold text-slate-900">{report.net.label}</span>
-        <span className="text-3xl font-extrabold tabular-nums" style={{ color: cv(report.net.color) }}>
+        <span className="text-3xl kpi-num" style={{ color: cv(report.net.color) }}>
           {report.net.amount}
         </span>
       </div>

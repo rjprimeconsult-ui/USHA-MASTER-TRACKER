@@ -189,6 +189,14 @@
   .dark .text-red-800      { color: #FCA5A5; }
 }
 
+/* Slim numeric font for headline KPI / stat / total numbers (Dashboard, Books,
+   Platforms, Reports). Uses the Sora variable loaded in layout.js. */
+.kpi-num {
+  font-family: var(--font-sora), system-ui, sans-serif;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Page background — flows with the agent's accent palette. */
 /* Page background — flows with the agent's accent palette AND with
    the active theme. Light mode uses the barely-there wash; dark

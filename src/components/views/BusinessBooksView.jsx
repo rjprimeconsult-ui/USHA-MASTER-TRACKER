@@ -750,7 +750,7 @@ function BusinessBooksView({
               <ArrowUpCircle size={16} className="text-emerald-600" />
               <div className="text-xs font-bold text-slate-500 tracking-wider">YTD INCOME</div>
             </div>
-            <div className="mt-2 text-lg font-bold text-slate-900" style={{ transform: 'translateZ(10px)' }}>
+            <div className="mt-2 text-lg kpi-num text-slate-900" style={{ transform: 'translateZ(10px)' }}>
               <CountUp value={ytdIncome} format={(v) => '$' + v.toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: 2 })} />
             </div>
             <div className="text-[11px] text-slate-500">
@@ -770,7 +770,7 @@ function BusinessBooksView({
               <ArrowDownCircle size={16} className="text-red-500" />
               <div className="text-xs font-bold text-slate-500 tracking-wider">YTD EXPENSES</div>
             </div>
-            <div className="mt-2 text-lg font-bold text-slate-900" style={{ transform: 'translateZ(10px)' }}>
+            <div className="mt-2 text-lg kpi-num text-slate-900" style={{ transform: 'translateZ(10px)' }}>
               <CountUp value={ytdExpenses} format={(v) => '$' + v.toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: 2 })} />
             </div>
             <div className="text-[11px] text-slate-500">
@@ -789,7 +789,7 @@ function BusinessBooksView({
               <Wallet size={16} className={ytdNet >= 0 ? 'text-emerald-600' : 'text-red-500'} />
               <div className="text-xs font-bold text-slate-500 tracking-wider">NET (YTD)</div>
             </div>
-            <div className="mt-2 text-lg font-bold" style={{ color: ytdNet >= 0 ? '#10b981' : '#ef4444', transform: 'translateZ(10px)' }}>
+            <div className="mt-2 text-lg kpi-num" style={{ color: ytdNet >= 0 ? '#10b981' : '#ef4444', transform: 'translateZ(10px)' }}>
               {ytdNet >= 0
                 ? <CountUp value={ytdNet} format={(v) => '$' + v.toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: 2 })} />
                 : <>−<CountUp value={Math.abs(ytdNet)} format={(v) => '$' + v.toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: 2 })} /></>}
@@ -804,18 +804,18 @@ function BusinessBooksView({
               <div className="text-xs font-bold text-slate-500 tracking-wider">{ymLabel(activeMonth)}</div>
             </div>
             <div className="mt-1 flex items-baseline gap-2 text-sm" style={{ transform: 'translateZ(10px)' }}>
-              <span className="font-bold text-emerald-600" title={
+              <span className="kpi-num text-emerald-600" title={
                 `Books income: ${fmt2(monthBooksIncTotal)}` +
                 (monthOwnCommissions > 0 ? ` · Advances: ${fmt2(monthOwnCommissions)}` : '') +
                 (monthOverrideIncome > 0 ? ` · Overrides: ${fmt2(monthOverrideIncome)}` : '')
               }>+{fmt2(monthIncTotal)}</span>
               <span className="text-slate-300">·</span>
-              <span className="font-bold text-red-500" title={
+              <span className="kpi-num text-red-500" title={
                 `All Books expenses: ${fmt2(monthExpTotal)}` +
                 (monthPlatformTotal > 0 ? ` (of which Platforms: ${fmt2(monthPlatformTotal)})` : '')
               }>−{fmt2(monthExpTotal)}</span>
               <span className="text-slate-300">=</span>
-              <span className={`font-bold ${monthNet >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
+              <span className={`kpi-num ${monthNet >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
                 {monthNet >= 0 ? '+' : '−'}{fmt2(Math.abs(monthNet))}
               </span>
             </div>

@@ -227,7 +227,7 @@ function PlatformExpensesView({ expenses, onJumpToBooks }) {
                 className="w-24 text-right border border-slate-200 rounded px-2 py-0.5 text-sm font-semibold"
               />
             </div>
-            <div className="mt-2 text-lg font-bold" style={{ color: remaining >= 0 ? '#10b981' : '#ef4444', transform: 'translateZ(10px)' }}>
+            <div className="mt-2 text-lg kpi-num" style={{ color: remaining >= 0 ? '#10b981' : '#ef4444', transform: 'translateZ(10px)' }}>
               {remaining >= 0
                 ? <CountUp value={remaining} format={(v) => '$' + v.toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: 2 })} />
                 : <>−<CountUp value={Math.abs(remaining)} format={(v) => '$' + v.toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: 2 })} /></>}
@@ -255,7 +255,7 @@ function PlatformExpensesView({ expenses, onJumpToBooks }) {
                   </div>
                   <span className={`text-[10px] px-2 py-0.5 rounded ${p.badge}`} style={{ transform: 'translateZ(15px)' }}>{p.id}</span>
                 </div>
-                <div className="text-2xl font-bold text-slate-900 mt-1" style={{ transform: 'translateZ(12px)' }}>
+                <div className="text-2xl kpi-num text-slate-900 mt-1" style={{ transform: 'translateZ(12px)' }}>
                   <CountUp
                     value={total}
                     format={(v) => '$' + (v || 0).toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: 2 })}
@@ -425,7 +425,7 @@ function Stat({ icon, label, value, numeric, decimals = 2, isCurrency = true, su
         {icon}
         <div className="text-xs font-bold text-slate-500 tracking-wider">{label}</div>
       </div>
-      <div className="mt-2 text-lg font-bold text-slate-900" style={{ transform: 'translateZ(10px)' }}>
+      <div className="mt-2 text-lg kpi-num text-slate-900" style={{ transform: 'translateZ(10px)' }}>
         {numeric != null ? <CountUp value={numeric} format={formatNumber} /> : value}
       </div>
       {sub && <div className="text-[11px] text-slate-500">{sub}</div>}

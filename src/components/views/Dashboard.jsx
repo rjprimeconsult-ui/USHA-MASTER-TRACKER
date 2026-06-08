@@ -15,7 +15,7 @@ const Kpi = ({ label, value, grad, Icon }) => (
       <Icon size={16} />
     </div>
     <div className="text-xs text-slate-500">{label}</div>
-    <div className="text-xl font-bold text-slate-900" style={{ transform: 'translateZ(10px)' }}>{value}</div>
+    <div className="text-xl kpi-num text-slate-900" style={{ transform: 'translateZ(10px)' }}>{value}</div>
   </TiltCard>
 );
 
