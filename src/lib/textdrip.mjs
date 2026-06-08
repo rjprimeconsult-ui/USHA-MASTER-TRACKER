@@ -133,6 +133,67 @@ export function normalizeConversation(chatsDataArray) {
   return { messages, lastMessageAt };
 }
 
+// ---------- Contact detail normalisation (Layer A) ----------
+
+/**
+ * ageFromDob(dob, nowIso) — compute integer age from a YYYY-MM-DD birthdate.
+ *
+ * Returns null if dob is absent, unparseable, or unreasonably old (>120).
+ * nowIso is an ISO date string (defaults to today) — injectable for tests.
+ *
+ * @param {string|null} dob     YYYY-MM-DD birthdate string.
+ * @param {string}      [nowIso] ISO date string for "today" (for tests).
+ * @returns {number|null}
+ */
+export function ageFromDob(dob, nowIso) {
+  if (!dob || typeof dob !== 'string') return null;
+  // Expect YYYY-MM-DD; also tolerate YYYY/MM/DD or bare YYYY
+  const cleaned = dob.trim().replace(/\//g, '-');
+  const d = new Date(cleaned);
+  if (Number.isNaN(d.getTime())) return null;
+  const birthYear = d.getUTCFullYear();
+  if (birthYear < 1900 || birthYear > 2100) return null;
+
+  const now = nowIso ? new Date(nowIso) : new Date();
+  let age = now.getUTCFullYear() - birthYear;
+  // Subtract 1 if birthday hasn't occurred yet this year
+  const birthMMDD = d.getUTCMonth() * 100 + d.getUTCDate();
+  const nowMMDD  = now.getUTCMonth() * 100 + now.getUTCDate();
+  if (nowMMDD < birthMMDD) age -= 1;
+  if (age < 0 || age > 120) return null;
+  return age;
+}
+
+/**
+ * normalizeContactDetail(rec) — map the raw object from TextDrip's
+ * /get-contact endpoint into clean fields.
+ *
+ * @param {object|null} rec  Raw contact detail from TextDrip.
+ * @returns {{ email: string, state: string, zip: string, city: string, birthdate: string|null, age: number|null }}
+ */
+export function normalizeContactDetail(rec) {
+  if (!rec || typeof rec !== 'object') {
+    return { email: '', state: '', zip: '', city: '', birthdate: null, age: null };
+  }
+  // TextDrip may store birthdate as "dob", "birthday", "birth_date", "date_of_birth"
+  const rawDob = rec.dob || rec.birthday || rec.birth_date || rec.date_of_birth || null;
+  // Normalise to YYYY-MM-DD: strip time component if present
+  let birthdate = null;
+  if (rawDob && typeof rawDob === 'string') {
+    const match = rawDob.match(/^(\d{4}-\d{2}-\d{2})/);
+    birthdate = match ? match[1] : null;
+  }
+  const age = ageFromDob(birthdate);
+  return {
+    email:     String(rec.email || '').trim(),
+    state:     String(rec.state || '').trim().toUpperCase().slice(0, 2) || '',
+    zip:       String(rec.zip || rec.postal_code || rec.zipcode || '').trim(),
+    city:      String(rec.city || '').trim(),
+    birthdate,
+    age,
+  };
+}
+
 // ---------- Tag helpers ----------
 
 /**
@@ -200,30 +261,43 @@ export function classifyImport(contact, existingProspects) {
 // ---------- Prospect mapping ----------
 
 /**
- * mapToProspect(contact, defaultStage, conversation, now) — build a new
- * prospect object from a TextDrip contact.
+ * mapToProspect(contact, defaultStage, conversation, now, timezone) — build a
+ * new prospect object from a TextDrip contact.
  *
  * Shape mirrors `newProspect()` from src/lib/prospects.js (read that file
  * to understand all fields).  Only the TextDrip-relevant fields are set;
  * the rest default to empty/null to match the newProspect shape.
  *
- * @param {object} contact       Normalised TextDrip contact.
+ * Layer A: if contact.detail (a normalizeContactDetail result) is present,
+ * email/state/zip/age are populated from it.  timezone must be passed in
+ * by the caller (computed via timezoneFromState, which lives in prospects.js
+ * — kept out of this file to stay dependency-free).
+ *
+ * @param {object} contact       Normalised TextDrip contact (may have .detail).
  * @param {string} defaultStage  Stage ID to assign on creation.
  * @param {object} conversation  Result of normalizeConversation().
  * @param {string} [now]         ISO timestamp for syncedAt (defaults to now).
+ * @param {string} [timezone]    Timezone string (e.g. "ET") computed by caller.
  * @returns {object}  New prospect object.
  */
-export function mapToProspect(contact, defaultStage, conversation, now) {
+export function mapToProspect(contact, defaultStage, conversation, now, timezone) {
   const syncedAt = now || new Date().toISOString();
+  const detail = contact.detail || null;
+  const email   = detail?.email   || '';
+  const state   = detail?.state   || '';
+  const zip     = detail?.zip     || '';
+  const age     = (detail && detail.age != null) ? String(detail.age) : '';
+  // Use caller-provided timezone; fall back to empty (caller derives from state)
+  const tz = timezone || '';
   return {
     // Core identity — matches newProspect() field list
     id: _uid(),
     name: contact.name || '',
     phone: contact.phone || '',
-    email: '',
-    state: '',
-    zip: '',
-    timezone: '',
+    email,
+    state,
+    zip,
+    timezone: tz,
     indvOrFamily: 'Indv',
     dobs: '',
     income: '',
@@ -248,6 +322,8 @@ export function mapToProspect(contact, defaultStage, conversation, now) {
     touchLog: [],
     stageEnteredAt: syncedAt,
     cadence: { stepIndex: 0, nextDueAt: null, snoozedUntil: null, completedAt: null },
+    // Layer A: age computed from DOB (integer as string, e.g. "42"), or empty
+    age,
     // TextDrip-specific
     textdripContactId: contact.textdripContactId,
     textdripChat: {
@@ -269,6 +345,9 @@ export function mapToProspect(contact, defaultStage, conversation, now) {
  * Google-Ads prospect stays 'Google Ads'); only defaults to 'TextDrip'
  * when there is no source.
  *
+ * Layer A: if the incoming contact has a .detail object, fills empty
+ * email/state/zip/age fields on the prospect (never overwrites agent edits).
+ *
  * Accepts either a normalised contact ({ conversation, textdripContactId })
  * or a bare conversation ({ messages, lastMessageAt }) for back-compat.
  *
@@ -283,8 +362,20 @@ export function mergeConversationIntoProspect(prospect, contactOrConversation, n
   const isContact = !!arg && typeof arg === 'object' && 'conversation' in arg;
   const conversation = isContact ? arg.conversation : arg;
   const incomingTdId = isContact ? arg.textdripContactId : null;
+  const detail = isContact ? (arg.detail || null) : null;
+
+  // Layer A: fill-only-if-empty (never overwrite agent edits)
+  const detailPatch = {};
+  if (detail) {
+    if (!prospect.email  && detail.email)  detailPatch.email  = detail.email;
+    if (!prospect.state  && detail.state)  detailPatch.state  = detail.state;
+    if (!prospect.zip    && detail.zip)    detailPatch.zip    = detail.zip;
+    if (!prospect.age    && detail.age != null) detailPatch.age = String(detail.age);
+  }
+
   return {
     ...prospect,
+    ...detailPatch,
     source: prospect.source || 'TextDrip',
     textdripContactId: prospect.textdripContactId || incomingTdId || null,
     textdripChat: {

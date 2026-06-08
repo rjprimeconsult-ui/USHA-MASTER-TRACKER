@@ -1549,9 +1549,49 @@ export default function LeadTracker() {
       return;
     }
 
+    // Layer B: bounded-concurrency AI extraction helper (creates only)
+    const extractConversation = async (messages) => {
+      try {
+        const token = await getBearer();
+        const res = await fetch('/api/textdrip/extract-conversation', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ messages }),
+        });
+        if (!res.ok) return null;
+        return await res.json().catch(() => null);
+      } catch {
+        return null;
+      }
+    };
+
+    const runExtractionBatch = async (items, concurrency = 4) => {
+      const results = new Map(); // prospect.id → ai fields
+      for (let i = 0; i < items.length; i += concurrency) {
+        const chunk = items.slice(i, i + concurrency);
+        const settled = await Promise.allSettled(
+          chunk.map(async ({ prospect, messages }) => {
+            const fields = await extractConversation(messages);
+            return { id: prospect.id, fields };
+          })
+        );
+        for (const s of settled) {
+          if (s.status === 'fulfilled' && s.value.fields) {
+            results.set(s.value.id, s.value.fields);
+          }
+        }
+      }
+      return results;
+    };
+
     let created = 0;
     let updated = 0;
     const reviewItems = [];
+    // Collect newly-created prospects for Layer B extraction
+    const createdProspects = [];
 
     // Read current prospects to classify
     setProspects(prevProspects => {
@@ -1561,8 +1601,11 @@ export default function LeadTracker() {
       for (const contact of contacts) {
         const classification = classifyImport(contact, prevProspects);
         if (classification.action === 'create') {
-          const newP = mapToProspect(contact, defaultStage, contact.conversation, nowIso);
+          // Pass contact.timezone (computed by server from state via timezoneFromState)
+          const newP = mapToProspect(contact, defaultStage, contact.conversation, nowIso, contact.timezone);
           toCreate.push(newP);
+          // Track for Layer B AI extraction (first import only)
+          createdProspects.push({ prospect: newP, messages: contact.conversation?.messages || [] });
           created++;
         } else if (classification.action === 'update') {
           const matched = prevProspects.find(p => p.id === classification.matchId);
@@ -1591,13 +1634,36 @@ export default function LeadTracker() {
       setShowTdReview(true);
     }
 
-    // Toast
+    // Toast (initial)
     const bits = [];
     if (created > 0) bits.push(`Imported ${created}`);
     if (updated > 0) bits.push(`updated ${updated}`);
     if (reviewItems.length > 0) bits.push(`${reviewItems.length} to review`);
     if (bits.length === 0) bits.push(`scanned ${scanned}, nothing new`);
     showToast(bits.join(' · '));
+
+    // Layer B: AI extraction for newly-created prospects only (cost control)
+    const extractionTargets = createdProspects.filter(c => c.messages.length > 0);
+    if (extractionTargets.length > 0) {
+      showToast(`Extracting details from ${extractionTargets.length} new conversation${extractionTargets.length !== 1 ? 's' : ''}…`);
+      const aiResults = await runExtractionBatch(extractionTargets);
+
+      if (aiResults.size > 0) {
+        setProspects(prev => prev.map(p => {
+          const fields = aiResults.get(p.id);
+          if (!fields) return p;
+          // Fill only empty fields (never overwrite)
+          const patch = {};
+          if (!p.situation     && fields.situation)     patch.situation     = fields.situation;
+          if (!p.meds          && fields.meds)          patch.meds          = fields.meds;
+          if (!p.appointmentTime && fields.appointmentTime) patch.appointmentTime = fields.appointmentTime;
+          if (!p.dobs          && fields.dobs)          patch.dobs          = fields.dobs;
+          if (p.indvOrFamily === 'Indv' && fields.indvOrFamily === 'Family') patch.indvOrFamily = 'Family';
+          if (!p.quoteSize     && fields.quoteSize)     patch.quoteSize     = fields.quoteSize;
+          return Object.keys(patch).length > 0 ? { ...p, ...patch } : p;
+        }));
+      }
+    }
   }, [showToast]);
 
   // Apply TextDrip review choices (merge/skip)

@@ -37,7 +37,7 @@ export const ANNOUNCEMENTS = [
     date: '2026-06-08',
     emoji: '💬',
     title: 'Pull your TextDrip leads into PRIM',
-    body: 'Connect your TextDrip API key in Prospects → Settings → TextDrip Integration. Tag contacts in TextDrip with any custom tag (e.g. "APPT SET PRIM"), then hit Sync to pull them in as prospects — complete with their full SMS conversation thread. Re-syncing updates the conversation without creating duplicates.',
+    body: 'Connect your TextDrip API key in Prospects → Settings → TextDrip Integration. Tag contacts in TextDrip (e.g. "APPT SET PRIM"), then hit Sync to pull them in as prospects — with their full SMS thread, email/state/zip/age, and AI-extracted situation, health notes, appointment time, and household from the conversation. Re-syncing updates without creating duplicates.',
     cta: { label: 'Open Prospects', view: 'prospects' },
   },
   {

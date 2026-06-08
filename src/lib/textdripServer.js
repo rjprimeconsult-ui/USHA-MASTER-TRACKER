@@ -12,7 +12,8 @@
  * one place if the live API turns out to use a different header name.
  */
 
-import { normalizeContact, normalizeConversation, contactHasTag, parseTdDate } from './textdrip.mjs';
+import { normalizeContact, normalizeConversation, normalizeContactDetail, contactHasTag, parseTdDate } from './textdrip.mjs';
+import { timezoneFromState } from './prospects.js';
 
 const BASE_URL = 'https://api.textdrip.com/api';
 
@@ -131,6 +132,29 @@ export async function getChats(apiKey, phone, maxPages = 1) {
 }
 
 // ============================================================
+// getContact(apiKey, phone)
+// ============================================================
+/**
+ * Fetch full contact detail for a given phone number via /get-contact.
+ * Returns data.contact (the raw object) or null on error.
+ *
+ * Phone must be passed as "+1XXXXXXXXXX" — uses the same e164 normalization
+ * as getChats.
+ *
+ * @param {string} apiKey
+ * @param {string} phone   Raw phone from TextDrip (e.g. "19416851718")
+ * @returns {Promise<object|null>}  Raw contact object or null.
+ */
+export async function getContact(apiKey, phone) {
+  const digits = String(phone || '').replace(/\D/g, '');
+  const e164 = digits.startsWith('1') && digits.length === 11
+    ? `+${digits}`
+    : `+1${digits}`;
+  const data = await tdFetch(apiKey, '/get-contact', { phone: e164 });
+  return data?.contact ?? null;
+}
+
+// ============================================================
 // runImportScan(apiKey, tagTitle, lastSyncAt, opts)
 // ============================================================
 /**
@@ -185,19 +209,26 @@ export async function runImportScan(apiKey, tagTitle, _lastSyncAt, opts = {}) {
     }
   }
 
-  // 4) Fetch each matched contact's chats in parallel batches.
+  // 4) Fetch each matched contact's chats AND detail in parallel batches.
+  //    Both calls are fired concurrently per contact (Promise.all inside inBatches).
   const fetched = await inBatches(matched, concurrency, (m) =>
-    getChats(apiKey, m.phone)
-      .then((chats) => ({ m, chats }))
-      .catch((err) => {
-        console.warn(`[textdrip/sync] chats failed for ${m.contact.textdripContactId}: ${err.message}`);
-        return { m, chats: [] };
-      })
+    Promise.all([
+      getChats(apiKey, m.phone)
+        .catch((err) => {
+          console.warn(`[textdrip/sync] chats failed for ${m.contact.textdripContactId}: ${err.message}`);
+          return [];
+        }),
+      getContact(apiKey, m.phone)
+        .catch((err) => {
+          console.warn(`[textdrip/sync] get-contact failed for ${m.contact.textdripContactId}: ${err.message}`);
+          return null;
+        }),
+    ]).then(([chats, rawDetail]) => ({ m, chats, rawDetail }))
   );
 
   const contacts = [];
   let lastMessageAtMax = null;
-  for (const { m, chats } of fetched) {
+  for (const { m, chats, rawDetail } of fetched) {
     const conversation = normalizeConversation(chats);
     if (conversation.lastMessageAt) {
       const t = new Date(conversation.lastMessageAt).getTime();
@@ -205,7 +236,10 @@ export async function runImportScan(apiKey, tagTitle, _lastSyncAt, opts = {}) {
         lastMessageAtMax = conversation.lastMessageAt;
       }
     }
-    contacts.push({ ...m.contact, conversation });
+    // Layer A: normalise the contact detail; compute timezone from state
+    const detail = normalizeContactDetail(rawDetail);
+    const timezone = timezoneFromState(detail.state);
+    contacts.push({ ...m.contact, conversation, detail, timezone });
   }
 
   console.log(`[textdrip/sync] scan complete: pages=${totalPages} scanned=${scanned} matched=${contacts.length}`);

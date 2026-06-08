@@ -17,6 +17,8 @@ import {
   classifyImport,
   mapToProspect,
   mergeConversationIntoProspect,
+  ageFromDob,
+  normalizeContactDetail,
 } from './textdrip.mjs';
 
 // ============================================================
@@ -378,4 +380,167 @@ test('mergeConversationIntoProspect: does not mutate original prospect', () => {
   // They should be different object references
   assert.notEqual(updated, orig);
   assert.notEqual(updated.textdripChat, orig.textdripChat);
+});
+
+// ============================================================
+// ageFromDob — Layer A helper
+// ============================================================
+test('ageFromDob: birthday already passed this year → correct age', () => {
+  // nowIso = 2026-06-08; birthday 1985-03-15 → age 41
+  const age = ageFromDob('1985-03-15', '2026-06-08');
+  assert.equal(age, 41);
+});
+
+test('ageFromDob: birthday NOT yet this year → subtract 1', () => {
+  // nowIso = 2026-06-08; birthday 1985-12-25 → age 40 (birthday in Dec not yet reached)
+  const age = ageFromDob('1985-12-25', '2026-06-08');
+  assert.equal(age, 40);
+});
+
+test('ageFromDob: exact birthday today → age counts birthday as reached', () => {
+  // nowIso = 2026-06-08; birthday 1990-06-08 → age 36
+  const age = ageFromDob('1990-06-08', '2026-06-08');
+  assert.equal(age, 36);
+});
+
+test('ageFromDob: null/empty → null', () => {
+  assert.equal(ageFromDob(null), null);
+  assert.equal(ageFromDob(''), null);
+  assert.equal(ageFromDob(undefined), null);
+});
+
+test('ageFromDob: invalid string → null', () => {
+  assert.equal(ageFromDob('not-a-date', '2026-06-08'), null);
+});
+
+test('ageFromDob: future birthdate (>120 years) → null', () => {
+  // Year 2200 would give a negative age
+  assert.equal(ageFromDob('2200-01-01', '2026-06-08'), null);
+});
+
+// ============================================================
+// normalizeContactDetail — Layer A
+// ============================================================
+test('normalizeContactDetail: maps email, state, zip, city', () => {
+  const rec = { email: 'jane@example.com', state: 'FL', zip: '33179', city: 'Miami', dob: '1985-03-15' };
+  const detail = normalizeContactDetail(rec);
+  assert.equal(detail.email, 'jane@example.com');
+  assert.equal(detail.state, 'FL');
+  assert.equal(detail.zip, '33179');
+  assert.equal(detail.city, 'Miami');
+  assert.equal(detail.birthdate, '1985-03-15');
+  assert.ok(typeof detail.age === 'number', 'age should be a number');
+});
+
+test('normalizeContactDetail: accepts "birthday" field variant', () => {
+  const rec = { birthday: '1990-07-04' };
+  const detail = normalizeContactDetail(rec);
+  assert.equal(detail.birthdate, '1990-07-04');
+});
+
+test('normalizeContactDetail: accepts "date_of_birth" variant', () => {
+  const rec = { date_of_birth: '1975-01-01' };
+  const detail = normalizeContactDetail(rec);
+  assert.equal(detail.birthdate, '1975-01-01');
+});
+
+test('normalizeContactDetail: state uppercased, sliced to 2 chars', () => {
+  const rec = { state: 'florida' };
+  const detail = normalizeContactDetail(rec);
+  assert.equal(detail.state, 'FL');
+});
+
+test('normalizeContactDetail: null input → empty defaults', () => {
+  const detail = normalizeContactDetail(null);
+  assert.equal(detail.email, '');
+  assert.equal(detail.state, '');
+  assert.equal(detail.zip, '');
+  assert.equal(detail.city, '');
+  assert.equal(detail.birthdate, null);
+  assert.equal(detail.age, null);
+});
+
+test('normalizeContactDetail: missing dob → age null', () => {
+  const rec = { email: 'a@b.com', state: 'TX' };
+  const detail = normalizeContactDetail(rec);
+  assert.equal(detail.age, null);
+  assert.equal(detail.birthdate, null);
+});
+
+// ============================================================
+// mapToProspect — Layer A fields
+// ============================================================
+test('mapToProspect: email/state/zip/age from contact.detail', () => {
+  const contact = mkContact('19416851718', '99');
+  contact.detail = { email: 'jane@test.com', state: 'FL', zip: '33179', city: 'Miami', birthdate: '1985-03-15', age: 41 };
+  const conv = normalizeConversation([]);
+  const p = mapToProspect(contact, 'PENDING_DECISION', conv, '2026-06-08T00:00:00.000Z', 'ET');
+  assert.equal(p.email, 'jane@test.com');
+  assert.equal(p.state, 'FL');
+  assert.equal(p.zip, '33179');
+  assert.equal(p.age, '41');
+  assert.equal(p.timezone, 'ET');
+});
+
+test('mapToProspect: missing detail → empty email/state/zip/age', () => {
+  const contact = mkContact('19416851718', '55');
+  const conv = normalizeConversation([]);
+  const p = mapToProspect(contact, 'PENDING_DECISION', conv, '2026-06-08T00:00:00.000Z');
+  assert.equal(p.email, '');
+  assert.equal(p.state, '');
+  assert.equal(p.zip, '');
+  assert.equal(p.age, '');
+  assert.equal(p.timezone, '');
+});
+
+// ============================================================
+// mergeConversationIntoProspect — Layer A fill-if-empty
+// ============================================================
+test('mergeConversationIntoProspect: fills empty email/state/zip/age from contact.detail', () => {
+  const existing = {
+    id: 'p-merge',
+    name: 'Bob',
+    phone: '9416851718',
+    email: '',
+    state: '',
+    zip: '',
+    age: '',
+    source: 'TextDrip',
+    textdripContactId: '10',
+    textdripChat: { messages: [], lastMessageAt: null, syncedAt: '2026-01-01T00:00:00.000Z' },
+  };
+  const contact = {
+    textdripContactId: '10',
+    detail: { email: 'bob@test.com', state: 'CA', zip: '90210', city: 'LA', birthdate: '1980-05-01', age: 46 },
+    conversation: normalizeConversation([]),
+  };
+  const updated = mergeConversationIntoProspect(existing, contact, '2026-06-08T00:00:00.000Z');
+  assert.equal(updated.email, 'bob@test.com');
+  assert.equal(updated.state, 'CA');
+  assert.equal(updated.zip, '90210');
+  assert.equal(updated.age, '46');
+});
+
+test('mergeConversationIntoProspect: does NOT overwrite existing email/state', () => {
+  const existing = {
+    id: 'p-noop',
+    name: 'Alice',
+    phone: '9416851718',
+    email: 'alice@existing.com',
+    state: 'NY',
+    zip: '10001',
+    source: 'TextDrip',
+    textdripContactId: '20',
+    textdripChat: { messages: [], lastMessageAt: null, syncedAt: '2026-01-01T00:00:00.000Z' },
+  };
+  const contact = {
+    textdripContactId: '20',
+    detail: { email: 'alice@new.com', state: 'CA', zip: '90210', city: 'LA', birthdate: null, age: null },
+    conversation: normalizeConversation([]),
+  };
+  const updated = mergeConversationIntoProspect(existing, contact, '2026-06-08T00:00:00.000Z');
+  // Should not overwrite
+  assert.equal(updated.email, 'alice@existing.com');
+  assert.equal(updated.state, 'NY');
+  assert.equal(updated.zip, '10001');
 });
