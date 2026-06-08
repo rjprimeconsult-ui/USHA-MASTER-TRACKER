@@ -138,27 +138,24 @@ export async function getChats(apiKey, phone, maxPages = 1) {
  *   lastMessageAtMax: string|null
  * }>}
  */
-export async function runImportScan(apiKey, tagTitle, lastSyncAt, opts = {}) {
-  const { firstSyncMaxPages = 15 } = opts;
-  const cutoff = lastSyncAt ? new Date(lastSyncAt).getTime() : null;
+export async function runImportScan(apiKey, tagTitle, _lastSyncAt, opts = {}) {
+  // Scan the most-recent `maxPages` of conversations every time and import all
+  // tag matches found. We deliberately do NOT apply a time-based incremental
+  // cutoff: re-syncs simply re-scan the recent window and dedup/update via
+  // classifyImport (by phone), so already-imported contacts just refresh.
+  // (A deep/full-history sweep is a separate backfill, not this scan.)
+  const { maxPages = 25 } = opts;
 
   const contacts = [];
   let scanned = 0;
   let pagesScanned = 0;
   let lastMessageAtMax = null;
-  let done = false;
 
-  for (let page = 1; !done; page++) {
-    if (!lastSyncAt && page > firstSyncMaxPages) {
-      console.log(`[textdrip/sync] First-sync page cap (${firstSyncMaxPages}) reached — stopping.`);
-      break;
-    }
-
+  for (let page = 1; page <= maxPages; page++) {
     let pageData;
     try {
       pageData = await getConversationsPage(apiKey, page);
     } catch (err) {
-      // If we already collected some contacts, return partial instead of failing hard.
       if (contacts.length > 0) {
         console.warn(`[textdrip/sync] page ${page} failed; returning partial: ${err.message}`);
         break;
@@ -170,20 +167,15 @@ export async function runImportScan(apiKey, tagTitle, lastSyncAt, opts = {}) {
     pagesScanned = page;
     if (convs.length === 0) break;
 
-    // Collect tag-matched contacts on this page (applying the incremental cutoff).
+    // Collect tag-matched contacts on this page.
     const matched = [];
     for (const conv of convs) {
       scanned++;
-      if (cutoff) {
-        const convAt = parseTdDate(conv.last_message_date);
-        if (convAt && new Date(convAt).getTime() < cutoff) { done = true; break; }
-      }
       const contact = normalizeContact(conv);
       if (contactHasTag(contact, tagTitle)) matched.push({ contact, phone: conv.phone });
     }
 
-    // Fetch chats for matched contacts in PARALLEL (1 page ≈ 15 recent msgs each)
-    // — this is the big speedup vs the old one-at-a-time fetch.
+    // Fetch chats for matched contacts in PARALLEL (1 page ≈ 15 recent msgs each).
     const fetched = await Promise.all(matched.map(m =>
       getChats(apiKey, m.phone)
         .then(chats => ({ m, chats }))
@@ -206,7 +198,7 @@ export async function runImportScan(apiKey, tagTitle, lastSyncAt, opts = {}) {
 
     const lastPage = pageData?.last_page ?? 1;
     if (page >= lastPage) break;
-    if (!done) await delay(60);
+    await delay(60);
   }
 
   console.log(`[textdrip/sync] scan complete: pages=${pagesScanned} scanned=${scanned} matched=${contacts.length}`);
