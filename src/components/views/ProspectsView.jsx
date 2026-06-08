@@ -1064,6 +1064,12 @@ function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, o
             <Trash2 size={14} /> Delete
           </button>
           <div className="flex gap-2 items-center flex-wrap">
+            {/* Always-available Log touch — works on any prospect, any stage,
+                independent of the suggested-next-step card. */}
+            <button onClick={() => setLogOpen(true)}
+              className="border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg px-4 py-2 text-sm font-semibold flex items-center gap-1.5">
+              <Phone size={14} /> Log touch
+            </button>
             {/* Outreach email — only renders for allowlist beta users
                 (component handles its own access gate). */}
             <SendOutreachEmail
