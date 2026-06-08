@@ -98,7 +98,7 @@ export async function getConversationsPage(apiKey, page) {
  * @param {number} [maxPages]  Max pages to fetch (default 4)
  * @returns {Promise<object[]>}  Flat array of raw chat items.
  */
-export async function getChats(apiKey, phone, maxPages = 4) {
+export async function getChats(apiKey, phone, maxPages = 1) {
   // TextDrip get-chats expects phone in +1XXXXXXXXXX form.
   // If phone already has digits only (11-digit leading 1), prefix with +.
   const digits = String(phone || '').replace(/\D/g, '');
@@ -139,7 +139,7 @@ export async function getChats(apiKey, phone, maxPages = 4) {
  * }>}
  */
 export async function runImportScan(apiKey, tagTitle, lastSyncAt, opts = {}) {
-  const { firstSyncMaxPages = 30 } = opts;
+  const { firstSyncMaxPages = 15 } = opts;
   const cutoff = lastSyncAt ? new Date(lastSyncAt).getTime() : null;
 
   const contacts = [];
@@ -158,60 +158,57 @@ export async function runImportScan(apiKey, tagTitle, lastSyncAt, opts = {}) {
     try {
       pageData = await getConversationsPage(apiKey, page);
     } catch (err) {
+      // If we already collected some contacts, return partial instead of failing hard.
+      if (contacts.length > 0) {
+        console.warn(`[textdrip/sync] page ${page} failed; returning partial: ${err.message}`);
+        break;
+      }
       throw new Error(`TextDrip scan failed on page ${page}: ${err.message}`);
     }
 
     const convs = pageData?.data ?? [];
     pagesScanned = page;
-
     if (convs.length === 0) break;
 
+    // Collect tag-matched contacts on this page (applying the incremental cutoff).
+    const matched = [];
     for (const conv of convs) {
       scanned++;
-
-      // Incremental stop: if this conversation's last message is older than
-      // our last sync, everything beyond this point is already synced.
       if (cutoff) {
         const convAt = parseTdDate(conv.last_message_date);
-        if (convAt && new Date(convAt).getTime() < cutoff) {
-          done = true;
-          break;
-        }
+        if (convAt && new Date(convAt).getTime() < cutoff) { done = true; break; }
       }
-
       const contact = normalizeContact(conv);
-      if (!contactHasTag(contact, tagTitle)) continue;
+      if (contactHasTag(contact, tagTitle)) matched.push({ contact, phone: conv.phone });
+    }
 
-      // Only fetch chats for tag-matched contacts (respects rate limits)
-      let chats = [];
-      try {
-        chats = await getChats(apiKey, conv.phone);
-      } catch (err) {
-        // Log and continue with empty conversation on chat fetch failure
-        console.warn(`[textdrip/sync] Failed to fetch chats for contact ${contact.textdripContactId}: ${err.message}`);
-      }
+    // Fetch chats for matched contacts in PARALLEL (1 page ≈ 15 recent msgs each)
+    // — this is the big speedup vs the old one-at-a-time fetch.
+    const fetched = await Promise.all(matched.map(m =>
+      getChats(apiKey, m.phone)
+        .then(chats => ({ m, chats }))
+        .catch(err => {
+          console.warn(`[textdrip/sync] chats failed for ${m.contact.textdripContactId}: ${err.message}`);
+          return { m, chats: [] };
+        })
+    ));
 
+    for (const { m, chats } of fetched) {
       const conversation = normalizeConversation(chats);
-
-      // Track the max lastMessageAt across all matched contacts
       if (conversation.lastMessageAt) {
         const t = new Date(conversation.lastMessageAt).getTime();
         if (!lastMessageAtMax || t > new Date(lastMessageAtMax).getTime()) {
           lastMessageAtMax = conversation.lastMessageAt;
         }
       }
-
-      contacts.push({ ...contact, conversation });
+      contacts.push({ ...m.contact, conversation });
     }
 
     const lastPage = pageData?.last_page ?? 1;
     if (page >= lastPage) break;
-
-    // Small delay between pages to respect rate limits
-    if (!done) await delay(150);
+    if (!done) await delay(60);
   }
 
   console.log(`[textdrip/sync] scan complete: pages=${pagesScanned} scanned=${scanned} matched=${contacts.length}`);
-
   return { contacts, scanned, pagesScanned, lastMessageAtMax };
 }

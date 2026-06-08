@@ -9,7 +9,7 @@
  * The client handles all upsert/dedup/review logic.
  *
  * Auth: Supabase bearer token → getUser.
- * maxDuration = 60s (scan can take several seconds on first sync).
+ * maxDuration = 300s (first-sync scan pages TextDrip's API sequentially).
  *
  * SECURITY: No PHI (names, message bodies) is ever logged here.
  */
@@ -19,7 +19,7 @@ import { runImportScan } from '@/lib/textdripServer';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 function jsonResponse(status, payload) {
   return new Response(JSON.stringify(payload), {
