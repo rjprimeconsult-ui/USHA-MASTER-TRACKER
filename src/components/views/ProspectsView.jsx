@@ -894,7 +894,7 @@ function OutreachLogList({ log }) {
   );
 }
 
-function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, onConvertToLead, onProspectUpdate, playbook, onLogTouch, agentName, onApplyStageSuggestion, onSnooze }) {
+function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, onConvertToLead, onProspectUpdate, playbook, onLogTouch, agentName, onApplyStageSuggestion, onSnooze, onResolveReminder }) {
   const [logOpen, setLogOpen] = useState(false);
   const [suggestion, setSuggestion] = useState(null);
   // ProspectDetail stays mounted across prospects — clear any pending
@@ -1052,7 +1052,11 @@ function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, o
 
           {/* Follow-up activity — merged touch log + email log */}
           <DetailSection title="Follow-up activity">
-            <FollowupTimeline touchLog={prospect.touchLog} emailLog={prospect.emailLog} />
+            <FollowupTimeline
+              touchLog={prospect.touchLog}
+              emailLog={prospect.emailLog}
+              onResolveReminder={onResolveReminder ? (touchId) => onResolveReminder(prospect.id, touchId) : undefined}
+            />
           </DetailSection>
         </div>
 
@@ -1181,6 +1185,7 @@ export default function ProspectsView({
   onLogTouch,
   onSnoozeProspect,
   onApplyStageSuggestion,
+  onResolveReminder,
 }) {
   const cfg = settings || defaultProspectSettings();
   const [view, setView] = useState('kanban'); // 'kanban' | 'list'
@@ -1675,6 +1680,7 @@ export default function ProspectsView({
         agentName={''}
         onApplyStageSuggestion={onApplyStageSuggestion}
         onSnooze={onSnoozeProspect}
+        onResolveReminder={onResolveReminder}
       />
       <ProspectForm
         open={!!editing}

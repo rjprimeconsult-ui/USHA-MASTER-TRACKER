@@ -145,13 +145,29 @@ function makeId() {
  */
 export function logTouch(prospect, touch, playbook, now) {
   const p = { ...prospect, touchLog: [...(prospect.touchLog || [])], cadence: { ...prospect.cadence } };
-  p.touchLog.push({
+
+  // Auto-clear any open reminders on prior touches before pushing the new one.
+  for (let i = 0; i < p.touchLog.length; i++) {
+    const t = p.touchLog[i];
+    if (t.reminderAt && !t.reminderDoneAt) {
+      p.touchLog[i] = { ...t, reminderDoneAt: now };
+    }
+  }
+
+  const newEntry = {
     id: makeId(),
     at: now,
     channel: touch.channel,
     outcome: touch.outcome,
     note: touch.note || '',
-  });
+  };
+
+  if (touch.reminderAt) {
+    newEntry.reminderAt = touch.reminderAt;
+    if (touch.reminderNote != null) newEntry.reminderNote = touch.reminderNote;
+  }
+
+  p.touchLog.push(newEntry);
 
   const steps = playbookForStage(playbook, p.stage);
   let suggestedStage = null;
@@ -204,6 +220,74 @@ export function dueStatus(prospect, now) {
 
 export function snooze(prospect, days, now) {
   return { ...prospect, cadence: { ...prospect.cadence, snoozedUntil: addDaysIso(now, days) } };
+}
+
+/**
+ * Compute the ISO datetime for a reminder preset using LOCAL time math.
+ * preset: 'eod' | 'tomorrow_am' | 'in_2h'
+ * nowIso: ISO string of "now"
+ */
+export function reminderPresetAt(preset, nowIso) {
+  const now = new Date(nowIso);
+  const y = now.getFullYear();
+  const mo = now.getMonth();
+  const d = now.getDate();
+  const h = now.getHours();
+  const mi = now.getMinutes();
+
+  if (preset === 'eod') {
+    if (h >= 22) {
+      // after 10pm → tomorrow 18:00 local
+      return new Date(y, mo, d + 1, 18, 0, 0, 0).toISOString();
+    } else if (h >= 18) {
+      // 6pm–10pm → today 22:00 local
+      return new Date(y, mo, d, 22, 0, 0, 0).toISOString();
+    } else {
+      // before 6pm → today 18:00 local
+      return new Date(y, mo, d, 18, 0, 0, 0).toISOString();
+    }
+  }
+
+  if (preset === 'tomorrow_am') {
+    return new Date(y, mo, d + 1, 9, 0, 0, 0).toISOString();
+  }
+
+  if (preset === 'in_2h') {
+    return new Date(y, mo, d, h + 2, mi, 0, 0).toISOString();
+  }
+
+  return null;
+}
+
+/**
+ * Returns the reminder state for a touch entry.
+ * 'none'    — no reminderAt set
+ * 'done'    — reminderDoneAt is set
+ * 'due'     — now >= reminderAt
+ * 'pending' — now < reminderAt
+ */
+export function touchReminderState(touch, nowIso) {
+  if (!touch?.reminderAt) return 'none';
+  if (touch.reminderDoneAt) return 'done';
+  const nowMs = new Date(nowIso).getTime();
+  const dueMs = new Date(touch.reminderAt).getTime();
+  return nowMs >= dueMs ? 'due' : 'pending';
+}
+
+/**
+ * Immutably mark a specific touch's reminder as done (manual dismiss).
+ * No-op if the touch is not found or already done.
+ */
+export function resolveTouchReminder(prospect, touchId, nowIso) {
+  if (!Array.isArray(prospect?.touchLog)) return prospect;
+  const idx = prospect.touchLog.findIndex(t => t.id === touchId);
+  if (idx === -1) return prospect;
+  const touch = prospect.touchLog[idx];
+  if (touch.reminderDoneAt) return prospect;
+  const newLog = prospect.touchLog.map((t, i) =>
+    i === idx ? { ...t, reminderDoneAt: nowIso } : t
+  );
+  return { ...prospect, touchLog: newLog };
 }
 
 const NO_CONTACT_OUTCOMES = new Set(['No answer', 'Left VM']);

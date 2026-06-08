@@ -5,6 +5,7 @@ import {
   FOLLOWUP_DEFAULTS, playbookForStage, ensureFollowupFields,
   armCadence, armIfNeeded, logTouch, dueStatus, snooze,
   consecutiveNoAnswer, suggestStageAfterTouch,
+  reminderPresetAt, touchReminderState, resolveTouchReminder,
 } from './followupEngine.mjs';
 
 const PB = DEFAULT_PLAYBOOK;
@@ -216,6 +217,111 @@ test('suggestStageAfterTouch: no rule matches -> null', () => {
   const p = withTouches('PENDING_DECISION', ['Connected']);
   const r = suggestStageAfterTouch(p, { outcome: 'Connected' }, DEFAULT_PLAYBOOK);
   assert.equal(r, null);
+});
+
+// ---------- reminderPresetAt ----------
+test('reminderPresetAt eod: before 6pm -> today 18:00 local', () => {
+  // Build a known local-time "now": today at 14:00 local
+  const now = new Date(); now.setHours(14, 0, 0, 0);
+  const expected = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 18, 0, 0, 0);
+  assert.equal(reminderPresetAt('eod', now.toISOString()), expected.toISOString());
+});
+
+test('reminderPresetAt eod: between 6pm and 10pm -> today 22:00 local', () => {
+  const now = new Date(); now.setHours(19, 30, 0, 0);
+  const expected = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 22, 0, 0, 0);
+  assert.equal(reminderPresetAt('eod', now.toISOString()), expected.toISOString());
+});
+
+test('reminderPresetAt eod: at or after 10pm -> tomorrow 18:00 local', () => {
+  const now = new Date(); now.setHours(22, 0, 0, 0);
+  const expected = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 18, 0, 0, 0);
+  assert.equal(reminderPresetAt('eod', now.toISOString()), expected.toISOString());
+});
+
+test('reminderPresetAt tomorrow_am: always tomorrow 09:00 local', () => {
+  const now = new Date(); now.setHours(8, 0, 0, 0);
+  const expected = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 9, 0, 0, 0);
+  assert.equal(reminderPresetAt('tomorrow_am', now.toISOString()), expected.toISOString());
+});
+
+test('reminderPresetAt in_2h: now + 2 hours', () => {
+  const now = new Date(); now.setHours(10, 15, 0, 0);
+  const expected = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 15, 0, 0);
+  assert.equal(reminderPresetAt('in_2h', now.toISOString()), expected.toISOString());
+});
+
+// ---------- touchReminderState ----------
+test('touchReminderState: none when no reminderAt', () => {
+  assert.equal(touchReminderState({ id: 't', at: '2026-06-08T10:00:00.000Z' }, '2026-06-08T10:00:00.000Z'), 'none');
+});
+
+test('touchReminderState: done when reminderDoneAt is set', () => {
+  const t = { id: 't', at: '2026-06-08T10:00:00.000Z', reminderAt: '2026-06-08T18:00:00.000Z', reminderDoneAt: '2026-06-08T15:00:00.000Z' };
+  assert.equal(touchReminderState(t, '2026-06-08T10:00:00.000Z'), 'done');
+});
+
+test('touchReminderState: due when now >= reminderAt and no reminderDoneAt', () => {
+  const t = { id: 't', at: '2026-06-08T10:00:00.000Z', reminderAt: '2026-06-08T18:00:00.000Z' };
+  assert.equal(touchReminderState(t, '2026-06-08T18:00:00.000Z'), 'due');
+  assert.equal(touchReminderState(t, '2026-06-08T20:00:00.000Z'), 'due');
+});
+
+test('touchReminderState: pending when now < reminderAt and no reminderDoneAt', () => {
+  const t = { id: 't', at: '2026-06-08T10:00:00.000Z', reminderAt: '2026-06-08T18:00:00.000Z' };
+  assert.equal(touchReminderState(t, '2026-06-08T10:00:00.000Z'), 'pending');
+});
+
+// ---------- logTouch reminder fields ----------
+test('logTouch stores reminderAt and reminderNote on new entry', () => {
+  const p = { id: 'p', stage: 'GHOSTED', touchLog: [], cadence: { ...FOLLOWUP_DEFAULTS.cadence }, stageEnteredAt: '2026-06-08T00:00:00.000Z' };
+  const remAt = '2026-06-08T18:00:00.000Z';
+  const r = logTouch(p, { channel: 'Call', outcome: 'No answer', note: '', reminderAt: remAt, reminderNote: 'Call again' }, DEFAULT_PLAYBOOK, '2026-06-08T10:00:00.000Z');
+  const entry = r.prospect.touchLog[0];
+  assert.equal(entry.reminderAt, remAt);
+  assert.equal(entry.reminderNote, 'Call again');
+});
+
+test('logTouch auto-resolves prior open reminders when new touch is logged', () => {
+  const now1 = '2026-06-08T10:00:00.000Z';
+  const now2 = '2026-06-08T15:00:00.000Z';
+  const p0 = { id: 'p', stage: 'GHOSTED', touchLog: [], cadence: { ...FOLLOWUP_DEFAULTS.cadence }, stageEnteredAt: '2026-06-01T00:00:00.000Z' };
+  // First touch with reminder
+  const r1 = logTouch(p0, { channel: 'Call', outcome: 'No answer', note: '', reminderAt: '2026-06-08T18:00:00.000Z', reminderNote: 'Call again' }, DEFAULT_PLAYBOOK, now1);
+  assert.ok(!r1.prospect.touchLog[0].reminderDoneAt, 'reminder should still be open after first touch');
+  // Second touch — should auto-close the first reminder
+  const r2 = logTouch(r1.prospect, { channel: 'Text', outcome: 'No answer', note: '' }, DEFAULT_PLAYBOOK, now2);
+  assert.equal(r2.prospect.touchLog[0].reminderDoneAt, now2, 'first touch reminder should be auto-cleared');
+  assert.equal(r2.prospect.touchLog.length, 2);
+});
+
+test('logTouch without reminderAt does not add reminder fields', () => {
+  const p = { id: 'p', stage: 'GHOSTED', touchLog: [], cadence: { ...FOLLOWUP_DEFAULTS.cadence }, stageEnteredAt: '2026-06-01T00:00:00.000Z' };
+  const r = logTouch(p, { channel: 'Call', outcome: 'No answer', note: '' }, DEFAULT_PLAYBOOK, '2026-06-08T10:00:00.000Z');
+  assert.ok(!('reminderAt' in r.prospect.touchLog[0]), 'no reminderAt should be set');
+});
+
+// ---------- resolveTouchReminder ----------
+test('resolveTouchReminder sets reminderDoneAt on the matching touch', () => {
+  const now1 = '2026-06-08T10:00:00.000Z';
+  const now2 = '2026-06-08T18:30:00.000Z';
+  const p0 = { id: 'p', stage: 'GHOSTED', touchLog: [], cadence: { ...FOLLOWUP_DEFAULTS.cadence }, stageEnteredAt: '2026-06-01T00:00:00.000Z' };
+  const r1 = logTouch(p0, { channel: 'Call', outcome: 'No answer', reminderAt: '2026-06-08T18:00:00.000Z', reminderNote: 'Call again' }, DEFAULT_PLAYBOOK, now1);
+  const touchId = r1.prospect.touchLog[0].id;
+  const resolved = resolveTouchReminder(r1.prospect, touchId, now2);
+  assert.equal(resolved.touchLog[0].reminderDoneAt, now2);
+});
+
+test('resolveTouchReminder is a no-op when touch not found', () => {
+  const p = { id: 'p', touchLog: [{ id: 'abc', at: '2026-06-08T10:00:00.000Z', reminderAt: '2026-06-08T18:00:00.000Z' }] };
+  const out = resolveTouchReminder(p, 'missing-id', '2026-06-08T20:00:00.000Z');
+  assert.ok(!out.touchLog[0].reminderDoneAt);
+});
+
+test('resolveTouchReminder is a no-op when already done', () => {
+  const p = { id: 'p', touchLog: [{ id: 'abc', at: '2026-06-08T10:00:00.000Z', reminderAt: '2026-06-08T18:00:00.000Z', reminderDoneAt: '2026-06-08T19:00:00.000Z' }] };
+  const out = resolveTouchReminder(p, 'abc', '2026-06-08T20:00:00.000Z');
+  assert.equal(out.touchLog[0].reminderDoneAt, '2026-06-08T19:00:00.000Z');
 });
 
 test('armIfNeeded leaves touched / advanced / completed / terminal untouched', () => {

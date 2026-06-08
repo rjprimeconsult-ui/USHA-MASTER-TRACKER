@@ -33,6 +33,14 @@
 
 export const ANNOUNCEMENTS = [
   {
+    id: '2026-06-08-no-answer-reminder',
+    date: '2026-06-08',
+    emoji: '⏰',
+    title: 'Set a reminder when a prospect doesn\'t answer',
+    body: 'When you Log Touch on a prospect and pick "No answer," you can now set a quick reminder — End of day, Tomorrow morning, In 2 hours, or a custom date/time. If they don\'t respond, a "Follow up now" note appears right next to that touch in the prospect\'s timeline. It clears itself when you log your next touch, or hit Done.',
+    cta: { label: 'Open Prospects', view: 'prospects' },
+  },
+  {
     id: '2026-06-04-bob-av-column',
     date: '2026-06-04',
     emoji: '📈',

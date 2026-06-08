@@ -38,6 +38,7 @@ import { statementsInRange, isStatementIncome } from '@/lib/statementManager.mjs
 import {
   FOLLOWUP_PLAYBOOK_KEY, DEFAULT_PLAYBOOK,
   ensureFollowupFields, armIfNeeded, armCadence, logTouch as engineLogTouch, snooze as engineSnooze, suggestStageAfterTouch,
+  resolveTouchReminder,
 } from '@/lib/followupEngine.mjs';
 import LeadForm from './LeadForm';
 import InvestmentForm from './InvestmentForm';
@@ -1455,6 +1456,11 @@ export default function LeadTracker() {
     setProspects(prev => prev.map(p => p.id === prospectId ? engineSnooze(p, days, now) : p));
   }, []);
 
+  const resolveProspectReminder = useCallback((prospectId, touchId) => {
+    const now = new Date().toISOString();
+    setProspects(prev => prev.map(p => p.id === prospectId ? resolveTouchReminder(p, touchId, now) : p));
+  }, []);
+
   // Convert a Sold prospect into a new Lead. Pre-fills lead fields from the
   // prospect so the user only has to fill in product/premium details.
   const onConvertProspectToLead = useCallback((p) => {
@@ -1772,6 +1778,7 @@ export default function LeadTracker() {
             onLogTouch={logProspectTouch}
             onSnoozeProspect={snoozeProspect}
             onApplyStageSuggestion={applyStageSuggestion}
+            onResolveReminder={resolveProspectReminder}
           />
         </ViewMount>
         <ViewMount visible={view === 'books'} viewKey="books">
