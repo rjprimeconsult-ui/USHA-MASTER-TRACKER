@@ -1710,8 +1710,17 @@ export default function LeadTracker() {
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ messages }),
       });
-      if (res.ok) fields = await res.json().catch(() => null);
-    } catch { /* handled below */ }
+      if (res.ok) {
+        fields = await res.json().catch(() => null);
+      } else {
+        const errBody = await res.json().catch(() => ({}));
+        showToast(`Extract failed (${res.status}): ${String(errBody.error || 'unknown').slice(0, 90)}`, 'error');
+        return;
+      }
+    } catch (e) {
+      showToast(`Extract error: ${String(e?.message || e).slice(0, 90)}`, 'error');
+      return;
+    }
     if (!fields) { showToast('Could not extract details — try again', 'error'); return; }
     // datetime-local inputs need "YYYY-MM-DDTHH:mm" — normalize whatever the AI returned.
     const appt = toDateTimeLocal(fields.appointmentTime);
