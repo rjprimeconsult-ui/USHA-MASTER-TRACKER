@@ -71,6 +71,14 @@ import { classifyImport, mapToProspect, mergeConversationIntoProspect } from '@/
 
 const ICONS = { Calculator, Repeat, CheckSquare, LayoutDashboard, Users, Columns, Upload, DollarSign, BookOpen, UserPlus, FileText };
 
+// Normalise an AI-returned datetime to the "YYYY-MM-DDTHH:mm" form that
+// <input type="datetime-local"> requires (handles space-separated, seconds, zone).
+function toDateTimeLocal(s) {
+  if (!s) return '';
+  const m = String(s).trim().replace(' ', 'T').match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})/);
+  return m ? m[1] : '';
+}
+
 const LEADS_KEY = 'leads_v5';
 const LEADS_KEY_V4 = 'leads_v4';
 const INV_KEY = 'investments_v2';
@@ -1656,7 +1664,7 @@ export default function LeadTracker() {
           const patch = {};
           if (!p.situation     && fields.situation)     patch.situation     = fields.situation;
           if (!p.meds          && fields.meds)          patch.meds          = fields.meds;
-          if (!p.appointmentTime && fields.appointmentTime) patch.appointmentTime = fields.appointmentTime;
+          if (!p.appointmentTime && toDateTimeLocal(fields.appointmentTime)) patch.appointmentTime = toDateTimeLocal(fields.appointmentTime);
           if (!p.dobs          && fields.dobs)          patch.dobs          = fields.dobs;
           if (p.indvOrFamily === 'Indv' && fields.indvOrFamily === 'Family') patch.indvOrFamily = 'Family';
           if (!p.quoteSize     && fields.quoteSize)     patch.quoteSize     = fields.quoteSize;
@@ -1705,8 +1713,8 @@ export default function LeadTracker() {
       if (res.ok) fields = await res.json().catch(() => null);
     } catch { /* handled below */ }
     if (!fields) { showToast('Could not extract details — try again'); return; }
-    // datetime-local inputs need "YYYY-MM-DDTHH:mm" — trim any seconds/zone.
-    const appt = (fields.appointmentTime || '').slice(0, 16);
+    // datetime-local inputs need "YYYY-MM-DDTHH:mm" — normalize whatever the AI returned.
+    const appt = toDateTimeLocal(fields.appointmentTime);
     let filledAny = false;
     setProspects(prev => prev.map(p => {
       if (p.id !== prospectId) return p;
