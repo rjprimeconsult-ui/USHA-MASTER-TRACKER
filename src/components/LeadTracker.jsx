@@ -1704,7 +1704,8 @@ export default function LeadTracker() {
     showToast('Extracting details from texts…');
     let fields = null;
     try {
-      const token = await getBearer();
+      const { data: sessData } = await supabase.auth.getSession();
+      const token = sessData?.session?.access_token;
       const res = await fetch('/api/textdrip/extract-conversation', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
