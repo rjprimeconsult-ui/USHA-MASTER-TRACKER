@@ -1317,6 +1317,7 @@ export default function ProspectsView({
   const [apptFilter, setApptFilter] = useState(''); // '' | 'today' | 'week' | 'upcoming' | 'overdue' | 'none'
   const [sourceFilter, setSourceFilter] = useState(''); // '' | source string
   const [crmFilter, setCrmFilter] = useState('');       // '' | crm string
+  const [sortBy, setSortBy] = useState('');             // '' | 'appt' | 'name'
   const [editing, setEditing] = useState(null);
   const [viewing, setViewing] = useState(null);  // read-only detail bubble
   const [showSettings, setShowSettings] = useState(false);
@@ -1336,7 +1337,7 @@ export default function ProspectsView({
 
   const visible = useMemo(() => {
     const q = search.toLowerCase().trim();
-    return prospects.filter(p => {
+    const list = prospects.filter(p => {
       if (p.archivedAt) return false;
       if (stageFilter && p.stage !== stageFilter) return false;
       if (sourceFilter && p.source !== sourceFilter) return false;
@@ -1352,7 +1353,25 @@ export default function ProspectsView({
       const blob = `${p.name} ${p.phone} ${p.email} ${p.state} ${p.notes} ${p.situation} ${p.referrer}`.toLowerCase();
       return blob.includes(q);
     });
-  }, [prospects, search, stageFilter, apptFilter, sourceFilter, crmFilter]);
+    if (sortBy === 'name') {
+      list.sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
+    } else if (sortBy === 'appt') {
+      // Closest to today first: upcoming appointments nearest-first, then past
+      // appointments most-recent-first, then prospects with no appointment.
+      const now = Date.now();
+      const rank = (p) => {
+        const d = apptDate(p.appointmentTime);
+        if (!d) return [2, 0];
+        const t = d.getTime();
+        return t >= now ? [0, t - now] : [1, now - t];
+      };
+      list.sort((a, b) => {
+        const ra = rank(a), rb = rank(b);
+        return ra[0] - rb[0] || ra[1] - rb[1];
+      });
+    }
+    return list;
+  }, [prospects, search, stageFilter, apptFilter, sourceFilter, crmFilter, sortBy]);
 
   // Build the union of built-in PROSPECT_SOURCES + any custom values
   // an agent has entered. That way a free-text source like "TikTok Ads"
@@ -1648,6 +1667,12 @@ export default function ProspectsView({
           <option value="overdue">Overdue</option>
           <option value="none">No appointment</option>
         </select>
+        <select value={sortBy} onChange={e => setSortBy(e.target.value)}
+          className="border border-slate-200 rounded-lg px-3 py-2 text-sm" title="Sort order">
+          <option value="">Sort: Default</option>
+          <option value="appt">Sort: Appointment (soonest)</option>
+          <option value="name">Sort: Name A–Z</option>
+        </select>
         <div className="flex bg-slate-100 rounded-lg p-0.5">
           <button onClick={() => setView('kanban')}
             className={`px-3 py-1.5 text-xs font-semibold rounded flex items-center gap-1.5 ${view === 'kanban' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'}`}>
@@ -1730,6 +1755,7 @@ export default function ProspectsView({
             <tbody>
               {visible.map(p => {
                 const st = cfg.stages.find(s => s.id === p.stage);
+                const stColor = st?.color || '#64748b';
                 const tu = timeUntil(p.appointmentTime);
                 const apptStr = formatAppt(p.appointmentTime);
                 const isSel = selected.has(p.id);
@@ -1739,7 +1765,11 @@ export default function ProspectsView({
                     onClick={() => onView(p)}
                     className={`cursor-pointer transition border-b border-slate-200 last:border-b-0 ${isSel ? 'bg-indigo-50' : 'hover:bg-indigo-50/40'}`}
                   >
-                    <td className="px-3 py-3 border-r border-slate-200 align-middle" onClick={(e) => e.stopPropagation()}>
+                    {/* Stage accent bar — inset shadow (not a border) so the
+                        4px color edge never shifts the checkbox column. */}
+                    <td className="px-3 py-3 border-r border-slate-200 align-middle"
+                      style={{ boxShadow: `inset 4px 0 0 0 ${stColor}` }}
+                      onClick={(e) => e.stopPropagation()}>
                       <input
                         type="checkbox"
                         checked={isSel}
