@@ -147,11 +147,19 @@ export async function getChats(apiKey, phone, maxPages = 1) {
  */
 export async function getContact(apiKey, phone) {
   const digits = String(phone || '').replace(/\D/g, '');
-  const e164 = digits.startsWith('1') && digits.length === 11
-    ? `+${digits}`
-    : `+1${digits}`;
-  const data = await tdFetch(apiKey, '/get-contact-detail', { phone: e164 });
-  return data?.contact ?? null;
+  const ten = (digits.length === 11 && digits.startsWith('1')) ? digits.slice(1) : digits;
+  // get-contact-detail may expect a specific phone format that differs from
+  // get-chats — try the common variants and return on the first that resolves.
+  const candidates = [`+1${ten}`, `1${ten}`, ten];
+  for (const ph of candidates) {
+    try {
+      const data = await tdFetch(apiKey, '/get-contact-detail', { phone: ph });
+      if (data?.contact) return data.contact;
+    } catch {
+      // try next format
+    }
+  }
+  return null;
 }
 
 // ============================================================
