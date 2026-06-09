@@ -84,7 +84,7 @@ export const ASSOCIATION_PLANS = [
   { id: 'EMERALD',           premium: 52.95 },
   { id: 'SAPPHIRE',          premium: 42.95 },
   { id: 'RUBY',              premium: 32.95 },
-  { id: 'PEARL',             premium: 0 },
+  { id: 'PEARL',             premium: 0 }, // discontinued tier — $0 residual is intentional (not a missing rate)
   { id: 'NO ASS.',           premium: 0 },
   { id: 'ABC ELITE',         premium: 79.95 },
   { id: 'ABC EXECUTIVE',     premium: 49.95 },
