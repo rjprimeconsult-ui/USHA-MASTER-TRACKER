@@ -33,6 +33,14 @@
 
 export const ANNOUNCEMENTS = [
   {
+    id: '2026-06-09-ringy-integration',
+    date: '2026-06-09',
+    emoji: '🔗',
+    title: 'Connect Ringy — leads flow into PRIM automatically',
+    body: 'New: link your Ringy account in Prospects → Settings → Ringy Integration. Copy your PRIM webhook URL into Ringy\'s disposition automated actions, map your Ringy dispositions to PRIM stages, and from then on every lead you disposition in Ringy lands in PRIM in real time — name, phone, email, address, notes — at the right stage. Setup steps are in the card. (Leads + details only; Ringy doesn\'t expose text conversations.)',
+    cta: { label: 'Open Prospects', view: 'prospects' },
+  },
+  {
     id: '2026-06-09-money-accuracy-fixes',
     date: '2026-06-09',
     emoji: '🎯',

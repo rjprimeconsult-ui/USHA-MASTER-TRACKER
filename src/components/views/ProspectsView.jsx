@@ -681,6 +681,16 @@ function SettingsModal({ open, settings, onSave, onClose, onSyncTextDrip }) {
             <p className="text-[11px] text-slate-500 mb-3">Connect your TextDrip API key to pull tagged contacts into Prospects as leads with their SMS conversations.</p>
             <TextDripSettingsSection stages={draft.stages} onSyncTextDrip={onSyncTextDrip} />
           </section>
+
+          {/* Ringy integration */}
+          <section>
+            <div className="flex items-center gap-2 mb-2">
+              <h3 className="text-sm font-bold text-slate-900">Ringy Integration</h3>
+              <span className="text-[10px] font-bold uppercase tracking-wider bg-sky-100 text-sky-700 px-1.5 py-0.5 rounded">v1</span>
+            </div>
+            <p className="text-[11px] text-slate-500 mb-3">Receive real-time leads from Ringy via webhook — when you disposition a lead in Ringy, PRIM creates or updates the prospect automatically.</p>
+            <RingySettingsSection stages={draft.stages} />
+          </section>
         </div>
         <div className="flex justify-end gap-2 p-5 border-t border-slate-200">
           <button onClick={onClose} className="border border-slate-200 hover:bg-slate-50 px-4 py-2 rounded-lg text-sm font-semibold">Cancel</button>
@@ -708,6 +718,17 @@ function TextDripSettingsSection({ stages, onSyncTextDrip }) {
       onStatus={() => {}}
     />
   );
+}
+
+// Thin wrapper that renders RingySettings inside the SettingsModal.
+// Lazily imported so the Ringy bundle is not fetched for agents who haven't set it up.
+function RingySettingsSection({ stages }) {
+  const [Comp, setComp] = useState(null);
+  useEffect(() => {
+    import('@/components/RingySettings').then(m => setComp(() => m.default));
+  }, []);
+  if (!Comp) return <div className="text-xs text-slate-400 italic">Loading…</div>;
+  return <Comp stages={stages} />;
 }
 
 // ---------- Import Wizard ----------
