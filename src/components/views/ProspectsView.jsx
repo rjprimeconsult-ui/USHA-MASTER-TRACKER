@@ -1779,7 +1779,7 @@ export default function ProspectsView({
       {/* Modals */}
       <ProspectDetail
         open={!!viewing}
-        prospect={viewing}
+        prospect={viewing ? (prospects.find(p => p.id === viewing.id) || viewing) : viewing}
         settings={cfg}
         onClose={() => setViewing(null)}
         onEdit={onEdit}
