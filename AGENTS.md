@@ -2,6 +2,8 @@
 # This is NOT the Next.js you know
 
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
+
+**Gotcha that builds clean but fails at runtime:** dynamic route `params` are **async** — you MUST `await` them. `export async function POST(req, ctx) { const { token } = await ctx.params; }`. Reading `ctx.params.token` synchronously yields `undefined`, which passes `next build` but silently breaks the route in production (this dropped every Ringy webhook until found). Same for `searchParams` in pages.
 <!-- END:nextjs-agent-rules -->
 
 # Shipping a user-facing feature
