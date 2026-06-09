@@ -1190,7 +1190,7 @@ function Footer() {
             style={{ background: `linear-gradient(135deg, ${BRAND.accent}, ${BRAND.accent2})` }}>
             <PrimMark size={14} />
           </div>
-          <div className="text-white font-bold text-sm">PRIM</div>
+          <div className="text-white font-bold text-sm">PRIM™</div>
           <span className="text-xs" style={{ color: BRAND.textDim }}>· Performance · Revenue · Investment</span>
         </div>
         <div className="flex items-center gap-6 text-xs" style={{ color: BRAND.textMuted }}>
@@ -1199,8 +1199,11 @@ function Footer() {
           <a href="mailto:juantrejo9082@gmail.com" className="hover:text-white transition">Contact</a>
         </div>
         <div className="text-xs" style={{ color: BRAND.textDim }}>
-          © 2026 PRIM. Built by USHA agents.
+          © 2026 R&amp;J Prime Consultancy LLC. All rights reserved.
         </div>
+      </div>
+      <div className="mt-6 pt-6 text-center text-xs leading-relaxed" style={{ color: BRAND.textDim, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+        PRIM™ is an independent tool and is not affiliated with, endorsed by, or sponsored by USHEALTH Advisors (USHA). For informational purposes only — not tax, financial, or legal advice. Figures are estimates; verify against your official statements.
       </div>
     </footer>
   );

@@ -2141,8 +2141,9 @@ export default function LeadTracker() {
           <a href="/privacy" target="_blank" rel="noopener" className="hover:text-indigo-600">Privacy Policy</a>
           <span className="text-slate-300">·</span>
           <a href="/terms" target="_blank" rel="noopener" className="hover:text-indigo-600">Terms of Service</a>
-          <span className="text-slate-300">·</span>
-          <span>Built for USHA agents.</span>
+        </div>
+        <div className="mt-2 max-w-2xl mx-auto text-[11px] text-slate-400 leading-relaxed">
+          PRIM™ is an independent tool and is not affiliated with, endorsed by, or sponsored by USHEALTH Advisors (USHA). For informational purposes only — not tax, financial, or legal advice. Figures are estimates; verify against your official statements.
         </div>
       </footer>
 
