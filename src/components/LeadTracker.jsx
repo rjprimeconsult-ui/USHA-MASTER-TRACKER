@@ -1712,7 +1712,7 @@ export default function LeadTracker() {
       });
       if (res.ok) fields = await res.json().catch(() => null);
     } catch { /* handled below */ }
-    if (!fields) { showToast('Could not extract details — try again'); return; }
+    if (!fields) { showToast('Could not extract details — try again', 'error'); return; }
     // datetime-local inputs need "YYYY-MM-DDTHH:mm" — normalize whatever the AI returned.
     const appt = toDateTimeLocal(fields.appointmentTime);
     let filledAny = false;

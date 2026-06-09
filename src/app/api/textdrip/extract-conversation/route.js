@@ -106,16 +106,19 @@ export async function POST(req) {
 
   let resp;
   try {
-    resp = await client.messages.create({
+    // Match the proven working pattern in import-prospects-ai: stream +
+    // finalMessage with output_config (non-streaming create errors here).
+    const stream = client.messages.stream({
       model: 'claude-haiku-4-5',
       max_tokens: 1024,
-      system: EXTRACTION_PROMPT,
+      system: [{ type: 'text', text: EXTRACTION_PROMPT, cache_control: { type: 'ephemeral' } }],
       messages: [{
         role: 'user',
         content: `Extract qualifying fields from this SMS conversation:\n\n${transcript}`,
       }],
       output_config: { format: { type: 'json_schema', schema: EXTRACTION_SCHEMA } },
     });
+    resp = await stream.finalMessage();
   } catch (e) {
     // Non-fatal — client will keep prospect without AI fields
     console.error('[textdrip/extract-conversation] Anthropic call failed:', e?.status, e?.message);
