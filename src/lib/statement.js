@@ -756,7 +756,26 @@ export function reconcileStatement(parsed, leads) {
   for (const entry of byCustomer.values()) {
     const matches = findLeads(entry.name);
     if (matches.length > 0) {
-      const perLead = entry.total / matches.length;
+      // Policy-first attribution: give each lead the sum of advance rows whose
+      // policyId matches that lead's policyNumber. Rows we can't match by policy
+      // are split evenly across the matched leads — which means a single-policy
+      // customer (or one with no policy numbers on file) behaves exactly like the
+      // old even-split, while a multi-policy customer now gets each policy's
+      // advance attributed to the right lead instead of an even split.
+      const norm = (s) => String(s || '').trim().toUpperCase();
+      const leadByPolicy = new Map();
+      for (const lead of matches) {
+        const pn = norm(lead.policyNumber);
+        if (pn) leadByPolicy.set(pn, lead);
+      }
+      const leadTotals = new Map(matches.map(l => [l.id, 0]));
+      let unmatchedTotal = 0;
+      for (const r of entry.rows) {
+        const lead = leadByPolicy.get(norm(r.policyId));
+        if (lead) leadTotals.set(lead.id, leadTotals.get(lead.id) + r.netAdvance);
+        else unmatchedTotal += r.netAdvance;
+      }
+      const share = matches.length ? unmatchedTotal / matches.length : 0;
       matches.forEach(lead => {
         matched.push({
           ...entry,
@@ -765,7 +784,7 @@ export function reconcileStatement(parsed, leads) {
           currentDealValue: lead.dealValue,
           leadName: lead.name,
           leadPolicyNumber: lead.policyNumber || '',
-          total: perLead,
+          total: leadTotals.get(lead.id) + share,
           _fullTotal: entry.total,
           _leadCount: matches.length,
         });

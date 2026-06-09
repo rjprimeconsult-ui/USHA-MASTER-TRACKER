@@ -33,6 +33,14 @@
 
 export const ANNOUNCEMENTS = [
   {
+    id: '2026-06-09-money-accuracy-fixes',
+    date: '2026-06-09',
+    emoji: '🎯',
+    title: 'More accurate deal dates & commissions',
+    body: 'Two precision fixes: (1) Issued deals from your SalesReport now count in the month they went in force, not the month you submitted them — so monthly CPA/Reports numbers line up correctly. (2) When a customer has multiple policies, each policy\'s commission advance is now matched to the right lead instead of split evenly. You may notice a few past deals shift months or amounts adjust slightly — that\'s the correction working.',
+    cta: { label: 'Open Reports', view: 'reports' },
+  },
+  {
     id: '2026-06-08-textdrip-sync',
     date: '2026-06-08',
     emoji: '💬',

@@ -60,3 +60,17 @@ test('each CHIA deal keeps its own AppID base (no cross-app merge)', () => {
   const bases = dealsFor(deals, 'chia').map(d => d.appIdBase).sort();
   assert.deepEqual(bases, ['52Y281759', '52Y282300']);
 });
+
+test('Issued (In Force) deal is dated by ISSUE date, not submit date', () => {
+  const rows = [
+    // submit 03/15, effective 04/01, issue 04/10 — all different months
+    ['99X999001A', 'TESTER, ISSUE D', 'PREMIERADVANTAGE-24', 'In Force', '', '03/15/2026', '04/01/2026', '04/10/2026', '04/10/2026', 'MORALES, GABRIEL', '1200.00', '0.00', '0.00', '1200.00'],
+  ];
+  const { deals } = parseSalesReport(wbFrom(rows));
+  const d = deals.find(x => x.name.toLowerCase().includes('tester'));
+  assert.ok(d, 'deal parsed');
+  assert.equal(d.stage, 'Issued');
+  assert.ok(d.issueDate, 'has an issue date');
+  assert.equal(d.closedDate, d.issueDate);      // dated by issue date
+  assert.notEqual(d.closedDate, d.submitDate);  // NOT the submit date
+});

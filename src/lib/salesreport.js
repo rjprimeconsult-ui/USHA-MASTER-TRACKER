@@ -288,7 +288,13 @@ export function parseSalesReport(wb) {
       chosenStatus = Object.entries(d.stageVotes).sort((a, b) => b[1] - a[1])[0]?.[0];
     }
     d.stage = STATUS_MAP[chosenStatus] || 'Pending';
-    d.closedDate = d.submitDate || d.effDate || d.issueDate;
+    // Issued ("In Force") deals are scoped by when they went in force, so prefer
+    // the issue/effective date; pending deals fall back to submit date. (Period
+    // filters bucket Issued leads by closedDate — using submitDate put a deal
+    // submitted in one month but issued the next into the wrong month.)
+    d.closedDate = d.stage === 'Issued'
+      ? (d.issueDate || d.effDate || d.submitDate)
+      : (d.submitDate || d.effDate || d.issueDate);
   }
 
   return { deals, allRows };
