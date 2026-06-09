@@ -1686,6 +1686,43 @@ export default function LeadTracker() {
     showToast(`Applied ${mergeItems.length} merge${mergeItems.length !== 1 ? 's' : ''} from TextDrip`);
   }, [showToast]);
 
+  // On-demand: re-run AI extraction on a prospect's stored TextDrip thread and
+  // fill EMPTY fields only (situation/health/appointment/family). Lets agents
+  // pull details onto already-imported prospects without deleting + re-syncing.
+  const extractProspectFromTexts = useCallback(async (prospectId) => {
+    const target = prospects.find(p => p.id === prospectId);
+    const messages = target?.textdripChat?.messages || [];
+    if (!messages.length) { showToast('No TextDrip conversation on this prospect'); return; }
+    showToast('Extracting details from texts…');
+    let fields = null;
+    try {
+      const token = await getBearer();
+      const res = await fetch('/api/textdrip/extract-conversation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ messages }),
+      });
+      if (res.ok) fields = await res.json().catch(() => null);
+    } catch { /* handled below */ }
+    if (!fields) { showToast('Could not extract details — try again'); return; }
+    // datetime-local inputs need "YYYY-MM-DDTHH:mm" — trim any seconds/zone.
+    const appt = (fields.appointmentTime || '').slice(0, 16);
+    let filledAny = false;
+    setProspects(prev => prev.map(p => {
+      if (p.id !== prospectId) return p;
+      const patch = {};
+      if (!p.situation && fields.situation) patch.situation = fields.situation;
+      if (!p.meds && fields.meds) patch.meds = fields.meds;
+      if (!p.appointmentTime && appt) patch.appointmentTime = appt;
+      if (!p.dobs && fields.dobs) patch.dobs = fields.dobs;
+      if (p.indvOrFamily === 'Indv' && fields.indvOrFamily === 'Family') patch.indvOrFamily = 'Family';
+      if (!p.quoteSize && fields.quoteSize) patch.quoteSize = fields.quoteSize;
+      filledAny = Object.keys(patch).length > 0;
+      return filledAny ? { ...p, ...patch } : p;
+    }));
+    showToast(filledAny ? 'Details extracted from texts ✓' : 'No new details found in the conversation');
+  }, [prospects, showToast]);
+
   // Convert a Sold prospect into a new Lead. Pre-fills lead fields from the
   // prospect so the user only has to fill in product/premium details.
   const onConvertProspectToLead = useCallback((p) => {
@@ -2005,6 +2042,7 @@ export default function LeadTracker() {
             onApplyStageSuggestion={applyStageSuggestion}
             onResolveReminder={resolveProspectReminder}
             onSyncTextDrip={() => syncTextDrip()}
+            onExtractFromTexts={extractProspectFromTexts}
           />
         </ViewMount>
         <ViewMount visible={view === 'books'} viewKey="books">

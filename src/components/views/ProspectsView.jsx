@@ -979,7 +979,7 @@ function OutreachLogList({ log }) {
   );
 }
 
-function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, onConvertToLead, onProspectUpdate, playbook, onLogTouch, agentName, onApplyStageSuggestion, onSnooze, onResolveReminder }) {
+function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, onConvertToLead, onProspectUpdate, playbook, onLogTouch, agentName, onApplyStageSuggestion, onSnooze, onResolveReminder, onExtractFromTexts }) {
   const [logOpen, setLogOpen] = useState(false);
   const [suggestion, setSuggestion] = useState(null);
   // ProspectDetail stays mounted across prospects — clear any pending
@@ -1146,7 +1146,17 @@ function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, o
 
           {/* TextDrip SMS thread — only shown when chat data exists */}
           {prospect.textdripChat?.messages?.length > 0 && (
-            <TextDripChatSection chat={prospect.textdripChat} />
+            <div>
+              <TextDripChatSection chat={prospect.textdripChat} />
+              {onExtractFromTexts && (
+                <button
+                  onClick={() => onExtractFromTexts(prospect.id)}
+                  className="mt-2 text-xs font-semibold px-3 py-1.5 rounded-lg border border-indigo-200 dark:border-indigo-500/40 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 flex items-center gap-1.5"
+                >
+                  ✨ Extract details from texts
+                </button>
+              )}
+            </div>
           )}
         </div>
 
@@ -1277,6 +1287,7 @@ export default function ProspectsView({
   onApplyStageSuggestion,
   onResolveReminder,
   onSyncTextDrip,
+  onExtractFromTexts,
 }) {
   const cfg = settings || defaultProspectSettings();
   const [view, setView] = useState('kanban'); // 'kanban' | 'list'
@@ -1781,6 +1792,7 @@ export default function ProspectsView({
         onApplyStageSuggestion={onApplyStageSuggestion}
         onSnooze={onSnoozeProspect}
         onResolveReminder={onResolveReminder}
+        onExtractFromTexts={onExtractFromTexts}
       />
       <ProspectForm
         open={!!editing}

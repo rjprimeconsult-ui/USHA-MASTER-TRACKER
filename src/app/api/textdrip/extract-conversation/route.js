@@ -31,7 +31,7 @@ Your goal is to extract ONLY what is clearly stated or strongly implied in the c
 FIELDS TO EXTRACT:
 - situation: Concise qualifying context (≤500 chars). Coverage needs, timing, budget, objections, household situation. No UI labels, boilerplate, or agent script text.
 - meds: Health notes — lean to GENERAL IMPRESSIONS ("has health concerns", "takes medication") over clinical specifics. NEVER log medication names or diagnoses verbatim unless the source explicitly states them. Lean conservative.
-- appointmentTime: If a specific appointment was clearly agreed (e.g. "Friday at 2pm"), ISO 8601 datetime (infer date relative to message timestamps). Otherwise empty string.
+- appointmentTime: If a specific appointment was clearly agreed (e.g. "Friday at 2pm", "11am tomorrow"), output it as "YYYY-MM-DDTHH:mm" (24-hour, local). Each message line is prefixed with its [timestamp] — use those to resolve relative dates like "tomorrow"/"Friday". Otherwise empty string.
 - dobs: Date(s) of birth or age(s) — if multiple household members mentioned, comma-separated (e.g. "1980-03-15, 1982-07-20" or "42, 40, 12"). Single person if only one mentioned. Empty if not stated.
 - indvOrFamily: "Family" if spouse, kids, or multiple household members are clearly mentioned. "Indv" otherwise.
 - quoteSize: A monthly premium or budget figure if mentioned (e.g. "$350/mo"). Empty if not stated.
@@ -48,7 +48,7 @@ const EXTRACTION_SCHEMA = {
   properties: {
     situation:       { type: 'string', description: 'Qualifying context ≤500 chars. No UI labels/boilerplate.' },
     meds:            { type: 'string', description: 'General health impressions only. No clinical PHI.' },
-    appointmentTime: { type: 'string', description: 'ISO 8601 datetime if clearly agreed, else empty string.' },
+    appointmentTime: { type: 'string', description: '"YYYY-MM-DDTHH:mm" (24h local) if clearly agreed, else empty string. Resolve relative dates from the [timestamps].' },
     dobs:            { type: 'string', description: 'DOB(s) or age(s), comma-separated for family. Empty if not stated.' },
     indvOrFamily:    { type: 'string', enum: ['Indv', 'Family'], description: '"Family" if multiple household members mentioned.' },
     quoteSize:       { type: 'string', description: 'Monthly premium or budget if stated. Empty otherwise.' },
