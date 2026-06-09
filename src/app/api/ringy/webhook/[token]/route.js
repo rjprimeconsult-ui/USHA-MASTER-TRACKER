@@ -40,8 +40,11 @@ function ok200(payload) {
   });
 }
 
-export async function POST(req, { params }) {
+export async function POST(req, ctx) {
   try {
+    // Next.js 16: dynamic-route params are ASYNC and must be awaited.
+    // (Reading ctx.params.token synchronously yields undefined → silent no-op.)
+    const params = await ctx?.params;
     const token = params?.token || '';
     if (!token) return noop200();
 
