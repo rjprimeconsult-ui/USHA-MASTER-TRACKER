@@ -53,6 +53,40 @@ export const formatCurrencyInput = (input) => {
   return '$' + Number(digits).toLocaleString('en-US');
 };
 
+// Live-format a typed date of birth as the agent types: 01021962 → 01/02/1962
+// (MM/DD/YYYY). Strips non-digits per segment; supports comma-separated DOBs
+// for family entries.
+export const formatDobInput = (input) => {
+  return String(input || '')
+    .split(',')
+    .map((seg) => {
+      const d = seg.replace(/\D/g, '').slice(0, 8);
+      if (d.length <= 2) return d;
+      if (d.length <= 4) return `${d.slice(0, 2)}/${d.slice(2)}`;
+      return `${d.slice(0, 2)}/${d.slice(2, 4)}/${d.slice(4)}`;
+    })
+    .join(', ');
+};
+
+// Display a stored DOB as MM/DD/YYYY. Tolerant of YYYY-MM-DD (imports),
+// MM/DD/YYYY or MM-DD-YYYY (manual), and comma-separated family DOBs.
+// Leaves non-date values (e.g. an age like "42") untouched.
+export const formatDob = (value) => {
+  if (!value) return '';
+  return String(value)
+    .split(',')
+    .map((seg) => {
+      const s = seg.trim();
+      let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);          // ISO YYYY-MM-DD
+      if (m) return `${m[2].padStart(2, '0')}/${m[3].padStart(2, '0')}/${m[1]}`;
+      m = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);         // US MM/DD/YYYY
+      if (m) return `${m[1].padStart(2, '0')}/${m[2].padStart(2, '0')}/${m[3]}`;
+      return s;
+    })
+    .filter(Boolean)
+    .join(', ');
+};
+
 export const getWeekStart = (d) => {
   if (!d || typeof d !== 'string') return '';
   // Normalize various accepted forms to YYYY-MM-DD before parsing

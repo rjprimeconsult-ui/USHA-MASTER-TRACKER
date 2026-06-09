@@ -16,7 +16,7 @@ import {
   ChevronLeft, ChevronRight, Sparkles,
 } from 'lucide-react';
 import { TiltCard, FadeIn, Stagger, StaggerItem } from '../motion/MotionPrimitives';
-import { fmt2, today } from '@/lib/utils';
+import { fmt2, today, formatDob } from '@/lib/utils';
 import { newProspect, defaultProspectSettings, detectFieldFromHeader, detectStageId, detectSource, detectIndvOrFamily, prospectDedupKey } from '@/lib/prospects';
 import { DEFAULT_PROSPECT_STAGES, getCrmStyle, PROSPECT_SOURCES, PROSPECT_CRMS } from '@/lib/constants';
 import { useIsDark } from '@/lib/useIsDark';
@@ -1095,7 +1095,7 @@ function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, o
           {/* Primary Information */}
           <DetailSection title="Primary Information">
             <DetailRow Icon={User} value={prospect.indvOrFamily === 'Family' ? 'Family policy' : 'Individual'} />
-            {prospect.dobs && <DetailRow Icon={Calendar} value={prospect.dobs} />}
+            {prospect.dobs && <DetailRow Icon={Calendar} value={formatDob(prospect.dobs)} />}
             {prospect.phone && <DetailRow Icon={Phone} value={<a href={`tel:${prospect.phone}`} className="text-indigo-700 hover:underline">{prospect.phone}</a>} />}
             {prospect.email && <DetailRow Icon={Mail} value={<a href={`mailto:${prospect.email}`} className="text-indigo-700 hover:underline break-all">{prospect.email}</a>} />}
             {(prospect.state || prospect.zip || prospect.timezone) && (

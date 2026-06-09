@@ -6,7 +6,7 @@ import {
 } from '@/lib/constants';
 import { US_STATES } from '@/lib/commission';
 import { timezoneFromState } from '@/lib/prospects';
-import { formatPhoneInput, formatCurrencyInput } from '@/lib/utils';
+import { formatPhoneInput, formatCurrencyInput, formatDobInput } from '@/lib/utils';
 
 const inp = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500';
 
@@ -79,7 +79,7 @@ export default function ProspectForm({ open, prospect, stages, customFields = []
               <input type="email" className={inp} value={form.email || ''} onChange={e => set({ email: e.target.value })} placeholder="john@example.com" />
             </Field>
             <Field label="DOB(s)">
-              <input className={inp} value={form.dobs || ''} onChange={e => set({ dobs: e.target.value })} placeholder="1985-04-12  (or comma-separated for family)" />
+              <input className={inp} value={form.dobs || ''} onChange={e => set({ dobs: formatDobInput(e.target.value) })} placeholder="MM/DD/YYYY  (just type 01021962; comma-separate for family)" inputMode="numeric" />
             </Field>
           </div>
 
