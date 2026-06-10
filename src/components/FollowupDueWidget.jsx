@@ -46,7 +46,7 @@ export default function FollowupDueWidget({
     : `${rows.length} due today`;
 
   return (
-    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+    <div className="premium-card overflow-hidden">
       <button
         type="button"
         onClick={() => setCollapsed(c => !c)}

@@ -572,6 +572,19 @@ body {
   background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
 }
 
+/* ---------- Modal entrance (subtle-premium) ----------------------------- */
+/* CSS-only equivalents of GlassModal's framer entrance, for modals that
+   don't import framer-motion. Overlay fades; panel pops in with a soft
+   rise. Reduced-motion users get instant display (global rule above). */
+@keyframes overlay-fade {
+  from { opacity: 0; }
+}
+@keyframes modal-pop {
+  from { opacity: 0; transform: scale(0.96) translateY(10px); }
+}
+.overlay-fade { animation: overlay-fade 0.18s ease-out; }
+.modal-pop    { animation: modal-pop 0.22s cubic-bezier(0.16, 1, 0.3, 1); }
+
 /* ---------- App-wide button micro-interactions (subtle-premium) -------- */
 /* Smooth state changes + a gentle press-down on every button. The element-
    level selector keeps specificity minimal, so any utility class

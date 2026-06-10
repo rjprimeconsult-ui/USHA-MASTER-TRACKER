@@ -28,7 +28,7 @@ export default function FollowupScorecard({ prospects = [], stages = [], default
   const outcomeMax = Math.max(1, ...outcomeEntries.map(([, n]) => n));
 
   return (
-    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+    <div className="premium-card overflow-hidden">
       <button
         type="button"
         onClick={() => setCollapsed(c => !c)}

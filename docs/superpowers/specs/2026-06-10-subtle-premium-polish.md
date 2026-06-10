@@ -28,8 +28,10 @@ boilerplates (for starting apps; retrofitting = high risk, no visual payoff).
 - [x] **P1.1** — CountUp animates 0→value on first mount; deeper dark-mode
   premium-card. **P1.2** — `.skeleton` shimmer utility + AppSkeleton boot
   screen (replaces the plain "Loading…" text).
-- [ ] **P2 — Prospects**: toolbar/kanban/list refinement, card hover states,
-  consistent premium-table, glass modal treatment (ProspectForm/Detail).
+- [x] **P2 — Prospects**: glass modal treatment + pop-in entrance (ProspectForm,
+  ProspectDetail, SettingsModal), kanban card hover lift + tinted shadow,
+  drag-over ring on columns, premium-card toolbar/list/calendar/widgets,
+  focus rings on filter selects, section-accent on the page title.
 - [ ] **P3 — Leads/Clients (LeadsView + Pipeline + ClosedDeals)**.
 - [ ] **P4 — Books (BusinessBooksView)**.
 - [ ] **P5 — Platforms (PlatformExpensesView) + Associations**.

@@ -264,7 +264,9 @@ function KanbanCard({ prospect, onEdit, onDragStart, isSelected, onToggleSelect,
       onClick={() => onEdit(prospect)}
       style={accentStyle}
       className={`bg-white border rounded-lg p-3 cursor-pointer transition-all relative group ${
-        isSelected ? 'border-indigo-500 ring-2 ring-indigo-300 shadow-md' : 'border-slate-200 hover:shadow-md hover:border-indigo-300'
+        isSelected
+          ? 'border-indigo-500 ring-2 ring-indigo-300 shadow-md'
+          : 'border-slate-200 hover:shadow-lg hover:shadow-indigo-500/10 hover:border-indigo-300 hover:-translate-y-0.5'
       }`}
     >
       {/* Selection checkbox — always visible if selected, on hover otherwise */}
@@ -334,7 +336,7 @@ function KanbanColumn({ stage, prospects, onEdit, onDragStart, onDrop, selected,
       onDragOver={(e) => { e.preventDefault(); setOver(true); }}
       onDragLeave={() => setOver(false)}
       onDrop={(e) => { e.preventDefault(); setOver(false); onDrop(stage.id); }}
-      className={`flex-shrink-0 w-72 rounded-xl p-2.5 transition-colors ${over ? 'bg-indigo-50' : 'bg-slate-50'}`}
+      className={`flex-shrink-0 w-72 rounded-xl p-2.5 transition-all ${over ? 'bg-indigo-50 ring-2 ring-indigo-300/60' : 'bg-slate-50'}`}
     >
       <div className="flex items-center justify-between mb-2 px-1">
         <div className="flex items-center gap-2 min-w-0">
@@ -438,7 +440,7 @@ function CalendarPanel({ prospects, stages, onView }) {
   ) : '';
 
   return (
-    <div className={`bg-white border border-slate-200 rounded-xl p-2.5 ${collapsed ? '' : 'max-w-md'}`}>
+    <div className={`premium-card p-2.5 ${collapsed ? '' : 'max-w-md'}`}>
       {/* Header — collapsible */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <button
@@ -612,8 +614,8 @@ function SettingsModal({ open, settings, onSave, onClose, onSyncTextDrip }) {
   const addField = () => setDraft(d => ({ ...d, customFields: [...d.customFields, { id: 'cf_' + Date.now(), label: 'New Field', type: 'text', options: [] }] }));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-md overlay-fade">
+      <div className="bg-white/85 backdrop-blur-2xl border border-white/60 rounded-2xl shadow-2xl shadow-indigo-500/10 modal-pop w-full max-w-3xl max-h-[92vh] overflow-y-auto">
         <div className="flex items-center justify-between p-5 border-b border-slate-200">
           <h2 className="text-lg font-bold text-slate-900">Prospects Settings</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-700"><X size={20} /></button>
@@ -1031,9 +1033,9 @@ function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, o
     // use flex-column so the hero + footer stay pinned and only the
     // middle body scrolls — that was the bug Juan caught: hero used
     // to scroll out of view together with the body.
-    <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm overflow-y-auto" onClick={onClose}>
+    <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-md overlay-fade overflow-y-auto" onClick={onClose}>
       <div className="min-h-full flex items-center justify-center p-4">
-        <div onClick={e => e.stopPropagation()} className="bg-slate-50 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col">
+        <div onClick={e => e.stopPropagation()} className="bg-slate-50 border border-white/60 rounded-2xl shadow-2xl shadow-indigo-500/10 modal-pop w-full max-w-2xl max-h-[92vh] flex flex-col">
           {/* Hero header — pinned, doesn't scroll */}
           <div className="bg-white rounded-t-2xl border-b border-slate-200 p-6 relative flex-shrink-0">
           <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 p-1">
@@ -1532,7 +1534,7 @@ export default function ProspectsView({
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Prospects</h1>
+          <h1 className="text-2xl font-bold text-slate-900 flex items-center"><span className="section-accent" />Prospects</h1>
           <p className="text-sm text-slate-500">{totals.active} active · {totals.apptsToday} appt{totals.apptsToday !== 1 ? 's' : ''} today · {totals.sold} sold all-time</p>
         </div>
         <div className="flex items-center gap-2">
@@ -1637,29 +1639,29 @@ export default function ProspectsView({
       )}
 
       {/* Toolbar */}
-      <div className="bg-white border border-slate-200 rounded-xl p-3 flex items-center gap-2 flex-wrap">
+      <div className="premium-card p-3 flex items-center gap-2 flex-wrap">
         <div className="relative flex-1 min-w-[220px]">
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
           <input placeholder="Search name, phone, email..." value={search} onChange={e => setSearch(e.target.value)}
             className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
         </div>
         <select value={stageFilter} onChange={e => setStageFilter(e.target.value)}
-          className="border border-slate-200 rounded-lg px-3 py-2 text-sm" title="Filter by stage">
+          className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" title="Filter by stage">
           <option value="">All stages</option>
           {cfg.stages.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
         </select>
         <select value={sourceFilter} onChange={e => setSourceFilter(e.target.value)}
-          className="border border-slate-200 rounded-lg px-3 py-2 text-sm" title="Filter by lead source">
+          className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" title="Filter by lead source">
           <option value="">All sources</option>
           {sourceOptions.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
         <select value={crmFilter} onChange={e => setCrmFilter(e.target.value)}
-          className="border border-slate-200 rounded-lg px-3 py-2 text-sm" title="Filter by CRM">
+          className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" title="Filter by CRM">
           <option value="">All CRMs</option>
           {crmOptions.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
         <select value={apptFilter} onChange={e => setApptFilter(e.target.value)}
-          className="border border-slate-200 rounded-lg px-3 py-2 text-sm" title="Filter by appointment time">
+          className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" title="Filter by appointment time">
           <option value="">Any time</option>
           <option value="today">Today</option>
           <option value="week">This week</option>
@@ -1668,7 +1670,7 @@ export default function ProspectsView({
           <option value="none">No appointment</option>
         </select>
         <select value={sortBy} onChange={e => setSortBy(e.target.value)}
-          className="border border-slate-200 rounded-lg px-3 py-2 text-sm" title="Sort order">
+          className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" title="Sort order">
           <option value="">Sort: Default</option>
           <option value="appt">Sort: Appointment (soonest)</option>
           <option value="name">Sort: Name A–Z</option>
@@ -1733,7 +1735,7 @@ export default function ProspectsView({
       {/* List — compact 3-column layout: Name · Phone · Appt time + Stage.
           Click any row to open the read-only detail bubble. */}
       {prospects.length > 0 && view === 'list' && (
-        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+        <div className="premium-card overflow-hidden">
           <table className="w-full text-sm border-collapse premium-table">
             <thead>
               <tr className="bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500">

@@ -58,8 +58,8 @@ export default function ProspectForm({ open, prospect, stages, customFields = []
   const isSold = form.stage === 'SOLD';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-md overlay-fade">
+      <div className="bg-white/85 backdrop-blur-2xl border border-white/60 rounded-2xl shadow-2xl shadow-indigo-500/10 modal-pop w-full max-w-3xl max-h-[92vh] overflow-y-auto">
         <div className="flex items-center justify-between p-5 border-b border-slate-200">
           <div>
             <h2 className="text-lg font-bold text-slate-900">
