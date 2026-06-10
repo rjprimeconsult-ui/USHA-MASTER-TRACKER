@@ -13,13 +13,23 @@ logic/data changes), full `next build` + diff review before every commit.
 - ViewMount tab fade is deliberately 120ms opacity-only (slower = "tab lag");
   do not slow it down.
 
+## Research-derived pillars (Juan's premium-SaaS research, 2026-06-10)
+Adopted: **skeleton loaders** (boot skeleton shipped in P1.2; per-widget
+skeletons where async loads exist), **glassmorphism consistency** (all modals
+→ GlassModal treatment, not just some), **bento rhythm** (consistent gaps,
+deliberate tile spans on dashboards). Rejected: shadcn/ui retrofit + ShipFast
+boilerplates (for starting apps; retrofitting = high risk, no visual payoff).
+
 ## Phases (one commit + deploy each, Juan eyeballs between)
 - [x] **P1 — Foundation + Overview**: global button micro-interactions
   (smooth transitions + press scale), Chart3DCard → premium-card surface
   (upgrades Dashboard/CPA/Associations chart cards at once), Dashboard KPIs →
   premium-card + CountUp, section-accent ticks on chart titles.
+- [x] **P1.1** — CountUp animates 0→value on first mount; deeper dark-mode
+  premium-card. **P1.2** — `.skeleton` shimmer utility + AppSkeleton boot
+  screen (replaces the plain "Loading…" text).
 - [ ] **P2 — Prospects**: toolbar/kanban/list refinement, card hover states,
-  consistent premium-table, modal polish.
+  consistent premium-table, glass modal treatment (ProspectForm/Detail).
 - [ ] **P3 — Leads/Clients (LeadsView + Pipeline + ClosedDeals)**.
 - [ ] **P4 — Books (BusinessBooksView)**.
 - [ ] **P5 — Platforms (PlatformExpensesView) + Associations**.

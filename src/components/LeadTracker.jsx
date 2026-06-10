@@ -68,6 +68,7 @@ import { motion } from 'framer-motion';
 import TextDripReviewModal from './TextDripReviewModal';
 import { supabase, supabaseConfigured } from '@/lib/supabase';
 import { classifyImport, mapToProspect, mergeConversationIntoProspect } from '@/lib/textdrip.mjs';
+import AppSkeleton from './AppSkeleton';
 
 const ICONS = { Calculator, Repeat, CheckSquare, LayoutDashboard, Users, Columns, Upload, DollarSign, BookOpen, UserPlus, FileText };
 
@@ -1817,7 +1818,9 @@ export default function LeadTracker() {
   };
 
   if (!loaded) {
-    return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-500">Loading…</div>;
+    // Premium boot skeleton — the app shell shimmers into place instead of
+    // a blank "Loading…" flash. Pure presentation (AppSkeleton has no logic).
+    return <AppSkeleton />;
   }
 
   // Stats handed to the trial banner so its urgent-day copy can quantify

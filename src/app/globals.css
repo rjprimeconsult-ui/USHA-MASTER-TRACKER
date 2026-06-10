@@ -542,6 +542,36 @@ body {
   border-bottom-color: rgba(99, 102, 241, 0.08);
 }
 
+/* ---------- Skeleton loaders (subtle-premium) -------------------------- */
+/* Soft pulse + shimmer sweep for loading placeholders. Apply `.skeleton`
+   plus your own rounded-* / sizing utilities. Reduced-motion users get a
+   static block (global rule above kills the animations). */
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.6; }
+}
+@keyframes skeleton-sweep {
+  100% { transform: translateX(100%); }
+}
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: #e9edf5;
+  animation: skeleton-pulse 1.8s ease-in-out infinite;
+}
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+  animation: skeleton-sweep 1.8s ease-in-out infinite;
+}
+.dark .skeleton { background: #243054; }
+.dark .skeleton::after {
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
+}
+
 /* ---------- App-wide button micro-interactions (subtle-premium) -------- */
 /* Smooth state changes + a gentle press-down on every button. The element-
    level selector keeps specificity minimal, so any utility class
