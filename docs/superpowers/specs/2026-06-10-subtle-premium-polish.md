@@ -35,11 +35,16 @@ boilerplates (for starting apps; retrofitting = high risk, no visual payoff).
 - [x] **P3 — Leads/Clients**: LeadForm modal entrance, LeadsView select focus
   rings + unified indigo row hover, Pipeline drag-over ring + card hover lift,
   ClosedDeals donut cards → premium-card.
-- [ ] **P4 — Books (BusinessBooksView)**.
-- [ ] **P5 — Platforms (PlatformExpensesView) + Associations**.
-- [ ] **P6 — Reports + CPA Dashboard**.
-- [ ] **P7 — Shared chrome**: header/nav, settings modals, forms, Upload view.
-- [ ] Final: ONE announcement (bell + [announce] Slack) covering the whole pass.
+- [x] **P4 — Books**: modal entrances (5 dialogs); view was already premium.
+- [x] **P5 — Platforms + Associations**: residual-book card → premium-card;
+  rest was already premium.
+- [x] **P6 — Reports + CPA Dashboard**: follow-up performance card →
+  premium-card; ReportSheet deliberately untouched (print/PDF-sensitive).
+- [x] **P7 — Global modal sweep**: CSS attribute selector in globals.css
+  auto-applies overlay-fade + modal-pop to EVERY `fixed inset-0` +
+  backdrop-blur overlay and its panel — all ~25 modal components, present
+  and future, in one place.
+- [x] Final: ONE announcement (bell + [announce] Slack) covering the whole pass.
 
 ## Notes
 - Other views already use CountUp on KPIs; Overview was the odd one out.

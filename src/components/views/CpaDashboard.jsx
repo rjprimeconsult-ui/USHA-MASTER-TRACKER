@@ -873,7 +873,7 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
         </div>
 
         {(followupStats.totalTouches > 0 || followupStats.activeCount > 0) && (
-          <div className="bg-white rounded-xl border border-slate-200 p-4 mt-4">
+          <div className="premium-card p-4 mt-4">
             <h3 className="font-semibold text-slate-900 mb-1">Follow-up performance</h3>
             <p className="text-[11px] text-slate-400 mb-3">From your Prospects follow-up log</p>
             <div className="grid grid-cols-3 gap-3">

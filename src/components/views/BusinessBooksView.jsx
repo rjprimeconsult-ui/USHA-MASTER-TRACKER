@@ -1506,12 +1506,12 @@ function BusinessBooksView({
       {/* Attachment viewer modal */}
       {viewAttachment && (
         <div
-          className="fixed inset-0 bg-slate-900/50 backdrop-blur-md z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 bg-slate-900/50 backdrop-blur-md overlay-fade z-50 flex items-center justify-center p-4"
           onClick={() => setViewAttachment(null)}
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="bg-white/95 backdrop-blur-2xl border border-white/60 rounded-2xl max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl shadow-indigo-500/10"
+            className="bg-white/95 backdrop-blur-2xl border border-white/60 rounded-2xl modal-pop max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl shadow-indigo-500/10"
           >
             <div className="flex items-center justify-between p-4 border-b border-slate-200">
               <div className="text-sm font-medium text-slate-700 truncate">{viewAttachment.name}</div>
@@ -1536,8 +1536,8 @@ function BusinessBooksView({
 
       {/* Re-scan categories preview modal */}
       {rescanPreview && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-md z-50 flex items-center justify-center p-4" onClick={() => setRescanPreview(null)}>
-          <div onClick={(e) => e.stopPropagation()} className="bg-white/95 backdrop-blur-2xl border border-white/60 rounded-2xl max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl shadow-indigo-500/10">
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-md overlay-fade z-50 flex items-center justify-center p-4" onClick={() => setRescanPreview(null)}>
+          <div onClick={(e) => e.stopPropagation()} className="bg-white/95 backdrop-blur-2xl border border-white/60 rounded-2xl modal-pop max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl shadow-indigo-500/10">
             <div className="flex items-center justify-between p-5 border-b border-slate-200">
               <div>
                 <h2 className="font-semibold text-slate-900">Re-scan categories</h2>
@@ -1633,10 +1633,10 @@ function AccountManager({ accounts = [], usageCounts = {}, onAdd, onRemove, onCl
     setName('');
   };
   return (
-    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-md z-50 flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-md overlay-fade z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-2xl border border-slate-200 w-full max-w-md shadow-2xl shadow-indigo-500/10 flex flex-col max-h-[80vh]"
+        className="bg-white rounded-2xl border border-slate-200 modal-pop w-full max-w-md shadow-2xl shadow-indigo-500/10 flex flex-col max-h-[80vh]"
       >
         <div className="flex items-center justify-between p-4 border-b border-slate-200">
           <div className="flex items-center gap-2">
@@ -1744,10 +1744,10 @@ function ImportPreviewModal({ preview, knownAccounts = [], expenseCategories = [
   const totalDup   = (preview.expDup?.length    || 0) + (preview.incDup?.length    || 0);
 
   return (
-    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-md z-50 flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-md overlay-fade z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-white/95 backdrop-blur-2xl border border-white/60 rounded-2xl max-w-6xl w-full max-h-[90vh] flex flex-col shadow-2xl shadow-indigo-500/10"
+        className="bg-white/95 backdrop-blur-2xl border border-white/60 rounded-2xl modal-pop max-w-6xl w-full max-h-[90vh] flex flex-col shadow-2xl shadow-indigo-500/10"
       >
         <div className="flex items-center justify-between p-5 border-b border-slate-200 gap-4 flex-wrap">
           <div>
@@ -1917,8 +1917,8 @@ function PreviewSection({ title, rows, cats, selected, onToggle, onUpdate, vendo
 function AiRescanPreview({ proposals, onTogglePick, onApply, onClose, expCat }) {
   const pickedCount = proposals.filter(p => p.picked).length;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[92vh] overflow-hidden flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-md overlay-fade">
+      <div className="bg-white border border-white/60 rounded-2xl shadow-2xl shadow-indigo-500/10 modal-pop w-full max-w-4xl max-h-[92vh] overflow-hidden flex flex-col">
         <div className="flex items-center justify-between p-5 border-b border-slate-200 bg-gradient-to-br from-violet-50 to-indigo-50">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-white shadow-lg">

@@ -585,6 +585,20 @@ body {
 .overlay-fade { animation: overlay-fade 0.18s ease-out; }
 .modal-pop    { animation: modal-pop 0.22s cubic-bezier(0.16, 1, 0.3, 1); }
 
+/* Auto-apply the entrance to EVERY modal in the app: all PRIM modal
+   overlays are `fixed inset-0` with a backdrop-blur-* class, so this pair
+   animates the overlay and pops its panel (first child) without touching
+   ~25 components individually — and future modals inherit it for free.
+   Framer-driven modals (GlassModal) animate in the same direction, so the
+   brief overlap is invisible. Animations are transient (fill: none), so no
+   transform lingers afterward to break fixed-position descendants. */
+.fixed.inset-0[class*="backdrop-blur"] {
+  animation: overlay-fade 0.18s ease-out;
+}
+.fixed.inset-0[class*="backdrop-blur"] > div:first-child {
+  animation: modal-pop 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 /* ---------- App-wide button micro-interactions (subtle-premium) -------- */
 /* Smooth state changes + a gentle press-down on every button. The element-
    level selector keeps specificity minimal, so any utility class

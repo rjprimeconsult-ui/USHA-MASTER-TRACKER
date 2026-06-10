@@ -662,7 +662,7 @@ function CommissionDetailPanel({
   }
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl p-4">
+    <div className="premium-card p-4">
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="flex items-center gap-2">
           <Database size={16} className="text-indigo-600" />

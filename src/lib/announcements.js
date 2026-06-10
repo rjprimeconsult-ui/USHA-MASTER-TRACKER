@@ -33,6 +33,13 @@
 
 export const ANNOUNCEMENTS = [
   {
+    id: '2026-06-10-premium-polish',
+    date: '2026-06-10',
+    emoji: '✨',
+    title: 'PRIM got a glow-up — smoother, faster-feeling, more premium',
+    body: 'A top-to-bottom visual refresh: animated number tickers on every dashboard, a sleek loading skeleton at startup, frosted-glass dialogs that ease into place, cards that lift on hover, and buttons with real press feedback. Everything works exactly as before — it just feels better.',
+  },
+  {
     id: '2026-06-09-ringy-integration',
     date: '2026-06-09',
     emoji: '🔗',
