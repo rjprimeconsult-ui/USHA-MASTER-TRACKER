@@ -14,6 +14,19 @@ import { useLeadOptionsAll, addCustomLeadOption, ADD_CUSTOM_VALUE } from '@/lib/
 // `truncate` keeps long content from blowing out fixed-width cells.
 const inlineCell = 'border border-transparent hover:border-slate-200 focus:border-indigo-400 focus:ring-1 focus:ring-indigo-200 rounded px-1 py-0.5 bg-transparent w-full text-xs truncate';
 
+// Outcome buckets. A deal is "closed" the moment it's been worked to a
+// decision — positive OR negative — so the tracker shows every outcome, not
+// just the wins. Advance/commission still only ever comes from Issued deals;
+// the negative outcomes are real worked deals (and real lead cost) the agent
+// uses for analytics, which is why they belong here too.
+const LOST_STAGES = ['Declined', 'Not taken', 'Withdrawn'];
+const isLostStage = (stage) => LOST_STAGES.includes(stage);
+
+// The month a deal belongs to: its close/submission date, falling back to the
+// purchase date so a worked deal never silently vanishes if closedDate is blank
+// (migrateLead backfills closedDate, but stay defensive). Returns '' if neither.
+const dealDate = (l) => l.closedDate || l.dateAdded || '';
+
 // Lighten a hex color toward white by a percentage. Used to build the
 // per-slice radial gradients so each slice has subtle depth without the
 // dated 3D-extrusion look.
@@ -318,27 +331,38 @@ function ClosedDeals({ leads, onEdit, onUpdate, onDelete, onImportFromScreenshot
     await reloadLeadOptions();
     patch(lead, fieldOnLead, trimmed);
   };
-  // Show Submitted + Issued (pending + paid deals)
+  // Every worked deal, any outcome — Issued, Pending, Declined, Not taken,
+  // Withdrawn. (Was Issued+Pending only.) A deal with no usable date is
+  // skipped so grouping never crashes; in practice every lead has one.
   const visible = useMemo(() =>
-    leads.filter(l => (l.stage === 'Issued' || l.stage === 'Pending') && l.closedDate)
+    leads.filter(l => dealDate(l))
   , [leads]);
 
   const totals = useMemo(() => {
-    const issued = visible.filter(l => l.stage === 'Issued');
+    const issued  = visible.filter(l => l.stage === 'Issued');
+    const pending = visible.filter(l => l.stage === 'Pending');
+    const lost    = visible.filter(l => isLostStage(l.stage));
+    // Advance only ever comes from Issued deals. Lead cost is real money spent
+    // on every worked deal regardless of outcome, so Profit = total advance
+    // minus ALL lead cost (this also matches the per-month profit below, which
+    // already subtracted all lead cost — the header now agrees with it).
+    const totalLeadCost   = visible.reduce((s, l) => s + (l.leadCost || 0), 0);
+    const totalCommission = issued.reduce((s, l) => s + (l.dealValue || 0), 0);
     return {
       deals: visible.length,
       issuedCount: issued.length,
-      pendingCount: visible.length - issued.length,
-      totalLeadCost: visible.reduce((s, l) => s + (l.leadCost || 0), 0),
-      totalCommission: issued.reduce((s, l) => s + (l.dealValue || 0), 0),
-      totalProfit: issued.reduce((s, l) => s + (l.dealValue || 0) - (l.leadCost || 0), 0),
+      pendingCount: pending.length,
+      lostCount: lost.length,
+      totalLeadCost,
+      totalCommission,
+      totalProfit: totalCommission - totalLeadCost,
     };
   }, [visible]);
 
   const grouped = useMemo(() => {
     const m = {};
     visible.forEach(l => {
-      const ym = l.closedDate.slice(0, 7);
+      const ym = dealDate(l).slice(0, 7);
       (m[ym] ||= []).push(l);
     });
     return Object.entries(m).sort((a, b) => b[0].localeCompare(a[0]));
@@ -351,9 +375,9 @@ function ClosedDeals({ leads, onEdit, onUpdate, onDelete, onImportFromScreenshot
     const now = new Date();
     const year = now.getFullYear();
     const curQuarter = Math.floor(now.getMonth() / 3); // 0-3
-    const ytdItems = visible.filter(l => (l.closedDate || '').slice(0, 4) === String(year));
+    const ytdItems = visible.filter(l => dealDate(l).slice(0, 4) === String(year));
     const qtdItems = ytdItems.filter(l => {
-      const m = parseInt((l.closedDate || '').slice(5, 7), 10);
+      const m = parseInt(dealDate(l).slice(5, 7), 10);
       return Number.isFinite(m) && Math.floor((m - 1) / 3) === curQuarter;
     });
     return {
@@ -376,14 +400,14 @@ function ClosedDeals({ leads, onEdit, onUpdate, onDelete, onImportFromScreenshot
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Closed Deals Tracker</h1>
-            <p className="text-sm text-slate-500 mt-0.5">Pending + Issued deals grouped by month</p>
+            <p className="text-sm text-slate-500 mt-0.5">Every worked deal — issued, pending, and lost — grouped by month</p>
           </div>
         </div>
         <div className="premium-card">
           <EmptyState
             icon={Trophy}
             title="No closed deals yet"
-            message="When you mark a lead as Pending or Issued, it lands here grouped by month — with full breakdowns of premium, advance, and association residuals. Snap a portal screenshot to add your first one."
+            message="Every deal you work lands here grouped by month — issued, pending, or lost (declined, withdrawn, not taken) — with full breakdowns of premium, advance, and association residuals. Snap a portal screenshot to add your first one."
             actions={onImportFromScreenshot ? [
               { label: 'Import from screenshot', onClick: onImportFromScreenshot, icon: ImageUp },
             ] : []}
@@ -411,7 +435,8 @@ function ClosedDeals({ leads, onEdit, onUpdate, onDelete, onImportFromScreenshot
           <p className="text-sm text-slate-500 mt-0.5">
             <span className="text-emerald-700 font-medium">{totals.issuedCount} Issued</span>
             {totals.pendingCount > 0 && <> · <span className="text-amber-700 font-medium">{totals.pendingCount} Pending</span></>}
-            {' '}· Pending deals show but don&apos;t contribute advance until Issued.
+            {totals.lostCount > 0 && <> · <span className="text-rose-600 font-medium">{totals.lostCount} Lost</span></>}
+            {' '}· Only Issued deals contribute advance; pending &amp; lost are tracked for your numbers.
           </p>
         </div>
         <div className="flex gap-2 text-sm flex-wrap">
@@ -518,6 +543,8 @@ function ClosedDeals({ leads, onEdit, onUpdate, onDelete, onImportFromScreenshot
       {/* Month sections */}
       {grouped.map(([ym, items]) => {
         const issuedItems = items.filter(l => l.stage === 'Issued');
+        const pendingCount = items.filter(l => l.stage === 'Pending').length;
+        const lostCount = items.filter(l => isLostStage(l.stage)).length;
         const totCommission = issuedItems.reduce((s, l) => s + (l.dealValue || 0), 0);
         const totLeadCost = items.reduce((s, l) => s + (l.leadCost || 0), 0);
         const totProfit = totCommission - totLeadCost;
@@ -539,7 +566,7 @@ function ClosedDeals({ leads, onEdit, onUpdate, onDelete, onImportFromScreenshot
             <div className="bg-yellow-300 px-4 py-1.5 font-bold text-slate-900 text-sm tracking-wider border-b-2 border-yellow-500">
               {monthLabel(ym)} · {items.length} DEAL{items.length !== 1 ? 'S' : ''}
               {issuedItems.length !== items.length && (
-                <> ({issuedItems.length} issued, {items.length - issuedItems.length} pending)</>
+                <> ({issuedItems.length} issued{pendingCount ? `, ${pendingCount} pending` : ''}{lostCount ? `, ${lostCount} lost` : ''})</>
               )}
               {totCommission > 0 && <> · {fmt(totCommission)} ADVANCE</>}
             </div>
@@ -596,11 +623,17 @@ function ClosedDeals({ leads, onEdit, onUpdate, onDelete, onImportFromScreenshot
                   <tbody>
                     {items.map(l => {
                       const isIssued = l.stage === 'Issued';
+                      const isLost = isLostStage(l.stage);
                       const profit = isIssued ? (l.dealValue || 0) - (l.leadCost || 0) : 0;
                       const prods = [l.mainProduct, l.associationPlan, ...(l.products || []).map(p => p.id)].filter(Boolean).join(', ') || '—';
+                      // Row tint reads outcome at a glance: issued = clean,
+                      // pending = amber (open), lost = rose (declined/withdrawn/
+                      // not taken) so a negative outcome is never mistaken for a sale.
+                      const rowTint = isIssued ? 'hover:bg-slate-50' : isLost ? 'bg-rose-50/40 hover:bg-rose-50' : 'bg-amber-50/30 hover:bg-amber-50';
+                      const stickyTint = isIssued ? 'bg-white' : isLost ? 'bg-rose-50/40' : 'bg-amber-50/30';
                       return (
-                        <tr key={l.id} className={`border-t border-slate-100 ${isIssued ? 'hover:bg-slate-50' : 'bg-amber-50/30 hover:bg-amber-50'}`}>
-                          <td className={`p-2 font-medium sticky left-0 z-10 ${isIssued ? 'bg-white' : 'bg-amber-50/30'}`}>
+                        <tr key={l.id} className={`border-t border-slate-100 ${rowTint}`}>
+                          <td className={`p-2 font-medium sticky left-0 z-10 ${stickyTint}`}>
                             <div className="flex items-center gap-2">
                               <input
                                 className={inlineCell + ' font-medium text-sm'}

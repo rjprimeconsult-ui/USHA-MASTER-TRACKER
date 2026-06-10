@@ -33,6 +33,14 @@
 
 export const ANNOUNCEMENTS = [
   {
+    id: '2026-06-10-closed-deals-all-outcomes',
+    date: '2026-06-10',
+    emoji: '📊',
+    title: 'Closed Deals now shows every outcome — wins and losses',
+    body: 'Closed Deals used to show only Issued + Pending. Now it mirrors your whole book of business: declined, withdrawn, and not-taken deals appear too, color-coded (rose = lost, amber = pending, clean = issued) and grouped by month. Advance still only counts Issued deals. Heads-up: Profit now subtracts the lead cost of every worked deal (including losses), so it reflects your true net — it may read a bit lower than before.',
+    cta: { label: 'Open Closed Deals', view: 'closed' },
+  },
+  {
     id: '2026-06-10-premium-polish',
     date: '2026-06-10',
     emoji: '✨',
