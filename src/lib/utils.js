@@ -87,6 +87,23 @@ export const formatDob = (value) => {
     .join(', ');
 };
 
+// Normalize any stored appointment value to the exact "YYYY-MM-DDTHH:mm"
+// shape <input type="datetime-local"> requires. Imports/AI sometimes store
+// "2026-06-04 20:00" (space) or values with seconds/zone — the picker renders
+// those as BLANK, so the agent can neither see nor truly clear them (the old
+// value silently survives a save). Returns '' for anything unparseable.
+export const toDateTimeLocalInput = (value) => {
+  if (!value) return '';
+  const s = String(value).trim();
+  const m = s.replace(' ', 'T').match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})/);
+  if (m) return m[1];
+  if (!/\d/.test(s)) return '';
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime()) || d.getFullYear() < 2000) return '';
+  const p2 = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}T${p2(d.getHours())}:${p2(d.getMinutes())}`;
+};
+
 export const getWeekStart = (d) => {
   if (!d || typeof d !== 'string') return '';
   // Normalize various accepted forms to YYYY-MM-DD before parsing

@@ -6,7 +6,7 @@ import {
 } from '@/lib/constants';
 import { US_STATES } from '@/lib/commission';
 import { timezoneFromState } from '@/lib/prospects';
-import { formatPhoneInput, formatCurrencyInput, formatDobInput } from '@/lib/utils';
+import { formatPhoneInput, formatCurrencyInput, formatDobInput, toDateTimeLocalInput } from '@/lib/utils';
 
 const inp = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500';
 
@@ -19,11 +19,19 @@ const Field = ({ label, children, required }) => (
   </div>
 );
 
+// Normalize fields the form's native pickers can't otherwise display.
+// appointmentTime: datetime-local renders any non-"YYYY-MM-DDTHH:mm" value as
+// blank, so a malformed stored value could neither be seen nor cleared — the
+// old value silently survived every save. Anything the list can display
+// (lenient Date parse) normalizes successfully; true garbage becomes ''.
+const normalizeForForm = (p) =>
+  p ? { ...p, appointmentTime: toDateTimeLocalInput(p.appointmentTime) } : p;
+
 export default function ProspectForm({ open, prospect, stages, customFields = [], onSave, onClose, onDelete, onConvertToLead }) {
-  const [form, setForm] = useState(prospect);
+  const [form, setForm] = useState(normalizeForForm(prospect));
   const [customSource, setCustomSource] = useState(!!prospect?.source && !PROSPECT_SOURCES.includes(prospect.source));
 
-  useEffect(() => { setForm(prospect); }, [prospect]);
+  useEffect(() => { setForm(normalizeForForm(prospect)); }, [prospect]);
 
   if (!open || !form) return null;
 
