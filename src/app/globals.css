@@ -539,6 +539,20 @@ body {
   border-bottom-color: rgba(99, 102, 241, 0.08);
 }
 
+/* ---------- App-wide button micro-interactions (subtle-premium) -------- */
+/* Smooth state changes + a gentle press-down on every button. The element-
+   level selector keeps specificity minimal, so any utility class
+   (transition-*, hover:scale-*) or framer-motion inline transform still
+   overrides these. Reduced-motion users are covered by the global rule above. */
+button {
+  transition: background-color 0.15s ease, border-color 0.15s ease,
+              color 0.15s ease, box-shadow 0.15s ease,
+              opacity 0.15s ease, transform 0.12s ease;
+}
+button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
 /* Small accent bar for section headings — a 4px gradient tick that gives
    titles a crisp, branded anchor. Follows the agent's accent palette. */
 .section-accent {

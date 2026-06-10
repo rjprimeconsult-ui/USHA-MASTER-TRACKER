@@ -131,7 +131,7 @@ export function CountUp({ value = 0, format = (v) => v.toLocaleString(undefined,
 export function Chart3DCard({ children, className = '', titleZ = 12, fadeIn = true }) {
   const card = (
     <TiltCard
-      className={`relative bg-white rounded-xl border border-slate-200 p-4 shine-on-hover glow-ring overflow-hidden cursor-default ${className}`}
+      className={`relative premium-card p-4 shine-on-hover glow-ring overflow-hidden cursor-default ${className}`}
       maxTilt={3}
       scale={1}
     >

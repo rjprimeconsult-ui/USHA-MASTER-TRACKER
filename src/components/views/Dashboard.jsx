@@ -4,18 +4,23 @@ import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Cart
 import { Users, Target, DollarSign, TrendingUp, CheckCircle2, Percent, MapPin } from 'lucide-react';
 import { STAGES, SOURCES, LEAD_CATEGORIES, CRMS, effectiveLeadCategory } from '@/lib/constants';
 import { fmt } from '@/lib/utils';
-import { Chart3DCard, TiltCard, Stagger, StaggerItem, Pie3D } from '../motion/MotionPrimitives';
+import { Chart3DCard, TiltCard, Stagger, StaggerItem, Pie3D, CountUp } from '../motion/MotionPrimitives';
 import SetupChecklist from '../SetupChecklist';
 import { useChartColors } from '@/lib/useIsDark';
 import OutreachRemindersWidget from '../OutreachRemindersWidget';
 
-const Kpi = ({ label, value, grad, Icon }) => (
-  <TiltCard className="bg-white rounded-xl p-3 border border-slate-200 shine-on-hover glow-ring cursor-default">
+// KPI tile — premium-card surface + CountUp ticker (matches the KPI tiles in
+// Books/Platforms/CPA, which already animate). `value` is numeric; `format`
+// is optional (defaults to whole-number locale string inside CountUp).
+const Kpi = ({ label, value, grad, Icon, format }) => (
+  <TiltCard className="premium-card p-3 shine-on-hover glow-ring cursor-default">
     <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${grad} flex items-center justify-center text-white mb-2 shadow-md`} style={{ transform: 'translateZ(15px)' }}>
       <Icon size={16} />
     </div>
     <div className="text-xs text-slate-500">{label}</div>
-    <div className="text-xl kpi-num text-slate-900" style={{ transform: 'translateZ(10px)' }}>{value}</div>
+    <div className="text-xl kpi-num text-slate-900" style={{ transform: 'translateZ(10px)' }}>
+      <CountUp value={value} {...(format ? { format } : {})} />
+    </div>
   </TiltCard>
 );
 
@@ -182,14 +187,14 @@ function Dashboard({ leads, prospects = [], onOpenProspects, setupStats, onSetup
         <StaggerItem><Kpi label="Total Leads" value={total} grad="from-indigo-500 to-blue-500" Icon={Users} /></StaggerItem>
         <StaggerItem><Kpi label="Open Leads" value={openLeads.length} grad="from-sky-500 to-cyan-500" Icon={Target} /></StaggerItem>
         <StaggerItem><Kpi label="Won" value={won.length} grad="from-emerald-500 to-green-500" Icon={CheckCircle2} /></StaggerItem>
-        <StaggerItem><Kpi label="Revenue" value={fmt(revenue)} grad="from-violet-500 to-purple-500" Icon={DollarSign} /></StaggerItem>
-        <StaggerItem><Kpi label="Avg Deal" value={fmt(avgDeal)} grad="from-amber-500 to-orange-500" Icon={TrendingUp} /></StaggerItem>
-        <StaggerItem><Kpi label="Close Rate" value={closeRate.toFixed(0) + '%'} grad="from-teal-500 to-emerald-500" Icon={Percent} /></StaggerItem>
+        <StaggerItem><Kpi label="Revenue" value={revenue} format={fmt} grad="from-violet-500 to-purple-500" Icon={DollarSign} /></StaggerItem>
+        <StaggerItem><Kpi label="Avg Deal" value={avgDeal} format={fmt} grad="from-amber-500 to-orange-500" Icon={TrendingUp} /></StaggerItem>
+        <StaggerItem><Kpi label="Close Rate" value={closeRate} format={(v) => v.toFixed(0) + '%'} grad="from-teal-500 to-emerald-500" Icon={Percent} /></StaggerItem>
       </Stagger>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Chart3DCard className="lg:col-span-2">
-          <h3 className="font-semibold mb-3 text-slate-900">Revenue by Month</h3>
+          <h3 className="font-semibold mb-3 text-slate-900"><span className="section-accent" />Revenue by Month</h3>
           <ResponsiveContainer width="100%" height={240}>
             <LineChart data={byMonth}>
               <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} />
@@ -202,7 +207,7 @@ function Dashboard({ leads, prospects = [], onOpenProspects, setupStats, onSetup
         </Chart3DCard>
 
         <Chart3DCard>
-          <h3 className="font-semibold mb-3 text-slate-900">By Stage</h3>
+          <h3 className="font-semibold mb-3 text-slate-900"><span className="section-accent" />By Stage</h3>
           <Pie3D
             data={stageData}
             outerRadius={70}
@@ -227,7 +232,7 @@ function Dashboard({ leads, prospects = [], onOpenProspects, setupStats, onSetup
       {/* By Category + By Source side-by-side */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Chart3DCard>
-          <h3 className="font-semibold mb-3 text-slate-900">By Lead Category</h3>
+          <h3 className="font-semibold mb-3 text-slate-900"><span className="section-accent" />By Lead Category</h3>
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={categoryData} layout="vertical">
               <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} />
@@ -243,7 +248,7 @@ function Dashboard({ leads, prospects = [], onOpenProspects, setupStats, onSetup
         </Chart3DCard>
 
         <Chart3DCard>
-          <h3 className="font-semibold mb-3 text-slate-900">By Source (CRM breakdown)</h3>
+          <h3 className="font-semibold mb-3 text-slate-900"><span className="section-accent" />By Source (CRM breakdown)</h3>
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={sourceData} layout="vertical">
               <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} />

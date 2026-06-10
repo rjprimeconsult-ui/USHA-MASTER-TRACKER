@@ -1,0 +1,33 @@
+# Subtle-Premium Visual Polish Pass (2026-06-10)
+
+Juan's directive: enhance ALL sections, **subtle-premium** taste (Linear/Stripe,
+not flashy-futuristic), one section per deploy so he can verify each visually.
+Hard rules: **visual-only changes** (classNames, CSS, motion wrappers — zero
+logic/data changes), full `next build` + diff review before every commit.
+
+## Existing foundation (do NOT rebuild)
+- `MotionPrimitives.jsx`: FadeIn, Stagger, TiltCard, CountUp, Chart3DCard,
+  Pie3D, GlassModal, OrbBackdrop, confetti.
+- `globals.css`: premium-card / premium-lift / premium-table / section-accent /
+  shine-on-hover / glow-ring / mesh / orbs / tier shimmer / reduced-motion.
+- ViewMount tab fade is deliberately 120ms opacity-only (slower = "tab lag");
+  do not slow it down.
+
+## Phases (one commit + deploy each, Juan eyeballs between)
+- [x] **P1 — Foundation + Overview**: global button micro-interactions
+  (smooth transitions + press scale), Chart3DCard → premium-card surface
+  (upgrades Dashboard/CPA/Associations chart cards at once), Dashboard KPIs →
+  premium-card + CountUp, section-accent ticks on chart titles.
+- [ ] **P2 — Prospects**: toolbar/kanban/list refinement, card hover states,
+  consistent premium-table, modal polish.
+- [ ] **P3 — Leads/Clients (LeadsView + Pipeline + ClosedDeals)**.
+- [ ] **P4 — Books (BusinessBooksView)**.
+- [ ] **P5 — Platforms (PlatformExpensesView) + Associations**.
+- [ ] **P6 — Reports + CPA Dashboard**.
+- [ ] **P7 — Shared chrome**: header/nav, settings modals, forms, Upload view.
+- [ ] Final: ONE announcement (bell + [announce] Slack) covering the whole pass.
+
+## Notes
+- Other views already use CountUp on KPIs; Overview was the odd one out.
+- Don't pair premium-lift with TiltCard (transform conflict).
+- Keep emerald strictly semantic (money/positive); indigo is THE accent.
