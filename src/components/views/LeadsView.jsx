@@ -208,11 +208,11 @@ function LeadsView({ leads, onNew, onEdit, onDelete, onBulkDelete, onBulkStage, 
           <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search name, email, phone, notes…"
                  className="w-full border border-slate-200 rounded-lg pl-8 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
         </div>
-        <select value={stageF} onChange={e => setStageF(e.target.value)} className="border border-slate-200 rounded-lg px-3 py-2 text-sm">
+        <select value={stageF} onChange={e => setStageF(e.target.value)} className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
           <option value="">All stages</option>
           {STAGES.map(s => <option key={s.id}>{s.id}</option>)}
         </select>
-        <select value={productF} onChange={e => setProductF(e.target.value)} className="border border-slate-200 rounded-lg px-3 py-2 text-sm">
+        <select value={productF} onChange={e => setProductF(e.target.value)} className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
           <option value="">All products</option>
           <option value="UW">UW products (Premier Adv / Choice, Secure Adv)</option>
           <option value="GI">GI products (Health Access III)</option>
@@ -221,7 +221,7 @@ function LeadsView({ leads, onNew, onEdit, onDelete, onBulkDelete, onBulkStage, 
           {MAIN_PRODUCTS.map(p => <option key={p.id} value={p.id}>{p.id}</option>)}
           <option value="__none__">— none —</option>
         </select>
-        <select value={monthF} onChange={e => setMonthF(e.target.value)} className="border border-slate-200 rounded-lg px-3 py-2 text-sm" title="Filter by close date month">
+        <select value={monthF} onChange={e => setMonthF(e.target.value)} className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" title="Filter by close date month">
           <option value="">All months</option>
           {monthOptions.map(m => {
             const [y, mo] = m.split('-');
@@ -232,7 +232,7 @@ function LeadsView({ leads, onNew, onEdit, onDelete, onBulkDelete, onBulkStage, 
         <select
           value={ageF}
           onChange={e => setAgeF(e.target.value)}
-          className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+          className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
           title="Filter by applicant age — over/under 50 mirrors the USHA senior-market line"
         >
           <option value="">All ages</option>
@@ -341,7 +341,7 @@ function LeadsView({ leads, onNew, onEdit, onDelete, onBulkDelete, onBulkStage, 
               return (
                 <tr
                   key={l.id}
-                  className={`border-t border-slate-100 ${isSel ? 'bg-indigo-50' : 'hover:bg-slate-50'}`}
+                  className={`border-t border-slate-100 ${isSel ? 'bg-indigo-50' : ''}`}
                 >
                   <td className="p-2" onClick={e => e.stopPropagation()}>
                     <input

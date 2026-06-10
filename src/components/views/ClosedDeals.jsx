@@ -138,7 +138,7 @@ function LeadAnalyticsDonut({
 
   if (!data.length || total === 0) {
     return (
-      <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm h-full">
+      <div className="premium-card p-4 h-full">
         <div className="flex items-center justify-between mb-1">
           <div>
             <div className="text-xs font-bold uppercase tracking-wider text-slate-500">{title}</div>
@@ -156,7 +156,7 @@ function LeadAnalyticsDonut({
   }
 
   return (
-    <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm h-full flex flex-col">
+    <div className="premium-card p-4 h-full flex flex-col">
       {/* Header */}
       <div className="flex items-start justify-between mb-2 gap-2">
         <div className="min-w-0">

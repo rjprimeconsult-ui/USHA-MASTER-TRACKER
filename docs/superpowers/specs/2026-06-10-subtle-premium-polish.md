@@ -32,7 +32,9 @@ boilerplates (for starting apps; retrofitting = high risk, no visual payoff).
   ProspectDetail, SettingsModal), kanban card hover lift + tinted shadow,
   drag-over ring on columns, premium-card toolbar/list/calendar/widgets,
   focus rings on filter selects, section-accent on the page title.
-- [ ] **P3 — Leads/Clients (LeadsView + Pipeline + ClosedDeals)**.
+- [x] **P3 — Leads/Clients**: LeadForm modal entrance, LeadsView select focus
+  rings + unified indigo row hover, Pipeline drag-over ring + card hover lift,
+  ClosedDeals donut cards → premium-card.
 - [ ] **P4 — Books (BusinessBooksView)**.
 - [ ] **P5 — Platforms (PlatformExpensesView) + Associations**.
 - [ ] **P6 — Reports + CPA Dashboard**.

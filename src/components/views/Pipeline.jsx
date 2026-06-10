@@ -37,7 +37,7 @@ function Pipeline({ leads, onStageChange, onEdit, onDelete, onNew }) {
           return (
             <div
               key={col.id}
-              className={`w-64 flex-shrink-0 rounded-xl border ${overCol === col.id ? 'border-indigo-400 bg-indigo-50/30' : 'border-slate-200 bg-white'}`}
+              className={`w-64 flex-shrink-0 rounded-xl border transition-all ${overCol === col.id ? 'border-indigo-400 bg-indigo-50/30 ring-2 ring-indigo-300/60' : 'border-slate-200 bg-white'}`}
               onDragOver={e => { e.preventDefault(); setOverCol(col.id); }}
               onDragLeave={() => setOverCol(null)}
               onDrop={e => {
@@ -58,7 +58,7 @@ function Pipeline({ leads, onStageChange, onEdit, onDelete, onNew }) {
                     draggable
                     onDragStart={() => setDragged(l)}
                     onClick={() => onEdit(l)}
-                    className="bg-white border border-slate-200 rounded-lg p-2 cursor-move hover:border-indigo-400 hover:shadow-sm relative group"
+                    className="bg-white border border-slate-200 rounded-lg p-2 cursor-move transition-all hover:border-indigo-400 hover:shadow-lg hover:shadow-indigo-500/10 hover:-translate-y-0.5 relative group"
                   >
                     <div className="font-medium text-sm text-slate-900 pr-5">{l.name || '—'}</div>
                     <div className="text-xs text-slate-500">{l.owner} · {l.source}</div>

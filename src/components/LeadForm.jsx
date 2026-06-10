@@ -134,8 +134,8 @@ export default function LeadForm({ open, lead, tier = 'WA', onSave, onClose, onD
   const totalMonthlyPremium = (form.mainProductPremium || 0) + productPremium(form.associationPlan) + addonTotal;
 
   return (
-    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-md z-40 flex items-center justify-center p-4">
-      <div className="bg-white/90 backdrop-blur-2xl border border-white/60 rounded-2xl max-w-3xl w-full max-h-[92vh] overflow-auto shadow-2xl shadow-indigo-500/10">
+    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-md overlay-fade z-40 flex items-center justify-center p-4">
+      <div className="bg-white/90 backdrop-blur-2xl border border-white/60 rounded-2xl modal-pop max-w-3xl w-full max-h-[92vh] overflow-auto shadow-2xl shadow-indigo-500/10">
         <div className="sticky top-0 bg-white/80 backdrop-blur-xl border-b border-slate-200/60 px-6 py-4 flex justify-between items-center z-10">
           <h2 className="text-lg font-semibold text-slate-900">{form._existing ? 'Edit Lead' : 'New Lead'}</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
