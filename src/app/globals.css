@@ -480,14 +480,17 @@ body {
   pointer-events: none;
 }
 .dark .premium-card {
-  background: linear-gradient(160deg, #1f2945 0%, #18203a 100%);
-  border-color: rgba(99, 102, 241, 0.18);
+  /* Stronger top→bottom falloff than light mode — dark surfaces need more
+     gradient contrast to read as dimensional at all. Edge carries a faint
+     indigo so cards separate from the navy canvas. */
+  background: linear-gradient(160deg, #283457 0%, #161e38 100%);
+  border-color: rgba(99, 102, 241, 0.28);
   box-shadow:
     0 1px 2px rgba(0, 0, 0, 0.35),
     0 14px 34px -16px rgba(0, 0, 0, 0.65);
 }
 .dark .premium-card::before {
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.10);
 }
 
 /* Hover lift — for clickable cards. Pairs with .premium-card. Do not use

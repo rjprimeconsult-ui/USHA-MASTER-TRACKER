@@ -102,9 +102,13 @@ export function TiltCard({ children, className = '', maxTilt = 6, scale = 1.02, 
 // ---------- CountUp ----------
 // Animates from previous value to current value when `value` changes.
 // `format` lets you keep currency / decimal formatting.
+// On FIRST mount it animates from 0 → value (the premium "reveal" — without
+// this the ticker never fires on page load because data is already loaded
+// by the time a view mounts; views stay mounted after first visit, so the
+// reveal plays once per session per view).
 export function CountUp({ value = 0, format = (v) => v.toLocaleString(undefined, { maximumFractionDigits: 0 }), duration = 0.9, className = '' }) {
-  const [display, setDisplay] = useState(value);
-  const prev = useRef(value);
+  const [display, setDisplay] = useState(0);
+  const prev = useRef(0);
   useEffect(() => {
     const start = prev.current;
     const end = Number(value) || 0;
