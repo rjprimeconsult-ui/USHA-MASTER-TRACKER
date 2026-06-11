@@ -1554,7 +1554,9 @@ export default function LeadTracker() {
     const { contacts = [], scanned = 0 } = payload || {};
 
     if (contacts.length === 0) {
-      showToast(`TextDrip: scanned ${scanned} conversation${scanned !== 1 ? 's' : ''} — nothing new`);
+      // Scan ran but no contact carried the import tag. Tells the agent to
+      // check the tag name in Settings / that the lead is actually tagged.
+      showToast(`TextDrip: scanned ${scanned} conversation${scanned !== 1 ? 's' : ''} · no contacts have that tag`);
       return;
     }
 
@@ -1648,7 +1650,9 @@ export default function LeadTracker() {
     if (created > 0) bits.push(`Imported ${created}`);
     if (updated > 0) bits.push(`updated ${updated}`);
     if (reviewItems.length > 0) bits.push(`${reviewItems.length} to review`);
-    if (bits.length === 0) bits.push(`scanned ${scanned}, nothing new`);
+    // contacts WERE tag-matched but all dedup to existing prospects — say so
+    // explicitly so "nothing happened" reads as "already in PRIM," not a failure.
+    if (bits.length === 0) bits.push(`${contacts.length} tagged contact${contacts.length !== 1 ? 's' : ''} · already in PRIM`);
     showToast(bits.join(' · '));
 
     // Layer B: AI extraction for newly-created prospects only (cost control)

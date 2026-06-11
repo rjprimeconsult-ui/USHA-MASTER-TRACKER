@@ -183,12 +183,22 @@ export async function getContact(apiKey, phone) {
  * }>}
  */
 export async function runImportScan(apiKey, tagTitle, _lastSyncAt, opts = {}) {
-  // Scan the most-recent `maxPages` of conversations every time and import all
-  // tag matches found. No time-based incremental cutoff: re-syncs re-scan the
-  // recent window and dedup/update via classifyImport (by phone). Conversation
-  // PAGES and per-contact CHATS are fetched in bounded-concurrency batches so
-  // the scan finishes several-fold faster than one-at-a-time.
-  const { maxPages = 25, concurrency = 6 } = opts;
+  // Scan the WHOLE inbox (up to a high safety cap) and import every tag match.
+  //
+  // Why the whole inbox, not a recent window: TextDrip has no "contacts by tag"
+  // endpoint (get-conversations `search` matches name/phone, NOT tags), and a
+  // tag can be applied to ANY contact regardless of how recently they were
+  // messaged. The old 25-page (175-conversation) window silently missed any
+  // tagged lead that wasn't among the most-recently-texted contacts — e.g. an
+  // older lead tagged today for the integration. We now page through the full
+  // conversation list so a tagged contact is found wherever it lives.
+  //
+  // Cost: get-conversations pages are light (7 contacts of metadata + tags
+  // each) and fetched in bounded-concurrency batches; per-page failures are
+  // caught and skipped so one hiccup never aborts the scan. The expensive
+  // per-contact chats/detail calls only run for the (few) tag matches, so total
+  // work scales with the number of matches, not the inbox size.
+  const { maxPages = 1500, concurrency = 6 } = opts;
 
   // 1) First page tells us how many pages exist.
   const first = await getConversationsPage(apiKey, 1);
