@@ -3,7 +3,6 @@ import { useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { Mail, Lock, AlertCircle, Loader2 } from 'lucide-react';
 import { PrimAppIcon } from '@/components/PrimLogo';
-import { motion } from 'framer-motion';
 import { supabase, supabaseConfigured } from '@/lib/supabase';
 import { useAuth } from './AuthProvider';
 import { OrbBackdrop } from '../motion/MotionPrimitives';
@@ -98,11 +97,13 @@ function SignInScreen() {
       style={{ background: 'linear-gradient(135deg, #f8fafc 0%, #eef2ff 45%, #f5f3ff 100%)' }}
     >
       <OrbBackdrop />
-      <motion.div
-        initial={{ opacity: 0, y: 12, scale: 0.96 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ type: 'spring', stiffness: 320, damping: 28 }}
-        className="relative bg-white/80 backdrop-blur-2xl border border-white/70 rounded-2xl max-w-md w-full p-8"
+      {/* The card is the LCP element on the public root URL. It is rendered
+          fully visible (no JS-gated opacity fade) so it paints immediately on
+          mobile instead of waiting for hydration — and it's the page's <main>
+          landmark. A CSS-only entrance (modal-pop) keeps a subtle reveal
+          without delaying the largest-contentful-paint. */}
+      <main
+        className="relative bg-white/80 backdrop-blur-2xl border border-white/70 rounded-2xl max-w-md w-full p-8 modal-pop"
         style={{
           boxShadow:
             '0 32px 80px -24px rgba(99,102,241,0.28), 0 12px 32px -16px rgba(15,23,42,0.18), inset 0 1px 0 rgba(255,255,255,0.85)',
@@ -110,15 +111,12 @@ function SignInScreen() {
       >
         {/* Brand */}
         <div className="flex items-center gap-3 mb-6">
-          <motion.div
-            initial={{ rotate: -8, scale: 0.9 }}
-            animate={{ rotate: 0, scale: 1 }}
-            transition={{ type: 'spring', stiffness: 200, damping: 14 }}
+          <div
             className="rounded-xl"
             style={{ boxShadow: '0 14px 38px -10px rgba(99,102,241,0.55)' }}
           >
             <PrimAppIcon size={48} />
-          </motion.div>
+          </div>
           <div>
             <h1 className="text-2xl font-extrabold text-slate-900 leading-none tracking-tight">PRIM</h1>
             <p className="text-[11px] font-semibold text-slate-500 mt-1 tracking-wide uppercase">
@@ -214,7 +212,7 @@ function SignInScreen() {
             <span className="text-slate-400"> Smart Import · True CPA · Post-sale automation</span>
           </p>
         </div>
-      </motion.div>
+      </main>
     </div>
   );
 }
