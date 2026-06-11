@@ -2,6 +2,17 @@
 
 Confirmed live from the Ringy account (Account Settings → API Keys, Call/Text Webhooks, Disposition Tags & Automated Actions). This is the pinned contract for the eventual spec.
 
+> **⛔ UPDATE 2026-06-11 — Phase 2 BLOCKED BY VENDOR.** Ringy support (after a
+> direct escalation) confirmed the ONLY API key a customer can generate is an
+> **inbound lead-vendor key** (push leads *into* Ringy). The outbound read/write
+> endpoints catalogued below — `get-lead`, `get-lead-sold-products`, `get-calls`,
+> `get-call-recordings`, `create-appointment` — are **NOT customer-accessible at
+> this time**. They logged a feature request with engineering (no ETA). So ALL
+> of Phase 2 (enrichment, sold-deal sync, call activity, appointment write-back)
+> is **not buildable** until Ringy ships customer read API access. **v1 (the
+> inbound disposition webhook) is unaffected and remains live.** Re-check with
+> Ringy before reviving Phase 2. The endpoint catalog below is kept for that day.
+
 ## Feasibility verdict
 - ✅ **Leads — strong.** Real-time, disposition-triggered **custom webhook** with a **fully configurable payload** (we pick the keys + map ~25 Ringy lead fields). Plus API-key pull/enrichment + appointment write-back.
 - ❌ **SMS conversation content — NOT available.** Text webhook sends only your email + a *count* of texts; there is no API endpoint for message bodies. (So we can't replicate TextDrip's conversation sync.)
