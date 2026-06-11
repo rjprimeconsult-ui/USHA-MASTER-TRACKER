@@ -124,8 +124,14 @@ export default function TextDripSettings({ stages = [], onSyncDone, onStatus }) 
     setSyncMsg('');
     try {
       const payload = await authedFetch('/api/textdrip/sync', { method: 'POST' });
-      // Let parent (LeadTracker) handle upsert/dedup/review
-      onSyncDone?.(payload);
+      // Hand the payload to the parent (LeadTracker) for upsert/dedup/review
+      // and AWAIT it: the spinner must cover the whole import, and the
+      // returned summary is shown INLINE so the outcome is never a missed
+      // toast. (Previously the payload was passed un-awaited to a wrapper
+      // that dropped it and kicked off a SECOND scan — double duration, and
+      // the result toast fired long after the spinner stopped.)
+      const res = await onSyncDone?.(payload);
+      setSyncMsg(res?.summary || `Scanned ${payload?.scanned ?? 0} conversations`);
       // Refresh status so lastSyncAt updates
       const fresh = await authedFetch('/api/textdrip/status').catch(() => null);
       if (fresh) { setStatus(fresh); onStatus?.(fresh); }

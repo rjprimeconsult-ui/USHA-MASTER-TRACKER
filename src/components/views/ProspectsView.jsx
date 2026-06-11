@@ -1541,7 +1541,7 @@ export default function ProspectsView({
           <input type="file" ref={fileRef} accept=".csv,.xlsx,.xls" onChange={onPickFile} className="hidden" />
           {onSyncTextDrip && (
             <button
-              onClick={onSyncTextDrip}
+              onClick={() => onSyncTextDrip()}
               className="border border-violet-200 hover:border-violet-400 hover:bg-violet-50 text-violet-700 rounded-lg px-3 py-2 text-sm font-semibold flex items-center gap-1.5"
               title="Pull tagged contacts from TextDrip into Prospects"
             >

@@ -1519,7 +1519,11 @@ export default function LeadTracker() {
       return json;
     };
 
-    let payload = syncPayload;
+    // Only treat the argument as a sync payload if it actually looks like one
+    // (the Settings card passes the /api/textdrip/sync response; the header
+    // button passes nothing — and must never pass e.g. a click event that
+    // would silently no-op the import).
+    let payload = (syncPayload && Array.isArray(syncPayload.contacts)) ? syncPayload : null;
     let defaultStage = 'PENDING_DECISION';
 
     try {
@@ -1536,7 +1540,7 @@ export default function LeadTracker() {
           payload = await authedPost('/api/textdrip/sync');
         } catch (e) {
           showToast(e.message || 'TextDrip sync failed', 'error');
-          return;
+          return { error: true, summary: e.message || 'TextDrip sync failed' };
         }
       } else {
         // payload was passed in (from TextDripSettings card's onSyncDone)
@@ -1548,7 +1552,7 @@ export default function LeadTracker() {
       }
     } catch (e) {
       showToast(e.message || 'TextDrip sync failed', 'error');
-      return;
+      return { error: true, summary: e.message || 'TextDrip sync failed' };
     }
 
     const { contacts = [], scanned = 0 } = payload || {};
@@ -1556,8 +1560,9 @@ export default function LeadTracker() {
     if (contacts.length === 0) {
       // Scan ran but no contact carried the import tag. Tells the agent to
       // check the tag name in Settings / that the lead is actually tagged.
-      showToast(`TextDrip: scanned ${scanned} conversation${scanned !== 1 ? 's' : ''} · no contacts have that tag`);
-      return;
+      const summary = `Scanned ${scanned} recent conversation${scanned !== 1 ? 's' : ''} · no contacts have that tag`;
+      showToast(`TextDrip: ${summary}`);
+      return { summary };
     }
 
     // Layer B: bounded-concurrency AI extraction helper (creates only)
@@ -1653,7 +1658,8 @@ export default function LeadTracker() {
     // contacts WERE tag-matched but all dedup to existing prospects — say so
     // explicitly so "nothing happened" reads as "already in PRIM," not a failure.
     if (bits.length === 0) bits.push(`${contacts.length} tagged contact${contacts.length !== 1 ? 's' : ''} · already in PRIM`);
-    showToast(bits.join(' · '));
+    const summary = bits.join(' · ');
+    showToast(summary);
 
     // Layer B: AI extraction for newly-created prospects only (cost control)
     const extractionTargets = createdProspects.filter(c => c.messages.length > 0);
@@ -1677,6 +1683,10 @@ export default function LeadTracker() {
         }));
       }
     }
+
+    // Summary for callers that render the outcome inline (TextDripSettings
+    // card) — same text as the toast.
+    return { created, updated, review: reviewItems.length, summary };
   }, [showToast]);
 
   // Apply TextDrip review choices (merge/skip)
@@ -2066,7 +2076,7 @@ export default function LeadTracker() {
             onSnoozeProspect={snoozeProspect}
             onApplyStageSuggestion={applyStageSuggestion}
             onResolveReminder={resolveProspectReminder}
-            onSyncTextDrip={() => syncTextDrip()}
+            onSyncTextDrip={syncTextDrip}
             onExtractFromTexts={extractProspectFromTexts}
           />
         </ViewMount>
