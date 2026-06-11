@@ -103,7 +103,13 @@ export default function ReportSheet({ report, period, agentName }) {
 
 function TableBody({ report }) {
   return (
-    <table className="w-full text-sm border-collapse">
+    // Scroll the wide table WITHIN this box on narrow screens instead of
+    // letting it push the whole sheet (and page) sideways. min-width keeps
+    // the columns legible; on letter-size print the table fits, so the
+    // scroll never appears there. `.report-scroll` drops the min-width in
+    // print (see globals.css) so the PDF lays out full-width.
+    <div className="overflow-x-auto report-scroll">
+    <table className="w-full text-sm border-collapse" style={{ minWidth: 640 }}>
       <thead>
         <tr className="border-b-2 border-slate-200">
           {report.columns.map((c, i) => (
@@ -149,6 +155,7 @@ function TableBody({ report }) {
         </tfoot>
       )}
     </table>
+    </div>
   );
 }
 

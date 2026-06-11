@@ -424,6 +424,11 @@ body {
     -webkit-print-color-adjust: exact;
   }
   .report-no-print { display: none !important; }
+  /* The on-screen horizontal scroller for wide report tables must not impose
+     its min-width or clip in print — let the table lay out full-width on the
+     page. */
+  .report-scroll { overflow: visible !important; }
+  .report-scroll > table { min-width: 0 !important; width: 100% !important; }
   /* Repeat table headers on every page; never split a row. */
   .report-sheet thead { display: table-header-group; }
   .report-sheet tr { break-inside: avoid; }

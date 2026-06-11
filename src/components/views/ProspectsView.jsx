@@ -1538,7 +1538,9 @@ export default function ProspectsView({
           <h1 className="text-2xl font-bold text-slate-900 flex items-center"><span className="section-accent" />Prospects</h1>
           <p className="text-sm text-slate-500">{totals.active} active · {totals.apptsToday} appt{totals.apptsToday !== 1 ? 's' : ''} today · {totals.sold} sold all-time</p>
         </div>
-        <div className="flex items-center gap-2">
+        {/* flex-wrap so the action buttons stack onto multiple rows on narrow
+            (mobile) screens instead of overflowing off the edge. */}
+        <div className="flex items-center gap-2 flex-wrap justify-end">
           <input type="file" ref={fileRef} accept=".csv,.xlsx,.xls" onChange={onPickFile} className="hidden" />
           {onSyncTextDrip && (
             <button
