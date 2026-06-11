@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { TiltCard, FadeIn, Stagger, StaggerItem } from '../motion/MotionPrimitives';
 import { fmt2, today, formatDob } from '@/lib/utils';
-import { newProspect, defaultProspectSettings, detectFieldFromHeader, detectStageId, detectSource, detectIndvOrFamily, prospectDedupKey } from '@/lib/prospects';
+import { newProspect, defaultProspectSettings, detectFieldFromHeader, detectStageId, detectSource, detectIndvOrFamily, prospectDedupKey, formatQuotes } from '@/lib/prospects';
 import { DEFAULT_PROSPECT_STAGES, getCrmStyle, PROSPECT_SOURCES, PROSPECT_CRMS } from '@/lib/constants';
 import { useIsDark } from '@/lib/useIsDark';
 import * as XLSX from 'xlsx';
@@ -303,8 +303,8 @@ function KanbanCard({ prospect, onEdit, onDragStart, isSelected, onToggleSelect,
           <Clock size={10} /> {apptStr}
         </div>
       )}
-      {prospect.quoteSize && (
-        <div className="mt-1 text-[11px] font-semibold text-emerald-700">{prospect.quoteSize}</div>
+      {formatQuotes(prospect) && (
+        <div className="mt-1 text-[11px] font-semibold text-emerald-700 truncate" title={formatQuotes(prospect)}>{formatQuotes(prospect)}</div>
       )}
       {prospect.source && (
         sourceColor ? (
@@ -1057,8 +1057,8 @@ function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, o
             <RepeatedClientBadge lead={prospect} />
           </div>
           <div className="text-sm text-slate-500 mt-1 space-y-0.5">
-            {prospect.quoteSize && (
-              <div className="flex items-center gap-1.5"><DollarSign size={14} className="text-emerald-600" /><span className="text-emerald-700 font-semibold">Quote: {prospect.quoteSize}</span></div>
+            {formatQuotes(prospect) && (
+              <div className="flex items-center gap-1.5"><DollarSign size={14} className="text-emerald-600" /><span className="text-emerald-700 font-semibold">Quote: {formatQuotes(prospect)}</span></div>
             )}
             {created && (
               <div>Added: {created.toLocaleDateString()} ({daysSinceCreated} day{daysSinceCreated !== 1 ? 's' : ''} ago)</div>
@@ -1130,11 +1130,11 @@ function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, o
           )}
 
           {/* Coverage Needs */}
-          {(prospect.policyType || prospect.income || prospect.quoteSize || prospect.startDate) && (
+          {(prospect.policyType || prospect.income || formatQuotes(prospect) || prospect.startDate) && (
             <DetailSection title="Coverage Needs">
               {prospect.policyType && <DetailRow Icon={Briefcase} label="Policy Type" value={prospect.policyType} />}
               {prospect.income && <DetailRow Icon={DollarSign} label="Income" value={prospect.income} />}
-              {prospect.quoteSize && <DetailRow Icon={DollarSign} label="Quote Size" value={prospect.quoteSize} valueClass="font-semibold text-emerald-700" />}
+              {formatQuotes(prospect) && <DetailRow Icon={DollarSign} label="Quotes" value={formatQuotes(prospect)} valueClass="font-semibold text-emerald-700" />}
               {prospect.startDate && <DetailRow Icon={Calendar} label="Desired Start" value={prospect.startDate} />}
             </DetailSection>
           )}

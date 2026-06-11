@@ -5,10 +5,92 @@ import {
   PROSPECT_SOURCES, PROSPECT_CRMS, PROSPECT_POLICY_TYPES,
 } from '@/lib/constants';
 import { US_STATES } from '@/lib/commission';
-import { timezoneFromState } from '@/lib/prospects';
-import { formatPhoneInput, formatCurrencyInput, formatDobInput, toDateTimeLocalInput } from '@/lib/utils';
+import { timezoneFromState, QUOTE_PRODUCTS } from '@/lib/prospects';
+import { formatPhoneInput, formatCurrencyInput, formatDobInput, toDateTimeLocalInput, uid } from '@/lib/utils';
+import { MoneyCell } from './motion/MotionPrimitives';
 
 const inp = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500';
+
+// ---- Quotes editor ----
+// A prospect can hold multiple labeled quotes (e.g. PA $1,200.00 · PC $950.00).
+// Each row = { id, product, amount }. Product is a dropdown of preset plan codes
+// (or a custom typed code); amount uses MoneyCell so it always renders $0,000.00.
+function QuoteRow({ row, onChange, onRemove }) {
+  const presetMatch = QUOTE_PRODUCTS.some(p => p.code === row.product);
+  const [customMode, setCustomMode] = useState(!!row.product && !presetMatch);
+  const showCustom = customMode || (!!row.product && !presetMatch);
+
+  return (
+    <div className="flex items-center gap-2">
+      {showCustom ? (
+        <input
+          className={inp + ' flex-1'}
+          value={row.product || ''}
+          onChange={e => onChange({ product: e.target.value })}
+          placeholder="Plan code (e.g. PA)"
+          autoFocus
+        />
+      ) : (
+        <select
+          className={inp + ' flex-1'}
+          value={row.product || ''}
+          onChange={e => {
+            if (e.target.value === '__custom__') { setCustomMode(true); onChange({ product: '' }); }
+            else onChange({ product: e.target.value });
+          }}
+        >
+          <option value="">Plan…</option>
+          {QUOTE_PRODUCTS.map(p => <option key={p.code} value={p.code}>{p.code} — {p.name}</option>)}
+          <option value="__custom__">Custom…</option>
+        </select>
+      )}
+      <MoneyCell value={row.amount} onChange={(amount) => onChange({ amount })} width="w-36" />
+      <button
+        type="button"
+        onClick={onRemove}
+        className="text-slate-400 hover:text-red-600 p-1 flex-shrink-0"
+        title="Remove quote"
+      >
+        <X size={16} />
+      </button>
+    </div>
+  );
+}
+
+function QuotesEditor({ quotes, legacyQuote, onChange, onClearLegacy }) {
+  const rows = Array.isArray(quotes) ? quotes : [];
+  const update = (id, patch) => onChange(rows.map(r => (r.id === id ? { ...r, ...patch } : r)));
+  const add = () => onChange([...rows, { id: uid(), product: '', amount: 0 }]);
+  const remove = (id) => onChange(rows.filter(r => r.id !== id));
+
+  return (
+    <div>
+      <label className="block text-xs font-medium text-slate-700 mb-1">Quotes</label>
+      {rows.length > 0 && (
+        <div className="space-y-2 mb-2">
+          {rows.map(r => (
+            <QuoteRow key={r.id} row={r} onChange={(patch) => update(r.id, patch)} onRemove={() => remove(r.id)} />
+          ))}
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={add}
+        className="text-sm font-semibold text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg px-2 py-1"
+      >
+        + Add quote
+      </button>
+      {/* Legacy free-text quote (pre-structured-quotes records / AI imports).
+          Shown so it's never stranded; clearing it once re-entered as a row. */}
+      {legacyQuote && rows.length === 0 && (
+        <div className="mt-2 flex items-center gap-2 text-xs text-slate-500">
+          <span>Existing quote: <span className="font-semibold text-slate-700">{legacyQuote}</span></span>
+          <button type="button" onClick={onClearLegacy} className="text-slate-400 hover:text-red-600 underline">clear</button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 const Field = ({ label, children, required }) => (
   <div>
@@ -52,7 +134,9 @@ export default function ProspectForm({ open, prospect, stages, customFields = []
       alert('Name or phone is required.');
       return;
     }
-    onSave({ ...form });
+    // Drop empty quote rows (no plan and no amount) so we never store blanks.
+    const cleanQuotes = (form.quotes || []).filter(q => q && (q.product || Number(q.amount) > 0));
+    onSave({ ...form, quotes: cleanQuotes });
   };
 
   const isSold = form.stage === 'SOLD';
@@ -116,12 +200,9 @@ export default function ProspectForm({ open, prospect, stages, customFields = []
           </div>
 
           {/* Numbers */}
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             <Field label="Income">
               <input className={inp} value={form.income || ''} onChange={e => set({ income: formatCurrencyInput(e.target.value) })} placeholder="$75,000" inputMode="numeric" />
-            </Field>
-            <Field label="Quote Size">
-              <input className={inp} value={form.quoteSize || ''} onChange={e => set({ quoteSize: e.target.value })} placeholder="$ 350/mo premium" />
             </Field>
             <Field label="Policy Type">
               <select className={inp} value={form.policyType || ''} onChange={e => set({ policyType: e.target.value })}>
@@ -130,6 +211,14 @@ export default function ProspectForm({ open, prospect, stages, customFields = []
               </select>
             </Field>
           </div>
+
+          {/* Quotes — multiple labeled plan quotes, auto-currency-formatted */}
+          <QuotesEditor
+            quotes={form.quotes}
+            legacyQuote={form.quoteSize}
+            onChange={(quotes) => set({ quotes })}
+            onClearLegacy={() => set({ quoteSize: '' })}
+          />
 
           {/* Source + CRM + Stage */}
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">

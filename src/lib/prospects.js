@@ -23,6 +23,42 @@ export function timezoneFromState(stateAbbr) {
   return STATE_TZ[k] || '';
 }
 
+// ----- Prospect quotes -----
+// A prospect can carry multiple labeled quotes (e.g. quoting PA and PC
+// side-by-side). Each quote = { id, product, amount }. `product` is a short
+// code (preset below or a custom string); `amount` is a number rendered as
+// $0,000.00. Preset codes mirror PRIM's MAIN_PRODUCTS so the dropdown matches
+// the products agents actually sell.
+export const QUOTE_PRODUCTS = [
+  { code: 'PA',   name: 'Premier Advantage' },
+  { code: 'PC',   name: 'Premier Choice' },
+  { code: 'SA',   name: 'Secure Advantage' },
+  { code: 'SAC',  name: 'SecureAdvantage Conversion' },
+  { code: 'HA3',  name: 'Health Access III' },
+  { code: 'SUPP', name: 'Suppy' },
+  { code: 'ACA',  name: 'ACA Wrap' },
+];
+
+// Format a prospect's quotes for display: "PA $1,200.00 · PC $950.00".
+// Falls back to the legacy free-text `quoteSize` for prospects created before
+// structured quotes existed (and for AI/CRM imports that still set quoteSize).
+export function formatQuotes(prospect) {
+  const rows = Array.isArray(prospect?.quotes)
+    ? prospect.quotes.filter(q => q && (q.product || Number(q.amount) > 0))
+    : [];
+  if (rows.length) {
+    return rows
+      .map(q => {
+        const money = '$' + (Number(q.amount) || 0).toLocaleString(undefined, {
+          minimumFractionDigits: 2, maximumFractionDigits: 2,
+        });
+        return q.product ? `${q.product} ${money}` : money;
+      })
+      .join(' · ');
+  }
+  return prospect?.quoteSize || '';
+}
+
 // ----- Default custom-field set (empty by default; user adds via settings) -----
 export function defaultProspectSettings() {
   return {
@@ -44,7 +80,8 @@ export function newProspect(overrides = {}) {
     indvOrFamily: 'Indv', // 'Indv' | 'Family'
     dobs: '',             // free text — single DOB or comma-separated for family
     income: '',           // string-money (free text)
-    quoteSize: '',        // string-money
+    quoteSize: '',        // legacy free-text quote (kept for back-compat + imports)
+    quotes: [],           // [{ id, product, amount }] — structured multi-quote
     policyType: '',
     meds: '',
     situation: '',

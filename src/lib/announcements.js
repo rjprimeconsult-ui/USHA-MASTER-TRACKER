@@ -33,6 +33,14 @@
 
 export const ANNOUNCEMENTS = [
   {
+    id: '2026-06-11-prospect-multi-quotes',
+    date: '2026-06-11',
+    emoji: '💲',
+    title: 'Quote a prospect on multiple plans at once',
+    body: 'On a prospect you can now add multiple labeled quotes — pick a plan (PA, PC, SA, HA3, ACA, or a custom code) and an amount that auto-formats to $0,000.00. Add as many as you like; they show as "PA $1,200.00 · PC $950.00" on the card and detail. Your old single quotes are kept as-is.',
+    cta: { label: 'Open Prospects', view: 'prospects' },
+  },
+  {
     id: '2026-06-10-closed-deals-all-outcomes',
     date: '2026-06-10',
     emoji: '📊',
