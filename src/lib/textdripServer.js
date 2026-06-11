@@ -183,22 +183,24 @@ export async function getContact(apiKey, phone) {
  * }>}
  */
 export async function runImportScan(apiKey, tagTitle, _lastSyncAt, opts = {}) {
-  // Scan the WHOLE inbox (up to a high safety cap) and import every tag match.
+  // Scan the most-recent `maxPages` of conversations (newest-first) and import
+  // every tag match found.
   //
-  // Why the whole inbox, not a recent window: TextDrip has no "contacts by tag"
-  // endpoint (get-conversations `search` matches name/phone, NOT tags), and a
-  // tag can be applied to ANY contact regardless of how recently they were
-  // messaged. The old 25-page (175-conversation) window silently missed any
-  // tagged lead that wasn't among the most-recently-texted contacts — e.g. an
-  // older lead tagged today for the integration. We now page through the full
-  // conversation list so a tagged contact is found wherever it lives.
+  // Why a recent window, not the whole inbox: TextDrip has no "contacts by tag"
+  // endpoint (get-conversations `search` matches name/phone, NOT tags), so we
+  // must read conversations and check each one's tags. The list is ordered
+  // newest-first, and the leads worth importing are tagged while they're being
+  // actively worked (an appointment was just set), so they sit near the top.
+  // Paging the FULL inbox (thousands of conversations) made a sync take minutes;
+  // this recent window finds active tagged leads in seconds. 60 pages = 420 of
+  // the most-recently-touched conversations — comfortably covers in-flight
+  // leads. (Tunable via opts.maxPages if a deep backfill is ever needed.)
   //
-  // Cost: get-conversations pages are light (7 contacts of metadata + tags
-  // each) and fetched in bounded-concurrency batches; per-page failures are
-  // caught and skipped so one hiccup never aborts the scan. The expensive
-  // per-contact chats/detail calls only run for the (few) tag matches, so total
-  // work scales with the number of matches, not the inbox size.
-  const { maxPages = 1500, concurrency = 6 } = opts;
+  // get-conversations pages are light (7 contacts of metadata + tags each) and
+  // fetched in bounded-concurrency batches; per-page failures are caught and
+  // skipped so one hiccup never aborts the scan. The expensive per-contact
+  // chats/detail calls only run for the (few) tag matches.
+  const { maxPages = 60, concurrency = 6 } = opts;
 
   // 1) First page tells us how many pages exist.
   const first = await getConversationsPage(apiKey, 1);
