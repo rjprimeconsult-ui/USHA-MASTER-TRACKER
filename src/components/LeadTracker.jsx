@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Calculator, Repeat, CheckSquare, LayoutDashboard, Users, Columns, Upload, Settings, Sparkles, DollarSign, BookOpen, LogOut, UserPlus, User as UserIcon, FileText, Merge,
 } from 'lucide-react';
@@ -1478,7 +1478,7 @@ export default function LeadTracker() {
   }, []);
 
   // ---- TextDrip sync ----
-  const syncTextDrip = useCallback(async (syncPayload) => {
+  const syncTextDripInner = useCallback(async (syncPayload) => {
     // syncPayload can be provided directly (from the TextDripSettings card inside
     // ProspectsView) or undefined (from the Sync button in ProspectsView header,
     // which calls syncTextDrip() without arguments).
@@ -1688,6 +1688,23 @@ export default function LeadTracker() {
     // card) — same text as the toast.
     return { created, updated, review: reviewItems.length, summary };
   }, [showToast]);
+
+  // Re-entrancy guard: a sync takes ~15-60s, so an impatient second click
+  // (or the header button + Settings card used together) must never start an
+  // overlapping scan — that doubled wait times and confused results.
+  const tdSyncBusy = useRef(false);
+  const syncTextDrip = useCallback(async (syncPayload) => {
+    if (tdSyncBusy.current) {
+      showToast('TextDrip sync already running — hang tight');
+      return { summary: 'Sync already running…' };
+    }
+    tdSyncBusy.current = true;
+    try {
+      return await syncTextDripInner(syncPayload);
+    } finally {
+      tdSyncBusy.current = false;
+    }
+  }, [syncTextDripInner, showToast]);
 
   // Apply TextDrip review choices (merge/skip)
   const handleTdReviewResolve = useCallback((results) => {

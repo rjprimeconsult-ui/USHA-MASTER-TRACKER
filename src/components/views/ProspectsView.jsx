@@ -13,7 +13,7 @@ import {
   Plus, Search, LayoutGrid, List as ListIcon, Settings as SettingsIcon, Upload,
   Calendar, CalendarDays, Phone, Mail, MapPin, ArrowRight, Trash2, X, AlertCircle, Clock, GripVertical,
   User, Home, Briefcase, FileText, Pencil, Pill, Activity, DollarSign, Tag, Palette,
-  ChevronLeft, ChevronRight, Sparkles,
+  ChevronLeft, ChevronRight, Sparkles, Loader2,
 } from 'lucide-react';
 import { TiltCard, FadeIn, Stagger, StaggerItem } from '../motion/MotionPrimitives';
 import { fmt2, today, formatDob } from '@/lib/utils';
@@ -1326,6 +1326,7 @@ export default function ProspectsView({
   const [showSourceColors, setShowSourceColors] = useState(false);
   const [importFile, setImportFile] = useState(null);
   const [showSmartImport, setShowSmartImport] = useState(false);
+  const [tdSyncing, setTdSyncing] = useState(false); // header Sync TextDrip busy state
   const [selected, setSelected] = useState(() => new Set());
 
   // Per-agent source-color map; reloaded after the manager modal saves.
@@ -1541,11 +1542,16 @@ export default function ProspectsView({
           <input type="file" ref={fileRef} accept=".csv,.xlsx,.xls" onChange={onPickFile} className="hidden" />
           {onSyncTextDrip && (
             <button
-              onClick={() => onSyncTextDrip()}
-              className="border border-violet-200 hover:border-violet-400 hover:bg-violet-50 text-violet-700 rounded-lg px-3 py-2 text-sm font-semibold flex items-center gap-1.5"
+              onClick={async () => {
+                if (tdSyncing) return;
+                setTdSyncing(true);
+                try { await onSyncTextDrip(); } finally { setTdSyncing(false); }
+              }}
+              disabled={tdSyncing}
+              className="border border-violet-200 hover:border-violet-400 hover:bg-violet-50 text-violet-700 rounded-lg px-3 py-2 text-sm font-semibold flex items-center gap-1.5 disabled:opacity-60 disabled:cursor-wait"
               title="Pull tagged contacts from TextDrip into Prospects"
             >
-              💬 Sync TextDrip
+              {tdSyncing ? (<><Loader2 size={14} className="animate-spin" /> Syncing…</>) : (<>💬 Sync TextDrip</>)}
             </button>
           )}
           <button onClick={() => setShowSmartImport(true)}
