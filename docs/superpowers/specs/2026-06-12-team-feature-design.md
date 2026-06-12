@@ -45,9 +45,21 @@ that agent's *entire* PRIM read-only.
    after "CPA Dashboard"** in `NAV_TABS`. A **leader is simply any user on the
    Team tier** (`subscription_tier === 'team'`, active) — there is no separate
    "leader" flag. The tab and the leader-side `/api/team/*` endpoints are visible
-   only to Team-tier users. Being *invited as an agent* requires no particular
-   tier. (A user can be both: a Team-tier leader who is also an agent on someone
-   else's team — the `team_members` rows model this naturally; no extra work.)
+   only to Team-tier users. Being *invited as a downline member* requires no
+   particular tier (an Agent on Starter can be invited).
+
+6. **Multi-level hierarchy with transitive visibility.** Leadership has layers.
+   USHA org, bottom → top: **Agent** (Starter) < **FTA** (Team) < **FSL** (Team)
+   < **SAT** (Team, top). Each leader links their **direct reports**; visibility
+   then **cascades down the whole subtree**: a SAT sees their FSLs → and
+   therefore each FSL's FTAs → and therefore each FTA's Agents. The authorization
+   rule is *"a leader may view user X if X is anywhere in the leader's downline
+   subtree"* (transitive descendant). All three leader levels use the **same**
+   "View My Team" tab and Team subscription — the only difference is how deep
+   their tree goes. The org is a **strict tree**: each person has **at most one
+   active direct upline** (you report to exactly one leader). Linking is
+   distributed: **each leader invites their own direct reports**, and each accept
+   is a consent step.
 
 ## 3. Architecture — Authorized API + UI reuse (chosen approach)
 
@@ -55,29 +67,44 @@ that agent's *entire* PRIM read-only.
 policy bug leaks data, and audit is hard; and (b) nightly snapshots — stale, and
 can't do live full-client drill-down.
 
-### 3.1 Team membership
-New table `team_members` (Supabase):
-- `leader_id` (uuid, FK → auth.users)
-- `agent_id` (uuid, FK → auth.users, nullable until accepted)
-- `agent_email` (text — the invited email, so an invite exists before the agent resolves)
+### 3.1 Team membership — an org-tree edge list
+New table `team_members`. **Each row is one direct upline → downline edge.** A
+"downline" may itself be a leader (an FSL is the SAT's downline AND the FTAs'
+upline), so the field names are generic:
+- `upline_id` (uuid, FK → auth.users — the direct leader)
+- `downline_id` (uuid, FK → auth.users, **nullable until accepted**)
+- `downline_email` (text — the invited email, so an invite exists before the
+  invitee resolves to a user_id)
 - `status` (text: `pending` | `active` | `removed` | `declined`)
 - `invited_at`, `accepted_at`, `removed_at` (timestamptz)
-- unique on (`leader_id`, `agent_email`)
-RLS: a user can read rows where they are the leader OR the agent. Writes go
-through service-role endpoints only.
+- unique on (`upline_id`, `downline_email`) — no duplicate invites.
+- **Tree constraint:** a partial unique index on `downline_id WHERE status =
+  'active'` — a person has **at most one active direct upline**.
+
+RLS: a user can read rows where they are the upline OR the downline. All writes
+go through service-role endpoints only.
 
 New table `team_access_log` (audit):
 - `id`, `leader_id`, `agent_id`, `action` (e.g. `view_dashboard`, `view_prospects`, `view_books`, `view_agent`), `at` (timestamptz), optional `detail` (text, no PHI in the log itself — reference only, e.g. the view key).
 
-### 3.2 How a leader reads an agent's data
+### 3.2 How a leader reads a downline member's data (transitive)
 The leader's browser **never** queries another user's `user_kv` directly. All
 cross-user reads go through authorized server endpoints under `/api/team/*`:
 - Auth: bearer → `getUser` (the caller).
-- Authorization: confirm a `team_members` row exists with `leader_id = caller`,
-  `agent_id = requested agent`, `status = active`. If not → 403.
-- Data: service-role reads the requested agent's `user_kv` keys, returns them.
-- Audit: write a `team_access_log` row for every successful agent-data read.
+- **Authorization (transitive):** the requested user must be in the **caller's
+  downline subtree** — i.e. reachable by walking active `team_members` edges
+  downward from the caller. Implement with a recursive CTE
+  (`WITH RECURSIVE downline AS (...)`) over active edges, **with a depth cap and
+  visited-set so a malformed cycle can never loop**. If the target is not a
+  descendant → 403.
+- Data: service-role reads the requested user's `user_kv` keys, returns them.
+- Audit: write a `team_access_log` row for every successful read.
 - **Never log PHI**; the audit stores only which view/key was accessed.
+
+A small server helper — `getDownlineIds(callerId)` returning the full set of
+active descendant user_ids (capped, cycle-safe) — backs both the authorization
+check and the aggregate scoreboard. Build it once, unit-test it hard (it is the
+single most correctness-critical piece of this feature).
 
 Endpoints (shape; Fable scopes exact set):
 - `GET /api/team/roster` — leader's agents (active + pending), with light summary stats.
@@ -109,8 +136,11 @@ small `readOnly` prop to hide its mutate affordances, add it minimally.
 ## 4. The "View My Team" tab — three layers
 
 ### 4.1 ① Team Scoreboard (the landing view)
-The flagship screen. Aggregates across all of the leader's **active** agents for
-a selected period (reuse the period concept from Reports). Sections:
+The flagship screen. Aggregates across the leader's **entire downline subtree**
+(every active descendant — for a SAT that's all FSLs + their FTAs + their
+Agents) for a selected period (reuse the period concept from Reports). A simple
+scope toggle — **Direct reports** vs **Whole downline** — lets a deep leader
+focus one layer or see everything. Sections:
 - **KPI strip** — team totals: deals issued, premium, AV, advance, avg CPA,
   blended ROI, close rate, active agents. (Reuse the premium KPI card + CountUp.)
 - **Leaderboard** — agents ranked (toggle: production $ / deals / close rate /
@@ -127,11 +157,19 @@ This screen is where **Fable 5's visual intelligence** should shine: a genuinely
 beautiful, modern, at-a-glance command center, consistent with PRIM's design
 system (§6).
 
-### 4.2 ② Agent drill-down
-Pick an agent → a read-only mirror of that agent's PRIM: their Overview
-dashboard, Prospects (full client records), Book of Business, Books/P&L,
-Platforms, CPA Dashboard. Reuses existing views (§3.4). Clear "Viewing
-[Agent] — read only" banner. Every open is audit-logged.
+### 4.2 ② Drill-down — hierarchy-aware
+Picking a downline member depends on what they are:
+- **A leaf Agent** → a read-only mirror of their PRIM: Overview dashboard,
+  Prospects (full client records), Book of Business, Books/P&L, Platforms, CPA
+  Dashboard. Reuses existing views (§3.4).
+- **A sub-leader** (FTA/FSL) → shows **both** their *own* read-only PRIM (they
+  produce too) **and** a "their team" panel listing *their* direct reports, which
+  you can keep drilling into — navigating straight down the tree (SAT → FSL →
+  FTA → Agent). A breadcrumb shows where you are in the org
+  (e.g. *My Team › Maria (FSL) › Luis (FTA) › John (Agent)*).
+
+Clear "Viewing [Name] — read only" banner throughout. Every open is
+audit-logged.
 
 ### 4.3 ③ Roster + management
 Invite an agent by email; see pending invites; remove an agent. Plain status
@@ -139,9 +177,11 @@ for each (pending / active). Shows the agent's accept state.
 
 ## 5. Compliance guardrails (non-negotiable — full PHI + financials cross accounts)
 
-- **Consent gate:** invite shows the agent exactly what the leader will be able
-  to see ("your production, your clients, and your books") and requires explicit
-  **Accept**. No data flows pre-acceptance.
+- **Consent gate (transitive — worded for the whole chain):** because visibility
+  cascades up, accepting a direct upline consents to the **entire upline chain**
+  seeing you. The invite must say so plainly: *"[Leader] and their upline
+  leadership will be able to see your production, clients, and books."* Requires
+  explicit **Accept**. No data flows pre-acceptance.
 - **Audit log:** every agent-data view is recorded (`team_access_log`).
 - **Agent transparency panel** (agent's Settings): "You're on [Leader]'s team.
   They can see your production, clients, and books." + **Leave team** button.
@@ -150,6 +190,51 @@ for each (pending / active). Shows the agent's accept state.
   and active status). Agents responding to invites do **not** need Team tier.
 - **No PHI in logs.** Server logs and the audit table store aggregate/reference
   data only — never names, phones, notes.
+
+## 5.5 Correctness & edge cases (Juan's #1 priority — no bugs, no broken teams)
+
+The hierarchy is where this kind of feature breaks. Every one of these MUST be
+handled explicitly and covered by tests:
+
+- **No cycles.** A user cannot invite anyone who is already in their *upline*
+  chain (would create a loop). Check on invite AND defend in the recursive walk
+  (depth cap + visited-set), so even bad data can never infinite-loop.
+- **One active direct upline.** Enforced by the partial unique index (§3.1). If
+  an already-teamed agent accepts a new invite, the flow must make the
+  consequence explicit ("This will move you from [old leader]'s team to
+  [new leader]'s") — accept replaces the old active edge; never silently create
+  two.
+- **Duplicate / re-invite.** Inviting an email that's already pending or active
+  → friendly no-op/"already invited", not an error or a second row.
+- **Decline, then re-invite.** A declined invite can be re-sent.
+- **Removal semantics.** If a leader removes a direct report, only **that edge**
+  is cut. The removed sub-leader keeps their own downline intact (their subtree
+  just detaches from the higher leader's view). Removal takes effect immediately
+  and is logged.
+- **Leave team (agent-initiated).** Cuts the agent's active upline edge
+  immediately; upline (and everyone above) loses access at once.
+- **Invite before signup.** Inviting an email with no PRIM account yet → store
+  the pending invite by `downline_email`; resolve `downline_id` when that person
+  signs up / accepts. They see the pending invite on first login.
+- **Tier downgrade / lapse.** If a leader's Team subscription lapses, the tab and
+  `/api/team/*` leader access turn **off** (gated on live tier), but their
+  `team_members` edges are **preserved** so re-subscribing restores the team with
+  no re-invites. Downline members are unaffected.
+- **Self-invite / invalid email.** Reject inviting yourself or a malformed email
+  with a clear message.
+- **Empty states.** A brand-new leader with no accepted reports sees a clean
+  "Invite your first agent" empty state, not a broken dashboard.
+
+## 5.6 Simplicity bar (must be effortless for both sides)
+
+- **Leader invites in one step:** type an email → "Invite". That's it.
+- **Agent accepts in one step:** a clear in-app banner/notification —
+  *"[Leader] invited you to their team. They'll be able to see your production,
+  clients, and books. [Accept] [Decline]"* — one tap. No settings spelunking.
+- **Status is always obvious:** pending invites surface prominently for the
+  agent; the leader's roster clearly shows pending vs active.
+- **No jargon, no IDs, no setup wizard.** If a non-technical agent can't accept
+  in under ten seconds without help, the design has failed.
 
 ## 6. PRIM context Fable 5 must honor (existing patterns to follow)
 
@@ -199,19 +284,27 @@ billing.
 
 ## 9. Success criteria
 
-- A Team-tier leader sees "View My Team" next to CPA Dashboard; non-leaders never
-  see it and can't hit the endpoints.
-- Leader invites an agent by email → agent sees + accepts an in-app consent
-  prompt → agent appears on the roster.
+- A Team-tier leader sees "View My Team" next to CPA Dashboard; non-Team users
+  never see it and can't hit the leader endpoints.
+- Leader invites by email → invitee sees + accepts a one-tap in-app consent
+  prompt → appears on the roster. Works even if they had no account at invite time.
+- **Transitive visibility proven:** a 3-level chain (SAT → FSL → FTA → Agent) —
+  the SAT's scoreboard aggregates the whole downline, and the SAT can drill
+  SAT→FSL→FTA→Agent down to the agent's full read-only PRIM. An FTA sees only
+  *their* agents, never sideways or upward.
+- The `getDownlineIds` helper is unit-tested against a multi-level tree including
+  a deliberately planted cycle (must terminate) and the one-direct-upline rule.
 - Team Scoreboard shows correct aggregated production, pipeline, accountability,
-  and financial-health numbers across active agents for the selected period.
-- Leader drills into an agent and sees that agent's real, read-only PRIM
-  (dashboard, prospects with full client records, books, CPA).
-- Every agent-data view writes an audit row; no PHI is logged.
-- Agent can see who's on their team and **Leave team**; leaving cuts off access
-  immediately.
+  and financial-health numbers across the downline for the selected period and
+  scope toggle (direct vs whole).
+- Every downline-data view writes an audit row; no PHI is logged.
+- Member can see who's above them and **Leave team**; leaving cuts off the whole
+  upline chain's access immediately.
+- All §5.5 edge cases behave as specified (cycles blocked, one upline enforced,
+  re-invite friendly, removal cuts one edge, tier-lapse preserves edges).
 - `npm run build` clean, existing test suite green, no mobile horizontal overflow,
-  design consistent with PRIM. Smoke-tested on a real second account end-to-end.
+  design consistent with PRIM. **Smoke-tested end-to-end on real multi-account
+  setup** (at least one leader + one agent, ideally a 3-level chain).
 
 ## 10. Build & verification expectations (for the Fable 5 run)
 
