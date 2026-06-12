@@ -36,7 +36,10 @@ export async function POST(req) {
     if (rowErr || !row) return jsonResponse(404, { error: 'Invite not found' });
 
     // The invite must be FOR the caller (by resolved id or by email).
-    const isMine = row.downline_id === caller.id || row.downline_email === caller.email;
+    // Defensive lowercase on the stored side: the DB CHECK enforces lowercase,
+    // but rows that predate the constraint must still match.
+    const isMine = row.downline_id === caller.id
+      || String(row.downline_email || '').toLowerCase() === caller.email;
     if (!isMine) return jsonResponse(403, { error: 'This invite is not for you' });
     if (row.status !== 'pending') return jsonResponse(400, { error: 'This invite is no longer pending' });
 
@@ -55,8 +58,13 @@ export async function POST(req) {
     }
 
     // Already on a team? Make the move explicit before cutting anything.
+    // The cut-then-activate pair below cannot be a single transaction through
+    // the Supabase client, so the activate failure path RESTORES the old
+    // active edge — an agent can never be left teamless by a half-completed
+    // move. (The partial unique index still guarantees ≤1 active upline.)
     const currentActive = edges.find(e => e.downlineId === caller.id && e.status === 'active');
-    if (currentActive && currentActive.id !== row.id) {
+    const isMove = !!(currentActive && currentActive.id !== row.id);
+    if (isMove) {
       if (!confirmMove) {
         const names = await fetchNames(admin, [currentActive.uplineId]);
         return jsonResponse(200, {
@@ -74,8 +82,19 @@ export async function POST(req) {
       .update({ status: 'active', downline_id: caller.id, accepted_at: new Date().toISOString() })
       .eq('id', row.id).eq('status', 'pending');
     if (actErr) {
-      // e.g. unique-violation if another active upline raced in
       console.error(`[team/respond] activate failed: ${actErr.message}`);
+      if (isMove) {
+        // Compensate: put the old team edge back so the agent isn't stranded.
+        const { error: restoreErr } = await admin.from('team_members')
+          .update({ status: 'active', removed_at: null })
+          .eq('id', currentActive.id);
+        if (restoreErr) console.error(`[team/respond] RESTORE FAILED user=${caller.id}: ${restoreErr.message}`);
+        return jsonResponse(409, {
+          error: restoreErr
+            ? 'Could not switch teams. Contact support — your team link needs attention.'
+            : 'Could not switch teams — you are still on your current team. Refresh and try again.',
+        });
+      }
       return jsonResponse(409, { error: 'Could not join — you may already be on a team. Refresh and try again.' });
     }
 

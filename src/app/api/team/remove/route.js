@@ -7,7 +7,7 @@
  *  - Member leaves their team: pass nothing; their active upline edge is cut.
  * Either way, access (including the whole upline chain's) ends immediately.
  */
-import { adminClient, getCaller, jsonResponse } from '@/lib/teamServer';
+import { adminClient, getCaller, isTeamLeaderEntitled, jsonResponse } from '@/lib/teamServer';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -25,7 +25,12 @@ export async function POST(req) {
     const now = new Date().toISOString();
 
     if (memberId) {
-      // Leader removing a direct report — must own the edge.
+      // Leader removing a direct report — must own the edge AND still be a
+      // Team-tier leader (a lapsed leader manages nothing; the agent-side
+      // leave path below intentionally has no tier requirement).
+      if (!(await isTeamLeaderEntitled(admin, caller.id))) {
+        return jsonResponse(403, { error: 'Team plan required' });
+      }
       const { data: row } = await admin.from('team_members')
         .select('id, upline_id, status').eq('id', memberId).maybeSingle();
       if (!row || row.upline_id !== caller.id) return jsonResponse(403, { error: 'Not your team member' });

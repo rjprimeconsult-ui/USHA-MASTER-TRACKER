@@ -388,6 +388,10 @@ export default function TeamView({ showToast = () => {} }) {
     try {
       await teamFetch('/api/team/remove', { method: 'POST', body: JSON.stringify({ memberId: r.id }) });
       showToast(`${r.status === 'pending' ? 'Invite canceled' : 'Removed from team'}`);
+      // Drop ALL cached drill bundles + close any open drill-down: access was
+      // just revoked, so no stale member data may remain reachable in memory.
+      setDrillStack([]);
+      setDrillData(new Map());
       await loadRoster();
       await loadOverview(scope);
     } catch (e) { showToast(e.message, 'error'); }
