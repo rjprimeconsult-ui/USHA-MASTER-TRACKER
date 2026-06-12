@@ -72,3 +72,7 @@ CREATE POLICY "team_access_log_agent_read" ON team_access_log
 DROP POLICY IF EXISTS "team_access_log_leader_read" ON team_access_log;
 CREATE POLICY "team_access_log_leader_read" ON team_access_log
   FOR SELECT USING (auth.uid() = leader_id);
+
+-- ---------- 3) Role labels (added 2026-06-12) ----------
+-- The upline's annotation of a direct report's org level (AGENT/FTA/FSL/SAT).
+ALTER TABLE team_members ADD COLUMN IF NOT EXISTS role_label TEXT;
