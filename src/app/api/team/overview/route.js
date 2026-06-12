@@ -51,7 +51,8 @@ export async function GET(req) {
     await auditView(admin, caller.id, members.map(m => m.userId), 'view_overview', scope);
     console.log(`[team/overview] leader=${caller.id} scope=${scope} members=${members.length}`);
 
-    return jsonResponse(200, { members, links, scope });
+    // leaderId lets the client root the org tree (tree-first leaderboard).
+    return jsonResponse(200, { members, links, scope, leaderId: caller.id });
   } catch (e) {
     console.error('[team/overview] error:', e?.message || String(e));
     return jsonResponse(500, { error: 'Server error' });

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildTeamScoreboard, memberStats, teamFunnel, teamLeadFunnel } from './teamMath.mjs';
+import { buildTeamScoreboard, memberStats, teamFunnel, teamLeadFunnel, buildBranchRows } from './teamMath.mjs';
 
 const PERIOD = { from: '2026-06-01', to: '2026-06-30' };
 const NOW = new Date('2026-06-15T12:00:00Z');
@@ -167,4 +167,58 @@ test('flag: CPA above team average needs ≥2 members with CPA', () => {
 test('financial totals: profit = advance − leadSpend', () => {
   const sb = buildTeamScoreboard([member('A', { leads: [lead()] })], PERIOD, NOW);
   assert.equal(sb.financial.teamProfit, 1000 - 100);
+});
+
+// ---------- buildBranchRows (tree-first leaderboard) ----------
+// The exact scenario from Juan: FSL Alexis → FTA Gustavo → Agent Denzel.
+
+const ORG_LINKS = [
+  { uplineId: 'ALEXIS', downlineId: 'GUSTAVO' },
+  { uplineId: 'GUSTAVO', downlineId: 'DENZEL' },
+];
+const ORG_MEMBERS = [
+  member('GUSTAVO', { leads: [lead({ dealValue: 1000, leadCost: 100 })] }, 'Gustavo Villa'),
+  member('DENZEL',  { leads: [lead({ dealValue: 500, leadCost: 50 })] }, 'Denzel'),
+];
+
+test('Alexis sees ONE row for Gustavo with branch totals (Gustavo + Denzel combined)', () => {
+  const rows = buildBranchRows(ORG_MEMBERS, ORG_LINKS, 'ALEXIS', PERIOD, NOW);
+  assert.equal(rows.length, 1);                  // one direct report → one row
+  const g = rows[0];
+  assert.equal(g.userId, 'GUSTAVO');
+  assert.equal(g.name, 'Gustavo Villa');
+  assert.equal(g.teamSize, 2);                   // Gustavo + Denzel
+  assert.equal(g.dealsIssued, 2);                // both deals roll up
+  assert.equal(g.advance, 1500);                 // 1000 + 500
+  assert.equal(g.leadSpend, 150);                // 100 + 50
+});
+
+test('Gustavo (as viewer) sees Denzel as a leaf row (teamSize 1, own numbers only)', () => {
+  const rows = buildBranchRows(ORG_MEMBERS, ORG_LINKS, 'GUSTAVO', PERIOD, NOW);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].userId, 'DENZEL');
+  assert.equal(rows[0].teamSize, 1);
+  assert.equal(rows[0].advance, 500);
+});
+
+test('branch rows: multiple direct reports each get their own branch totals', () => {
+  const links = [...ORG_LINKS, { uplineId: 'ALEXIS', downlineId: 'SOLO' }];
+  const ms = [...ORG_MEMBERS, member('SOLO', { leads: [lead({ dealValue: 200, leadCost: 20 })] }, 'Solo Agent')];
+  const rows = buildBranchRows(ms, links, 'ALEXIS', PERIOD, NOW);
+  assert.equal(rows.length, 2);
+  const solo = rows.find(r => r.userId === 'SOLO');
+  assert.equal(solo.teamSize, 1);
+  assert.equal(solo.advance, 200);
+  const g = rows.find(r => r.userId === 'GUSTAVO');
+  assert.equal(g.advance, 1500); // unaffected by the sibling branch
+});
+
+test('branch rows: member bundle missing from members[] is skipped, not crashed', () => {
+  const rows = buildBranchRows([ORG_MEMBERS[0]], ORG_LINKS, 'ALEXIS', PERIOD, NOW);
+  assert.equal(rows[0].teamSize, 1);   // Denzel's bundle absent → branch counts what it has
+  assert.equal(rows[0].advance, 1000);
+});
+
+test('branch rows: empty org yields empty rows', () => {
+  assert.deepEqual(buildBranchRows([], [], 'NOBODY', PERIOD, NOW), []);
 });

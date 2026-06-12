@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import { supabase, supabaseConfigured } from '@/lib/supabase';
 import { resolvePeriod } from '@/lib/reports.mjs';
-import { buildTeamScoreboard } from '@/lib/teamMath.mjs';
+import { buildTeamScoreboard, buildBranchRows } from '@/lib/teamMath.mjs';
 import { fmt, fmt2 } from '@/lib/utils';
 import { CountUp, Stagger, StaggerItem, TiltCard } from '../motion/MotionPrimitives';
 import Dashboard from './Dashboard';
@@ -320,7 +320,13 @@ function MemberMirror({ data, onDrill }) {
 export default function TeamView({ showToast = () => {} }) {
   const [roster, setRoster] = useState([]);
   const [members, setMembers] = useState([]);
-  const [scope, setScope] = useState('all');
+  const [links, setLinks] = useState([]);       // active org edges within my subtree
+  const [leaderId, setLeaderId] = useState(null); // me — root of the tree
+  // Leaderboard list mode. 'tree' (default): one row per DIRECT report with
+  // whole-branch totals (Juan's Alexis→Gustavo→Denzel logic — an FTA's row
+  // includes their agents). 'flat': every individual in the org, ranked.
+  // The KPI strip is ALWAYS the whole organization regardless of this mode.
+  const [listMode, setListMode] = useState('tree');
   const [presetId, setPresetId] = useState('thisMonth');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -341,12 +347,16 @@ export default function TeamView({ showToast = () => {} }) {
     } catch (e) { setError(e.message); }
   }, []);
 
-  const loadOverview = useCallback(async (sc) => {
+  const loadOverview = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const { members: m } = await teamFetch(`/api/team/overview?scope=${sc}`);
-      setMembers(m || []);
+      // Always the whole downline: the KPI strip is org-wide, and the tree
+      // list groups it client-side — no refetch when switching list modes.
+      const res = await teamFetch('/api/team/overview?scope=all');
+      setMembers(res.members || []);
+      setLinks(res.links || []);
+      setLeaderId(res.leaderId || null);
     } catch (e) {
       setError(e.message);
       setMembers([]);
@@ -356,7 +366,7 @@ export default function TeamView({ showToast = () => {} }) {
   }, []);
 
   useEffect(() => { loadRoster(); }, [loadRoster]);
-  useEffect(() => { loadOverview(scope); }, [scope, loadOverview]);
+  useEffect(() => { loadOverview(); }, [loadOverview]);
 
   const scoreboard = useMemo(
     () => buildTeamScoreboard(members, period),
@@ -364,10 +374,14 @@ export default function TeamView({ showToast = () => {} }) {
   );
 
   const sortedLeaderboard = useMemo(() => {
-    const rows = [...scoreboard.leaderboard];
+    // tree mode: one row per direct report, whole-branch totals.
+    // flat mode: every individual in the org.
+    const rows = listMode === 'tree' && leaderId
+      ? buildBranchRows(members, links, leaderId, period)
+      : [...scoreboard.leaderboard];
     rows.sort((a, b) => (Number(b[sortBy]) || 0) - (Number(a[sortBy]) || 0));
     return rows;
-  }, [scoreboard.leaderboard, sortBy]);
+  }, [listMode, leaderId, members, links, period, scoreboard.leaderboard, sortBy]);
 
   const handleInvite = async (email) => {
     setInviting(true);
@@ -393,7 +407,7 @@ export default function TeamView({ showToast = () => {} }) {
       setDrillStack([]);
       setDrillData(new Map());
       await loadRoster();
-      await loadOverview(scope);
+      await loadOverview();
     } catch (e) { showToast(e.message, 'error'); }
   };
 
@@ -464,7 +478,7 @@ export default function TeamView({ showToast = () => {} }) {
             <span className="section-accent" />View My Team
           </h1>
           <p className="text-sm text-slate-500">
-            {activeCount} member{activeCount !== 1 ? 's' : ''} · {period.label} · every view is access-logged
+            {members.length} member{members.length !== 1 ? 's' : ''} across your organization · {period.label} · every view is access-logged
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
@@ -481,17 +495,6 @@ export default function TeamView({ showToast = () => {} }) {
                 {p.label}
               </button>
             ))}
-          </div>
-          {/* Scope toggle */}
-          <div className="flex bg-slate-100 rounded-lg p-1 gap-1 text-sm">
-            <button onClick={() => setScope('all')}
-              className={`px-3 py-1.5 font-semibold rounded-md transition ${scope === 'all' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-white/70'}`}>
-              Whole downline
-            </button>
-            <button onClick={() => setScope('direct')}
-              className={`px-3 py-1.5 font-semibold rounded-md transition ${scope === 'direct' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-white/70'}`}>
-              Direct reports
-            </button>
           </div>
         </div>
       </div>
@@ -547,15 +550,29 @@ export default function TeamView({ showToast = () => {} }) {
           <div className="premium-card overflow-hidden">
             <div className="px-4 pt-3 pb-2 flex items-center justify-between gap-2 flex-wrap">
               <h3 className="font-semibold text-slate-900 flex items-center">
-                <span className="section-accent" />Leaderboard
+                <span className="section-accent" />{listMode === 'tree' ? 'Your team' : 'Everyone in your organization'}
               </h3>
-              <div className="flex bg-slate-100 rounded-lg p-0.5 gap-0.5 text-xs">
-                {LEADERBOARD_SORTS.map(s => (
-                  <button key={s.id} onClick={() => setSortBy(s.id)}
-                    className={`px-2.5 py-1 font-semibold rounded transition ${sortBy === s.id ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'}`}>
-                    {s.label}
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Tree (default): one row per direct report, whole-branch
+                    totals. Flat: every individual, org-wide ranking. */}
+                <div className="flex bg-slate-100 rounded-lg p-0.5 gap-0.5 text-xs">
+                  <button onClick={() => setListMode('tree')}
+                    className={`px-2.5 py-1 font-semibold rounded transition ${listMode === 'tree' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'}`}>
+                    By team
                   </button>
-                ))}
+                  <button onClick={() => setListMode('flat')}
+                    className={`px-2.5 py-1 font-semibold rounded transition ${listMode === 'flat' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'}`}>
+                    Everyone
+                  </button>
+                </div>
+                <div className="flex bg-slate-100 rounded-lg p-0.5 gap-0.5 text-xs">
+                  {LEADERBOARD_SORTS.map(s => (
+                    <button key={s.id} onClick={() => setSortBy(s.id)}
+                      className={`px-2.5 py-1 font-semibold rounded transition ${sortBy === s.id ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'}`}>
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
             <div className="overflow-x-auto">
@@ -581,7 +598,17 @@ export default function TeamView({ showToast = () => {} }) {
                       <td className="p-2 pl-4 font-bold text-slate-400">
                         {i === 0 ? <Crown size={15} className="text-amber-500" /> : i + 1}
                       </td>
-                      <td className="p-2 font-semibold text-slate-900">{r.name}</td>
+                      <td className="p-2 font-semibold text-slate-900">
+                        <span className="flex items-center gap-1.5">
+                          {r.name}
+                          {r.teamSize > 1 && (
+                            <span className="text-[10px] font-bold text-indigo-700 bg-indigo-100 px-1.5 py-0.5 rounded-full whitespace-nowrap"
+                              title={`This branch includes ${r.teamSize - 1} ${r.teamSize - 1 === 1 ? 'person' : 'people'} under ${r.name} — numbers are the whole branch combined`}>
+                              +{r.teamSize - 1} team
+                            </span>
+                          )}
+                        </span>
+                      </td>
                       <td className="p-2 text-right kpi-num">{r.dealsIssued}</td>
                       <td className="p-2 text-right kpi-num">{fmt(r.premium)}</td>
                       <td className="p-2 text-right kpi-num text-indigo-700">{fmt(r.av)}</td>

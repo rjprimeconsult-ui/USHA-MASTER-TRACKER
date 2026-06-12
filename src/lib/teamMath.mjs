@@ -24,6 +24,7 @@
 
 import { leadPremium } from './reports.mjs';
 import { computeFollowupStats } from './followupStats.mjs';
+import { getDownlineIds, directReports } from './teamTree.mjs';
 
 // Lead outcome stages (stable app-wide; mirrored from constants.js STAGES —
 // not imported to keep this module's import graph pure-.mjs for node:test).
@@ -134,6 +135,52 @@ export function teamLeadFunnel(members, period) {
     }
   }
   return Object.entries(counts).map(([id, count]) => ({ id, count }));
+}
+
+/**
+ * Tree-first leaderboard rows: ONE row per DIRECT report of leaderId, with
+ * that person's whole-branch totals (their own production + everyone in
+ * their subtree). This is how a leader compares sub-leaders fairly — e.g.
+ * FSL Alexis sees FTA Gustavo's row as Gustavo + his agent Denzel combined,
+ * with teamSize telling him the branch has people under it.
+ *
+ * @param members  same bundles as buildTeamScoreboard (the WHOLE downline)
+ * @param links    active edges [{ uplineId, downlineId }] within the subtree
+ * @param leaderId the viewing leader (root of the tree)
+ */
+export function buildBranchRows(members, links, leaderId, period, now = new Date()) {
+  const edges = (links || []).map(l => ({ ...l, status: 'active' }));
+  const byId = new Map((members || []).map(m => [m.userId, m]));
+
+  return directReports(leaderId, edges).map(reportId => {
+    const branchIds = [reportId, ...getDownlineIds(reportId, edges)];
+    const branchMembers = branchIds.map(id => byId.get(id)).filter(Boolean);
+    const rows = branchMembers.map(m => memberStats(m, period, now));
+
+    const sum = (k) => rows.reduce((s, r) => s + (Number(r[k]) || 0), 0);
+    const dealsIssued = sum('dealsIssued');
+    const advance = sum('advance');
+    const leadSpend = sum('leadSpend');
+    const withCloseRate = rows.filter(r => r.closeRate !== null);
+
+    const self = byId.get(reportId);
+    return {
+      userId: reportId,
+      name: self?.name || 'Member',
+      teamSize: branchMembers.length,           // 1 = leaf agent, >1 = sub-leader
+      dealsIssued,
+      premium: sum('premium'),
+      av: sum('av'),
+      advance,
+      leadSpend,
+      cpa: dealsIssued > 0 ? leadSpend / dealsIssued : null,
+      roi: leadSpend > 0 ? advance / leadSpend : null,
+      closeRate: withCloseRate.length
+        ? withCloseRate.reduce((s, r) => s + r.closeRate, 0) / withCloseRate.length
+        : null,
+      touchesInPeriod: sum('touchesInPeriod'),
+    };
+  });
 }
 
 /**
