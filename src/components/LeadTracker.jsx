@@ -69,6 +69,16 @@ import TextDripReviewModal from './TextDripReviewModal';
 import { supabase, supabaseConfigured } from '@/lib/supabase';
 import { classifyImport, mapToProspect, mergeConversationIntoProspect } from '@/lib/textdrip.mjs';
 import AppSkeleton from './AppSkeleton';
+import { useSubscription } from '@/lib/subscription';
+import { TeamInviteBanner } from './TeamMembership';
+import nextDynamic from 'next/dynamic';
+
+// Lazy-load the Team leader view — only Team-tier leaders ever see it, so
+// its bundle (scoreboard + mirror plumbing) stays out of everyone else's app.
+const TeamView = nextDynamic(() => import('./views/TeamView'), {
+  ssr: false,
+  loading: () => <div className="text-sm text-slate-400 p-4">Loading team…</div>,
+});
 
 const ICONS = { Calculator, Repeat, CheckSquare, LayoutDashboard, Users, Columns, Upload, DollarSign, BookOpen, UserPlus, FileText };
 
@@ -201,6 +211,10 @@ export default function LeadTracker() {
   const { user: authUser } = useAuth();
   const [loaded, setLoaded] = useState(false);
   const [view, setView] = useState('cpa');
+  // Team-tier gate for the "View My Team" tab. Client-side filter only — the
+  // /api/team/* endpoints enforce the real entitlement server-side.
+  const { profile: subProfile } = useSubscription();
+  const teamEntitled = !!(subProfile?.is_admin || subProfile?.subscription_tier === 'team');
   const [showScreenshotImport, setShowScreenshotImport] = useState(false);
   // Onboarding walkthrough — auto-launches on first sign-in for genuinely
   // new agents (no progress record). Re-launchable from Settings.
@@ -1927,7 +1941,7 @@ export default function LeadTracker() {
         </div>
         <nav className="relative max-w-screen-2xl mx-auto px-4 overflow-x-auto">
           <div className="flex gap-1 pb-2">
-            {NAV_TABS.map(t => {
+            {NAV_TABS.filter(t => t.id !== 'team' || teamEntitled).map(t => {
               const Icon = ICONS[t.icon];
               const active = view === t.id;
               return (
@@ -1983,6 +1997,13 @@ export default function LeadTracker() {
           switches (was being lost when AnimatePresence unmounted views). The
           first visit to each view animates in; revisits are instant. */}
       <main className="max-w-screen-2xl mx-auto px-4 py-5">
+        {/* Pending team invite — one-tap consent, visible on every tab.
+            Renders nothing when there's no invite. */}
+        <TeamInviteBanner showToast={showToast} />
+
+        <ViewMount visible={view === 'team' && teamEntitled} viewKey="team">
+          <TeamView showToast={showToast} />
+        </ViewMount>
         <ViewMount visible={view === 'cpa'} viewKey="cpa">
           <CpaDashboard
             leads={leads} investments={investments} activities={activities}

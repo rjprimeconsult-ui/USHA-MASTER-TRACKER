@@ -90,7 +90,7 @@ export function useSubscription() {
     }
     const { data, error } = await supabase
       .from('profiles')
-      .select('id, email, subscription_status, subscription_tier, subscription_period, trial_ends_at, current_period_end, cancel_at_period_end, stripe_customer_id, is_complimentary')
+      .select('id, email, subscription_status, subscription_tier, subscription_period, trial_ends_at, current_period_end, cancel_at_period_end, stripe_customer_id, is_complimentary, is_admin')
       .eq('id', userId)
       .maybeSingle();
     if (error) {

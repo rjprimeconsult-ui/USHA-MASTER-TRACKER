@@ -211,6 +211,8 @@ export function effectiveLeadCategory(lead) {
 
 export const NAV_TABS = [
   { id: 'cpa',          label: 'CPA Dashboard', icon: 'Calculator' },
+  // Team-tier leaders only — LeadTracker filters this tab out for everyone else.
+  { id: 'team',         label: 'View My Team',  icon: 'Users' },
   { id: 'closed',       label: 'Closed Deals',  icon: 'CheckSquare' },
   { id: 'dashboard',    label: 'Overview',      icon: 'LayoutDashboard' },
   { id: 'associations', label: 'Associations',  icon: 'Repeat' },

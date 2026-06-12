@@ -56,6 +56,7 @@ import {
   SUB_STATUS,
 } from '@/lib/subscription';
 import { PLAN_DISPLAY } from '@/lib/stripe-prices';
+import { TeamTransparencySection } from '@/components/TeamMembership';
 import {
   loadAgentProfile,
   saveAgentProfile,
@@ -334,13 +335,19 @@ export default function Profile({ open, onClose }) {
                     />
                   )}
                   {active === 'subscription' && (
-                    <SubscriptionSection
-                      profile={subProfile}
-                      loading={subLoading}
-                      onManageBilling={onManageBilling}
-                      portalLoading={portalLoading}
-                      onRefresh={refreshSub}
-                    />
+                    <>
+                      <SubscriptionSection
+                        profile={subProfile}
+                        loading={subLoading}
+                        onManageBilling={onManageBilling}
+                        portalLoading={portalLoading}
+                        onRefresh={refreshSub}
+                      />
+                      {/* Team transparency — who can see my data + Leave team */}
+                      <div className="mt-4">
+                        <TeamTransparencySection />
+                      </div>
+                    </>
                   )}
                   {active === 'sender' && (
                     <SenderSection
