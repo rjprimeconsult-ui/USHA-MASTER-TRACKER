@@ -33,7 +33,9 @@ const ProductBadge = ({ id }) => {
   return <span className={`inline-block px-2 py-0.5 rounded text-[11px] font-bold tracking-wide ${cls}`}>{id}</span>;
 };
 
-function LeadsView({ leads, onNew, onEdit, onDelete, onBulkDelete, onBulkStage, onNavigate }) {
+// readOnly: rendered inside the Team leader mirror with ANOTHER user's data —
+// hide every mutate affordance (new/edit/delete/bulk); filters + export stay.
+function LeadsView({ leads, onNew, onEdit, onDelete, onBulkDelete, onBulkStage, onNavigate, readOnly = false }) {
   const [q, setQ] = useState('');
   const [stageF, setStageF] = useState('');
   const [productF, setProductF] = useState('');       // family: '', 'UW', 'GI', 'OTHER', or a specific product id
@@ -277,9 +279,11 @@ function LeadsView({ leads, onNew, onEdit, onDelete, onBulkDelete, onBulkStage, 
         <button onClick={exportCsv} className="border border-slate-200 rounded-lg px-3 py-2 text-sm hover:bg-slate-50 flex items-center gap-1">
           <Download size={14} /> Export
         </button>
-        <button onClick={onNew} className="bg-indigo-600 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center gap-1">
-          <Plus size={14} /> New Lead
-        </button>
+        {!readOnly && (
+          <button onClick={onNew} className="bg-indigo-600 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center gap-1">
+            <Plus size={14} /> New Lead
+          </button>
+        )}
       </div>
 
       {/* Bulk actions bar */}
@@ -311,13 +315,15 @@ function LeadsView({ leads, onNew, onEdit, onDelete, onBulkDelete, onBulkStage, 
           <thead className="bg-slate-50 text-slate-600 text-xs">
             <tr>
               <th className="p-2 w-8">
-                <input
-                  type="checkbox"
-                  checked={allVisibleSelected}
-                  ref={el => { if (el) el.indeterminate = someSelected && !allVisibleSelected; }}
-                  onChange={toggleAll}
-                  className="rounded accent-indigo-600 cursor-pointer"
-                />
+                {!readOnly && (
+                  <input
+                    type="checkbox"
+                    checked={allVisibleSelected}
+                    ref={el => { if (el) el.indeterminate = someSelected && !allVisibleSelected; }}
+                    onChange={toggleAll}
+                    className="rounded accent-indigo-600 cursor-pointer"
+                  />
+                )}
               </th>
               <th className="text-left p-2">{sortBtn('name', 'Name')}</th>
               <th className="text-left p-2">Contact</th>
@@ -344,12 +350,14 @@ function LeadsView({ leads, onNew, onEdit, onDelete, onBulkDelete, onBulkStage, 
                   className={`border-t border-slate-100 ${isSel ? 'bg-indigo-50' : ''}`}
                 >
                   <td className="p-2" onClick={e => e.stopPropagation()}>
-                    <input
-                      type="checkbox"
-                      checked={isSel}
-                      onChange={() => toggle(l.id)}
-                      className="rounded accent-indigo-600 cursor-pointer"
-                    />
+                    {!readOnly && (
+                      <input
+                        type="checkbox"
+                        checked={isSel}
+                        onChange={() => toggle(l.id)}
+                        className="rounded accent-indigo-600 cursor-pointer"
+                      />
+                    )}
                   </td>
                   <td className="p-2 font-medium text-slate-900 cursor-pointer" onClick={() => onEdit(l)}>
                     <div className="flex items-center gap-2">
@@ -408,10 +416,12 @@ function LeadsView({ leads, onNew, onEdit, onDelete, onBulkDelete, onBulkStage, 
                   <td className="p-2 text-slate-500 text-xs cursor-pointer" onClick={() => onEdit(l)}>{l.closedDate ? usDate(l.closedDate) : <span className="text-slate-300">—</span>}</td>
                   <td className="p-2 text-slate-400 text-xs cursor-pointer" onClick={() => onEdit(l)}>{l.dateAdded ? usDate(l.dateAdded) : <span className="text-slate-300">—</span>}</td>
                   <td className="text-right p-2" onClick={e => e.stopPropagation()}>
-                    <div className="flex justify-end gap-1">
-                      <button onClick={() => onEdit(l)} title="Edit" className="text-slate-400 hover:text-indigo-600 p-1 rounded hover:bg-indigo-50"><Edit2 size={14} /></button>
-                      <button onClick={() => onDelete(l.id)} title="Delete" className="text-slate-400 hover:text-red-600 p-1 rounded hover:bg-red-50"><Trash2 size={14} /></button>
-                    </div>
+                    {!readOnly && (
+                      <div className="flex justify-end gap-1">
+                        <button onClick={() => onEdit(l)} title="Edit" className="text-slate-400 hover:text-indigo-600 p-1 rounded hover:bg-indigo-50"><Edit2 size={14} /></button>
+                        <button onClick={() => onDelete(l.id)} title="Delete" className="text-slate-400 hover:text-red-600 p-1 rounded hover:bg-red-50"><Trash2 size={14} /></button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               );

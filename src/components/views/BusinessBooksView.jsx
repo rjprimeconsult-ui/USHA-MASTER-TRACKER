@@ -71,6 +71,10 @@ function BusinessBooksView({
   onAddIncome,  onUpdateIncome,  onDeleteIncome,  onBulkAddIncome,
   onBulkAddPlatforms,
   smartImportOpenSignal = 0,
+  // readOnly: rendered inside the Team leader mirror with ANOTHER user's
+  // books — hide import/add affordances. All write handlers are no-ops in
+  // that mode too, so data is safe regardless.
+  readOnly = false,
 }) {
   const [tab, setTab] = useState('expenses'); // 'expenses' | 'income'
   const fileInputRef = useRef(null);
@@ -840,6 +844,7 @@ function BusinessBooksView({
               </div>
             </div>
           </div>
+          {!readOnly && (
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowSmartImport(true)}
@@ -857,6 +862,7 @@ function BusinessBooksView({
               {importing ? 'Reading…' : 'Classic Import'}
             </button>
           </div>
+          )}
           <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls,.pdf" onChange={handleFileSelect} className="hidden" />
         </div>
       </div>

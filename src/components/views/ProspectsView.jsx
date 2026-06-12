@@ -248,7 +248,7 @@ function TodayPanel({ prospects, onEdit }) {
 }
 
 // ---------- Kanban Card ----------
-function KanbanCard({ prospect, onEdit, onDragStart, isSelected, onToggleSelect, sourceColor }) {
+function KanbanCard({ prospect, onEdit, onDragStart, isSelected, onToggleSelect, sourceColor, readOnly = false }) {
   const tu = timeUntil(prospect.appointmentTime);
   const apptStr = formatAppt(prospect.appointmentTime);
   // When the user has assigned a color to this prospect's source, use it
@@ -259,7 +259,7 @@ function KanbanCard({ prospect, onEdit, onDragStart, isSelected, onToggleSelect,
     : undefined;
   return (
     <div
-      draggable
+      draggable={!readOnly}
       onDragStart={(e) => onDragStart(e, prospect.id)}
       onClick={() => onEdit(prospect)}
       style={accentStyle}
@@ -270,16 +270,18 @@ function KanbanCard({ prospect, onEdit, onDragStart, isSelected, onToggleSelect,
       }`}
     >
       {/* Selection checkbox — always visible if selected, on hover otherwise */}
-      <input
-        type="checkbox"
-        checked={isSelected}
-        onClick={(e) => e.stopPropagation()}
-        onChange={() => onToggleSelect(prospect.id)}
-        className={`absolute top-2 left-2 w-4 h-4 cursor-pointer accent-indigo-600 z-10 transition-opacity ${
-          isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-        }`}
-        title="Select"
-      />
+      {!readOnly && (
+        <input
+          type="checkbox"
+          checked={isSelected}
+          onClick={(e) => e.stopPropagation()}
+          onChange={() => onToggleSelect(prospect.id)}
+          className={`absolute top-2 left-2 w-4 h-4 cursor-pointer accent-indigo-600 z-10 transition-opacity ${
+            isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+          }`}
+          title="Select"
+        />
+      )}
       <div className={`flex items-start justify-between gap-2 mb-1 ${isSelected ? 'pl-6' : ''} group-hover:pl-6 transition-all`}>
         <div className="flex items-center gap-1.5 min-w-0">
           <FollowupDot prospect={prospect} />
@@ -327,7 +329,7 @@ function KanbanCard({ prospect, onEdit, onDragStart, isSelected, onToggleSelect,
 }
 
 // ---------- Kanban Column ----------
-function KanbanColumn({ stage, prospects, onEdit, onDragStart, onDrop, selected, onToggleSelect, onSelectAllInStage, sourceColors }) {
+function KanbanColumn({ stage, prospects, onEdit, onDragStart, onDrop, selected, onToggleSelect, onSelectAllInStage, sourceColors, readOnly = false }) {
   const [over, setOver] = useState(false);
   const allSelectedInCol = prospects.length > 0 && prospects.every(p => selected.has(p.id));
   const someSelectedInCol = prospects.some(p => selected.has(p.id));
@@ -345,7 +347,7 @@ function KanbanColumn({ stage, prospects, onEdit, onDragStart, onDrop, selected,
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <span className="text-xs font-semibold text-slate-400">{prospects.length}</span>
-          {prospects.length > 0 && (
+          {prospects.length > 0 && !readOnly && (
             <button
               onClick={() => onSelectAllInStage(stage.id, !allSelectedInCol)}
               title={allSelectedInCol ? 'Deselect all in this stage' : 'Select all in this stage'}
@@ -366,6 +368,7 @@ function KanbanColumn({ stage, prospects, onEdit, onDragStart, onDrop, selected,
             isSelected={selected.has(p.id)}
             onToggleSelect={onToggleSelect}
             sourceColor={colorForSource(sourceColors, p.source)}
+            readOnly={readOnly}
           />
         ))}
       </div>
@@ -1002,7 +1005,7 @@ function OutreachLogList({ log }) {
   );
 }
 
-function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, onConvertToLead, onProspectUpdate, playbook, onLogTouch, agentName, onApplyStageSuggestion, onSnooze, onResolveReminder, onExtractFromTexts }) {
+function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, onConvertToLead, onProspectUpdate, playbook, onLogTouch, agentName, onApplyStageSuggestion, onSnooze, onResolveReminder, onExtractFromTexts, readOnly = false }) {
   const [logOpen, setLogOpen] = useState(false);
   const [suggestion, setSuggestion] = useState(null);
   // ProspectDetail stays mounted across prospects — clear any pending
@@ -1072,16 +1075,19 @@ function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, o
         {/* Body sections — flex-1 + overflow-y-auto so only this middle
             region scrolls. Hero stays pinned at top, footer at bottom. */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          {/* Follow-up next-step coaching card */}
-          <div className="mb-3">
-            <FollowupNextStep
-              prospect={prospect}
-              playbook={playbook}
-              agentName={agentName}
-              onLogTouch={() => setLogOpen(true)}
-              onSnooze={(days) => onSnooze?.(prospect.id, days)}
-            />
-          </div>
+          {/* Follow-up next-step coaching card — an action card, hidden in
+              the leader's read-only mirror */}
+          {!readOnly && (
+            <div className="mb-3">
+              <FollowupNextStep
+                prospect={prospect}
+                playbook={playbook}
+                agentName={agentName}
+                onLogTouch={() => setLogOpen(true)}
+                onSnooze={(days) => onSnooze?.(prospect.id, days)}
+              />
+            </div>
+          )}
           {suggestion && (
             <div className="mb-3 rounded-xl border border-violet-200 bg-violet-50 p-3 flex items-center gap-2">
               <Sparkles size={15} className="text-violet-600 flex-shrink-0" />
@@ -1184,7 +1190,8 @@ function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, o
         </div>
 
         {/* Action footer — flex-shrink-0 keeps it pinned at the bottom
-            of the modal card (replaces the old sticky bottom-0). */}
+            of the modal card. Hidden entirely in the read-only mirror. */}
+        {!readOnly && (
         <div className="bg-white border-t border-slate-200 rounded-b-2xl p-4 flex items-center justify-between gap-2 flex-shrink-0 flex-wrap">
           <button onClick={() => onDelete(prospect.id)}
             className="text-red-600 hover:bg-red-50 px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5">
@@ -1220,6 +1227,7 @@ function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, o
             </button>
           </div>
         </div>
+        )}
         </div>{/* /modal card */}
       </div>{/* /flex centering wrapper */}
     </div>
@@ -1311,6 +1319,9 @@ export default function ProspectsView({
   onResolveReminder,
   onSyncTextDrip,
   onExtractFromTexts,
+  // readOnly: rendered inside the Team leader mirror with ANOTHER user's
+  // data — hide every mutate affordance; viewing client records stays.
+  readOnly = false,
 }) {
   const cfg = settings || defaultProspectSettings();
   const [view, setView] = useState('kanban'); // 'kanban' | 'list'
@@ -1556,6 +1567,7 @@ export default function ProspectsView({
               {tdSyncing ? (<><Loader2 size={14} className="animate-spin" /> Syncing…</>) : (<>💬 Sync TextDrip</>)}
             </button>
           )}
+          {!readOnly && (<>
           <button onClick={() => setShowSmartImport(true)}
             className="bg-gradient-to-br from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white rounded-lg px-3 py-2 text-sm font-semibold flex items-center gap-1.5 shadow-md shadow-indigo-500/30"
             title="Drop any pipeline file (Excel, CSV, PDF, screenshot) — AI extracts every prospect">
@@ -1578,6 +1590,7 @@ export default function ProspectsView({
             className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-3 py-2 text-sm font-semibold flex items-center gap-1.5">
             <Plus size={14} /> New Prospect
           </button>
+          </>)}
         </div>
       </div>
 
@@ -1734,6 +1747,7 @@ export default function ProspectsView({
                 onToggleSelect={(id) => toggleOne(id)}
                 onSelectAllInStage={toggleAllInStage}
                 sourceColors={sourceColors}
+                readOnly={readOnly}
               />
             ))}
           </div>
@@ -1748,13 +1762,15 @@ export default function ProspectsView({
             <thead>
               <tr className="bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500">
                 <th className="px-3 py-2.5 text-left border-b-2 border-slate-200 border-r border-slate-200 w-10">
-                  <input
-                    type="checkbox"
-                    checked={allVisibleSelected}
-                    onChange={toggleAllVisible}
-                    className="cursor-pointer accent-indigo-600 w-4 h-4"
-                    title="Select all visible"
-                  />
+                  {!readOnly && (
+                    <input
+                      type="checkbox"
+                      checked={allVisibleSelected}
+                      onChange={toggleAllVisible}
+                      className="cursor-pointer accent-indigo-600 w-4 h-4"
+                      title="Select all visible"
+                    />
+                  )}
                 </th>
                 <th className="px-4 py-2.5 text-left border-b-2 border-slate-200 border-r border-slate-200">Name</th>
                 <th className="px-4 py-2.5 text-left border-b-2 border-slate-200 border-r border-slate-200 w-44">Phone</th>
@@ -1780,12 +1796,14 @@ export default function ProspectsView({
                     <td className="px-3 py-3 border-r border-slate-200 align-middle"
                       style={{ boxShadow: `inset 4px 0 0 0 ${stColor}` }}
                       onClick={(e) => e.stopPropagation()}>
-                      <input
-                        type="checkbox"
-                        checked={isSel}
-                        onChange={(e) => toggleOne(p.id, e)}
-                        className="cursor-pointer accent-indigo-600 w-4 h-4"
-                      />
+                      {!readOnly && (
+                        <input
+                          type="checkbox"
+                          checked={isSel}
+                          onChange={(e) => toggleOne(p.id, e)}
+                          className="cursor-pointer accent-indigo-600 w-4 h-4"
+                        />
+                      )}
                     </td>
                     <td className="px-4 py-3 border-r border-slate-200 align-middle">
                       <div className="font-semibold text-slate-900 truncate flex items-center gap-2">
@@ -1841,6 +1859,7 @@ export default function ProspectsView({
       <ProspectDetail
         open={!!viewing}
         prospect={viewing ? (prospects.find(p => p.id === viewing.id) || viewing) : viewing}
+        readOnly={readOnly}
         settings={cfg}
         onClose={() => setViewing(null)}
         onEdit={onEdit}

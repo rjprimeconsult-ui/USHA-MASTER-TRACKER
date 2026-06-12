@@ -64,7 +64,9 @@ function sourceColor(label) {
   return '#6366f1';
 }
 
-function Dashboard({ leads, prospects = [], onOpenProspects, setupStats, onSetupAction }) {
+// readOnly: rendered inside the Team leader mirror with ANOTHER user's data —
+// hide action widgets (data display stays identical).
+function Dashboard({ leads, prospects = [], onOpenProspects, setupStats, onSetupAction, readOnly = false }) {
   const chartColors = useChartColors();
   const [stateMetric, setStateMetric] = useState('deals'); // 'deals' | 'issued' | 'advance'
 
@@ -177,11 +179,13 @@ function Dashboard({ leads, prospects = [], onOpenProspects, setupStats, onSetup
       {/* Outreach follow-ups — only renders for beta allowlist users
           with at least one prospect mid-sequence. Clicking a row
           jumps to the Prospects view (parent handles navigation). */}
-      <OutreachRemindersWidget
-        prospects={prospects}
-        compact
-        onOpenProspect={() => onOpenProspects?.()}
-      />
+      {!readOnly && (
+        <OutreachRemindersWidget
+          prospects={prospects}
+          compact
+          onOpenProspect={() => onOpenProspects?.()}
+        />
+      )}
 
       <Stagger className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <StaggerItem><Kpi label="Total Leads" value={total} grad="from-indigo-500 to-blue-500" Icon={Users} /></StaggerItem>

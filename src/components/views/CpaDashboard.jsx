@@ -53,7 +53,10 @@ const Kpi = memo(({ label, value, numeric, isCurrency = true, isPercent = false,
 ));
 Kpi.displayName = 'Kpi';
 
-function CpaDashboard({ leads, investments, activities, platformExpenses = [], businessExpenses = [], businessIncome = [], chargebacks = [], overrides = [], ownAdvances = [], prospects = [], onOpenProspects, onDeleteChargeback, onEditInvestment, onDeleteInvestment, onDeleteAutoWeek, onNewInvestment, onNewActivity, onEditActivity, onDeleteActivity, onMarkPaymentTaken, onPaymentHeadsUpSent }) {
+// readOnly: rendered inside the Team leader mirror with ANOTHER user's data —
+// the action buttons call no-op handlers there; PaymentAlertsWidget (an action
+// widget) is hidden. Analytics rendering is identical.
+function CpaDashboard({ leads, investments, activities, platformExpenses = [], businessExpenses = [], businessIncome = [], chargebacks = [], overrides = [], ownAdvances = [], prospects = [], onOpenProspects, onDeleteChargeback, onEditInvestment, onDeleteInvestment, onDeleteAutoWeek, onNewInvestment, onNewActivity, onEditActivity, onDeleteActivity, onMarkPaymentTaken, onPaymentHeadsUpSent, readOnly = false }) {
   const chartColors = useChartColors();
   const [showHowTo, setShowHowTo] = useState(false);
   const thisWeek = getWeekStart(new Date().toISOString().slice(0, 10));
@@ -414,6 +417,7 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
           >
             <Info size={14} /> How to use {showHowTo ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
           </button>
+          {!readOnly && (<>
           <button
             onClick={onNewActivity}
             className="border border-slate-200 bg-white rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-1.5"
@@ -426,6 +430,7 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
           >
             <Plus size={14} /> Log Investment
           </button>
+          </>)}
         </div>
       </div>
 
@@ -433,20 +438,23 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
           the reminder is visible from the default landing view. Clicking
           a row jumps to the Prospects tab; that view's full widget
           surfaces the prospect's detail. */}
-      <OutreachRemindersWidget
-        prospects={prospects}
-        compact
-        onOpenProspect={() => onOpenProspects?.()}
-      />
+      {!readOnly && (
+        <OutreachRemindersWidget
+          prospects={prospects}
+          compact
+          onOpenProspect={() => onOpenProspects?.()}
+        />
+      )}
 
-      {/* Payment Alerts — deals whose first premium drafts soon. Lets the
-          agent give the client a heads-up to keep funds ready and avoid a
-          NOT TAKEN (protecting taken rate). */}
-      <PaymentAlertsWidget
-        leads={leads}
-        onMarkTaken={onMarkPaymentTaken}
-        onSentHeadsUp={onPaymentHeadsUpSent}
-      />
+      {/* Payment Alerts — deals whose first premium drafts soon. Action
+          widget; hidden in the leader's read-only mirror. */}
+      {!readOnly && (
+        <PaymentAlertsWidget
+          leads={leads}
+          onMarkTaken={onMarkPaymentTaken}
+          onSentHeadsUp={onPaymentHeadsUpSent}
+        />
+      )}
 
       {/* How to use */}
       {showHowTo && (
