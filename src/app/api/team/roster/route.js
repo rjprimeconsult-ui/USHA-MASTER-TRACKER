@@ -30,6 +30,7 @@ export async function GET(req) {
       status: e.status,
       invitedAt: e.invitedAt,
       acceptedAt: e.acceptedAt,
+      roleLabel: e.roleLabel,
       // is this member themselves a leader with reports? (for tree hints)
       hasReports: e.downlineId
         ? edges.some(x => x.uplineId === e.downlineId && x.status === 'active')

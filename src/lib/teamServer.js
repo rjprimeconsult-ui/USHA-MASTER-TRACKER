@@ -72,7 +72,7 @@ export async function isTeamLeaderEntitled(admin, userId) {
 export async function fetchAllEdges(admin) {
   const { data, error } = await admin
     .from('team_members')
-    .select('id, upline_id, downline_id, downline_email, status, invited_at, accepted_at');
+    .select('id, upline_id, downline_id, downline_email, status, invited_at, accepted_at, role_label');
   if (error) throw new Error(`team_members read failed: ${error.message}`);
   return (data || []).map(r => ({
     id: r.id,
@@ -82,8 +82,12 @@ export async function fetchAllEdges(admin) {
     status: r.status,
     invitedAt: r.invited_at,
     acceptedAt: r.accepted_at,
+    roleLabel: r.role_label || null,
   }));
 }
+
+// Role labels a leader may assign to a direct report (USHA org levels).
+export const TEAM_ROLE_LABELS = ['AGENT', 'FTA', 'FSL', 'SAT'];
 
 /** Active descendant ids of a leader (cycle-safe). */
 export function downlineIdsFrom(edges, leaderId, scope = 'all') {

@@ -49,6 +49,19 @@ const LEADERBOARD_SORTS = [
 
 const noop = () => {};
 
+// USHA org levels a leader can label their direct reports with.
+const ROLE_OPTIONS = ['AGENT', 'FTA', 'FSL', 'SAT'];
+
+// Small role chip — shown wherever a member appears once labeled.
+function RoleChip({ role }) {
+  if (!role) return null;
+  return (
+    <span className="text-[10px] font-bold tracking-wider text-violet-700 bg-violet-100 px-1.5 py-0.5 rounded whitespace-nowrap">
+      {role}
+    </span>
+  );
+}
+
 async function getBearer() {
   if (!supabaseConfigured()) return null;
   try {
@@ -92,7 +105,7 @@ function Kpi({ label, value, format, Icon, grad }) {
 }
 
 // ---------- Roster panel ----------
-function RosterPanel({ roster, onInvite, onRemove, inviting }) {
+function RosterPanel({ roster, onInvite, onRemove, onSetRole, inviting }) {
   const [email, setEmail] = useState('');
   const [msg, setMsg] = useState('');
 
@@ -143,6 +156,17 @@ function RosterPanel({ roster, onInvite, onRemove, inviting }) {
                 <div className="text-[11px] text-slate-400 truncate">{r.email}</div>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
+                {/* Role label — the leader's own categorization (Agent vs
+                    FTA vs FSL vs SAT) so the team list reads at a glance. */}
+                <select
+                  value={r.roleLabel || ''}
+                  onChange={(e) => onSetRole(r, e.target.value)}
+                  className="border border-slate-200 rounded-lg px-1.5 py-1 text-[11px] font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  title="Label this member's org level"
+                >
+                  <option value="">No label</option>
+                  {ROLE_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                </select>
                 <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
                   r.status === 'active' ? 'bg-emerald-100 text-emerald-700'
                   : r.status === 'pending' ? 'bg-amber-100 text-amber-700'
@@ -262,6 +286,7 @@ function MemberMirror({ data, onDrill }) {
               >
                 {r.hasReports ? <Crown size={13} className="text-indigo-500" /> : <Users size={13} className="text-slate-400" />}
                 {r.name}
+                <RoleChip role={r.roleLabel} />
                 <ChevronRight size={13} className="text-slate-400" />
               </button>
             ))}
@@ -396,6 +421,15 @@ export default function TeamView({ showToast = () => {} }) {
     }
   };
 
+  const handleSetRole = async (r, role) => {
+    try {
+      await teamFetch('/api/team/role', { method: 'POST', body: JSON.stringify({ memberId: r.id, role }) });
+      showToast(role ? `${r.name} labeled ${role}` : `Label cleared for ${r.name}`);
+      await loadRoster();
+      await loadOverview(); // refresh role chips on the team list
+    } catch (e) { showToast(e.message, 'error'); }
+  };
+
   const handleRemove = async (r) => {
     const verb = r.status === 'pending' ? 'Cancel the invite to' : 'Remove';
     if (!confirm(`${verb} ${r.name}? ${r.status === 'active' ? 'You will immediately lose access to their data.' : ''}`)) return;
@@ -429,6 +463,11 @@ export default function TeamView({ showToast = () => {} }) {
 
   const current = drillStack.length ? drillData.get(drillStack[drillStack.length - 1].userId) : null;
   const activeCount = roster.filter(r => r.status === 'active').length;
+  // Role label per member (each upline labels their own direct reports).
+  const roleById = useMemo(
+    () => new Map((links || []).filter(l => l.roleLabel).map(l => [l.downlineId, l.roleLabel])),
+    [links],
+  );
 
   // ---------- Drill-down mode ----------
   if (current) {
@@ -601,6 +640,7 @@ export default function TeamView({ showToast = () => {} }) {
                       <td className="p-2 font-semibold text-slate-900">
                         <span className="flex items-center gap-1.5">
                           {r.name}
+                          <RoleChip role={roleById.get(r.userId)} />
                           {r.teamSize > 1 && (
                             <span className="text-[10px] font-bold text-indigo-700 bg-indigo-100 px-1.5 py-0.5 rounded-full whitespace-nowrap"
                               title={`This branch includes ${r.teamSize - 1} ${r.teamSize - 1 === 1 ? 'person' : 'people'} under ${r.name} — numbers are the whole branch combined`}>
@@ -711,7 +751,7 @@ export default function TeamView({ showToast = () => {} }) {
       )}
 
       {/* ③ Roster */}
-      <RosterPanel roster={roster} onInvite={handleInvite} onRemove={handleRemove} inviting={inviting} />
+      <RosterPanel roster={roster} onInvite={handleInvite} onRemove={handleRemove} onSetRole={handleSetRole} inviting={inviting} />
     </div>
   );
 }

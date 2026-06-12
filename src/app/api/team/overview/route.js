@@ -44,9 +44,10 @@ export async function GET(req) {
     }
 
     // direct-report links so the client can build the org tree for drill-down
+    // (roleLabel = the upline's annotation of that member: AGENT/FTA/FSL/SAT)
     const links = edges
       .filter(e => e.status === 'active' && (e.uplineId === caller.id || ids.includes(e.uplineId)))
-      .map(e => ({ uplineId: e.uplineId, downlineId: e.downlineId }));
+      .map(e => ({ uplineId: e.uplineId, downlineId: e.downlineId, roleLabel: e.roleLabel }));
 
     await auditView(admin, caller.id, members.map(m => m.userId), 'view_overview', scope);
     console.log(`[team/overview] leader=${caller.id} scope=${scope} members=${members.length}`);

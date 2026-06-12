@@ -43,6 +43,7 @@ export async function GET(req, ctx) {
       name: names.get(id)?.name || 'Agent',
       email: names.get(id)?.email || '',
       hasReports: directReports(id, edges).length > 0,
+      roleLabel: edges.find(e => e.status === 'active' && e.uplineId === agentId && e.downlineId === id)?.roleLabel || null,
     }));
 
     await auditView(admin, caller.id, agentId, 'view_agent');
