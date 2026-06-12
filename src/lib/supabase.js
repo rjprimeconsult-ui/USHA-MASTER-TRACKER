@@ -17,13 +17,24 @@ if (typeof window !== 'undefined' && (!url || !anonKey)) {
   console.error('Supabase env vars missing. Check .env.local — you need NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.');
 }
 
-export const supabase = createClient(url || '', anonKey || '', {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true,
+// IMPORTANT: never pass empty strings here. createClient THROWS on an empty
+// url ("supabaseUrl is required"), and this module is evaluated at module
+// scope during server prerendering (e.g. the /_not-found page) — if the env
+// isn't visible to that build step, the whole `next build` fails (this took
+// down a Vercel deploy on 2026-06-12). Syntactically-valid placeholders keep
+// module evaluation safe everywhere; all real usage is already gated behind
+// supabaseConfigured(), so behavior with real env vars is unchanged.
+export const supabase = createClient(
+  url || 'https://placeholder.supabase.co',
+  anonKey || 'public-anon-key-placeholder',
+  {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    },
   },
-});
+);
 
 // Helper: returns true if Supabase is configured (env vars present).
 // Useful for graceful fallback to local mode during dev.
