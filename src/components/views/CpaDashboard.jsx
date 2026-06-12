@@ -875,9 +875,11 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
             {funnelRow('Pitches', activityTotals.pitches, Presentation, 'bg-amber-100 text-amber-700')}
             {funnelRow('Closes', activityTotals.closes, Trophy, 'bg-emerald-100 text-emerald-700')}
           </div>
-          <button onClick={onNewActivity} className="mt-4 w-full border border-slate-200 rounded-lg py-2 text-sm hover:bg-slate-50 flex items-center justify-center gap-1">
-            <Plus size={14} /> Log Activity
-          </button>
+          {!readOnly && (
+            <button onClick={onNewActivity} className="mt-4 w-full border border-slate-200 rounded-lg py-2 text-sm hover:bg-slate-50 flex items-center justify-center gap-1">
+              <Plus size={14} /> Log Activity
+            </button>
+          )}
         </div>
 
         {(followupStats.totalTouches > 0 || followupStats.activeCount > 0) && (
@@ -910,9 +912,11 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
       <div className="premium-card">
         <div className="flex items-center justify-between p-4 border-b border-slate-200">
           <h3 className="font-semibold text-slate-900">Investment Log</h3>
-          <button onClick={onNewInvestment} className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center gap-1">
-            <Plus size={14} /> New Week
-          </button>
+          {!readOnly && (
+            <button onClick={onNewInvestment} className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center gap-1">
+              <Plus size={14} /> New Week
+            </button>
+          )}
         </div>
         <div className="overflow-auto">
           <table className="w-full text-sm premium-table">
@@ -957,22 +961,24 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
                     <td className="text-right p-2 font-medium text-emerald-700">{fmt(totIn)}</td>
                     <td className="text-right p-2 font-medium text-red-600">{fmt(totOut)}</td>
                     <td className="text-right p-2">
-                      <div className="flex justify-end gap-1">
-                        <button
-                          onClick={() => onEditInvestment(w)}
-                          title={w.id ? 'Edit this week' : 'Add manual investment entry for this week'}
-                          className="text-slate-400 hover:text-indigo-600 p-1 rounded hover:bg-indigo-50"
-                        >
-                          <Edit2 size={14} />
-                        </button>
-                        <button
-                          onClick={() => w.id ? onDeleteInvestment(w.id) : onDeleteAutoWeek(w.weekStart)}
-                          title={w.id ? 'Delete this week' : 'Remove auto-synced row (reverts Issued leads back to Pending)'}
-                          className="text-slate-400 hover:text-red-600 p-1 rounded hover:bg-red-50"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
+                      {!readOnly && (
+                        <div className="flex justify-end gap-1">
+                          <button
+                            onClick={() => onEditInvestment(w)}
+                            title={w.id ? 'Edit this week' : 'Add manual investment entry for this week'}
+                            className="text-slate-400 hover:text-indigo-600 p-1 rounded hover:bg-indigo-50"
+                          >
+                            <Edit2 size={14} />
+                          </button>
+                          <button
+                            onClick={() => w.id ? onDeleteInvestment(w.id) : onDeleteAutoWeek(w.weekStart)}
+                            title={w.id ? 'Delete this week' : 'Remove auto-synced row (reverts Issued leads back to Pending)'}
+                            className="text-slate-400 hover:text-red-600 p-1 rounded hover:bg-red-50"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 );
@@ -992,9 +998,11 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
             <h3 className="font-semibold text-slate-900">Activity Log</h3>
             <p className="text-xs text-slate-500 mt-0.5">Daily dials, appointments, pitches, closes</p>
           </div>
-          <button onClick={onNewActivity} className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center gap-1">
-            <Plus size={14} /> Log Activity
-          </button>
+          {!readOnly && (
+            <button onClick={onNewActivity} className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center gap-1">
+              <Plus size={14} /> Log Activity
+            </button>
+          )}
         </div>
         <div className="overflow-auto">
           <table className="w-full text-sm premium-table">
@@ -1021,10 +1029,12 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
                   <td className="text-right p-2 text-emerald-700 font-medium">{a.closes}</td>
                   <td className="p-2 text-xs text-slate-500 max-w-xs truncate" title={a.notes}>{a.notes || <span className="text-slate-300">—</span>}</td>
                   <td className="text-right p-2">
-                    <div className="flex justify-end gap-1">
-                      <button onClick={() => onEditActivity(a)} title="Edit" className="text-slate-400 hover:text-indigo-600 p-1 rounded hover:bg-indigo-50"><Edit2 size={14} /></button>
-                      <button onClick={() => onDeleteActivity(a.id)} title="Delete" className="text-slate-400 hover:text-red-600 p-1 rounded hover:bg-red-50"><Trash2 size={14} /></button>
-                    </div>
+                    {!readOnly && (
+                      <div className="flex justify-end gap-1">
+                        <button onClick={() => onEditActivity(a)} title="Edit" className="text-slate-400 hover:text-indigo-600 p-1 rounded hover:bg-indigo-50"><Edit2 size={14} /></button>
+                        <button onClick={() => onDeleteActivity(a.id)} title="Delete" className="text-slate-400 hover:text-red-600 p-1 rounded hover:bg-red-50"><Trash2 size={14} /></button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))}

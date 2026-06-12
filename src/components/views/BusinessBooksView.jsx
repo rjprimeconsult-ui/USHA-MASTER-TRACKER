@@ -1321,11 +1321,13 @@ function BusinessBooksView({
             icon={tab === 'expenses' ? TrendingDown : TrendingUp}
             title={`No ${tab === 'expenses' ? 'expenses' : 'income'} yet for ${ymLabel(activeMonth)}`}
             message={
-              tab === 'expenses'
+              readOnly
+                ? `This agent hasn't logged any ${tab === 'expenses' ? 'expenses' : 'income'} for ${ymLabel(activeMonth)}.`
+                : tab === 'expenses'
                 ? 'Smart Import reads bank statements, credit-card exports, or expense sheets — auto-categorizes everything in seconds. Or add an entry by hand below.'
                 : 'Track Books income alongside your commissions for a true monthly P&L. Add an entry below, or use Smart Import to bring in deposit statements.'
             }
-            actions={[
+            actions={readOnly ? [] : [
               { label: 'Smart Import', onClick: () => setShowSmartImport(true), icon: Sparkles },
             ]}
             compact

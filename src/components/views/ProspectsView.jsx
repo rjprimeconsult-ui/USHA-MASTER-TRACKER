@@ -1712,11 +1712,17 @@ export default function ProspectsView({
       {prospects.length === 0 && (
         <div className="bg-white border border-dashed border-slate-300 rounded-xl p-8 text-center">
           <h3 className="text-lg font-bold text-slate-900 mb-1">No prospects yet</h3>
-          <p className="text-sm text-slate-500 mb-4">Add your first prospect or import from a CSV/Excel file (your existing pipeline works).</p>
-          <div className="flex items-center justify-center gap-2">
-            <button onClick={startNew} className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-4 py-2 text-sm font-semibold">+ New Prospect</button>
-            <button onClick={() => fileRef.current?.click()} className="border border-slate-200 hover:bg-slate-50 rounded-lg px-4 py-2 text-sm font-semibold">Import file</button>
-          </div>
+          {readOnly ? (
+            <p className="text-sm text-slate-500">This agent hasn&apos;t added any prospects yet.</p>
+          ) : (
+            <>
+              <p className="text-sm text-slate-500 mb-4">Add your first prospect or import from a CSV/Excel file (your existing pipeline works).</p>
+              <div className="flex items-center justify-center gap-2">
+                <button onClick={startNew} className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-4 py-2 text-sm font-semibold">+ New Prospect</button>
+                <button onClick={() => fileRef.current?.click()} className="border border-slate-200 hover:bg-slate-50 rounded-lg px-4 py-2 text-sm font-semibold">Import file</button>
+              </div>
+            </>
+          )}
         </div>
       )}
 

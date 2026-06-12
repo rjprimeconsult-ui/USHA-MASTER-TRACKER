@@ -431,8 +431,10 @@ function LeadsView({ leads, onNew, onEdit, onDelete, onBulkDelete, onBulkStage, 
                 colSpan={12}
                 icon={Users}
                 title="No leads yet"
-                message="Add your first lead manually, or import your existing book of business in seconds with Smart Import."
-                actions={[
+                message={readOnly
+                  ? "This agent hasn't added any leads to their book of business yet."
+                  : "Add your first lead manually, or import your existing book of business in seconds with Smart Import."}
+                actions={readOnly ? [] : [
                   { label: 'Add a lead', onClick: onNew, icon: Plus },
                   { label: 'Smart Import', onClick: () => onNavigate?.('upload'), icon: Upload, primary: false },
                 ]}

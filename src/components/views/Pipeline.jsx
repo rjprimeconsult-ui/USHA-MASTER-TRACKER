@@ -5,7 +5,7 @@ import { STAGES } from '@/lib/constants';
 import { fmt } from '@/lib/utils';
 import EmptyState from '../EmptyState';
 
-function Pipeline({ leads, onStageChange, onEdit, onDelete, onNew }) {
+function Pipeline({ leads, onStageChange, onEdit, onDelete, onNew, readOnly = false }) {
   const [dragged, setDragged] = useState(null);
   const [overCol, setOverCol] = useState(null);
 
@@ -16,7 +16,7 @@ function Pipeline({ leads, onStageChange, onEdit, onDelete, onNew }) {
           icon={Columns}
           title="Your pipeline is empty"
           message="Drag leads between Pending / Issued / Declined / Not taken / Withdrawn columns to update their stage. Add your first lead to see it on the board."
-          actions={onNew ? [
+          actions={(onNew && !readOnly) ? [
             { label: 'Add a lead', onClick: onNew, icon: Plus },
           ] : []}
         />
