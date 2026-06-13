@@ -16,6 +16,11 @@ const TIER_GRADIENTS = {
   team: 'from-fuchsia-500 to-rose-600',
 };
 
+// How much yearly saves vs paying monthly × 12, per plan.
+const savingsPct = (plan) =>
+  Math.round((1 - plan.yearly / (plan.monthly * 12)) * 100);
+const MAX_SAVINGS = Math.max(...Object.values(PLAN_DISPLAY).map(savingsPct));
+
 export default function PricingPage() {
   const [period, setPeriod] = useState('monthly'); // 'monthly' | 'yearly'
   const [busy, setBusy] = useState('');
@@ -73,7 +78,7 @@ export default function PricingPage() {
             >
               Yearly
               <span className="ml-2 text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-700 rounded-full px-1.5 py-0.5">
-                Save
+                Save up to {MAX_SAVINGS}%
               </span>
             </button>
           </div>
@@ -125,6 +130,16 @@ export default function PricingPage() {
                     <div className="text-xs text-slate-500 mt-1">
                       ${monthlyEquiv.toFixed(2)}/month billed annually
                     </div>
+                  )}
+                  {/* Always surface the yearly option from the monthly view so
+                      agents can't miss the discount — one tap switches it. */}
+                  {period === 'monthly' && (
+                    <button
+                      onClick={() => setPeriod('yearly')}
+                      className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-full px-2.5 py-1 transition"
+                    >
+                      💡 Pay yearly &amp; save {savingsPct(plan)}% (${Math.round(plan.yearly)}/yr)
+                    </button>
                   )}
                 </div>
 
