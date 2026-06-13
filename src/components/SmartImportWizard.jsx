@@ -16,6 +16,10 @@ import { recordImport } from '@/lib/importHistory';
 import { authedFetch } from '@/lib/authedFetch';
 
 const inp = 'w-full bg-white text-slate-900 border border-slate-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500';
+// Amount fields: right-aligned, with the native number spinner removed so the
+// stepper arrows don't eat horizontal space and clip the figure (agents were
+// having to arrow-key inside the box to read the rest of the amount).
+const amtInp = inp + ' text-right [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none';
 
 function fmtMoney(v) {
   return '$' + Number(v || 0).toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: 2 });
@@ -629,7 +633,7 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
                         <th className="px-2 py-2 text-left w-28">Date</th>
                         <th className="px-2 py-2 text-left w-32">Platform</th>
                         <th className="px-2 py-2 text-left">Description</th>
-                        <th className="px-2 py-2 text-right w-24">Amount</th>
+                        <th className="px-2 py-2 text-right w-32">Amount</th>
                         <th className="px-2 py-2 text-left w-44">Reason</th>
                       </tr>
                     </thead>
@@ -666,7 +670,7 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
                               </div>
                             </td>
                             <td className="px-2 py-1.5">
-                              <input type="number" step="0.01" className={inp + ' text-right'} value={p.amount || ''}
+                              <input type="number" step="0.01" className={amtInp} value={p.amount || ''}
                                 onChange={e => setPlatformEdit(i, { amount: e.target.value })} disabled={skipped} />
                             </td>
                             <td className="px-2 py-1.5">
@@ -707,7 +711,7 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
                       <th className="px-2 py-2 text-center w-8">Keep</th>
                       <th className="px-2 py-2 text-left w-28">Date</th>
                       <th className="px-2 py-2 text-left">Vendor / Description</th>
-                      <th className="px-2 py-2 text-right w-24">Amount</th>
+                      <th className="px-2 py-2 text-right w-32">Amount</th>
                       <th className="px-2 py-2 text-center w-20">Direction</th>
                       <th className="px-2 py-2 text-left w-44">Category</th>
                     </tr>
@@ -753,7 +757,7 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
                             {t.notes && <div className="text-[10px] text-slate-400 italic mt-0.5 truncate">{t.notes}</div>}
                           </td>
                           <td className="px-2 py-1.5">
-                            <input type="number" step="0.01" className={inp + ' text-right'} value={t.amount || ''}
+                            <input type="number" step="0.01" className={amtInp} value={t.amount || ''}
                               onChange={e => setEdit(i, { amount: e.target.value })} disabled={skipped} />
                           </td>
                           <td className="px-2 py-1.5 text-center">
