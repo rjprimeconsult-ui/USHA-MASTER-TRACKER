@@ -1,5 +1,6 @@
 'use client';
 import { useState, useRef, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import {
   X, Upload, FileText, FileSpreadsheet, Image as ImageIcon, Sparkles,
   Loader2, CheckCircle2, AlertCircle, Trash2, ArrowRight, RefreshCw, Brain, Eye,
@@ -436,7 +437,10 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
     return acc;
   }, { kept: 0, skipped: 0 });
 
-  return (
+  // Portal to <body> so the fixed overlay escapes the ViewMount stacking
+  // context (the view wrapper's opacity animation traps z-index, which let the
+  // sticky header paint over the modal's top). Matches every other modal here.
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[94vh] overflow-y-auto flex flex-col">
         {/* Header */}
@@ -617,7 +621,8 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
                       <button onClick={platformSkipAll} className="bg-white/15 hover:bg-white/25 rounded px-2 py-0.5 text-[10px] font-semibold normal-case">Skip all</button>
                     </div>
                   </div>
-                  <table className="w-full text-xs">
+                  <div className="overflow-x-auto">
+                  <table className="w-full text-xs min-w-[720px]">
                     <thead className="bg-indigo-50">
                       <tr className="text-[10px] uppercase tracking-wider text-indigo-700 font-bold">
                         <th className="px-2 py-2 text-center w-8">Keep</th>
@@ -675,6 +680,7 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
                       })}
                     </tbody>
                   </table>
+                  </div>
                 </div>
               )}
 
@@ -694,7 +700,8 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
                     Review low-confidence rows first
                   </label>
                 </div>
-                <table className="w-full text-xs">
+                <div className="overflow-x-auto">
+                <table className="w-full text-xs min-w-[720px]">
                   <thead className="bg-slate-50">
                     <tr className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">
                       <th className="px-2 py-2 text-center w-8">Keep</th>
@@ -775,6 +782,7 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
                     )}
                   </tbody>
                 </table>
+                </div>
               </div>
 
               {/* Cost telemetry */}
@@ -812,6 +820,7 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
