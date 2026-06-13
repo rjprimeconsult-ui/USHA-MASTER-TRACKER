@@ -39,6 +39,12 @@ const DATE_RE      = /\b(\d{1,2}\/\d{1,2}\/\d{2,4})\b/;
 const MONEY_RE     = /-?\$[\d,]+\.\d{2}/g;
 const PCT_RE       = /(\d{1,3}(?:\.\d{1,2})?)%/;
 
+// Stages where a product earned no commission. Used by reconcileStatement to
+// keep an unattributed advance from being split onto a dead product (e.g. a UW
+// product the client was declined on while a GI product issued). Matches the
+// app's stage strings.
+const TERMINAL_NEGATIVE_STAGES = new Set(['Declined', 'Not taken', 'Withdrawn']);
+
 /** Extract all text pages concatenated, preserving page boundaries. */
 async function getPdfText(file) {
   const lib = await loadPdfjs();
@@ -775,7 +781,17 @@ export function reconcileStatement(parsed, leads) {
         if (lead) leadTotals.set(lead.id, leadTotals.get(lead.id) + r.netAdvance);
         else unmatchedTotal += r.netAdvance;
       }
-      const share = matches.length ? unmatchedTotal / matches.length : 0;
+      // Advance rows that didn't match a policy number get split across the
+      // customer's leads — but a product the client Declined / didn't take /
+      // withdrew earned no commission, so it must not soak up a share of an
+      // advance that belongs to the active product (e.g. UW product declined,
+      // then a GI product like Health Access III issued — the whole advance is
+      // the GI lead's). Split only across active (Issued/Pending) leads; if none
+      // are active, fall back to all matches so the money still lands somewhere.
+      const splitRecipients = matches.filter(l => !TERMINAL_NEGATIVE_STAGES.has(l.stage));
+      const recipients = splitRecipients.length > 0 ? splitRecipients : matches;
+      const recipientIds = new Set(recipients.map(l => l.id));
+      const share = recipients.length ? unmatchedTotal / recipients.length : 0;
       matches.forEach(lead => {
         matched.push({
           ...entry,
@@ -784,7 +800,7 @@ export function reconcileStatement(parsed, leads) {
           currentDealValue: lead.dealValue,
           leadName: lead.name,
           leadPolicyNumber: lead.policyNumber || '',
-          total: leadTotals.get(lead.id) + share,
+          total: leadTotals.get(lead.id) + (recipientIds.has(lead.id) ? share : 0),
           _fullTotal: entry.total,
           _leadCount: matches.length,
         });

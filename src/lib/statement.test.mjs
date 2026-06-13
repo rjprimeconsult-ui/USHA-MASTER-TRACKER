@@ -109,3 +109,56 @@ test('buildAdvancePatch: rounds to cents and tolerates junk totals', () => {
   assert.equal(buildAdvancePatch({ stage: 'Issued' }, undefined, 'd').dealValue, 0);
   assert.equal(buildAdvancePatch(null, 50, 'd').dealValue, 50); // missing lead → still safe
 });
+
+// ---------------------------------------------------------------------------
+// Stage-aware split of unattributed advances. A product the client Declined /
+// didn't take / withdrew earned no commission, so it must not soak up half of
+// an advance that belongs to the active product (jaydenmor, 2026-06-13: UW
+// product declined, then GI product Health Access III issued — the whole
+// advance is the GI lead's, was being split 50/50).
+// ---------------------------------------------------------------------------
+test('unmatched advance skips a Declined sibling and pays the active product in full', () => {
+  const advanceRows = [
+    { writingAgent: OWNER, customer: 'DOE, JANE', policyId: 'GIPOLICY', netAdvance: 400 },
+  ];
+  const leads = [
+    { id: 'UW', name: 'DOE, JANE', policyNumber: 'UWPOL', stage: 'Declined', dealValue: 0, mainProduct: 'Premier Advantage' },
+    { id: 'GI', name: 'DOE, JANE', policyNumber: '',      stage: 'Issued',   dealValue: 0, mainProduct: 'Health Access III' },
+  ];
+  const byId = Object.fromEntries(run(advanceRows, leads).matched.map(m => [m.leadId, m]));
+  assert.equal(byId.GI.total, 400); // active product gets it all
+  assert.equal(byId.UW.total, 0);   // declined product gets nothing
+});
+
+test('unmatched advance still splits evenly when all siblings are active', () => {
+  const advanceRows = [{ writingAgent: OWNER, customer: 'DOE, JANE', policyId: 'X', netAdvance: 300 }];
+  const leads = [
+    { id: 'A', name: 'DOE, JANE', policyNumber: 'PA', stage: 'Issued',  dealValue: 0 },
+    { id: 'B', name: 'DOE, JANE', policyNumber: 'PB', stage: 'Pending', dealValue: 0 },
+  ];
+  const byId = Object.fromEntries(run(advanceRows, leads).matched.map(m => [m.leadId, m]));
+  assert.equal(byId.A.total, 150);
+  assert.equal(byId.B.total, 150);
+});
+
+test('unmatched advance falls back to even split when ALL siblings are negative (money not lost)', () => {
+  const advanceRows = [{ writingAgent: OWNER, customer: 'DOE, JANE', policyId: 'X', netAdvance: 200 }];
+  const leads = [
+    { id: 'A', name: 'DOE, JANE', policyNumber: 'PA', stage: 'Declined',  dealValue: 0 },
+    { id: 'B', name: 'DOE, JANE', policyNumber: 'PB', stage: 'Not taken', dealValue: 0 },
+  ];
+  const byId = Object.fromEntries(run(advanceRows, leads).matched.map(m => [m.leadId, m]));
+  assert.equal(byId.A.total, 100);
+  assert.equal(byId.B.total, 100);
+});
+
+test('exact policy match pays the matched lead even if Declined (only the split avoids dead siblings)', () => {
+  const advanceRows = [{ writingAgent: OWNER, customer: 'DOE, JANE', policyId: 'UWPOL', netAdvance: 500 }];
+  const leads = [
+    { id: 'UW', name: 'DOE, JANE', policyNumber: 'UWPOL', stage: 'Declined', dealValue: 0 },
+    { id: 'GI', name: 'DOE, JANE', policyNumber: 'GIPOL', stage: 'Issued',   dealValue: 0 },
+  ];
+  const byId = Object.fromEntries(run(advanceRows, leads).matched.map(m => [m.leadId, m]));
+  assert.equal(byId.UW.total, 500);
+  assert.equal(byId.GI.total, 0);
+});
