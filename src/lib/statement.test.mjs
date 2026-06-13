@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { reconcileStatement } from './statement.js';
+import { reconcileStatement, buildAdvancePatch } from './statement.js';
 
 // reconcileStatement(parsed, leads) → { matched, unmatched, ... }
 // `matched` is one row per (customer-grouped advance) × matched tracker lead.
@@ -74,4 +74,38 @@ test('partial policy match: matched row to its lead, unmatched remainder split',
   const byId = Object.fromEntries(run(advanceRows, leads).matched.map(m => [m.leadId, m]));
   assert.equal(byId.L1.total, 750); // 600 (policy) + 150 (share of unmatched 300)
   assert.equal(byId.L2.total, 150); // 0 + 150
+});
+
+// ---------------------------------------------------------------------------
+// buildAdvancePatch — the per-lead patch applied when a statement advance
+// matches a tracker lead. Regression guard for the bug where advances on
+// Not taken / Declined / Withdrawn leads were silently dropped (jaydenmor,
+// 2026-06-13): the matched-customers preview promised them, then apply skipped
+// any lead not already Pending/Issued.
+// ---------------------------------------------------------------------------
+test('buildAdvancePatch: writes the advance for ALL stages, not just Pending/Issued', () => {
+  for (const stage of ['Not taken', 'Declined', 'Withdrawn']) {
+    const patch = buildAdvancePatch({ stage }, 488.57, '2026-06-13');
+    assert.equal(patch.dealValue, 488.57, `${stage} lead must receive its advance`);
+    assert.equal(patch.stage, undefined, `${stage} must NOT be auto-flipped to Issued`);
+    assert.equal(patch.lastTouch, '2026-06-13');
+  }
+});
+
+test('buildAdvancePatch: Pending is promoted to Issued AND gets the advance', () => {
+  const patch = buildAdvancePatch({ stage: 'Pending' }, 100.96, '2026-06-13');
+  assert.equal(patch.dealValue, 100.96);
+  assert.equal(patch.stage, 'Issued');
+});
+
+test('buildAdvancePatch: Issued keeps its stage and gets the advance', () => {
+  const patch = buildAdvancePatch({ stage: 'Issued' }, 355.44, '2026-06-13');
+  assert.equal(patch.dealValue, 355.44);
+  assert.equal(patch.stage, undefined); // no stage change emitted → stays Issued
+});
+
+test('buildAdvancePatch: rounds to cents and tolerates junk totals', () => {
+  assert.equal(buildAdvancePatch({ stage: 'Issued' }, 100.567, 'd').dealValue, 100.57);
+  assert.equal(buildAdvancePatch({ stage: 'Issued' }, undefined, 'd').dealValue, 0);
+  assert.equal(buildAdvancePatch(null, 50, 'd').dealValue, 50); // missing lead → still safe
 });

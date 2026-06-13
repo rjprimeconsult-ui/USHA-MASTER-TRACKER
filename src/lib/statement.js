@@ -893,3 +893,28 @@ export function reconcileStatement(parsed, leads) {
     bonusTotal: bonusRows.reduce((s, b) => s + (b.amount || 0), 0),
   };
 }
+
+/**
+ * Compute the patch to apply to a tracker lead when a weekly-statement advance
+ * matches it (used by LeadTracker.applyStatement).
+ *
+ * The advance (dealValue) is written for EVERY matched lead, regardless of
+ * stage — the matched-customers preview already promises "These will update the
+ * existing leads" and shows the New Advance for all of them. Earlier this was
+ * gated to Pending/Issued only, which silently dropped real advances on leads
+ * sitting in Not taken / Declined / Withdrawn (the agent's stage was simply
+ * stale; the statement is ground truth that money was paid). Issued-revenue
+ * KPIs gate on stage === 'Issued', so a positive dealValue on a negative-stage
+ * lead never inflates revenue; it only surfaces in the per-lead Advance column.
+ *
+ * Stage is promoted Pending → Issued only. Final negative stages are deliberate
+ * human outcomes and are never auto-flipped back to Issued.
+ */
+export function buildAdvancePatch(lead, total, todayISO) {
+  const patch = {
+    lastTouch: todayISO,
+    dealValue: Math.round((Number(total) || 0) * 100) / 100,
+  };
+  if (lead?.stage === 'Pending') patch.stage = 'Issued';
+  return patch;
+}

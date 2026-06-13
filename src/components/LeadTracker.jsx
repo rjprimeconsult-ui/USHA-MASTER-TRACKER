@@ -32,7 +32,7 @@ import ProspectsView from './views/ProspectsView';
 import CommissionCalculator from './views/CommissionCalculator';
 import DuplicateResolver from './DuplicateResolver';
 import { findDuplicateGroups, enumeratePairs, shouldSkipPair } from '@/lib/duplicateResolver.mjs';
-import { nameKey } from '@/lib/statement';
+import { nameKey, buildAdvancePatch } from '@/lib/statement';
 import StatementManager from './StatementManager';
 import { statementsInRange, isStatementIncome } from '@/lib/statementManager.mjs';
 import {
@@ -768,30 +768,25 @@ export default function LeadTracker() {
   const applyStatement = useCallback((plan) => {
     if (!plan) { showToast('No statement to apply', 'error'); return; }
 
-    // 1. Advances — update matched leads
+    // 1. Advances — write the advance to EVERY matched lead.
     //
-    // Promotion rule: only Pending → Issued on match. Final negative stages
-    // (Declined / Not taken / Withdrawn) are intentional outcomes — a positive
-    // statement row for them usually means "commission was advanced earlier,
-    // then clawed back" and is already captured in the Chargebacks panel.
-    // Don't silently flip those back to Issued.
+    // The matched-customers preview already promises "These will update the
+    // existing leads" and shows the New Advance for ALL matches — including
+    // leads sitting in Not taken / Declined / Withdrawn (the stage is usually
+    // just stale; the statement is ground truth that money was paid). Earlier
+    // this was gated to Pending/Issued only, which silently dropped those
+    // advances. buildAdvancePatch keeps the Pending → Issued promotion but never
+    // auto-flips negative stages, and Issued-revenue KPIs gate on stage, so an
+    // advance on a negative-stage lead can't inflate revenue.
     if (plan.matched && plan.matched.length > 0) {
       const byId = new Map();
       plan.matched.forEach(m => { byId.set(m.leadId, m); });
       setLeads(prev => prev.map(l => {
         const m = byId.get(l.id);
         if (!m) return l;
-        const patch = { lastTouch: today() };
-        // Only overwrite dealValue if the lead is still Pending or already Issued.
-        // Don't touch financial numbers on Declined/Not taken/Withdrawn leads.
-        if (l.stage === 'Pending' || l.stage === 'Issued') {
-          patch.dealValue = Math.round(m.total * 100) / 100;
-        }
-        if (l.stage === 'Pending') {
-          patch.stage = 'Issued';
-          if (l.associationPlan && isPricedAssociation(l.associationPlan) && !l.associationStartDate) {
-            patch.associationStartDate = l.closedDate || today();
-          }
+        const patch = buildAdvancePatch(l, m.total, today());
+        if (patch.stage === 'Issued' && l.associationPlan && isPricedAssociation(l.associationPlan) && !l.associationStartDate) {
+          patch.associationStartDate = l.closedDate || today();
         }
         return { ...l, ...patch };
       }));
