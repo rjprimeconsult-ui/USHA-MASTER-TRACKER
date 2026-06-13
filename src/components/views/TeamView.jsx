@@ -219,7 +219,7 @@ function FunnelBars({ funnel }) {
 const MIRROR_TABS = [
   { id: 'overview',  label: 'Overview',        icon: LayoutDashboard },
   { id: 'prospects', label: 'Prospects',       icon: UserPlus },
-  { id: 'leads',     label: 'Book of Business', icon: Users },
+  { id: 'leads',     label: 'Portal Clients', icon: Users },
   { id: 'books',     label: 'Books',           icon: BookOpen },
   { id: 'platforms', label: 'Platforms',       icon: DollarSign },
   { id: 'cpa',       label: 'CPA',             icon: Calculator },

@@ -216,7 +216,7 @@ export const NAV_TABS = [
   { id: 'closed',       label: 'Closed Deals',  icon: 'CheckSquare' },
   { id: 'dashboard',    label: 'Overview',      icon: 'LayoutDashboard' },
   { id: 'associations', label: 'Associations',  icon: 'Repeat' },
-  { id: 'leads',        label: 'Book of Business', icon: 'Users' },
+  { id: 'leads',        label: 'Portal Clients', icon: 'Users' },
   { id: 'pipeline',     label: 'Pipeline',      icon: 'Columns' },
   { id: 'prospects',    label: 'Prospects',     icon: 'UserPlus' },
   { id: 'platforms',    label: 'Platforms',     icon: 'DollarSign' },
