@@ -9,6 +9,7 @@ import {
   resolvePeriod, isSingleMonth,
   buildLeadsSoldReport, buildOverridesReport, buildChargebacksReport,
   buildExpensesReport, buildPnlReport,
+  estimatedAvTotals, money,
 } from '@/lib/reports.mjs';
 import { REPORT_IDENTITY } from '@/lib/reportColors.mjs';
 
@@ -188,6 +189,19 @@ export default function ReportsView({
 
       {/* The report sheet */}
       <ReportSheet report={report} period={period} agentName={agentName} />
+
+      {/* Transparency: how much of the AV in this report is estimated (reverse-
+          engineered from commissions because the SalesReport was missing it). */}
+      {(reportId === 'leadsSold' || reportId === 'pnl') && (() => {
+        const avEst = estimatedAvTotals(leads);
+        if (avEst.estimatedAV <= 0) return null;
+        return (
+          <p className="text-xs text-amber-700 dark:text-amber-400 -mt-2">
+            {money(avEst.estimatedAV)} of {money(avEst.totalAV)} AV is estimated
+            (reverse-engineered from commissions due to missing SalesReport data).
+          </p>
+        );
+      })()}
     </div>
   );
 }

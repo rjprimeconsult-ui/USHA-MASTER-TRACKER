@@ -4,6 +4,7 @@ import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Cart
 import { Users, Target, DollarSign, TrendingUp, CheckCircle2, Percent, MapPin } from 'lucide-react';
 import { STAGES, SOURCES, LEAD_CATEGORIES, CRMS, effectiveLeadCategory } from '@/lib/constants';
 import { fmt } from '@/lib/utils';
+import { estimatedAvTotals } from '@/lib/reports.mjs';
 import { Chart3DCard, TiltCard, Stagger, StaggerItem, Pie3D, CountUp } from '../motion/MotionPrimitives';
 import SetupChecklist from '../SetupChecklist';
 import { useChartColors } from '@/lib/useIsDark';
@@ -195,6 +196,19 @@ function Dashboard({ leads, prospects = [], onOpenProspects, setupStats, onSetup
         <StaggerItem><Kpi label="Avg Deal" value={avgDeal} format={fmt} grad="from-amber-500 to-orange-500" Icon={TrendingUp} /></StaggerItem>
         <StaggerItem><Kpi label="Close Rate" value={closeRate} format={(v) => v.toFixed(0) + '%'} grad="from-teal-500 to-emerald-500" Icon={Percent} /></StaggerItem>
       </Stagger>
+
+      {/* Transparency: how much book AV is reverse-engineered from commissions
+          because the SalesReport was missing it (Not Taken / Cancelled cases). */}
+      {(() => {
+        const avEst = estimatedAvTotals(leads);
+        if (avEst.estimatedAV <= 0) return null;
+        return (
+          <p className="text-xs text-amber-700 -mt-1">
+            {fmt(avEst.estimatedAV)} of {fmt(avEst.totalAV)} AV is estimated
+            (reverse-engineered from commissions due to missing SalesReport data).
+          </p>
+        );
+      })()}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Chart3DCard className="lg:col-span-2">
