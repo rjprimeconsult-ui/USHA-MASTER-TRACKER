@@ -3,7 +3,7 @@ import { useState, useMemo, memo } from 'react';
 import { Plus, Search, Edit2, Trash2, Download, ArrowUpDown, X, Calendar, Users, Upload } from 'lucide-react';
 import { STAGES, SOURCES, OWNERS, LEAD_CATEGORIES, MAIN_PRODUCTS, UNDERWRITTEN_PRODUCTS, GI_PRODUCTS } from '@/lib/constants';
 import { fmt, usDate } from '@/lib/utils';
-import { leadPremium } from '@/lib/reports.mjs';
+import { leadPremium, isEstimatedAV } from '@/lib/reports.mjs';
 import { EmptyStateTableRow } from '../EmptyState';
 import RepeatedClientBadge from '@/components/RepeatedClientBadge';
 
@@ -406,11 +406,15 @@ function LeadsView({ leads, onNew, onEdit, onDelete, onBulkDelete, onBulkStage, 
                   <td className="p-2 text-slate-700 text-xs font-mono cursor-pointer" onClick={() => onEdit(l)} title={l.policyNumber || ''}>
                     {l.policyNumber || <span className="text-slate-300 font-sans">—</span>}
                   </td>
-                  <td className="text-right p-2 text-slate-700 font-semibold cursor-pointer" onClick={() => onEdit(l)} title="Monthly premium = main product + add-ons">
-                    {leadPremium(l) > 0 ? fmt(leadPremium(l)) : <span className="text-slate-300 font-normal">—</span>}
+                  <td className="text-right p-2 text-slate-700 font-semibold cursor-pointer" onClick={() => onEdit(l)} title={isEstimatedAV(l) ? 'Estimated from commission (no AV on the SalesReport)' : 'Monthly premium = main product + add-ons'}>
+                    {leadPremium(l) > 0
+                      ? <>{fmt(leadPremium(l))}{isEstimatedAV(l) && <span className="ml-1 align-middle text-[9px] font-bold uppercase bg-amber-100 text-amber-800 border border-amber-300 rounded px-1 py-0.5">est</span>}</>
+                      : <span className="text-slate-300 font-normal">—</span>}
                   </td>
-                  <td className="text-right p-2 text-indigo-700 font-semibold cursor-pointer" onClick={() => onEdit(l)} title="Annualized Value = monthly premium × 12">
-                    {leadPremium(l) > 0 ? fmt(leadPremium(l) * 12) : <span className="text-slate-300 font-normal">—</span>}
+                  <td className="text-right p-2 text-indigo-700 font-semibold cursor-pointer" onClick={() => onEdit(l)} title={isEstimatedAV(l) ? 'Estimated from commission (no AV on the SalesReport)' : 'Annualized Value = monthly premium × 12'}>
+                    {leadPremium(l) > 0
+                      ? <>{fmt(leadPremium(l) * 12)}{isEstimatedAV(l) && <span className="ml-1 align-middle text-[9px] font-bold uppercase bg-amber-100 text-amber-800 border border-amber-300 rounded px-1 py-0.5">est</span>}</>
+                      : <span className="text-slate-300 font-normal">—</span>}
                   </td>
                   <td className="text-right p-2 text-emerald-700 font-semibold cursor-pointer" onClick={() => onEdit(l)}>{fmt(l.dealValue)}</td>
                   <td className="p-2 text-slate-500 text-xs cursor-pointer" onClick={() => onEdit(l)}>{l.closedDate ? usDate(l.closedDate) : <span className="text-slate-300">—</span>}</td>
