@@ -364,3 +364,30 @@ test('buildPnlReport — association residual scoped by period when appliedDate 
   const rep = buildPnlReport(data, { from: '2026-05-01', to: '2026-05-31' });
   assert.equal(rep.sections[0].lines[2].amount, '$75');
 });
+
+// --- Estimated AV fallback (gap-fill for clients with an advance but no real AV)
+import { leadPremium, isEstimatedAV, estimatedAvTotals } from './reports.mjs';
+
+test('leadPremium: real premium wins, estimate ignored', () => {
+  const l = { mainProductPremium: 200, products: [], avEstimated: true, estimatedAV: 9999 };
+  assert.equal(leadPremium(l), 200);
+  assert.equal(isEstimatedAV(l), false);
+});
+
+test('leadPremium: falls back to estimatedAV/12 when no real premium', () => {
+  const l = { mainProductPremium: 0, products: [], avEstimated: true, estimatedAV: 1200 };
+  assert.equal(leadPremium(l), 100);   // 1200 / 12
+  assert.equal(isEstimatedAV(l), true);
+});
+
+test('leadPremium: no premium and no estimate → 0', () => {
+  assert.equal(leadPremium({ mainProductPremium: 0, products: [] }), 0);
+});
+
+test('estimatedAvTotals: sums estimated AV vs total AV', () => {
+  const leads = [
+    { mainProductPremium: 100, products: [] },                                   // real AV 1200
+    { mainProductPremium: 0, products: [], avEstimated: true, estimatedAV: 600 }, // est AV 600
+  ];
+  assert.deepEqual(estimatedAvTotals(leads), { estimatedAV: 600, totalAV: 1800 });
+});

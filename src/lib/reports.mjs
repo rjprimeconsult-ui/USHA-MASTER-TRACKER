@@ -97,7 +97,31 @@ export function money(n) {
 export function leadPremium(lead) {
   const main = Number(lead.mainProductPremium) || 0;
   const addons = (lead.products || []).reduce((s, p) => s + (Number(p?.premium) || 0), 0);
-  return main + addons;
+  const real = main + addons;
+  if (real > 0) return real;
+  // Gap-fill ONLY when there's no real premium and an Estimated AV is on file
+  // (set by the statement apply path when an advance lands on a client missing
+  // AV — the Not Taken / Cancelled case). AV = premium × 12, so premium = AV/12.
+  if (lead.avEstimated && Number(lead.estimatedAV) > 0) return Number(lead.estimatedAV) / 12;
+  return 0;
+}
+
+// True when this lead's premium/AV is the reverse-engineered estimate, not real.
+export function isEstimatedAV(lead) {
+  const real = (Number(lead.mainProductPremium) || 0)
+    + (lead.products || []).reduce((s, p) => s + (Number(p?.premium) || 0), 0);
+  return real === 0 && !!lead.avEstimated && Number(lead.estimatedAV) > 0;
+}
+
+// Aggregate for the transparency notation: how much AV is estimated vs the total.
+export function estimatedAvTotals(leads = []) {
+  let estimatedAV = 0, totalAV = 0;
+  for (const l of leads) {
+    const av = leadPremium(l) * 12;
+    totalAV += av;
+    if (isEstimatedAV(l)) estimatedAV += av;
+  }
+  return { estimatedAV: Math.round(estimatedAV * 100) / 100, totalAV: Math.round(totalAV * 100) / 100 };
 }
 
 // --- Report 1: Leads Sold -------------------------------------------------
