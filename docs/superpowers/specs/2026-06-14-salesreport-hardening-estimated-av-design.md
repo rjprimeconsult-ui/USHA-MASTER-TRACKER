@@ -159,8 +159,8 @@ from the real premium fields and never overwrite them. If a real AV later arrive
 - Dashboard / Reports — aggregate estimated-portion notation.
 - Tests: `salesreport.test.mjs`, `commission.test.mjs`.
 
-## Open items for review
+## Resolved (Juan, 2026-06-14)
 
-- Aggregate notation placement: proposed **Dashboard KPI strip + Reports sheet**. OK, or
-  one of them only?
-- Any other SalesReport field seen coming in wrong to fold in now?
+- Aggregate estimated-portion notation appears in **both** the Dashboard KPI strip **and**
+  the Reports sheet.
+- No additional SalesReport fields to fold in for now — scope is exactly Parts 1–4 above.
