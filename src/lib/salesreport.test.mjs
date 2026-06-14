@@ -124,3 +124,25 @@ test('gapDetect: flags a premium difference', () => {
   assert.ok(issue);
   assert.equal(issue.expected, 150);
 });
+
+// --- buildSalesReportPatch: merge gapDetect issues into a lead patch
+import { buildSalesReportPatch } from './salesreport.js';
+
+test('buildSalesReportPatch: applies stage, product, merged policies, premium', () => {
+  const lead = { id: 'L1', stage: 'Pending', mainProduct: '', mainProductPremium: 0, policyNumber: '52Y100000F' };
+  const issues = [
+    { kind: 'stage', expected: 'Not taken' },
+    { kind: 'mainProduct', expected: 'HEALTH ACCESS III' },
+    { kind: 'policyNumbers', expected: ['52Y100000F', '52Y100000G'] },
+    { kind: 'premium', expected: 150 },
+  ];
+  const patch = buildSalesReportPatch(lead, issues);
+  assert.equal(patch.stage, 'Not taken');
+  assert.equal(patch.mainProduct, 'HEALTH ACCESS III');
+  assert.equal(patch.policyNumber, '52Y100000F, 52Y100000G');
+  assert.equal(patch.mainProductPremium, 150);
+});
+
+test('buildSalesReportPatch: empty issues → empty patch', () => {
+  assert.deepEqual(buildSalesReportPatch({ id: 'L1' }, []), {});
+});

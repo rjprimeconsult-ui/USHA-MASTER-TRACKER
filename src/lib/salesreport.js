@@ -464,3 +464,18 @@ export function dealToLead(deal, mkLead, boughtCostMap = null) {
   }
   return lead;
 }
+
+/**
+ * Turn gapDetect issues into a lead patch. Merges (never drops) — policy
+ * numbers become a comma-joined union; stage/product/premium update in place.
+ */
+export function buildSalesReportPatch(lead, issues = []) {
+  const patch = {};
+  for (const i of issues) {
+    if (i.kind === 'stage')        patch.stage = i.expected;
+    else if (i.kind === 'mainProduct') patch.mainProduct = i.expected;
+    else if (i.kind === 'premium')     patch.mainProductPremium = i.expected;
+    else if (i.kind === 'policyNumbers') patch.policyNumber = (i.expected || []).join(', ');
+  }
+  return patch;
+}
