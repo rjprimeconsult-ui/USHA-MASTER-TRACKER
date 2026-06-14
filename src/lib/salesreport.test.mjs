@@ -74,3 +74,27 @@ test('Issued (In Force) deal is dated by ISSUE date, not submit date', () => {
   assert.equal(d.closedDate, d.issueDate);      // dated by issue date
   assert.notEqual(d.closedDate, d.submitDate);  // NOT the submit date
 });
+
+// --- Status normalization (Not Taken / Cancelled variants; no silent Pending)
+import { normalizeStatus } from './salesreport.js';
+
+test('normalizeStatus: maps real-world variants case/space-insensitively', () => {
+  assert.equal(normalizeStatus('In Force'), 'Issued');
+  assert.equal(normalizeStatus('  active '), 'Issued');
+  assert.equal(normalizeStatus('Not Taken'), 'Not taken');
+  assert.equal(normalizeStatus('NOTTAKEN'), 'Not taken');
+  assert.equal(normalizeStatus('Declined'), 'Declined');
+  assert.equal(normalizeStatus('Withdrawn'), 'Withdrawn');
+  assert.equal(normalizeStatus('Canceled'), 'Withdrawn');
+  assert.equal(normalizeStatus('Cancelled'), 'Withdrawn');
+  assert.equal(normalizeStatus('Cancelled - NSF'), 'Withdrawn');
+  assert.equal(normalizeStatus('Lapsed'), 'Withdrawn');
+  assert.equal(normalizeStatus('Termed'), 'Withdrawn');
+  assert.equal(normalizeStatus('Pending'), 'Pending');
+  assert.equal(normalizeStatus('Submitted'), 'Pending');
+});
+
+test('normalizeStatus: unknown status returns null (NOT silently Pending)', () => {
+  assert.equal(normalizeStatus('Frobnicated'), null);
+  assert.equal(normalizeStatus(''), null);
+});

@@ -67,14 +67,26 @@ const ASSOC_PATTERNS = [
   { re: /^AIBC PRO/i,   id: 'PRO WRAP' },
 ];
 
-const STATUS_MAP = {
-  'In Force':  'Issued',
-  'Not Taken': 'Not taken',
-  'Declined':  'Declined',
-  'Withdrawn': 'Withdrawn',
-  'Pending':   'Pending',
-  'Canceled':  'Withdrawn', // treat as withdrawn; chargebacks from statement reconcile handle the $ side
-};
+// Canonical status buckets, matched against normalized (lowercased,
+// single-spaced) status text. Anything not matched is treated as UNKNOWN and
+// surfaced to the user — never silently defaulted to Pending.
+const STATUS_RULES = [
+  { re: /^(in ?force|active|issued)$/, stage: 'Issued' },
+  { re: /^not ?taken$/, stage: 'Not taken' },
+  { re: /^declined$/, stage: 'Declined' },
+  { re: /^(withdrawn|lapsed|termed|terminated|rescinded)$/, stage: 'Withdrawn' },
+  { re: /^cancell?ed\b/, stage: 'Withdrawn' }, // Canceled / Cancelled / Cancelled - NSF
+  { re: /^cancel$/, stage: 'Withdrawn' },
+  { re: /^(pending|submitted|received)$/, stage: 'Pending' },
+];
+
+// Normalize a raw SalesReport status → a PRIM stage, or null if unrecognized.
+export function normalizeStatus(raw) {
+  const s = String(raw ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
+  if (!s) return null;
+  for (const rule of STATUS_RULES) if (rule.re.test(s)) return rule.stage;
+  return null;
+}
 
 const clean = v => String(v ?? '').replace(/[\r\n]+/g, ' ').trim().replace(/\s+/g, ' ');
 const money = v => {
@@ -287,7 +299,15 @@ export function parseSalesReport(wb) {
     if (!chosenStatus) {
       chosenStatus = Object.entries(d.stageVotes).sort((a, b) => b[1] - a[1])[0]?.[0];
     }
-    d.stage = STATUS_MAP[chosenStatus] || 'Pending';
+    const mapped = normalizeStatus(chosenStatus);
+    if (mapped) {
+      d.stage = mapped;
+    } else {
+      // Unrecognized status — do NOT silently call it Pending. Default to
+      // Pending for now but flag the raw value so the UI can surface it.
+      d.stage = 'Pending';
+      d.unknownStatus = chosenStatus || '(blank)';
+    }
     // Issued ("In Force") deals are scoped by when they went in force, so prefer
     // the issue/effective date; pending deals fall back to submit date. (Period
     // filters bucket Issued leads by closedDate — using submitDate put a deal
