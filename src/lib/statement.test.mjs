@@ -186,3 +186,17 @@ test('reconcileStatement: splits estimatedAV across leads in proportion to advan
   assert.equal(byId.A.estimatedAV, 1200);
   assert.equal(byId.B.estimatedAV, 1200);
 });
+
+// --- Estimated AV guardrail in buildAdvancePatch (only when no real premium)
+test('buildAdvancePatch: sets estimatedAV ONLY when lead has no real premium', () => {
+  const p1 = buildAdvancePatch({ stage: 'Not taken', mainProductPremium: 0, products: [] }, 150, 'd', 1200);
+  assert.equal(p1.estimatedAV, 1200);
+  assert.equal(p1.avEstimated, true);
+
+  const p2 = buildAdvancePatch({ stage: 'Issued', mainProductPremium: 300, products: [] }, 150, 'd', 1200);
+  assert.equal(p2.avEstimated, false);
+  assert.equal(p2.estimatedAV, 0);
+
+  const p3 = buildAdvancePatch({ stage: 'Not taken', mainProductPremium: 0, products: [] }, 150, 'd', 0);
+  assert.equal(p3.avEstimated, false);
+});

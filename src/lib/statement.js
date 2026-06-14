@@ -949,11 +949,24 @@ export function reconcileStatement(parsed, leads) {
  * Stage is promoted Pending → Issued only. Final negative stages are deliberate
  * human outcomes and are never auto-flipped back to Issued.
  */
-export function buildAdvancePatch(lead, total, todayISO) {
+export function buildAdvancePatch(lead, total, todayISO, estimatedAV = 0) {
   const patch = {
     lastTouch: todayISO,
     dealValue: Math.round((Number(total) || 0) * 100) / 100,
   };
   if (lead?.stage === 'Pending') patch.stage = 'Issued';
+
+  // Estimated AV gap-fill (strict guardrail): only when this lead has NO real
+  // premium on file AND the statement produced an estimate. Real AV always
+  // wins — when present, clear any prior estimate flag.
+  const realPremium = (Number(lead?.mainProductPremium) || 0)
+    + (lead?.products || []).reduce((s, p) => s + (Number(p?.premium) || 0), 0);
+  if (realPremium === 0 && Number(estimatedAV) > 0) {
+    patch.estimatedAV = Math.round(Number(estimatedAV) * 100) / 100;
+    patch.avEstimated = true;
+  } else {
+    patch.estimatedAV = 0;
+    patch.avEstimated = false;
+  }
   return patch;
 }
