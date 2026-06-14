@@ -1339,11 +1339,8 @@ function SalesReportGap({ leads, onApply }) {
     const dealsToAdd = diff.missing.filter(d => addMissing.has(d.appIdBase)).map(d => dealToLead(d, mkLead));
     const stageUpdates = diff.mismatched
       .filter(m => fixStages.has(m.lead.id))
-      .map(m => {
-        const stageChange = m.issues.find(i => i.kind === 'stage');
-        return stageChange ? { leadId: m.lead.id, newStage: stageChange.expected, newMainProduct: m.issues.find(i => i.kind === 'mainProduct')?.expected } : null;
-      })
-      .filter(Boolean);
+      .map(m => ({ leadId: m.lead.id, issues: m.issues }))
+      .filter(u => u.issues && u.issues.length > 0);
     onApply?.({ leadsToAdd: dealsToAdd, stageUpdates });
     setStatus('done');
   };

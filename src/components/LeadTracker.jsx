@@ -17,6 +17,7 @@ import {
 } from '@/lib/constants';
 import { DEFAULT_ADVANCE_MONTHS, currentAdvanceMonths } from '@/lib/commission';
 import { dedupLeads } from '@/lib/leadDedup';
+import { buildSalesReportPatch } from '@/lib/salesreport';
 
 import CpaDashboard from './views/CpaDashboard';
 import AssociationsView from './views/AssociationsView';
@@ -784,7 +785,7 @@ export default function LeadTracker() {
       setLeads(prev => prev.map(l => {
         const m = byId.get(l.id);
         if (!m) return l;
-        const patch = buildAdvancePatch(l, m.total, today());
+        const patch = buildAdvancePatch(l, m.total, today(), m.estimatedAV || 0);
         if (patch.stage === 'Issued' && l.associationPlan && isPricedAssociation(l.associationPlan) && !l.associationStartDate) {
           patch.associationStartDate = l.closedDate || today();
         }
@@ -1041,10 +1042,12 @@ export default function LeadTracker() {
       const updated = prev.map(l => {
         const s = stageMap.get(l.id);
         if (!s) return l;
-        const patch = { stage: s.newStage, lastTouch: today() };
-        if (s.newMainProduct) patch.mainProduct = s.newMainProduct;
+        // Merge ALL detected corrections — stage, main product, new policy
+        // numbers, and premium — not just stage. Complete policy numbers are
+        // what let weekly-statement advances attach to the right client.
+        const patch = { ...buildSalesReportPatch(l, s.issues || []), lastTouch: today() };
         // Stamp association/closedDate if newly issued
-        if (s.newStage === 'Issued' && l.associationPlan && isPricedAssociation(l.associationPlan) && !l.associationStartDate) {
+        if (patch.stage === 'Issued' && l.associationPlan && isPricedAssociation(l.associationPlan) && !l.associationStartDate) {
           patch.associationStartDate = l.closedDate || today();
         }
         return { ...l, ...patch };
