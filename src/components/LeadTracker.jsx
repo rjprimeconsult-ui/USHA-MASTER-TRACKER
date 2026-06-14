@@ -1818,12 +1818,11 @@ export default function LeadTracker() {
   // Friendly labels for the confirm dialog + toast (the raw `what` keys are
   // camelCase / internal).
   const CLEAR_LABELS = {
-    leads: 'leads', investments: 'weekly investments', activities: 'activities',
+    leads: 'Portal Clients', investments: 'weekly investments', activities: 'activities',
     chargebacks: 'chargebacks', overrides: 'overrides', ownAdvances: 'advances',
-    prospects: 'prospects', platforms: 'platforms', books: 'books (expenses + income)',
+    prospects: 'prospects', platforms: 'platforms', books: 'Books (expenses + income)',
     everything: 'everything',
-    income: 'advances, commissions & other income',
-    booksExpenses: 'books expenses',
+    income: 'advances & commissions (from statements)',
   };
   const clearAll = (what) => {
     const label = CLEAR_LABELS[what] || what;
@@ -1848,10 +1847,6 @@ export default function LeadTracker() {
           setOwnAdvances([]);   await storage.removeItem(OWN_ADV_KEY);
           setOverrides([]);     await storage.removeItem(OVR_KEY);
           setBusinessIncome([]); await storage.removeItem(BI_KEY);
-        }
-        // Books EXPENSES only (leaves Books income intact).
-        if (what === 'booksExpenses') {
-          setBusinessExpenses([]); await storage.removeItem(BE_KEY);
         }
         setConfirm(null);
         setShowSettings(false);
@@ -2414,16 +2409,13 @@ export default function LeadTracker() {
 
             <div className="text-xs font-bold text-slate-500 tracking-wider mb-2">DATA</div>
             <div className="space-y-2">
-              <button onClick={() => clearAll('activities')} className="w-full text-left border border-slate-200 rounded-lg px-3 py-2 text-sm hover:bg-slate-50">Clear activities</button>
-              <button onClick={() => clearAll('investments')} className="w-full text-left border border-slate-200 rounded-lg px-3 py-2 text-sm hover:bg-slate-50">Clear investments</button>
-              <button onClick={() => clearAll('platforms')} className="w-full text-left border border-slate-200 rounded-lg px-3 py-2 text-sm hover:bg-slate-50">Clear platform expenses</button>
-              <button onClick={() => clearAll('income')} className="w-full text-left border border-slate-200 rounded-lg px-3 py-2 text-sm hover:bg-slate-50">Clear advances / commissions / other income</button>
-              <button onClick={() => clearAll('booksExpenses')} className="w-full text-left border border-slate-200 rounded-lg px-3 py-2 text-sm hover:bg-slate-50">Clear books expenses</button>
-              <button onClick={() => clearAll('books')} className="w-full text-left border border-slate-200 rounded-lg px-3 py-2 text-sm hover:bg-slate-50">Clear business books (expenses + income)</button>
+              <button onClick={() => clearAll('leads')} className="w-full text-left border border-slate-200 rounded-lg px-3 py-2 text-sm hover:bg-slate-50">Clear Portal Clients</button>
+              <button onClick={() => clearAll('prospects')} className="w-full text-left border border-slate-200 rounded-lg px-3 py-2 text-sm hover:bg-slate-50">Clear prospects</button>
+              <button onClick={() => clearAll('books')} className="w-full text-left border border-slate-200 rounded-lg px-3 py-2 text-sm hover:bg-slate-50">Clear Books (expenses + income)</button>
+              <button onClick={() => clearAll('income')} className="w-full text-left border border-slate-200 rounded-lg px-3 py-2 text-sm hover:bg-slate-50">Clear advances &amp; commissions (from statements)</button>
               <button onClick={() => clearAll('chargebacks')} className="w-full text-left border border-slate-200 rounded-lg px-3 py-2 text-sm hover:bg-slate-50">Clear chargebacks</button>
               <button onClick={() => clearAll('overrides')} className="w-full text-left border border-slate-200 rounded-lg px-3 py-2 text-sm hover:bg-slate-50">Clear overrides</button>
-              <button onClick={() => clearAll('prospects')} className="w-full text-left border border-slate-200 rounded-lg px-3 py-2 text-sm hover:bg-slate-50">Clear prospects</button>
-              <button onClick={() => clearAll('leads')} className="w-full text-left border border-slate-200 rounded-lg px-3 py-2 text-sm hover:bg-slate-50">Clear leads</button>
+              <button onClick={() => clearAll('activities')} className="w-full text-left border border-slate-200 rounded-lg px-3 py-2 text-sm hover:bg-slate-50">Clear activities</button>
               <button onClick={() => clearAll('everything')} className="w-full text-left bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm hover:bg-red-100 font-medium">Clear everything</button>
             </div>
           </motion.div>
