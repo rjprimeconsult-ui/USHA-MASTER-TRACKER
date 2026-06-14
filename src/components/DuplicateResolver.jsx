@@ -55,20 +55,22 @@ export default function DuplicateResolver({
     return all;
   }, [open, leads]);
 
-  const [idx, setIdx] = useState(0);
   const [pickingWinner, setPickingWinner] = useState(false);
 
   if (!open) return null;
   if (typeof document === 'undefined') return null;
 
-  const pair = pairs[idx] || null;
+  // Always resolve the FIRST unreviewed pair. Each action stamps both leads
+  // reviewed (Repeated / Keep both) or deletes the loser (Merge), so the
+  // parent's leads state changes, the `pairs` memo recomputes, and the
+  // resolved pair drops out — making pairs[0] the next one automatically.
+  // Walking by a stored index desynced from this shrinking list and skipped
+  // every other pair (you could only clear half before the index ran off the
+  // end), which is what made agents refresh and re-do the rest.
+  const pair = pairs[0] || null;
   const classification = pair ? classifyPair(pair.a, pair.b) : null;
 
-  const advance = () => {
-    setPickingWinner(false);
-    if (idx + 1 < pairs.length) setIdx(idx + 1);
-    else onClose();
-  };
+  const advance = () => setPickingWinner(false);
 
   const onPickWinner = (winnerLead, loserLead) => {
     const merged = mergeLeads(winnerLead, loserLead);
@@ -122,7 +124,7 @@ export default function DuplicateResolver({
                 <p className="text-xs text-slate-500">
                   {pairs.length === 0
                     ? 'No unreviewed duplicates'
-                    : `Pair ${idx + 1} of ${pairs.length}`}
+                    : `${pairs.length} pair${pairs.length === 1 ? '' : 's'} left to review`}
                 </p>
               </div>
             </div>

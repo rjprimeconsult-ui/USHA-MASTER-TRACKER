@@ -122,3 +122,68 @@ test('mergeLeads — sets dedupReviewedAt', () => {
   assert.ok(merged.dedupReviewedAt);
   assert.match(merged.dedupReviewedAt, /^\d{4}-\d{2}-\d{2}T/);
 });
+
+// ---------------------------------------------------------------------------
+// Resolver walk invariant (jaydenmor, 2026-06-13): the modal must clear EVERY
+// pair in one pass, not half. The old modal walked a stored index over a list
+// that recomputed (and shrank) after each resolve, so it skipped every other
+// pair — you could only do ~half before the index ran off the end, then had to
+// refresh and do half again. The fix always resolves the FIRST unreviewed pair.
+// This simulates that walk and proves it drains all duplicates with no skips
+// and no infinite loop.
+// ---------------------------------------------------------------------------
+function firstUnreviewedPair(leads) {
+  for (const g of findDuplicateGroups(leads, nameKey)) {
+    for (const p of enumeratePairs(g)) {
+      if (!shouldSkipPair(p.a, p.b)) return p;
+    }
+  }
+  return null;
+}
+
+test('resolver walk: dismissing pairs[0] repeatedly clears ALL duplicates (no skip, no loop)', () => {
+  // 97-style load: a 3-lead name group + several 2-lead groups.
+  let leads = [
+    { id: 'a1', name: 'John Doe' }, { id: 'a2', name: 'John Doe' }, { id: 'a3', name: 'John Doe' },
+    { id: 'b1', name: 'Mary Jane' }, { id: 'b2', name: 'Mary Jane' },
+    { id: 'c1', name: 'Sam Lee' }, { id: 'c2', name: 'Sam Lee' },
+  ];
+  const NOW = '2026-06-13T00:00:00.000Z';
+  let iterations = 0;
+  let p;
+  while ((p = firstUnreviewedPair(leads))) {
+    // "Keep both" / dismiss path — stamps BOTH leads reviewed.
+    leads = leads.map(l =>
+      (l.id === p.a.id || l.id === p.b.id) && !l.dedupReviewedAt
+        ? { ...l, dedupReviewedAt: NOW }
+        : l,
+    );
+    if (++iterations > 1000) throw new Error('walk did not converge — would loop forever');
+  }
+  // Every duplicate lead got reviewed — nothing left, nothing skipped.
+  for (const id of ['a1', 'a2', 'a3', 'b1', 'b2', 'c1', 'c2']) {
+    assert.ok(leads.find(l => l.id === id).dedupReviewedAt, `${id} should be reviewed`);
+  }
+  assert.equal(firstUnreviewedPair(leads), null);
+});
+
+test('resolver walk: merging pairs[0] repeatedly collapses each name group to one lead', () => {
+  // Merge deletes the loser and stamps the winner; pairs[0] must keep advancing.
+  let leads = [
+    { id: 'a1', name: 'John Doe', policyNumber: 'P1' },
+    { id: 'a2', name: 'John Doe', policyNumber: 'P2' },
+    { id: 'a3', name: 'John Doe', policyNumber: 'P3' },
+    { id: 'b1', name: 'Mary Jane' }, { id: 'b2', name: 'Mary Jane' },
+  ];
+  let iterations = 0;
+  let p;
+  while ((p = firstUnreviewedPair(leads))) {
+    const merged = mergeLeads(p.a, p.b);           // a = winner
+    leads = leads.filter(l => l.id !== p.b.id)      // delete loser
+                 .map(l => (l.id === merged.id ? merged : l));
+    if (++iterations > 1000) throw new Error('merge walk did not converge');
+  }
+  // Each name collapses to a single surviving lead.
+  assert.equal(leads.filter(l => l.name === 'John Doe').length, 1);
+  assert.equal(leads.filter(l => l.name === 'Mary Jane').length, 1);
+});
