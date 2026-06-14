@@ -1415,6 +1415,29 @@ function SalesReportGap({ leads, onApply }) {
             </div>
           </div>
 
+          {/* Unrecognized statuses — surfaced instead of being silently called
+              Pending, so a Cancelled/Lapsed/etc. policy never hides as active. */}
+          {(() => {
+            const unknownStatusItems = [
+              ...(diff.missing || []).filter(d => d.unknownStatus),
+              ...(diff.mismatched || []).map(m => m.deal).filter(d => d?.unknownStatus),
+            ];
+            if (unknownStatusItems.length === 0) return null;
+            return (
+              <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 text-sm text-amber-900">
+                <div className="font-bold mb-1">
+                  {unknownStatusItems.length} row{unknownStatusItems.length !== 1 ? 's' : ''} had a status PRIM didn’t recognize
+                </div>
+                <div className="text-xs mb-2">We left them as <b>Pending</b> — please confirm their real status after import.</div>
+                <ul className="text-xs list-disc ml-5 space-y-0.5">
+                  {unknownStatusItems.slice(0, 12).map((d, i) => (
+                    <li key={i}><span className="font-semibold">{d.name}</span> — “{d.unknownStatus}”</li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })()}
+
           {/* Missing */}
           {diff.missing.length > 0 && (
             <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
