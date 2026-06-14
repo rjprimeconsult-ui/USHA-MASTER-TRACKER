@@ -388,6 +388,25 @@ export function gapDetect(deals, leads) {
       if (matchedLead.mainProduct !== d.mainProduct && d.mainProduct) {
         issues.push({ kind: 'mainProduct', current: matchedLead.mainProduct, expected: d.mainProduct });
       }
+      // New policy numbers discovered this upload (union, normalized). Keeping
+      // the lead's policy list complete is what lets weekly-statement advances
+      // attach by policy #.
+      const existingPids = new Set(
+        String(matchedLead.policyNumber || '')
+          .split(/[,;|\s]+/).map(p => p.trim().toUpperCase()).filter(Boolean),
+      );
+      const dealPids = (d.policyNumbers || []).map(p => String(p).trim().toUpperCase()).filter(Boolean);
+      const hasNewPid = dealPids.some(p => !existingPids.has(p));
+      if (hasNewPid) {
+        const merged = [...existingPids, ...dealPids.filter(p => !existingPids.has(p))];
+        issues.push({ kind: 'policyNumbers', current: matchedLead.policyNumber || '', expected: merged });
+      }
+      // Premium correction (main monthly premium). Compare at cent precision.
+      const dealPremium = Math.round((d.mainMonthlyPremium || 0) * 100) / 100;
+      const leadPrem = Math.round((Number(matchedLead.mainProductPremium) || 0) * 100) / 100;
+      if (dealPremium > 0 && dealPremium !== leadPrem) {
+        issues.push({ kind: 'premium', current: leadPrem, expected: dealPremium });
+      }
       if (issues.length > 0) {
         mismatched.push({ deal: d, lead: matchedLead, issues });
       }

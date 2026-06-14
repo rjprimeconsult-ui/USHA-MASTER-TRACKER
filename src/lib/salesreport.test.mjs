@@ -98,3 +98,29 @@ test('normalizeStatus: unknown status returns null (NOT silently Pending)', () =
   assert.equal(normalizeStatus('Frobnicated'), null);
   assert.equal(normalizeStatus(''), null);
 });
+
+// --- gapDetect: detect new policy numbers + premium corrections on re-upload
+import { gapDetect } from './salesreport.js';
+
+const _gdDeal = (over = {}) => ({
+  nameKey: 'jane doe', name: 'Jane Doe', stage: 'Issued', mainProduct: 'HEALTH ACCESS III',
+  mainMonthlyPremium: 100, addons: [], policyNumbers: ['52Y100000F'], ...over,
+});
+
+test('gapDetect: flags a new policy number not yet on the matched lead', () => {
+  const deals = [_gdDeal({ policyNumbers: ['52Y100000F', '52Y100000G'] })];
+  const leads = [{ id: 'L1', name: 'Jane Doe', stage: 'Issued', mainProduct: 'HEALTH ACCESS III', mainProductPremium: 100, policyNumber: '52Y100000F' }];
+  const { mismatched } = gapDetect(deals, leads);
+  const issue = mismatched[0].issues.find(i => i.kind === 'policyNumbers');
+  assert.ok(issue, 'should flag new policy numbers');
+  assert.deepEqual(issue.expected, ['52Y100000F', '52Y100000G']);
+});
+
+test('gapDetect: flags a premium difference', () => {
+  const deals = [_gdDeal({ mainMonthlyPremium: 150 })];
+  const leads = [{ id: 'L1', name: 'Jane Doe', stage: 'Issued', mainProduct: 'HEALTH ACCESS III', mainProductPremium: 100, policyNumber: '52Y100000F' }];
+  const { mismatched } = gapDetect(deals, leads);
+  const issue = mismatched[0].issues.find(i => i.kind === 'premium');
+  assert.ok(issue);
+  assert.equal(issue.expected, 150);
+});
