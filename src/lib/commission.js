@@ -205,3 +205,51 @@ export function projectCommission({ mainProduct, mainProductPremium, products, s
     breakdown,
   };
 }
+
+// Map a free-text statement product description → a RATES key (for the reverse
+// fallback when the statement row carries no rate). Returns null if unknown.
+export function productKeyFromDesc(desc) {
+  const s = String(desc || '').toUpperCase();
+  if (/PREMIER\s*ADVANTAGE/.test(s)) return 'PREMIER_ADVANTAGE';
+  if (/PREMIER\s*CHOICE/.test(s))    return 'PREMIER_CHOICE';
+  if (/SECURE\s*ADVANTAGE\s*CONVERSION/.test(s)) return 'SECURE_ADVANTAGE_CONVERSION';
+  if (/SECURE\s*ADVANTAGE/.test(s))  return 'SECURE_ADVANTAGE';
+  if (/HEALTH\s*ACCESS/.test(s))     return 'HEALTH_ACCESS';
+  if (/MEDGUARD/.test(s))            return 'MEDGUARD';
+  if (/PREMIER\s*VISION/.test(s))    return 'PREMIER_VISION';
+  if (/DENTAL/.test(s))              return 'DENTAL';
+  if (/ACCIDENT\s*PROTECTOR/.test(s)) return 'ACCIDENT_PROTECTOR';
+  if (/INCOME\s*PROTECTOR/.test(s))  return 'INCOME_PROTECTOR';
+  if (/LIFE\s*PROTECTOR/.test(s))    return 'LIFE_PROTECTOR_II';
+  return null;
+}
+
+/**
+ * Inverse of the commission math — estimate a policy's Annualized Value (AV)
+ * from the weekly statement. Prefers the statement's own commissionable
+ * premium; otherwise reverses the advance.
+ *
+ *   AV (premium basis) = commPremium × 12
+ *   AV (reverse basis) = (netAdvance ÷ advanceMonths ÷ rate) × 12
+ *
+ * `rate` may be a decimal (0.20) or a percent (20); both are accepted. When no
+ * rate is supplied it is resolved from productKey + tier (+ state) via the rate
+ * table. Returns { estimatedAV, basis: 'premium'|'reverse'|'unknown' }.
+ */
+export function estimateAvFromAdvance({ commPremium = 0, netAdvance = 0, rate, productKey, tier = 'WA', state, advanceMonths = DEFAULT_ADVANCE_MONTHS } = {}) {
+  const round2 = (n) => Math.round(n * 100) / 100;
+  // Preferred: the statement already gives the commissionable premium.
+  if (Number(commPremium) > 0) {
+    return { estimatedAV: round2(Number(commPremium) * 12), basis: 'premium' };
+  }
+  // Fallback: reverse the advance. Normalize percent-style rates (>1) to decimal.
+  let r = Number(rate) || 0;
+  if (r > 1) r = r / 100;
+  if (!r) r = resolveRate(productKey, tier, state);
+  const months = Number(advanceMonths) || 0;
+  if (!(Number(netAdvance) > 0) || !r || !months) {
+    return { estimatedAV: 0, basis: 'unknown' };
+  }
+  const monthlyPremium = Number(netAdvance) / months / r;
+  return { estimatedAV: round2(monthlyPremium * 12), basis: 'reverse' };
+}
