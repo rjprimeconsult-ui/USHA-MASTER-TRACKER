@@ -162,3 +162,27 @@ test('exact policy match pays the matched lead even if Declined (only the split 
   assert.equal(byId.UW.total, 500);
   assert.equal(byId.GI.total, 0);
 });
+
+// --- Per-lead Estimated AV from advance rows (gap-fill for missing AV)
+test('reconcileStatement: attaches per-lead estimatedAV from commPremium', () => {
+  const advanceRows = [
+    { writingAgent: OWNER, customer: 'DOE, JANE', policyId: 'POLA', netAdvance: 150, commPremium: 100 },
+  ];
+  const leads = [{ id: 'L1', name: 'DOE, JANE', policyNumber: 'POLA', stage: 'Not taken', dealValue: 0 }];
+  const m = run(advanceRows, leads).matched.find(x => x.leadId === 'L1');
+  assert.equal(m.estimatedAV, 1200);
+});
+
+test('reconcileStatement: splits estimatedAV across leads in proportion to advance', () => {
+  const advanceRows = [
+    { writingAgent: OWNER, customer: 'DOE, JANE', policyId: 'POLA', netAdvance: 300, commPremium: 100 },
+    { writingAgent: OWNER, customer: 'DOE, JANE', policyId: 'POLB', netAdvance: 300, commPremium: 100 },
+  ];
+  const leads = [
+    { id: 'A', name: 'DOE, JANE', policyNumber: 'POLA', stage: 'Issued', dealValue: 0 },
+    { id: 'B', name: 'DOE, JANE', policyNumber: 'POLB', stage: 'Issued', dealValue: 0 },
+  ];
+  const byId = Object.fromEntries(run(advanceRows, leads).matched.map(m => [m.leadId, m]));
+  assert.equal(byId.A.estimatedAV, 1200);
+  assert.equal(byId.B.estimatedAV, 1200);
+});

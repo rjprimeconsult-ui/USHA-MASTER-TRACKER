@@ -20,6 +20,8 @@
 // pdfjs-dist is ONLY imported lazily inside parseStatementPdf() (it references
 // DOMMatrix which doesn't exist in the Node SSR environment). Do not import
 // pdfjs-dist at module-eval time.
+import { estimateAvFromAdvance, productKeyFromDesc } from './commission.js';
+
 let pdfjsLib = null;
 async function loadPdfjs() {
   if (pdfjsLib) return pdfjsLib;
@@ -792,7 +794,23 @@ export function reconcileStatement(parsed, leads) {
       const recipients = splitRecipients.length > 0 ? splitRecipients : matches;
       const recipientIds = new Set(recipients.map(l => l.id));
       const share = recipients.length ? unmatchedTotal / recipients.length : 0;
+      // Customer-level Estimated AV: sum each advance row's estimated AV (prefers
+      // the row's commPremium × 12; reverses the commission otherwise). Tier
+      // comes from the statement header; per-lead state is unknown here so the
+      // default rate applies — estimate only; real AV always wins downstream.
+      const tier = header?.tier || 'WA';
+      const customerEstAV = entry.rows.reduce((s, r) => {
+        const { estimatedAV } = estimateAvFromAdvance({
+          commPremium: r.commPremium,
+          netAdvance: r.netAdvance,
+          rate: r.rate,
+          productKey: productKeyFromDesc(r.productDesc),
+          tier,
+        });
+        return s + estimatedAV;
+      }, 0);
       matches.forEach(lead => {
+        const leadTotal = leadTotals.get(lead.id) + (recipientIds.has(lead.id) ? share : 0);
         matched.push({
           ...entry,
           leadId: lead.id,
@@ -800,7 +818,12 @@ export function reconcileStatement(parsed, leads) {
           currentDealValue: lead.dealValue,
           leadName: lead.name,
           leadPolicyNumber: lead.policyNumber || '',
-          total: leadTotals.get(lead.id) + (recipientIds.has(lead.id) ? share : 0),
+          total: leadTotal,
+          // Apportion the customer's estimated AV by each lead's advance share
+          // (so a lead with no advance gets no estimate). Lone lead → all of it.
+          estimatedAV: entry.total > 0
+            ? Math.round(customerEstAV * (leadTotal / entry.total) * 100) / 100
+            : Math.round((customerEstAV / matches.length) * 100) / 100,
           _fullTotal: entry.total,
           _leadCount: matches.length,
         });
