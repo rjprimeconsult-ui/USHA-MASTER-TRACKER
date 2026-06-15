@@ -105,7 +105,7 @@ test('money — whole-dollar formatting', () => {
   assert.equal(money(-1200), '-$1,200');
 });
 
-test('buildLeadsSoldReport — filters to Issued in range, totals sum the rows', () => {
+test('buildLeadsSoldReport — counts ALL submitted stages in range (incl. Pending + Declined), totals sum the rows', () => {
   const leads = [
     { name: 'A', stage: 'Issued', closedDate: '2026-05-10',
       products: [{ id: 'PA', premium: 400 }, { id: 'MG', premium: 100 }],
@@ -113,20 +113,24 @@ test('buildLeadsSoldReport — filters to Issued in range, totals sum the rows',
     { name: 'B', stage: 'Issued', closedDate: '2026-05-20',
       products: [{ id: 'PC', premium: 300 }], crm: 'TD', campaign: 'AGED',
       dealValue: 350, leadCost: 8 },
-    { name: 'C', stage: 'Pending', closedDate: '2026-05-15', products: [], dealValue: 0, leadCost: 0 },
-    { name: 'D', stage: 'Issued', closedDate: '2026-04-01', products: [], dealValue: 999, leadCost: 0 },
+    { name: 'C', stage: 'Pending', closedDate: '2026-05-15',
+      products: [{ id: 'PA', premium: 200 }], dealValue: 0, leadCost: 5 },
+    { name: 'E', stage: 'Declined', dateAdded: '2026-05-18',   // no closedDate → uses dateAdded
+      products: [{ id: 'PA', premium: 100 }], dealValue: 0, leadCost: 3 },
+    { name: 'D', stage: 'Issued', closedDate: '2026-04-01', products: [], dealValue: 999, leadCost: 0 }, // out of range
   ];
   const rep = buildLeadsSoldReport(leads, { from: '2026-05-01', to: '2026-05-31' });
   assert.equal(rep.layout, 'table');
-  assert.equal(rep.rows.length, 2);          // A + B only (C pending, D out of range)
+  assert.equal(rep.rows.length, 4);          // A, B, C (pending), E (declined) — D out of range
   assert.equal(rep.empty, false);
-  // KPI 0 is "# Deals"
-  assert.equal(rep.kpis[0].value, '2');
-  // totalsRow last cells: premium 800, advance 950, leadCost 33, net 917
+  assert.equal(rep.kpis[0].value, '4');      // KPI 0 is "# Deals"
+  assert.ok(rep.columns.some(c => c.label === 'Status')); // status column added
+  // Pending + Declined AV now counted: premiums 500+300+200+100 = 1100 → AV 13,200.
   const totalsText = rep.totalsRow.map(c => c.text);
-  assert.ok(totalsText.includes('$800'));    // total premium
-  assert.ok(totalsText.includes('$950'));    // total advance
-  assert.ok(totalsText.includes('$33'));     // total lead cost
+  assert.ok(totalsText.includes('$1,100'));   // total premium incl pending + declined
+  assert.ok(totalsText.includes('$13,200'));  // total AV
+  assert.ok(totalsText.includes('$950'));     // total advance (only issued were advanced)
+  assert.ok(totalsText.includes('$41'));      // total lead cost 25+8+5+3
 });
 
 test('buildLeadsSoldReport — empty when no deals match', () => {
@@ -289,8 +293,8 @@ test('buildLeadsSoldReport — premium = mainProductPremium + add-ons', () => {
     dealValue: 600, leadCost: 0,
   }];
   const rep = buildLeadsSoldReport(leads, { from: '2026-05-01', to: '2026-05-31' });
-  // 450 + 100 = 550. Column index 5 = Premium.
-  assert.equal(rep.rows[0][5].text, '$550');
+  // 450 + 100 = 550. Column index 6 = Premium (after Client, Status, Product, Date, CRM, Campaign).
+  assert.equal(rep.rows[0][6].text, '$550');
 });
 
 test('buildLeadsSoldReport — AV column = premium × 12 (row, total, KPI)', () => {
@@ -301,9 +305,9 @@ test('buildLeadsSoldReport — AV column = premium × 12 (row, total, KPI)', () 
     dealValue: 600, leadCost: 10,
   }];
   const rep = buildLeadsSoldReport(leads, { from: '2026-05-01', to: '2026-05-31' });
-  // Index 5 = Premium ($550), index 6 = AV (550 × 12 = $6,600).
-  assert.equal(rep.rows[0][5].text, '$550');
-  assert.equal(rep.rows[0][6].text, '$6,600');
+  // Index 6 = Premium ($550), index 7 = AV (550 × 12 = $6,600).
+  assert.equal(rep.rows[0][6].text, '$550');
+  assert.equal(rep.rows[0][7].text, '$6,600');
   // Total AV KPI is present and correct.
   const avKpi = rep.kpis.find(k => k.label === 'Total AV');
   assert.ok(avKpi, 'Total AV KPI exists');
@@ -326,7 +330,7 @@ test('buildLeadsSoldReport — portal-imported lead: premium is mainProductPremi
     dealValue: 0, leadCost: 0,
   }];
   const rep = buildLeadsSoldReport(leads, { from: '2026-05-01', to: '2026-05-31' });
-  assert.equal(rep.rows[0][5].text, '$504');        // matches the USHA portal
+  assert.equal(rep.rows[0][6].text, '$504');        // matches the USHA portal (index 6 = Premium)
 });
 
 test('buildPnlReport — income includes association residuals + Books income', () => {

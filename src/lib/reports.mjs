@@ -126,12 +126,17 @@ export function estimatedAvTotals(leads = []) {
 
 // --- Report 1: Leads Sold -------------------------------------------------
 export function buildLeadsSoldReport(leads, range) {
+  // Every submitted app in the period counts toward submitted production —
+  // ALL stages (Issued, Pending, Declined, Not taken, Withdrawn), not just
+  // Issued. Date = close date when issued, else the submit/added date so
+  // pending and not-yet-closed apps still land in the period.
   const sold = (leads || [])
-    .filter(l => l && l.stage === 'Issued' && inRange(l.closedDate, range))
+    .filter(l => l && inRange(l.closedDate || l.dateAdded, range))
     .map(l => ({
       name: l.name || '—',
+      stage: l.stage || '—',
       products: (l.products || []).map(p => p?.id).filter(Boolean).join(', ') || '—',
-      dateSold: toISO(l.closedDate),
+      dateSold: toISO(l.closedDate || l.dateAdded),
       crm: l.crm || '—',
       campaign: l.campaign || '—',
       premium: leadPremium(l),
@@ -165,8 +170,9 @@ export function buildLeadsSoldReport(leads, range) {
     ],
     columns: [
       { label: 'Client', align: 'left' },
+      { label: 'Status', align: 'left' },
       { label: 'Product(s)', align: 'left' },
-      { label: 'Date Sold', align: 'left' },
+      { label: 'Date', align: 'left' },
       { label: 'CRM', align: 'left' },
       { label: 'Campaign', align: 'left' },
       { label: 'Premium', align: 'right' },
@@ -176,6 +182,7 @@ export function buildLeadsSoldReport(leads, range) {
     ],
     rows: sold.map(r => [
       { text: r.name, color: SEMANTIC.neutral, align: 'left' },
+      { text: r.stage, color: SEMANTIC.neutral, align: 'left' },
       { text: r.products, color: SEMANTIC.neutral, align: 'left' },
       { text: r.dateSold, color: SEMANTIC.neutral, align: 'left' },
       { text: r.crm, color: SEMANTIC.neutral, align: 'left' },
@@ -191,13 +198,14 @@ export function buildLeadsSoldReport(leads, range) {
       { text: '', align: 'left' },
       { text: '', align: 'left' },
       { text: '', align: 'left' },
+      { text: '', align: 'left' },
       { text: money(t.premium), color: SEMANTIC.good, align: 'right' },
       { text: money(t.av), color: SEMANTIC.good, align: 'right' },
       { text: money(t.advance), color: SEMANTIC.good, align: 'right' },
       { text: money(t.leadCost), color: SEMANTIC.neutral, align: 'right' },
     ],
     empty: sold.length === 0,
-    emptyMessage: 'No deals sold in this period.',
+    emptyMessage: 'No submitted deals in this period.',
   };
 }
 
