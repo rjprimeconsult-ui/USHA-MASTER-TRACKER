@@ -23,13 +23,28 @@
  * customCategories.js does.
  */
 
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useMemo, useCallback, useSyncExternalStore } from 'react';
 import { storage } from './storage';
 import { LEAD_CATEGORIES, CRMS, CAMPAIGNS } from './constants';
 
 export const CUSTOM_LEAD_OPTIONS_KEY = 'custom_lead_options_v1';
 
 const EMPTY = { leadCategories: [], crms: [], campaigns: [] };
+
+// ---- Cross-instance shared store -----------------------------------------
+// Every useLeadOptionsAll() consumer (Closed Deals, Portal Clients, the lead
+// editor, …) reads from ONE shared snapshot. A custom option added in any view
+// is broadcast to all the others immediately — no remount, no "do it again".
+let _cachedMap = null;
+const _listeners = new Set();
+function _emit() { for (const cb of [..._listeners]) { try { cb(); } catch { /* ignore */ } } }
+function _subscribe(cb) { _listeners.add(cb); return () => { _listeners.delete(cb); }; }
+function _getSnapshot() { return _cachedMap || EMPTY; }
+async function _refreshFromStorage() {
+  _cachedMap = await loadCustomLeadOptions();
+  _emit();
+  return _cachedMap;
+}
 
 export async function loadCustomLeadOptions() {
   try {
@@ -49,6 +64,8 @@ export async function loadCustomLeadOptions() {
 export async function saveCustomLeadOptions(map) {
   try {
     await storage.setItem(CUSTOM_LEAD_OPTIONS_KEY, JSON.stringify(map || EMPTY));
+    _cachedMap = map || { ...EMPTY };
+    _emit(); // every mounted useLeadOptionsAll() instance re-renders with the new option
     return true;
   } catch {
     return false;
@@ -85,14 +102,13 @@ export async function removeCustomLeadOption(field, value) {
  * fields, plus the raw custom map and a refresh fn for after edits.
  */
 export function useLeadOptionsAll() {
-  const [customMap, setCustomMap] = useState(EMPTY);
+  // All instances read from the SAME shared snapshot, so a custom option added
+  // in one view shows up in every other view instantly.
+  const customMap = useSyncExternalStore(_subscribe, _getSnapshot, _getSnapshot);
 
-  const reload = useCallback(async () => {
-    const next = await loadCustomLeadOptions();
-    setCustomMap(next);
-    return next;
-  }, []);
-
+  // Refresh from THIS user's storage on mount (keeps the shared cache current
+  // across devices / account switches) and whenever a consumer asks.
+  const reload = useCallback(() => _refreshFromStorage(), []);
   useEffect(() => { reload(); }, [reload]);
 
   // Merged lists — built-ins first, customs after, so dropdowns render
