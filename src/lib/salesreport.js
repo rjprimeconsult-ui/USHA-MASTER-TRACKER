@@ -28,7 +28,13 @@ import { nameKey } from './statement.js';
 const MAIN_PRODUCT_PATTERNS = [
   { re: /^PREMIERADVANTAGE/i, id: 'PREMIER ADVANTAGE' },
   { re: /^PREMIERCHOICE/i,    id: 'PREMIER CHOICE' },
-  { re: /^HEALTHACCESS/i,     id: 'HEALTH ACCESS III' },
+  // GI / Health Access, every form USHA writes it in: HEALTHACCESS, HEALTH
+  // ACCESS III, HA, HA 3, HA III, HA3, HAIII. The HA-prefixed ones are scoped
+  // so they never collide with the HA-SECDENTPLUS dental add-on (which has a
+  // hyphen, not a space/number/end after "HA").
+  { re: /^HEALTH\s*ACCESS/i,  id: 'HEALTH ACCESS III' },
+  { re: /^HA\s*(III|3)\b/i,   id: 'HEALTH ACCESS III' },
+  { re: /^HA$/i,              id: 'HEALTH ACCESS III' },
   { re: /^SECURE ADV SICKNESS/i, id: 'SECURE ADVANTAGE' }, // the "primary" SA row
 ];
 
@@ -52,6 +58,12 @@ const ADDON_PATTERNS = [
   { re: /^PREMIERVISION/i,               id: 'PREMIERVISION' },
   { re: /^SECUREDENTAL/i,                id: 'DENTAL / SECUREDENTAL' },
   { re: /^HA-SECDENTPLUS/i,              id: 'DENTAL / SECUREDENTAL' },
+  // UW supplemental riders (ids match commission.js ADDON_RATE_KEY). Tolerant
+  // matching since USHA may abbreviate; anything still unrecognized is captured
+  // by the never-drop fallback below so its premium is never lost.
+  { re: /ACCIDENT\s*PROT/i,              id: 'ACCIDENT PROTECTOR' },
+  { re: /INCOME\s*PROT/i,                id: 'INCOME PROTECTOR' },
+  { re: /LIFE\s*PROT/i,                  id: 'LIFE PROTECTOR II' },
 ];
 
 // Association patterns → internal association plan ID
@@ -234,7 +246,11 @@ export function parseSalesReport(wb) {
       deal.associationMonthlyPremium = (assocPremiumAV > 0 ? assocPremiumAV : premiumAV) / 12;
       deal._debug.push(`Inferred-as-association by AppID-S: "${product}" at ${appId}`);
     } else {
-      deal._debug.push(`UNMAPPED "${product}" at ${appId}`);
+      // Unrecognized product — capture its premium anyway, as an "OTHER"
+      // add-on, so AV is NEVER undercounted by a product name we don't have a
+      // pattern for (GI/UW/supplemental variants, future products, etc.).
+      deal.addons.push({ id: 'OTHER', monthlyPremium: premiumAV / 12, rawProduct: product });
+      deal._debug.push(`UNMAPPED (captured as OTHER) "${product}" at ${appId}`);
     }
   }
 
@@ -279,6 +295,7 @@ export function parseSalesReport(wb) {
       target.associationMonthlyPremium = orphan.associationMonthlyPremium;
     }
     target.policyNumbers.push(...orphan.policyNumbers);
+    target.addons.push(...orphan.addons); // carry any add-on premium, don't drop it
   }
 
   for (const orphan of orphanNoMain) {
@@ -290,6 +307,7 @@ export function parseSalesReport(wb) {
     }
     const target = pickClosest(orphan, candidates);
     target.policyNumbers.push(...orphan.policyNumbers);
+    target.addons.push(...orphan.addons); // carry add-on premium onto the main deal, don't drop it
     target._debug.push(...orphan._debug);
   }
 

@@ -146,3 +146,64 @@ test('buildSalesReportPatch: applies stage, product, merged policies, premium', 
 test('buildSalesReportPatch: empty issues → empty patch', () => {
   assert.deepEqual(buildSalesReportPatch({ id: 'L1' }, []), {});
 });
+
+// --- Parser hardening: GI/Health Access aliases, UW riders, never-drop premium
+// (XLSX + parseSalesReport already imported at the top of this file)
+import { dealToLead } from './salesreport.js';
+import { leadPremium } from './reports.mjs';
+
+// Build a SalesReport-shaped workbook. Columns mirror the real export:
+// AppID | Name | Product | Status | PC | Submit | Eff | Issue | PaidTo | Agent
+// | Premium | Fees | Assoc | Total  (parser reads r[0..3], r[5..7], r[10], r[12]).
+function mkSalesWb(rows) {
+  const header = ['AppID','Name','Product','Status','PC','Submit','Eff','Issue','PaidTo','Agent','Premium','Fees','Assoc','Total'];
+  const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+  return { SheetNames: ['SalesReport'], Sheets: { SalesReport: ws } };
+}
+const srow = (appId, name, product, status, prem, { assoc = 0, d = '06/15/2026' } = {}) =>
+  [appId, name, product, status, '', d, d, d, d, 'AGENT, X', prem, 0, assoc, prem];
+const avOf = (deal) => Math.round(leadPremium(dealToLead(deal, (o) => ({ ...o }))) * 12 * 100) / 100;
+const findDeal = (deals, namePart) => deals.find(d => (d.name || '').toUpperCase().includes(namePart.toUpperCase()));
+
+test('parser: Health Access recognized in all forms (HA, HA 3, HA III, HEALTH ACCESS III, HEALTHACCESS3)', () => {
+  const forms = [['HA','52Y900001F'],['HA 3','52Y900002F'],['HA III','52Y900003F'],['HEALTH ACCESS III','52Y900004F'],['HEALTHACCESS3','52Y900005F']];
+  for (const [form, appId] of forms) {
+    const { deals } = parseSalesReport(mkSalesWb([ srow(appId, 'GICLIENT', form, 'In Force', 1200) ]));
+    const d = findDeal(deals, 'GICLIENT');
+    assert.equal(d.mainProduct, 'HEALTH ACCESS III', `"${form}" should map to Health Access`);
+    assert.equal(avOf(d), 1200, `"${form}" AV should be 1200`);
+  }
+});
+
+test('parser: HA-SECDENTPLUS stays a dental add-on, NOT Health Access — premium still counted', () => {
+  const { deals } = parseSalesReport(mkSalesWb([ srow('52Y901000F', 'DENTALONLY', 'HA-SECDENTPLUS', 'In Force', 360) ]));
+  const d = findDeal(deals, 'DENTALONLY');
+  assert.notEqual(d.mainProduct, 'HEALTH ACCESS III');
+  assert.equal(avOf(d), 360);
+});
+
+test('parser: unrecognized product premium is NEVER dropped (captured as OTHER)', () => {
+  const { deals } = parseSalesReport(mkSalesWb([ srow('52Y902000F', 'WEIRDONE', 'SOME BRAND NEW PRODUCT', 'In Force', 600) ]));
+  const d = findDeal(deals, 'WEIRDONE');
+  assert.equal(avOf(d), 600);
+});
+
+test('parser: UW riders (Accident/Income/Life Protector) are captured', () => {
+  const { deals } = parseSalesReport(mkSalesWb([
+    srow('52Y903000B', 'RIDERGUY', 'PREMIERADVANTAGE', 'In Force', 1200),
+    srow('52Y903000C', 'RIDERGUY', 'ACCIDENT PROTECTOR', 'In Force', 240),
+    srow('52Y903000D', 'RIDERGUY', 'INCOME PROTECTOR', 'In Force', 120),
+  ]));
+  const d = findDeal(deals, 'RIDERGUY');
+  assert.equal(avOf(d), 1560); // 1200 + 240 + 120 all counted
+});
+
+test('parser: add-on filed under a separate policy base merges WITHOUT dropping its premium', () => {
+  const { deals } = parseSalesReport(mkSalesWb([
+    srow('52Y904000B', 'MERGETEST', 'PREMIERADVANTAGE', 'In Force', 1200),
+    srow('72G904999J', 'MERGETEST', 'PREMIERVISION',    'In Force', 240),
+  ]));
+  const merged = deals.filter(d => (d.name || '').toUpperCase().includes('MERGETEST'));
+  assert.equal(merged.length, 1);
+  assert.equal(avOf(merged[0]), 1440); // 1200 main + 240 vision
+});
