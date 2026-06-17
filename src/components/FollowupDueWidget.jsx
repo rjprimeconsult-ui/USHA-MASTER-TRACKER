@@ -1,13 +1,12 @@
 'use client';
 /**
- * "Needs a touch" widget — the in-app accountability list for the follow-up
- * playbook. Surfaces prospects whose next playbook touch is DUE TODAY or
- * OVERDUE (any channel: call/text/voicemail/etc.), sorted most-overdue first.
- *
- * Distinct from OutreachRemindersWidget, which tracks the automated outreach
- * EMAIL sequence. This one is driven by the cadence engine (dueStatus) and
- * covers manual touches. Collapsible, matches the OutreachRemindersWidget /
- * CalendarPanel pattern so the top-of-page widgets cluster consistently.
+ * "Needs a touch" widget — the single in-app follow-up accountability list.
+ * Surfaces prospects whose next follow-up is DUE TODAY or OVERDUE, sorted
+ * most-overdue first. Driven by the cadence engine (dueStatus); ANY touch —
+ * call, text, or sending an outreach email — advances that one clock and clears
+ * the prospect from this list (the separate "emails due" list was retired).
+ * Collapsible, matches the CalendarPanel pattern so the top-of-page widgets
+ * cluster consistently.
  *
  * Clicking a row fires onOpenProspect(id) so the parent opens that prospect's
  * detail (where the next-step card + Log touch live).
@@ -75,7 +74,7 @@ export default function FollowupDueWidget({
       {showRows && (
         <div className="divide-y divide-slate-100 border-t border-slate-100">
           {rows.map(({ p, s }) => {
-            const steps = playbookForStage(playbook, p.stage);
+            const steps = playbook ? playbookForStage(playbook, p.stage) : [];
             const idx = Math.min(p.cadence?.stepIndex || 0, Math.max(steps.length - 1, 0));
             const channel = steps[idx]?.channel;
             const chip = s.state === 'overdue'

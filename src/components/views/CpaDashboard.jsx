@@ -18,7 +18,7 @@ import { useChartColors } from '@/lib/useIsDark';
 import { mergeFunnelTotals } from '@/lib/followupRollup.mjs';
 import { computeFollowupStats } from '@/lib/followupStats.mjs';
 import { leadPremium } from '@/lib/reports.mjs';
-import OutreachRemindersWidget from '../OutreachRemindersWidget';
+import FollowupDueWidget from '../FollowupDueWidget';
 import PaymentAlertsWidget from '../PaymentAlertsWidget';
 
 const Kpi = memo(({ label, value, numeric, isCurrency = true, isPercent = false, sub, grad, Icon, onClick, active }) => (
@@ -434,14 +434,11 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
         </div>
       </div>
 
-      {/* Outreach follow-ups (beta) — compact card at the top of CPA so
-          the reminder is visible from the default landing view. Clicking
-          a row jumps to the Prospects tab; that view's full widget
-          surfaces the prospect's detail. */}
+      {/* Follow-ups due — the unified list (touches + outreach emails), visible
+          from the default landing view. Clicking a row jumps to the Prospects tab. */}
       {!readOnly && (
-        <OutreachRemindersWidget
+        <FollowupDueWidget
           prospects={prospects}
-          compact
           onOpenProspect={() => onOpenProspects?.()}
         />
       )}

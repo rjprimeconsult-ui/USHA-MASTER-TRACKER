@@ -8,7 +8,7 @@ import { estimatedAvTotals } from '@/lib/reports.mjs';
 import { Chart3DCard, TiltCard, Stagger, StaggerItem, Pie3D, CountUp } from '../motion/MotionPrimitives';
 import SetupChecklist from '../SetupChecklist';
 import { useChartColors } from '@/lib/useIsDark';
-import OutreachRemindersWidget from '../OutreachRemindersWidget';
+import FollowupDueWidget from '../FollowupDueWidget';
 
 // KPI tile — premium-card surface + CountUp ticker (matches the KPI tiles in
 // Books/Platforms/CPA, which already animate). `value` is numeric; `format`
@@ -177,13 +177,11 @@ function Dashboard({ leads, prospects = [], onOpenProspects, setupStats, onSetup
         <SetupChecklist stats={setupStats} onAction={onSetupAction} />
       )}
 
-      {/* Outreach follow-ups — only renders for beta allowlist users
-          with at least one prospect mid-sequence. Clicking a row
-          jumps to the Prospects view (parent handles navigation). */}
+      {/* Follow-ups due — the unified list (touches + outreach emails). Clicking
+          a row jumps to the Prospects view (parent handles navigation). */}
       {!readOnly && (
-        <OutreachRemindersWidget
+        <FollowupDueWidget
           prospects={prospects}
-          compact
           onOpenProspect={() => onOpenProspects?.()}
         />
       )}
