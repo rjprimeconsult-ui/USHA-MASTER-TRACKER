@@ -332,3 +332,31 @@ test('armIfNeeded leaves touched / advanced / completed / terminal untouched', (
   const terminal = { id: 'u', stage: 'SOLD', stageEnteredAt: '2026-06-01T00:00:00.000Z', touchLog: [], cadence: { stepIndex: 0, nextDueAt: null, snoozedUntil: null, completedAt: null } };
   assert.equal(armIfNeeded(terminal, DEFAULT_PLAYBOOK).cadence.nextDueAt, null);
 });
+
+// --- applyOutreachEmail: sending an outreach email is also a touch ----------
+import { applyOutreachEmail } from './followupEngine.mjs';
+
+// Minimal 2-step playbook for the NEW stage so the cadence can advance.
+const UF_PB = { stages: { NEW: { steps: [{ afterDays: 0, channel: 'call' }, { afterDays: 3, channel: 'text' }] } } };
+
+test('applyOutreachEmail: records the email AND advances the cadence', () => {
+  const now = '2026-06-17T12:00:00.000Z';
+  const prospect = { id: 'p1', stage: 'NEW', emailLog: [], touchLog: [], cadence: { stepIndex: 0, nextDueAt: now, snoozedUntil: null, completedAt: null } };
+  const entry = { templateId: 'phc-outreach-1-initial', name: 'Email 1 — Initial outreach', sentAt: now, kind: 'outreach' };
+  const out = applyOutreachEmail(prospect, entry, UF_PB, now);
+  assert.equal(out.emailLog.length, 1);
+  assert.equal(out.emailLog[0].templateId, 'phc-outreach-1-initial');
+  assert.equal(out.touchLog.length, 1);
+  assert.equal(out.touchLog[0].channel, 'email');
+  assert.notEqual(out.cadence.stepIndex, 0); // advanced off "due now"
+  assert.equal(out.lastContact, '2026-06-17');
+});
+
+test('an email-channel touch advances the cadence exactly like a call', () => {
+  const now = '2026-06-17T12:00:00.000Z';
+  const base = { id: 'p2', stage: 'NEW', touchLog: [], cadence: { stepIndex: 0, nextDueAt: now, snoozedUntil: null, completedAt: null } };
+  const byCall = logTouch(base, { channel: 'call' }, UF_PB, now).prospect;
+  const byEmail = logTouch(base, { channel: 'email' }, UF_PB, now).prospect;
+  assert.equal(byEmail.cadence.stepIndex, byCall.cadence.stepIndex);
+  assert.equal(byEmail.cadence.nextDueAt, byCall.cadence.nextDueAt);
+});

@@ -194,6 +194,19 @@ export function logTouch(prospect, touch, playbook, now) {
   return { prospect: p, suggestedStage };
 }
 
+/**
+ * Sending an outreach email is also a follow-up touch. Records the email in
+ * emailLog AND advances the single cadence clock (channel 'email'), so the
+ * prospect drops off the unified follow-up list just like a logged call/text.
+ * Pure — returns the updated prospect.
+ */
+export function applyOutreachEmail(prospect, entry, playbook, now) {
+  const withEmail = { ...prospect, emailLog: [...(prospect.emailLog || []), entry] };
+  const note = entry?.name || entry?.templateName || 'Outreach email';
+  const { prospect: advanced } = logTouch(withEmail, { channel: 'email', outcome: 'sent', note }, playbook, now);
+  return { ...advanced, lastContact: now.slice(0, 10) };
+}
+
 // Local calendar date (NOT UTC) so "due today" reflects the agent's actual day.
 function dayKey(iso) { const d = new Date(iso); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
 
