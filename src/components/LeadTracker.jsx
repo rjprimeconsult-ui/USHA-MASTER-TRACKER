@@ -18,6 +18,7 @@ import {
 import { DEFAULT_ADVANCE_MONTHS, currentAdvanceMonths } from '@/lib/commission';
 import { dedupLeads } from '@/lib/leadDedup';
 import { buildSalesReportPatch } from '@/lib/salesreport';
+import { stampUpdatedAt } from '@/lib/mergeStore.mjs';
 
 import CpaDashboard from './views/CpaDashboard';
 import AssociationsView from './views/AssociationsView';
@@ -242,6 +243,14 @@ export default function LeadTracker() {
   const [businessIncome, setBusinessIncome] = useState([]);
   const [prospects, setProspects] = useState([]);
   const [prospectSettings, setProspectSettings] = useState(null);
+  // Newest-wins stamping for the co-edited stores (multi-session safety):
+  // prev* = the array as of the last persist (for change detection by ref);
+  // *Ts   = id → last updatedAt stamp, so only the record actually edited gets
+  // a fresh timestamp. Seeded at load so the first save doesn't stamp the world.
+  const prevLeadsRef = useRef([]);
+  const leadTsRef = useRef(new Map());
+  const prevProspectsRef = useRef([]);
+  const prospectTsRef = useRef(new Map());
   const [followupPlaybook, setFollowupPlaybook] = useState(DEFAULT_PLAYBOOK);
   const [tier, setTier] = useState('WA');
   // Association Bonus residual data — loaded from cloud, isolated from leads.
@@ -329,6 +338,9 @@ export default function LeadTracker() {
       // applied idempotently even to leads_v5 records from earlier builds.
       const loadedLeads = (leadsRaw ? JSON.parse(leadsRaw) : []).map(migrateLead);
       setLeads(loadedLeads);
+      // Seed the newest-wins baseline so the first auto-save after load doesn't
+      // stamp every record (which would make this session's whole list "newest").
+      prevLeadsRef.current = loadedLeads;
 
       const invRaw = await storage.getItem(INV_KEY);
       setInvestments(invRaw ? JSON.parse(invRaw) : []);
@@ -560,7 +572,9 @@ export default function LeadTracker() {
       setFollowupPlaybook(pb);
 
       const nowIso = new Date().toISOString();
-      setProspects(prMigrated.map(p => armIfNeeded(ensureFollowupFields(p, nowIso), pb)));
+      const armedProspects = prMigrated.map(p => armIfNeeded(ensureFollowupFields(p, nowIso), pb));
+      setProspects(armedProspects);
+      prevProspectsRef.current = armedProspects; // seed newest-wins baseline (see leads above)
 
       const psRaw = await storage.getItem(PROSPECT_SETTINGS_KEY);
       let psInitial = psRaw ? JSON.parse(psRaw) : null;
@@ -608,7 +622,15 @@ export default function LeadTracker() {
   }, []);
 
   // persist
-  useEffect(() => { if (loaded) storage.setItem(LEADS_KEY, JSON.stringify(leads)); }, [leads, loaded]);
+  useEffect(() => {
+    if (!loaded) return;
+    // Stamp only the records this session actually edited, then persist. The
+    // newest-wins merge uses these stamps so a stale second session can't
+    // clobber another session's recent edit (e.g. a logged touch).
+    const stamped = stampUpdatedAt(prevLeadsRef.current, leads, leadTsRef.current, new Date().toISOString());
+    prevLeadsRef.current = leads;
+    storage.setItem(LEADS_KEY, JSON.stringify(stamped));
+  }, [leads, loaded]);
   useEffect(() => { if (loaded) storage.setItem(INV_KEY, JSON.stringify(investments)); }, [investments, loaded]);
   useEffect(() => { if (loaded) storage.setItem(ACT_KEY, JSON.stringify(activities)); }, [activities, loaded]);
   useEffect(() => { if (loaded) storage.setItem(TIER_KEY, tier); }, [tier, loaded]);
@@ -624,7 +646,12 @@ export default function LeadTracker() {
   // compat with any straggler readers until the next refactor pass.
   useEffect(() => { if (loaded) storage.setItem(BE_KEY, JSON.stringify(businessExpenses)); }, [businessExpenses, loaded]);
   useEffect(() => { if (loaded) storage.setItem(BI_KEY, JSON.stringify(businessIncome)); }, [businessIncome, loaded]);
-  useEffect(() => { if (loaded) storage.setItem(PROSPECTS_KEY, JSON.stringify(prospects)); }, [prospects, loaded]);
+  useEffect(() => {
+    if (!loaded) return;
+    const stamped = stampUpdatedAt(prevProspectsRef.current, prospects, prospectTsRef.current, new Date().toISOString());
+    prevProspectsRef.current = prospects;
+    storage.setItem(PROSPECTS_KEY, JSON.stringify(stamped));
+  }, [prospects, loaded]);
   useEffect(() => { if (loaded && prospectSettings) storage.setItem(PROSPECT_SETTINGS_KEY, JSON.stringify(prospectSettings)); }, [prospectSettings, loaded]);
   useEffect(() => { if (loaded) storage.setItem(AB_DETAIL_KEY, JSON.stringify(abDetail)); }, [abDetail, loaded]);
   useEffect(() => { if (loaded) storage.setItem(AGENT_RATES_KEY, JSON.stringify(agentRates)); }, [agentRates, loaded]);

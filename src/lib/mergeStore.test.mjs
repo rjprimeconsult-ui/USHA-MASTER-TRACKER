@@ -84,3 +84,56 @@ test('two sessions both added records — both survive', () => {
   const ids = merged.map(r => r.id).sort();
   assert.deepEqual(ids, ['a', 'bob', 'tim']);
 });
+
+// --- Newest-wins by updatedAt (multi-session edit conflict resolution) -----
+import { stampUpdatedAt } from './mergeStore.mjs';
+
+test('newest-wins: remote with a newer updatedAt replaces local', () => {
+  const local  = [{ id: 'a', v: 'old', updatedAt: '2026-06-17T10:00:00Z' }];
+  const remote = [{ id: 'a', v: 'new', updatedAt: '2026-06-17T11:00:00Z' }];
+  const merged = mergeArrayStores(local, remote, new Set(['a']));
+  assert.equal(merged[0].v, 'new');
+});
+
+test('newest-wins: local newer than remote keeps local', () => {
+  const local  = [{ id: 'a', v: 'newer', updatedAt: '2026-06-17T12:00:00Z' }];
+  const remote = [{ id: 'a', v: 'older', updatedAt: '2026-06-17T09:00:00Z' }];
+  const merged = mergeArrayStores(local, remote, new Set(['a']));
+  assert.equal(merged[0].v, 'newer');
+});
+
+test('newest-wins: a stamped remote beats an un-stamped local (the real bug)', () => {
+  // Stale session (no updatedAt) must NOT clobber the other session's touch.
+  const local  = [{ id: 'a', v: 'stale-no-stamp' }];
+  const remote = [{ id: 'a', v: 'touched', updatedAt: '2026-06-17T11:00:00Z' }];
+  const merged = mergeArrayStores(local, remote, new Set(['a']));
+  assert.equal(merged[0].v, 'touched');
+});
+
+test('newest-wins: local order preserved; remote-only still appended', () => {
+  const local  = [{ id: 'a', updatedAt: 'x' }, { id: 'b' }];
+  const remote = [{ id: 'b' }, { id: 'a', updatedAt: 'z', v: 'newer' }, { id: 'c' }];
+  const merged = mergeArrayStores(local, remote, new Set(['a', 'b'])); // c not in baseline → kept
+  assert.deepEqual(merged.map(r => r.id), ['a', 'b', 'c']);
+  assert.equal(merged.find(r => r.id === 'a').v, 'newer');
+});
+
+test('stampUpdatedAt: stamps only changed (new-ref) records, leaves unchanged untouched', () => {
+  const a = { id: 'a' }, b = { id: 'b' };
+  const map = new Map();
+  const out = stampUpdatedAt([a, b], [a, { id: 'b', x: 1 }], map, '2026-06-17T11:00:00Z');
+  assert.equal(out.find(r => r.id === 'a').updatedAt, undefined); // unchanged → no stamp
+  assert.equal(out.find(r => r.id === 'b').updatedAt, '2026-06-17T11:00:00Z');
+});
+
+test('stampUpdatedAt: preserves prior stamp for unchanged records (no bump)', () => {
+  const a = { id: 'a' };
+  const map = new Map([['a', '2026-06-01T00:00:00Z']]);
+  const out = stampUpdatedAt([a], [a], map, '2026-06-17T11:00:00Z');
+  assert.equal(out[0].updatedAt, '2026-06-01T00:00:00Z');
+});
+
+test('stampUpdatedAt: a brand-new record gets stamped', () => {
+  const out = stampUpdatedAt([], [{ id: 'new' }], new Map(), 'NOW');
+  assert.equal(out[0].updatedAt, 'NOW');
+});

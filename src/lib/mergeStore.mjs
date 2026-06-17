@@ -13,7 +13,9 @@
  *               (seeded on load, extended on every save)
  *
  * Per remote record, keyed by `id`:
- *   - also in local            → keep the local copy (active tab wins edits)
+ *   - also in local            → keep whichever copy has the newer `updatedAt`
+ *                                (NEWEST-WINS); ties / un-stamped fall back to
+ *                                the local copy.
  *   - in remote only:
  *       · id is in baseline    → this session deleted it on purpose → drop
  *       · id NOT in baseline   → another session added it           → keep
@@ -22,9 +24,16 @@
  * merged (a record is missing an `id`) — the caller should then fall
  * back to a plain write.
  *
- * Known v1 limitation: a record deleted by *another* session while this
- * session holds it stale is kept (local wins) until this tab reloads.
- * That resurrects a delete, never loses an add — the safe direction.
+ * NEWEST-WINS: records carrying an `updatedAt` ISO timestamp are reconciled by
+ * recency, so a stale session can no longer clobber another session's more
+ * recent edit (e.g. a logged touch). A record WITH a timestamp beats one
+ * without (so a touched record always beats an un-stamped stale copy). Records
+ * with no timestamp on either side fall back to local-wins (backward-compatible
+ * with stores that don't stamp).
+ *
+ * Known limitation: a record deleted by *another* session while this session
+ * holds it stale is kept until this tab reloads — resurrects a delete, never
+ * loses an add — the safe direction.
  */
 export function mergeArrayStores(local, remote, baseline) {
   // Nothing sensible to merge into — hand back whichever is the array.
@@ -32,20 +41,47 @@ export function mergeArrayStores(local, remote, baseline) {
   // No remote records to reconcile — local is the whole truth.
   if (!Array.isArray(remote) || remote.length === 0) return local;
 
-  // Index local by id. A record with no id means we can't merge this
-  // store safely — signal the caller to fall back to a plain write.
-  const localIds = new Set();
+  // Index local by id, preserving order. A record with no id means we can't
+  // merge this store safely — signal the caller to fall back to a plain write.
+  const byId = new Map();
+  const order = [];
   for (const r of local) {
     if (!r || r.id == null) return null;
-    localIds.add(r.id);
+    byId.set(r.id, r);
+    order.push(r.id);
   }
 
-  const result = local.slice();
   for (const r of remote) {
     if (!r || r.id == null) return null;
-    if (localIds.has(r.id)) continue;               // already here — local copy wins
-    if (baseline && baseline.has(r.id)) continue;   // this session deleted it — stay deleted
-    result.push(r);                                 // another session added it — keep it
+    if (byId.has(r.id)) {
+      // Present in both → newest-wins by updatedAt; tie/un-stamped → keep local.
+      const localRec = byId.get(r.id);
+      if (String(r.updatedAt || '') > String(localRec.updatedAt || '')) byId.set(r.id, r);
+    } else if (baseline && baseline.has(r.id)) {
+      // This session deleted it on purpose → stay deleted.
+    } else {
+      byId.set(r.id, r);   // another session added it → keep it
+      order.push(r.id);
+    }
   }
-  return result;
+  return order.map(id => byId.get(id));
+}
+
+/**
+ * Stamp `updatedAt` on records that CHANGED (new object reference) vs the
+ * previous array, so the newest-wins merge can resolve concurrent edits.
+ * Unchanged records keep their existing stamp (never bumped) — only the
+ * record an agent actually edited gets a fresh timestamp, so "newest" stays
+ * meaningful per record. Pure; `tsMap` (id → last stamp) is read + updated.
+ */
+export function stampUpdatedAt(prevArr, nextArr, tsMap, now) {
+  const prevById = new Map((prevArr || []).map(r => [r && r.id, r]));
+  return (nextArr || []).map(r => {
+    if (r == null || r.id == null) return r;
+    const changed = prevById.get(r.id) !== r;          // new record or edited (new ref)
+    if (changed) tsMap.set(r.id, now);
+    else if (!tsMap.has(r.id) && r.updatedAt) tsMap.set(r.id, r.updatedAt); // seed from loaded data
+    const ts = tsMap.get(r.id);
+    return ts ? { ...r, updatedAt: ts } : r;
+  });
 }
