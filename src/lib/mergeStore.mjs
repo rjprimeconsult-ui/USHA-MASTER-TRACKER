@@ -74,6 +74,19 @@ export function mergeArrayStores(local, remote, baseline) {
  * record an agent actually edited gets a fresh timestamp, so "newest" stays
  * meaningful per record. Pure; `tsMap` (id → last stamp) is read + updated.
  */
+/**
+ * Cheap reference-equality check for two record arrays (same length, same
+ * object refs in order). Used when applying a remote (realtime) reload: if the
+ * merge produced no actual change, skip the state update so we don't re-render
+ * or re-save (which would echo back out as another realtime event).
+ */
+export function sameRecords(a, b) {
+  if (a === b) return true;
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
 export function stampUpdatedAt(prevArr, nextArr, tsMap, now) {
   const prevById = new Map((prevArr || []).map(r => [r && r.id, r]));
   return (nextArr || []).map(r => {

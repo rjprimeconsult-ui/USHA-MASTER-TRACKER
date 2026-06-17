@@ -137,3 +137,22 @@ test('stampUpdatedAt: a brand-new record gets stamped', () => {
   const out = stampUpdatedAt([], [{ id: 'new' }], new Map(), 'NOW');
   assert.equal(out[0].updatedAt, 'NOW');
 });
+
+// --- sameRecords: cheap change-detector for applying remote (realtime) updates
+import { sameRecords } from './mergeStore.mjs';
+
+test('sameRecords: identical references and order → true', () => {
+  const a = { id: 'a' }, b = { id: 'b' };
+  assert.equal(sameRecords([a, b], [a, b]), true);
+  assert.equal(sameRecords([a, b], [a, b]), true);
+});
+
+test('sameRecords: different length → false', () => {
+  const a = { id: 'a' };
+  assert.equal(sameRecords([a], [a, { id: 'b' }]), false);
+});
+
+test('sameRecords: a changed record reference → false', () => {
+  const a = { id: 'a' };
+  assert.equal(sameRecords([a], [{ id: 'a' }]), false); // different object ref
+});

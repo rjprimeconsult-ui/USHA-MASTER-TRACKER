@@ -18,7 +18,8 @@ import {
 import { DEFAULT_ADVANCE_MONTHS, currentAdvanceMonths } from '@/lib/commission';
 import { dedupLeads } from '@/lib/leadDedup';
 import { buildSalesReportPatch } from '@/lib/salesreport';
-import { stampUpdatedAt } from '@/lib/mergeStore.mjs';
+import { stampUpdatedAt, mergeArrayStores, sameRecords } from '@/lib/mergeStore.mjs';
+import { subscribeUserKv } from '@/lib/realtimeSync';
 
 import CpaDashboard from './views/CpaDashboard';
 import AssociationsView from './views/AssociationsView';
@@ -251,6 +252,11 @@ export default function LeadTracker() {
   const leadTsRef = useRef(new Map());
   const prevProspectsRef = useRef([]);
   const prospectTsRef = useRef(new Map());
+  // When a change arrives via realtime (another session saved), we apply it to
+  // state but must NOT re-stamp/re-save it (that would bump timestamps and echo
+  // back out). These flags tell the next persist to skip exactly once.
+  const skipNextLeadsSaveRef = useRef(false);
+  const skipNextProspectsSaveRef = useRef(false);
   const [followupPlaybook, setFollowupPlaybook] = useState(DEFAULT_PLAYBOOK);
   const [tier, setTier] = useState('WA');
   // Association Bonus residual data — loaded from cloud, isolated from leads.
@@ -624,6 +630,7 @@ export default function LeadTracker() {
   // persist
   useEffect(() => {
     if (!loaded) return;
+    if (skipNextLeadsSaveRef.current) { skipNextLeadsSaveRef.current = false; prevLeadsRef.current = leads; return; }
     // Stamp only the records this session actually edited, then persist. The
     // newest-wins merge uses these stamps so a stale second session can't
     // clobber another session's recent edit (e.g. a logged touch).
@@ -648,10 +655,54 @@ export default function LeadTracker() {
   useEffect(() => { if (loaded) storage.setItem(BI_KEY, JSON.stringify(businessIncome)); }, [businessIncome, loaded]);
   useEffect(() => {
     if (!loaded) return;
+    if (skipNextProspectsSaveRef.current) { skipNextProspectsSaveRef.current = false; prevProspectsRef.current = prospects; return; }
     const stamped = stampUpdatedAt(prevProspectsRef.current, prospects, prospectTsRef.current, new Date().toISOString());
     prevProspectsRef.current = prospects;
     storage.setItem(PROSPECTS_KEY, JSON.stringify(stamped));
   }, [prospects, loaded]);
+
+  // Live multi-session sync: when another browser on this account saves, pull
+  // the change in and newest-wins-merge it (no manual refresh). Debounced;
+  // applies only real changes (sameRecords), and skips the echo re-save.
+  // Inert until Supabase Realtime is enabled on user_kv (see realtimeSync.js).
+  useEffect(() => {
+    if (!loaded || !authUser?.id) return;
+    let timer = null;
+    const pending = new Set();
+    const flush = async () => {
+      const keys = [...pending]; pending.clear();
+      for (const key of keys) {
+        try {
+          const raw = await storage.getItem(key);
+          if (key === LEADS_KEY) {
+            const cloud = raw ? JSON.parse(raw).map(migrateLead) : [];
+            setLeads(prev => {
+              const merged = mergeArrayStores(prev, cloud) || prev;
+              if (sameRecords(merged, prev)) return prev;
+              skipNextLeadsSaveRef.current = true;
+              return merged;
+            });
+          } else if (key === PROSPECTS_KEY) {
+            const nowIso = new Date().toISOString();
+            const cloud = (raw ? JSON.parse(raw) : [])
+              .map(p => armIfNeeded(ensureFollowupFields(p, nowIso), followupPlaybook));
+            setProspects(prev => {
+              const merged = mergeArrayStores(prev, cloud) || prev;
+              if (sameRecords(merged, prev)) return prev;
+              skipNextProspectsSaveRef.current = true;
+              return merged;
+            });
+          }
+        } catch { /* ignore a single bad reload */ }
+      }
+    };
+    const unsub = subscribeUserKv(authUser.id, [LEADS_KEY, PROSPECTS_KEY], (key) => {
+      pending.add(key);
+      clearTimeout(timer);
+      timer = setTimeout(flush, 400);
+    });
+    return () => { clearTimeout(timer); unsub(); };
+  }, [loaded, authUser?.id, followupPlaybook]);
   useEffect(() => { if (loaded && prospectSettings) storage.setItem(PROSPECT_SETTINGS_KEY, JSON.stringify(prospectSettings)); }, [prospectSettings, loaded]);
   useEffect(() => { if (loaded) storage.setItem(AB_DETAIL_KEY, JSON.stringify(abDetail)); }, [abDetail, loaded]);
   useEffect(() => { if (loaded) storage.setItem(AGENT_RATES_KEY, JSON.stringify(agentRates)); }, [agentRates, loaded]);
