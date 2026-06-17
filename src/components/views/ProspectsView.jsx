@@ -6,7 +6,6 @@ import FollowupNextStep from '@/components/FollowupNextStep';
 import FollowupTimeline from '@/components/FollowupTimeline';
 import LogTouchSheet from '@/components/LogTouchSheet';
 import SendOutreachEmail from '../SendOutreachEmail';
-import OutreachRemindersWidget from '../OutreachRemindersWidget';
 import FollowupDueWidget from '../FollowupDueWidget';
 import FollowupScorecard from '@/components/FollowupScorecard';
 import {
@@ -1005,7 +1004,7 @@ function OutreachLogList({ log }) {
   );
 }
 
-function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, onConvertToLead, onProspectUpdate, playbook, onLogTouch, agentName, onApplyStageSuggestion, onSnooze, onResolveReminder, onExtractFromTexts, readOnly = false }) {
+function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, onConvertToLead, onProspectUpdate, playbook, onLogTouch, onOutreachEmailSent, agentName, onApplyStageSuggestion, onSnooze, onResolveReminder, onExtractFromTexts, readOnly = false }) {
   const [logOpen, setLogOpen] = useState(false);
   const [suggestion, setSuggestion] = useState(null);
   // ProspectDetail stays mounted across prospects — clear any pending
@@ -1208,12 +1207,7 @@ function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, o
                 (component handles its own access gate). */}
             <SendOutreachEmail
               prospect={prospect}
-              onLogged={(entry) => {
-                onProspectUpdate?.({
-                  ...prospect,
-                  emailLog: [...(prospect.emailLog || []), entry],
-                });
-              }}
+              onLogged={(entry) => onOutreachEmailSent?.(prospect.id, entry)}
             />
             {isSold && (
               <button onClick={() => onConvertToLead(prospect)}
@@ -1314,6 +1308,7 @@ export default function ProspectsView({
   onConvertToLead,
   playbook = { stages: {} },
   onLogTouch,
+  onOutreachEmailSent,
   onSnoozeProspect,
   onApplyStageSuggestion,
   onResolveReminder,
@@ -1607,20 +1602,6 @@ export default function ProspectsView({
         }}
       />
 
-      {/* Outreach EMAIL follow-ups (beta) — only renders for allowlist users
-          and only when at least one prospect is due for the next email in the
-          automated outreach sequence. Renamed to "Emails due" to distinguish
-          it from the playbook follow-ups above. Clicking a row opens that
-          prospect's detail with the next-due template auto-selected. */}
-      <OutreachRemindersWidget
-        prospects={prospects}
-        title="Emails due"
-        onOpenProspect={(id) => {
-          const p = prospects.find(x => x.id === id);
-          if (p) onView(p);
-        }}
-      />
-
       {/* Calendar widget — sits right under the Follow-ups dropdown so
           both collapsible widgets cluster at the top of the page. Click
           any day in the expanded grid to drop down that day's
@@ -1874,6 +1855,7 @@ export default function ProspectsView({
         onProspectUpdate={(p) => { onUpdate(p); setViewing(p); }}
         playbook={playbook}
         onLogTouch={onLogTouch}
+        onOutreachEmailSent={onOutreachEmailSent}
         agentName={''}
         onApplyStageSuggestion={onApplyStageSuggestion}
         onSnooze={onSnoozeProspect}

@@ -40,7 +40,7 @@ import StatementManager from './StatementManager';
 import { statementsInRange, isStatementIncome } from '@/lib/statementManager.mjs';
 import {
   FOLLOWUP_PLAYBOOK_KEY, DEFAULT_PLAYBOOK,
-  ensureFollowupFields, armIfNeeded, armCadence, logTouch as engineLogTouch, snooze as engineSnooze, suggestStageAfterTouch,
+  ensureFollowupFields, armIfNeeded, armCadence, logTouch as engineLogTouch, snooze as engineSnooze, suggestStageAfterTouch, applyOutreachEmail,
   resolveTouchReminder,
 } from '@/lib/followupEngine.mjs';
 import LeadForm from './LeadForm';
@@ -1557,6 +1557,15 @@ export default function LeadTracker() {
     return suggestion;
   }, [followupPlaybook]);
 
+  // Sending an outreach email records it AND advances the unified follow-up
+  // clock (it counts as a touch), so the prospect clears off the follow-up list.
+  const logProspectOutreachEmail = useCallback((prospectId, entry) => {
+    const now = new Date().toISOString();
+    setProspects(prev => prev.map(p =>
+      p.id === prospectId ? applyOutreachEmail(p, entry, followupPlaybook, now) : p
+    ));
+  }, [followupPlaybook]);
+
   const snoozeProspect = useCallback((prospectId, days) => {
     const now = new Date().toISOString();
     setProspects(prev => prev.map(p => p.id === prospectId ? engineSnooze(p, days, now) : p));
@@ -2182,6 +2191,7 @@ export default function LeadTracker() {
             onConvertToLead={onConvertProspectToLead}
             playbook={followupPlaybook}
             onLogTouch={logProspectTouch}
+            onOutreachEmailSent={logProspectOutreachEmail}
             onSnoozeProspect={snoozeProspect}
             onApplyStageSuggestion={applyStageSuggestion}
             onResolveReminder={resolveProspectReminder}
