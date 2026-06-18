@@ -121,6 +121,31 @@ test('upsert: dedup by email and by benepathLeadId', () => {
   assert.equal(byId.action, 'update');
 });
 
+test('normalize: captures Benepath health fields into situation + income', () => {
+  const n = normalizeBenepathPayload({
+    first_name: 'Health', last_name: 'Lead', phone: '5550009999',
+    date_of_birth: '1980-05-15',
+    age: '45',
+    gender: 'Female',
+    marital_status: 'Married',
+    household_income: '$60,000',
+    number_of_dependents: '2',
+    tobacco: 'No',
+    occupation: 'Teacher',
+    qualifying_life_event: 'Lost coverage',
+    expectant: 'Yes',
+    currently_insured: 'true',
+  });
+  assert.equal(n.income, '$60,000');          // household_income -> income
+  assert.equal(n.indvOrFamily, 'Family');     // dependents 2 > 1
+  assert.match(n.situation, /Marital: Married/);
+  assert.match(n.situation, /Occupation: Teacher/);
+  assert.match(n.situation, /Qualifying life event: Lost coverage/);
+  assert.match(n.situation, /Expectant: Yes/);
+  assert.match(n.situation, /Tobacco: No/);
+  assert.match(n.situation, /Currently insured: true/);
+});
+
 test('normalize: flattens nested payload (contact/address sub-objects)', () => {
   const n = normalizeBenepathPayload({
     lead: { lead_id: 'BP-9' },

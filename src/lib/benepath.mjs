@@ -59,12 +59,16 @@ const ALIASES = {
   birthday:     ['dob', 'date_of_birth', 'dateofbirth', 'birthday', 'birth_date', 'birthdate'],
   age:          ['age'],
   income:       ['income', 'household_income', 'householdincome', 'annual_income', 'annualincome', 'hh_income', 'estimated_income'],
-  householdSize:['household_size', 'householdsize', 'family_size', 'familysize', 'household', 'dependents', 'num_dependents', 'people', 'members', 'household_count'],
+  householdSize:['household_size', 'householdsize', 'family_size', 'familysize', 'household', 'dependents', 'num_dependents', 'number_of_dependents', 'numberofdependents', 'number_of_children', 'numberofchildren', 'num_children', 'people', 'members', 'household_count'],
   coverageType: ['coverage_type', 'coveragetype', 'insurance_type', 'insurancetype', 'coverage', 'product', 'product_type', 'plan_type', 'line_of_business', 'lob', 'vertical'],
   currentlyInsured: ['currently_insured', 'currentlyinsured', 'current_insurance', 'currentinsurance', 'insured', 'has_insurance', 'existing_coverage', 'currently_covered'],
   startDate:    ['coverage_start_date', 'coveragestartdate', 'requested_start_date', 'requestedstartdate', 'start_date', 'startdate', 'effective_date', 'effectivedate', 'desired_start', 'desired_effective_date', 'desired_coverage_date'],
   gender:       ['gender', 'sex'],
   tobacco:      ['tobacco', 'tobacco_user', 'smoker', 'is_smoker'],
+  maritalStatus:['marital_status', 'maritalstatus', 'marital'],
+  occupation:   ['occupation', 'job', 'employment', 'job_title'],
+  lifeEvent:    ['qualifying_life_event', 'qualifyinglifeevent', 'life_event', 'lifeevent', 'qle'],
+  expectant:    ['expectant', 'pregnant', 'expecting', 'is_expectant'],
   notes:        ['notes', 'note', 'comments', 'comment', 'message', 'remarks', 'additional_info', 'additionalinfo', 'description', 'situation'],
   source:       ['source', 'lead_source', 'leadsource', 'campaign', 'campaign_name'],
 };
@@ -146,8 +150,12 @@ function buildSituation(parts, notes) {
   if (parts.coverageType)     bits.push(`Coverage: ${parts.coverageType}`);
   if (parts.currentlyInsured) bits.push(`Currently insured: ${parts.currentlyInsured}`);
   if (parts.householdSize)    bits.push(`Household: ${parts.householdSize}`);
+  if (parts.maritalStatus)    bits.push(`Marital: ${parts.maritalStatus}`);
   if (parts.gender)           bits.push(`Gender: ${parts.gender}`);
   if (parts.tobacco)          bits.push(`Tobacco: ${parts.tobacco}`);
+  if (parts.expectant)        bits.push(`Expectant: ${parts.expectant}`);
+  if (parts.occupation)       bits.push(`Occupation: ${parts.occupation}`);
+  if (parts.lifeEvent)        bits.push(`Qualifying life event: ${parts.lifeEvent}`);
   const meta = bits.join(' · ');
   const combined = [meta, String(notes || '').trim()].filter(Boolean).join('\n').trim();
   return combined.slice(0, 500);
@@ -184,6 +192,10 @@ export function normalizeBenepathPayload(body) {
   const currentlyInsured = pick(idx, 'currentlyInsured');
   const gender = pick(idx, 'gender');
   const tobacco = pick(idx, 'tobacco');
+  const maritalStatus = pick(idx, 'maritalStatus');
+  const occupation = pick(idx, 'occupation');
+  const lifeEvent = pick(idx, 'lifeEvent');
+  const expectant = pick(idx, 'expectant');
   const notes = pick(idx, 'notes');
 
   const startRaw = pick(idx, 'startDate');
@@ -208,7 +220,7 @@ export function normalizeBenepathPayload(body) {
     income: pick(idx, 'income'),
     indvOrFamily,
     startDate,
-    situation: buildSituation({ coverageType, currentlyInsured, householdSize, gender, tobacco }, notes),
+    situation: buildSituation({ coverageType, currentlyInsured, householdSize, maritalStatus, gender, tobacco, expectant, occupation, lifeEvent }, notes),
   };
 }
 
