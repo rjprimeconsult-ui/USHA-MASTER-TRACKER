@@ -695,6 +695,16 @@ function SettingsModal({ open, settings, onSave, onClose, onSyncTextDrip }) {
             <p className="text-[11px] text-slate-500 mb-3">Receive real-time leads from Ringy via webhook — when you disposition a lead in Ringy, PRIM creates or updates the prospect automatically.</p>
             <RingySettingsSection stages={draft.stages} />
           </section>
+
+          {/* Benepath integration */}
+          <section>
+            <div className="flex items-center gap-2 mb-2">
+              <h3 className="text-sm font-bold text-slate-900">Benepath Integration</h3>
+              <span className="text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded">v1</span>
+            </div>
+            <p className="text-[11px] text-slate-500 mb-3">Receive leads from the Benepath portal in real time — paste PRIM&apos;s Posting URL into a Benepath POST integration and every lead lands in Prospects automatically.</p>
+            <BenepathSettingsSection stages={draft.stages} />
+          </section>
         </div>
         <div className="flex justify-end gap-2 p-5 border-t border-slate-200">
           <button onClick={onClose} className="border border-slate-200 hover:bg-slate-50 px-4 py-2 rounded-lg text-sm font-semibold">Cancel</button>
@@ -730,6 +740,17 @@ function RingySettingsSection({ stages }) {
   const [Comp, setComp] = useState(null);
   useEffect(() => {
     import('@/components/RingySettings').then(m => setComp(() => m.default));
+  }, []);
+  if (!Comp) return <div className="text-xs text-slate-400 italic">Loading…</div>;
+  return <Comp stages={stages} />;
+}
+
+// Thin wrapper that renders BenepathSettings inside the SettingsModal.
+// Lazily imported so the Benepath bundle is not fetched for agents who haven't set it up.
+function BenepathSettingsSection({ stages }) {
+  const [Comp, setComp] = useState(null);
+  useEffect(() => {
+    import('@/components/BenepathSettings').then(m => setComp(() => m.default));
   }, []);
   if (!Comp) return <div className="text-xs text-slate-400 italic">Loading…</div>;
   return <Comp stages={stages} />;
