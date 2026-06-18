@@ -43,6 +43,35 @@ async function authedFetch(url, options = {}) {
   return json;
 }
 
+/**
+ * The Api Fields body template to paste into Benepath's Liquid editor.
+ * Left-side keys are exactly what PRIM reads; right-side {{...}} are Benepath's
+ * macros. Benepath leads have no DOB, so we use Age. Liquid renders unknown
+ * macros as empty (safe), so a blank field just means that macro is named
+ * differently — click it from Benepath's Macro Key sidebar to fix.
+ */
+const BENEPATH_API_FIELDS_TEMPLATE = `{
+  "first_name": "{{first_name}}",
+  "last_name": "{{last_name}}",
+  "email": "{{email}}",
+  "phone": "{{phone}}",
+  "address": "{{address}}",
+  "city": "{{city}}",
+  "state": "{{state}}",
+  "zip": "{{zip}}",
+  "age": "{{age}}",
+  "gender": "{{gender}}",
+  "marital_status": "{{marital_status}}",
+  "household_income": "{{household_income}}",
+  "household_size": "{{number_of_dependents}}",
+  "tobacco": "{{tobacco}}",
+  "occupation": "{{occupation}}",
+  "qualifying_life_event": "{{qualifying_life_event}}",
+  "expectant": "{{expectant}}",
+  "currently_insured": "{{currently_insured}}",
+  "lead_id": "{{lead_id}}"
+}`;
+
 export default function BenepathSettings({ stages = [] }) {
   const [config, setConfig]       = useState(null);   // null = loading
   const [loadErr, setLoadErr]     = useState('');
@@ -51,6 +80,7 @@ export default function BenepathSettings({ stages = [] }) {
   const [saveMsg, setSaveMsg]     = useState('');
   const [regenerating, setRegenerating] = useState(false);
   const [copied, setCopied]       = useState(false);
+  const [copiedTpl, setCopiedTpl] = useState(false);
   const [showInstructions, setShowInstructions] = useState(false);
 
   // Seed default stage when stages list arrives
@@ -83,6 +113,14 @@ export default function BenepathSettings({ stages = [] }) {
       await navigator.clipboard.writeText(config.webhookUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+    } catch { /* clipboard may be unavailable */ }
+  };
+
+  const handleCopyTemplate = async () => {
+    try {
+      await navigator.clipboard.writeText(BENEPATH_API_FIELDS_TEMPLATE);
+      setCopiedTpl(true);
+      setTimeout(() => setCopiedTpl(false), 2000);
     } catch { /* clipboard may be unavailable */ }
   };
 
@@ -241,17 +279,54 @@ export default function BenepathSettings({ stages = [] }) {
         </button>
         {showInstructions && (
           <div className="p-4 space-y-3 text-xs text-slate-600 dark:text-slate-300">
-            <ol className="space-y-2 list-decimal list-inside">
+
+            {/* Step 1 */}
+            <p className="font-bold text-slate-700 dark:text-slate-200">Step 1 — Create the integration</p>
+            <ol className="space-y-1.5 list-decimal list-inside">
               <li>In Benepath, open <strong>Integrations → New Integration</strong>.</li>
-              <li>Give it a <strong>Name</strong> (e.g. &ldquo;PRIM&rdquo;).</li>
-              <li>Set <strong>Connection Type</strong> to <strong>POST</strong>.</li>
-              <li>Paste the <strong>Posting URL</strong> above into the Posting URL field.</li>
-              <li>Leave <strong>&ldquo;Is it ping integration?&rdquo;</strong> turned <strong>OFF</strong> — we want full lead posts, not bid pings.</li>
-              <li>Click <strong>Continue</strong> and finish any field-mapping/test step Benepath shows.</li>
-              <li>Send a <strong>test lead</strong>. It appears in your Prospects tab, and the field names show up under &ldquo;Fields Benepath sent&rdquo; above.</li>
+              <li><strong>Name</strong> it (e.g. &ldquo;PRIM&rdquo;).</li>
+              <li><strong>Connection Type</strong> → <strong>POST</strong>.</li>
+              <li>Paste the <strong>Posting URL</strong> from the top of this card into Benepath&rsquo;s <strong>Posting URL</strong> field.</li>
+              <li>Leave <strong>&ldquo;Is it ping integration?&rdquo;</strong> <strong>OFF</strong>, then click <strong>Continue</strong>.</li>
+            </ol>
+
+            {/* Step 2 */}
+            <p className="font-bold text-slate-700 dark:text-slate-200 pt-1">Step 2 — Request Headers</p>
+            <p>Leave this section <strong>empty</strong>. Don&rsquo;t put lead fields here — your Posting URL already handles security.</p>
+
+            {/* Step 3 */}
+            <p className="font-bold text-slate-700 dark:text-slate-200 pt-1">Step 3 — Api Fields</p>
+            <ol className="space-y-1.5 list-decimal list-inside">
+              <li><strong>Content Type</strong> → <strong>application/json</strong>.</li>
+              <li><strong>Lead Type</strong> → <strong>Health</strong>.</li>
+              <li>Clear the <strong>Editor</strong> and paste this exactly:</li>
+            </ol>
+            <div className="relative">
+              <button
+                onClick={handleCopyTemplate}
+                className="absolute top-2 right-2 bg-slate-700/80 hover:bg-slate-600 text-white rounded px-2 py-1 text-[10px] font-semibold flex items-center gap-1"
+              >
+                {copiedTpl ? <Check size={10} className="text-emerald-400" /> : <Copy size={10} />}
+                {copiedTpl ? 'Copied' : 'Copy'}
+              </button>
+              <pre className="bg-slate-900 text-slate-100 rounded-lg p-3 pr-16 overflow-x-auto text-[10px] leading-relaxed font-mono whitespace-pre select-all">{BENEPATH_API_FIELDS_TEMPLATE}</pre>
+            </div>
+            <p>Then click <strong>Save</strong>. If any field comes in <strong>blank</strong> on a test, click inside its quotes and click the matching item in Benepath&rsquo;s <strong>Macro Key</strong> sidebar — that drops in the exact macro name.</p>
+            <p className="text-[11px] text-slate-400 dark:text-slate-500">Benepath leads don&rsquo;t include date of birth, so PRIM uses <strong>Age</strong> instead.</p>
+
+            {/* Step 4 */}
+            <p className="font-bold text-slate-700 dark:text-slate-200 pt-1">Step 4 — Response Type</p>
+            <p>Set the <strong>Success</strong> field to <code className="bg-slate-100 dark:bg-slate-700 px-1 py-0.5 rounded font-mono">success</code> (PRIM&rsquo;s reply contains that word). Save.</p>
+
+            {/* Step 5 */}
+            <p className="font-bold text-slate-700 dark:text-slate-200 pt-1">Step 5 — Test &amp; go live</p>
+            <ol className="space-y-1.5 list-decimal list-inside">
+              <li><strong>Test Integration</strong> → Product <strong>Leads</strong>, Lead Type <strong>Health</strong> → <strong>Test Connection</strong>. The result should read <strong>Status 200 · Successful</strong>.</li>
+              <li>On the <strong>Integrations</strong> list, confirm the PRIM row&rsquo;s status dot is <strong>green (Active)</strong> and the integration is attached to your lead campaign(s).</li>
+              <li>Back here, pick your <strong>Default Stage</strong> above and <strong>Save</strong>.</li>
             </ol>
             <p className="text-[11px] text-slate-400 dark:text-slate-500">
-              Every Benepath lead is created as a new prospect (source &ldquo;Web Lead&rdquo;, vendor &ldquo;Benepath&rdquo;) at your default stage. Duplicates of an existing prospect just fill in missing details and never change a stage you&rsquo;ve already set.
+              Each Benepath lead becomes a new prospect (Source &amp; CRM &ldquo;Benepath&rdquo;) at your default stage and starts its follow-up cadence. Duplicates just fill missing details and never change a stage you&rsquo;ve set. It runs 24/7 — PRIM doesn&rsquo;t need to be open.
             </p>
           </div>
         )}
