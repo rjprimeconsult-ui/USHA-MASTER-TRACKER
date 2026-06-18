@@ -315,7 +315,7 @@ export default function BenepathSettings({ stages = [] }) {
             {/* Step 5 */}
             <p className="font-bold text-slate-700 dark:text-slate-200 pt-1">Step 5 — Test &amp; go live</p>
             <ol className="space-y-1.5 list-decimal list-inside">
-              <li><strong>Test Integration</strong> → Product <strong>Leads</strong>, Lead Type <strong>Health</strong> → <strong>Test Connection</strong>. The result should read <strong>Status 200 · Successful</strong>.</li>
+              <li><strong>Test Integration</strong> → Product <strong>Leads</strong>, Lead Type <strong>Group Health</strong> → <strong>Test Connection</strong>. The result should read <strong>Status 200 · Successful</strong>. (If nothing happens, make sure both dropdowns are set and you&rsquo;ve clicked <strong>Save</strong> in Api Fields first.)</li>
               <li>On the <strong>Integrations</strong> list, confirm the PRIM row&rsquo;s status dot is <strong>green (Active)</strong> and the integration is attached to your lead campaign(s).</li>
               <li>Back here, pick your <strong>Default Stage</strong> above and <strong>Save</strong>.</li>
             </ol>
