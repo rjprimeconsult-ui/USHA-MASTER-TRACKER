@@ -146,6 +146,30 @@ test('normalize: captures Benepath health fields into situation + income', () =>
   assert.match(n.situation, /Currently insured: true/);
 });
 
+test('normalize: Group Health employer lead → business fields + employer band', () => {
+  const n = normalizeBenepathPayload({
+    first_name: 'Boss', last_name: 'Person', phone: '5552223333', email: 'boss@abc.com',
+    address: '1 Biz Rd', city: 'Tampa', state: 'FL', zip: '33601',
+    currently_insured: 'Yes',
+    business_info_business_name: 'ABC Co',
+    business_info_num_employees: '51-100',
+    coverage_expiration: '07/31/2026',
+    lead_id: '999',
+  });
+  assert.equal(n.name, 'Boss Person');
+  assert.equal(n.indvOrFamily, 'Employer 5-10');
+  assert.match(n.situation, /Company: ABC Co/);
+  assert.match(n.situation, /Employees: 51-100/);
+  assert.match(n.situation, /Coverage expires: 07\/31\/2026/);
+  assert.equal(n.benepathLeadId, '999');
+});
+
+test('normalize: small group (<5 employees) → Small Bizz', () => {
+  const n = normalizeBenepathPayload({ first_name: 'Tiny', last_name: 'Biz', phone: '5550001234', business_info_num_employees: '3' });
+  assert.equal(n.indvOrFamily, 'Small Bizz');
+  assert.match(n.situation, /Employees: 3/);
+});
+
 test('normalize: flattens nested payload (contact/address sub-objects)', () => {
   const n = normalizeBenepathPayload({
     lead: { lead_id: 'BP-9' },

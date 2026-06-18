@@ -69,6 +69,10 @@ const ALIASES = {
   occupation:   ['occupation', 'job', 'employment', 'job_title'],
   lifeEvent:    ['qualifying_life_event', 'qualifyinglifeevent', 'life_event', 'lifeevent', 'qle'],
   expectant:    ['expectant', 'pregnant', 'expecting', 'is_expectant'],
+  // Group Health (employer) lead fields
+  companyName:  ['business_info_business_name', 'business_name', 'businessname', 'company_name', 'companyname', 'company', 'employer', 'organization', 'org_name'],
+  numEmployees: ['business_info_num_employees', 'num_employees', 'numemployees', 'number_of_employees', 'numberofemployees', 'employees', 'employee_count', 'group_size', 'company_size'],
+  coverageExpiration: ['coverage_expiration', 'coverageexpiration', 'coverage_exp', 'current_coverage_expiration', 'expiration_date', 'coverage_end_date'],
   notes:        ['notes', 'note', 'comments', 'comment', 'message', 'remarks', 'additional_info', 'additionalinfo', 'description', 'situation'],
   source:       ['source', 'lead_source', 'leadsource', 'campaign', 'campaign_name'],
 };
@@ -147,6 +151,9 @@ function pick(idx, field) {
 // string the agent can read at a glance. Capped at 500 chars.
 function buildSituation(parts, notes) {
   const bits = [];
+  // Group-health (employer) context first
+  if (parts.companyName)      bits.push(`Company: ${parts.companyName}`);
+  if (parts.numEmployees)     bits.push(`Employees: ${parts.numEmployees}`);
   if (parts.coverageType)     bits.push(`Coverage: ${parts.coverageType}`);
   if (parts.currentlyInsured) bits.push(`Currently insured: ${parts.currentlyInsured}`);
   if (parts.householdSize)    bits.push(`Household: ${parts.householdSize}`);
@@ -156,9 +163,24 @@ function buildSituation(parts, notes) {
   if (parts.expectant)        bits.push(`Expectant: ${parts.expectant}`);
   if (parts.occupation)       bits.push(`Occupation: ${parts.occupation}`);
   if (parts.lifeEvent)        bits.push(`Qualifying life event: ${parts.lifeEvent}`);
+  if (parts.coverageExpiration) bits.push(`Coverage expires: ${parts.coverageExpiration}`);
   const meta = bits.join(' · ');
   const combined = [meta, String(notes || '').trim()].filter(Boolean).join('\n').trim();
   return combined.slice(0, 500);
+}
+
+/**
+ * employerBand(numEmployees) — classify a Group Health lead's size into PRIM's
+ * indvOrFamily buckets. <5 employees → 'Small Bizz'; 5+ → 'Employer 5-10'
+ * (the closest employer-group bucket). Empty band string if no count.
+ */
+function employerBand(numEmployees) {
+  const s = String(numEmployees || '').trim();
+  if (!s) return '';
+  const m = s.match(/\d+/);
+  const first = m ? parseInt(m[0], 10) : NaN;
+  if (Number.isFinite(first)) return first >= 5 ? 'Employer 5-10' : 'Small Bizz';
+  return 'Employer 5-10'; // present but unparseable → assume an employer group
 }
 
 // ---------- Payload normalisation ----------
@@ -196,14 +218,23 @@ export function normalizeBenepathPayload(body) {
   const occupation = pick(idx, 'occupation');
   const lifeEvent = pick(idx, 'lifeEvent');
   const expectant = pick(idx, 'expectant');
+  const companyName = pick(idx, 'companyName');
+  const numEmployees = pick(idx, 'numEmployees');
+  const coverageExpiration = pick(idx, 'coverageExpiration');
   const notes = pick(idx, 'notes');
 
   const startRaw = pick(idx, 'startDate');
   const startDate = isDateLike(startRaw) ? startRaw : '';
 
-  // Family if a household size > 1 is stated.
-  const hh = parseInt(householdSize, 10);
-  const indvOrFamily = Number.isFinite(hh) && hh > 1 ? 'Family' : 'Indv';
+  // Group Health (employer) leads carry a company / employee count → bucket as a
+  // business. Otherwise fall back to household size (Family if > 1, else Indv).
+  let indvOrFamily;
+  if (companyName || numEmployees) {
+    indvOrFamily = employerBand(numEmployees) || 'Small Bizz';
+  } else {
+    const hh = parseInt(householdSize, 10);
+    indvOrFamily = Number.isFinite(hh) && hh > 1 ? 'Family' : 'Indv';
+  }
 
   return {
     benepathLeadId: pick(idx, 'leadId'),
@@ -220,7 +251,7 @@ export function normalizeBenepathPayload(body) {
     income: pick(idx, 'income'),
     indvOrFamily,
     startDate,
-    situation: buildSituation({ coverageType, currentlyInsured, householdSize, maritalStatus, gender, tobacco, expectant, occupation, lifeEvent }, notes),
+    situation: buildSituation({ companyName, numEmployees, coverageExpiration, coverageType, currentlyInsured, householdSize, maritalStatus, gender, tobacco, expectant, occupation, lifeEvent }, notes),
   };
 }
 

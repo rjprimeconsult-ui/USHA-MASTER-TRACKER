@@ -44,11 +44,11 @@ async function authedFetch(url, options = {}) {
 }
 
 /**
- * The Api Fields body template to paste into Benepath's Liquid editor.
- * Left-side keys are exactly what PRIM reads; right-side {{...}} are Benepath's
- * macros. Benepath leads have no DOB, so we use Age. Liquid renders unknown
- * macros as empty (safe), so a blank field just means that macro is named
- * differently — click it from Benepath's Macro Key sidebar to fix.
+ * The Api Fields body template to paste into Benepath's Liquid editor — for
+ * GROUP HEALTH (employer) leads. Left-side keys are exactly what PRIM reads;
+ * right-side {{...}} are Benepath's macros. Liquid renders unknown macros as
+ * empty (safe), so a blank field just means that macro is named differently —
+ * click it from Benepath's Macro Key sidebar to fix.
  */
 const BENEPATH_API_FIELDS_TEMPLATE = `{
   "first_name": "{{first_name}}",
@@ -59,16 +59,10 @@ const BENEPATH_API_FIELDS_TEMPLATE = `{
   "city": "{{city}}",
   "state": "{{state}}",
   "zip": "{{zip}}",
-  "age": "{{age}}",
-  "gender": "{{gender}}",
-  "marital_status": "{{marital_status}}",
-  "household_income": "{{household_income}}",
-  "household_size": "{{number_of_dependents}}",
-  "tobacco": "{{tobacco}}",
-  "occupation": "{{occupation}}",
-  "qualifying_life_event": "{{qualifying_life_event}}",
-  "expectant": "{{expectant}}",
   "currently_insured": "{{currently_insured}}",
+  "company_name": "{{business_info_business_name}}",
+  "num_employees": "{{business_info_num_employees}}",
+  "coverage_expiration": "{{coverage_expiration}}",
   "lead_id": "{{lead_id}}"
 }`;
 
@@ -298,7 +292,7 @@ export default function BenepathSettings({ stages = [] }) {
             <p className="font-bold text-slate-700 dark:text-slate-200 pt-1">Step 3 — Api Fields</p>
             <ol className="space-y-1.5 list-decimal list-inside">
               <li><strong>Content Type</strong> → <strong>application/json</strong>.</li>
-              <li><strong>Lead Type</strong> → <strong>Health</strong>.</li>
+              <li><strong>Lead Type</strong> → <strong>Group Health</strong> (match the product you actually buy).</li>
               <li>Clear the <strong>Editor</strong> and paste this exactly:</li>
             </ol>
             <div className="relative">
@@ -312,7 +306,7 @@ export default function BenepathSettings({ stages = [] }) {
               <pre className="bg-slate-900 text-slate-100 rounded-lg p-3 pr-16 overflow-x-auto text-[10px] leading-relaxed font-mono whitespace-pre select-all">{BENEPATH_API_FIELDS_TEMPLATE}</pre>
             </div>
             <p>Then click <strong>Save</strong>. If any field comes in <strong>blank</strong> on a test, click inside its quotes and click the matching item in Benepath&rsquo;s <strong>Macro Key</strong> sidebar — that drops in the exact macro name.</p>
-            <p className="text-[11px] text-slate-400 dark:text-slate-500">Benepath leads don&rsquo;t include date of birth, so PRIM uses <strong>Age</strong> instead.</p>
+            <p className="text-[11px] text-slate-400 dark:text-slate-500">Group Health leads carry <strong>Company Name</strong> and <strong># Employees</strong> (not age/household) — PRIM captures those and tags the prospect as a business/employer. Buying individual <strong>Health</strong> instead? Set Lead Type to Health and map age/gender/household macros — PRIM reads both.</p>
 
             {/* Step 4 */}
             <p className="font-bold text-slate-700 dark:text-slate-200 pt-1">Step 4 — Response Type</p>
