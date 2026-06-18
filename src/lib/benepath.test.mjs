@@ -74,16 +74,16 @@ test('normalize: age falls back to age field; bogus startDate dropped', () => {
   assert.equal(n2.startDate, '2026-08-01');
 });
 
-test('upsert: creates a fresh Web Lead prospect at default stage', () => {
+test('upsert: creates a fresh Benepath prospect at default stage', () => {
   const n = normalizeBenepathPayload({ first_name: 'New', last_name: 'Lead', phone: '5551112222' });
   const { prospects, action } = upsertBenepathLead([], n, 'PENDING_DECISION', NOW);
   assert.equal(action, 'create');
   assert.equal(prospects.length, 1);
   const p = prospects[0];
   assert.equal(p.name, 'New Lead');
-  assert.equal(p.source, 'Web Lead');
+  assert.equal(p.source, 'Benepath');
   assert.equal(p.leadVendor, 'Benepath');
-  assert.equal(p.crm, 'None');
+  assert.equal(p.crm, 'Benepath');
   assert.equal(p.stage, 'PENDING_DECISION');
   assert.equal(p.benepathLeadId, '');
   assert.equal(p.createdAt, NOW);
