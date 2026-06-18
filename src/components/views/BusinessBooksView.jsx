@@ -1519,7 +1519,7 @@ function BusinessBooksView({
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="bg-white/95 backdrop-blur-2xl border border-white/60 rounded-2xl modal-pop max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl shadow-indigo-500/10"
+            className="bg-white/90 backdrop-blur-2xl border border-white/60 rounded-2xl modal-pop max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl shadow-indigo-500/10"
           >
             <div className="flex items-center justify-between p-4 border-b border-slate-200">
               <div className="text-sm font-medium text-slate-700 truncate">{viewAttachment.name}</div>
@@ -1545,7 +1545,7 @@ function BusinessBooksView({
       {/* Re-scan categories preview modal */}
       {rescanPreview && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-md overlay-fade z-50 flex items-center justify-center p-4" onClick={() => setRescanPreview(null)}>
-          <div onClick={(e) => e.stopPropagation()} className="bg-white/95 backdrop-blur-2xl border border-white/60 rounded-2xl modal-pop max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl shadow-indigo-500/10">
+          <div onClick={(e) => e.stopPropagation()} className="bg-white/90 backdrop-blur-2xl border border-white/60 rounded-2xl modal-pop max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl shadow-indigo-500/10">
             <div className="flex items-center justify-between p-5 border-b border-slate-200">
               <div>
                 <h2 className="font-semibold text-slate-900">Re-scan categories</h2>
@@ -1755,7 +1755,7 @@ function ImportPreviewModal({ preview, knownAccounts = [], expenseCategories = [
     <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-md overlay-fade z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-white/95 backdrop-blur-2xl border border-white/60 rounded-2xl modal-pop max-w-6xl w-full max-h-[90vh] flex flex-col shadow-2xl shadow-indigo-500/10"
+        className="bg-white/90 backdrop-blur-2xl border border-white/60 rounded-2xl modal-pop max-w-6xl w-full max-h-[90vh] flex flex-col shadow-2xl shadow-indigo-500/10"
       >
         <div className="flex items-center justify-between p-5 border-b border-slate-200 gap-4 flex-wrap">
           <div>
