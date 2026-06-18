@@ -4,6 +4,7 @@ import {
   phoneKey,
   normalizeBenepathPayload,
   upsertBenepathLead,
+  payloadFieldNames,
 } from './benepath.mjs';
 
 const NOW = '2026-06-18T12:00:00.000Z';
@@ -118,6 +119,32 @@ test('upsert: dedup by email and by benepathLeadId', () => {
     'PENDING_DECISION', NOW,
   );
   assert.equal(byId.action, 'update');
+});
+
+test('normalize: flattens nested payload (contact/address sub-objects)', () => {
+  const n = normalizeBenepathPayload({
+    lead: { lead_id: 'BP-9' },
+    contact: { first_name: 'Nest', last_name: 'Ed', phone: '5557778888', email: 'nest@x.com' },
+    address: { city: 'Miami', state: 'FL', zip: '33101' },
+  });
+  assert.equal(n.benepathLeadId, 'BP-9');
+  assert.equal(n.name, 'Nest Ed');
+  assert.equal(n.phoneKey, '5557778888');
+  assert.equal(n.email, 'nest@x.com');
+  assert.equal(n.state, 'FL');
+  assert.equal(n.zip, '33101');
+});
+
+test('payloadFieldNames: flat and nested leaf names', () => {
+  assert.deepEqual(
+    payloadFieldNames({ first_name: 'A', phone: '5551112222' }),
+    ['first_name', 'phone'],
+  );
+  assert.deepEqual(
+    payloadFieldNames({ contact: { first_name: 'A', phone: '5551112222' }, lead_id: 'X' }),
+    ['first_name', 'phone', 'lead_id'],
+  );
+  assert.deepEqual(payloadFieldNames(null), []);
 });
 
 test('upsert: handles form-style string values without throwing', () => {

@@ -19,7 +19,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
-import { normalizeBenepathPayload, upsertBenepathLead } from '@/lib/benepath.mjs';
+import { normalizeBenepathPayload, upsertBenepathLead, payloadFieldNames } from '@/lib/benepath.mjs';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -35,11 +35,27 @@ function noop200() {
   });
 }
 
+// Success response. Includes an explicit `status:"success"` token so lead
+// distributors that verify by string-matching the body (not just HTTP 200)
+// register the post as accepted. We always return 200 to avoid retry storms.
 function ok200(payload) {
-  return new Response(JSON.stringify({ ok: true, ...payload }), {
+  return new Response(JSON.stringify({ ok: true, status: 'success', ...payload }), {
     status: 200,
     headers: { 'Content-Type': 'application/json' },
   });
+}
+
+// Readiness probe. Benepath's "Test Integration" may hit the URL with GET/HEAD
+// before (or instead of) a POST — answer 200 so the test passes.
+export async function GET() {
+  return new Response(JSON.stringify({ ok: true, status: 'success', message: 'Benepath webhook endpoint ready' }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+export async function HEAD() {
+  return new Response(null, { status: 200 });
 }
 
 /**
@@ -111,15 +127,17 @@ export async function POST(req, ctx) {
 
     // ---- Parse + normalize ----
     const body = await parseBody(req);
-    const receivedKeys = (body && typeof body === 'object') ? Object.keys(body).slice(0, 60) : [];
+    const receivedKeys = payloadFieldNames(body).slice(0, 60);
     const normalized = normalizeBenepathPayload(body);
 
-    // Need at least one identity signal to key off of.
+    // Need at least one identity signal to key off of. A sparse "Test
+    // Integration" post can land here — record the field names and still
+    // report success (the POST itself was received fine; there's just nothing
+    // to store), so Benepath's test passes instead of retrying forever.
     if (!normalized.phone && !normalized.email && !normalized.benepathLeadId) {
-      console.log(`[benepath/webhook] user=${userId} skipped — no phone/email/leadId (keys=${receivedKeys.length})`);
-      // Still record the field names so the agent/dev can see what arrived.
+      console.log(`[benepath/webhook] user=${userId} received but not stored — no phone/email/leadId (keys=${receivedKeys.length})`);
       recordKeys(admin, userId, receivedKeys).catch(() => {});
-      return noop200();
+      return ok200({ action: 'skipped', reason: 'no-contact-fields' });
     }
 
     const now = new Date().toISOString();

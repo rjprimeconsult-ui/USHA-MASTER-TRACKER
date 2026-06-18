@@ -75,21 +75,56 @@ function squash(k) {
   return String(k == null ? '' : k).toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
-/** Build a squashed-key → value index for a raw body object. */
+/**
+ * Recursively collect leaf [key, value] pairs from a payload. Flattens nested
+ * objects (depth-limited) so a posted shape like {contact:{first_name:'Jo'}}
+ * still maps. Arrays are walked for nested objects; scalar leaves keep their
+ * own key. Guards against runaway depth.
+ */
+function collectLeaves(obj, out, depth) {
+  if (obj == null || depth > 5) return out;
+  if (Array.isArray(obj)) {
+    for (const v of obj) {
+      if (v && typeof v === 'object') collectLeaves(v, out, depth + 1);
+    }
+    return out;
+  }
+  if (typeof obj !== 'object') return out;
+  for (const k of Object.keys(obj)) {
+    const v = obj[k];
+    if (v && typeof v === 'object') collectLeaves(v, out, depth + 1);
+    else out.push([k, v]);
+  }
+  return out;
+}
+
+/** Build a squashed-key → value index from a raw body object (nested-aware). */
 function buildIndex(body) {
   const idx = {};
   if (!body || typeof body !== 'object') return idx;
-  for (const k of Object.keys(body)) {
+  for (const [k, v] of collectLeaves(body, [], 0)) {
     if (k == null) continue;
     const sk = squash(k);
     if (!sk) continue;
-    const v = body[k];
     // Don't clobber an earlier non-empty value with a later empty one.
     if (idx[sk] === undefined || (String(idx[sk] ?? '').trim() === '' && v != null && String(v).trim() !== '')) {
       idx[sk] = v;
     }
   }
   return idx;
+}
+
+/** Distinct leaf field NAMES in a payload (original case) — for the settings
+ *  "fields received" panel. PII-free: names only, no values. */
+export function payloadFieldNames(body) {
+  if (!body || typeof body !== 'object') return [];
+  const names = [];
+  const seen = new Set();
+  for (const [k] of collectLeaves(body, [], 0)) {
+    const key = String(k == null ? '' : k);
+    if (key && !seen.has(key)) { seen.add(key); names.push(key); }
+  }
+  return names;
 }
 
 /** First non-empty aliased value, trimmed to a string. */
