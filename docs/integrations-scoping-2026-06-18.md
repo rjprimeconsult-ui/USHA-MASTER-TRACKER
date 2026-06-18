@@ -1,7 +1,18 @@
 # PRIM Integrations Scoping — Calendly, Benepath, Repurposing
 
 **Date:** 2026-06-18
-**Status:** Discovery complete; awaiting inputs from Juan to start build.
+**Status:** ✅ Benepath SHIPPED & verified live (Group Health). Calendly + Repurposing not started.
+
+## Benepath — DONE (2026-06-18)
+
+Live and verified end-to-end. Final config:
+- Inbound webhook `POST /api/benepath/webhook/[token]` (Ringy-pattern clone). Token in `profiles.benepath_webhook_token` (SQL migration run by Juan). Config + Settings card at `BenepathSettings.jsx`; per-user default stage in `benepath_config_v1`.
+- Lib `src/lib/benepath.mjs` (+ `benepath.test.mjs`, 14 tests): tolerant parser (JSON/form/nested-flatten, broad aliases), immutable upsert (dedup phone/email/leadId), always-200 responses with `status:"success"` token, GET/HEAD readiness probes.
+- **Agent's product is Group Health (employer), not individual Health.** Normalizer captures Company Name + # Employees + coverage expiration; buckets to indvOrFamily Small Bizz (<5) / Employer 5-10 (5+); folds business context into situation. Source = CRM = leadVendor = "Benepath".
+- Benepath portal setup: New Integration → POST → Posting URL (PRIM's) → ping OFF; Request Headers empty; Api Fields → Content Type `application/json`, Lead Type **Group Health**, Liquid body template (in the in-app guide, copy button); Response Type Success = `success`; Test with Product Leads + Group Health.
+- In-app step-by-step guide rewritten in `BenepathSettings.jsx` for self-serve by other agents.
+- Gotchas learned: Response Type "Success" is a body-string match (use `success`, not "HTTP 200"); Benepath has no DOB (use Age / for Group Health, business fields); integration Lead Type must match the campaign product or leads don't route.
+- Remaining (Juan's side): delete test prospects; confirm integration green/Active + attached to Group Health campaigns; set Default Stage.
 
 ## Goal
 
