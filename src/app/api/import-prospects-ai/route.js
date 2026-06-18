@@ -16,6 +16,7 @@ import {
   PROSPECT_CRMS,
   PROSPECT_POLICY_TYPES,
 } from '@/lib/constants';
+import { sanitizeImportedProspect } from '@/lib/prospectDates.mjs';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -418,8 +419,13 @@ Return ONLY a JSON object inside a single \`\`\`json code block (no prose, no pr
   const logType = fileInfos.map(fi => fi.type).join(', ');
   console.log(`[import-prospects-ai] file=${logFilename} type=${logType} model=${model} prospects=${parsed.prospects?.length || 0} input=${resp.usage.input_tokens} cached_read=${resp.usage.cache_read_input_tokens || 0} output=${resp.usage.output_tokens}`);
 
+  // Harden date fields before they reach the review screen — the model
+  // sometimes drops non-date free text (a dialer name, "ASAP") into startDate/
+  // lastContact/appointmentTime. Blank those so garbage never gets imported.
+  const cleanProspects = (parsed.prospects || []).map(sanitizeImportedProspect);
+
   return Response.json({
-    prospects: parsed.prospects || [],
+    prospects: cleanProspects,
     summary: parsed.summary || { totalProspects: 0, byStage: {}, format: 'unknown' },
     extractedHint,
     usage: {

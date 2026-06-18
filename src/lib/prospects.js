@@ -6,6 +6,10 @@ import { uid } from './utils';
 import { DEFAULT_PROSPECT_STAGES } from './constants';
 import { FOLLOWUP_DEFAULTS } from './followupEngine.mjs';
 
+// Date-field hardening for imports lives in a dependency-free module so it is
+// unit-testable under plain Node. Re-exported here for a single public surface.
+export { isDateLike, sanitizeImportedProspect } from './prospectDates.mjs';
+
 // ----- US state -> timezone mapping (covers continental US + AK/HI) -----
 const STATE_TZ = {
   AL:'CT', AK:'AKT', AZ:'MT', AR:'CT', CA:'PT', CO:'MT', CT:'ET', DC:'ET',

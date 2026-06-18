@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { TiltCard, FadeIn, Stagger, StaggerItem } from '../motion/MotionPrimitives';
 import { fmt2, today, formatDob } from '@/lib/utils';
-import { newProspect, defaultProspectSettings, detectFieldFromHeader, detectStageId, detectSource, detectIndvOrFamily, prospectDedupKey, formatQuotes } from '@/lib/prospects';
+import { newProspect, defaultProspectSettings, detectFieldFromHeader, detectStageId, detectSource, detectIndvOrFamily, prospectDedupKey, formatQuotes, isDateLike } from '@/lib/prospects';
 import { DEFAULT_PROSPECT_STAGES, getCrmStyle, PROSPECT_SOURCES, PROSPECT_CRMS } from '@/lib/constants';
 import { useIsDark } from '@/lib/useIsDark';
 import * as XLSX from 'xlsx';
@@ -1135,12 +1135,12 @@ function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, o
           )}
 
           {/* Coverage Needs */}
-          {(prospect.policyType || prospect.income || formatQuotes(prospect) || prospect.startDate) && (
+          {(prospect.policyType || prospect.income || formatQuotes(prospect) || isDateLike(prospect.startDate)) && (
             <DetailSection title="Coverage Needs">
               {prospect.policyType && <DetailRow Icon={Briefcase} label="Policy Type" value={prospect.policyType} />}
               {prospect.income && <DetailRow Icon={DollarSign} label="Income" value={prospect.income} />}
               {formatQuotes(prospect) && <DetailRow Icon={DollarSign} label="Quotes" value={formatQuotes(prospect)} valueClass="font-semibold text-emerald-700" />}
-              {prospect.startDate && <DetailRow Icon={Calendar} label="Desired Start" value={prospect.startDate} />}
+              {isDateLike(prospect.startDate) && <DetailRow Icon={Calendar} label="Desired Start" value={prospect.startDate} />}
             </DetailSection>
           )}
 
