@@ -22,8 +22,9 @@
  */
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import PrimMark from '@/components/PrimLogo';
+import { PrimAppIcon } from '@/components/PrimLogo';
 import { loadAgentProfile, saveAgentProfile, applyThemeToDOM, applyAccentToDOM } from '@/lib/agentProfile';
+import { PLAN_DISPLAY } from '@/lib/stripe-prices';
 
 /* ------------------------------------------------------------------ tokens */
 const LIGHT = {
@@ -70,8 +71,8 @@ const KEYFRAMES = `
 `;
 
 /* ------------------------------------------------------------------ tiny helpers */
-// PRIM's real prism mark (inherits currentColor → white on the dark tiles).
-const Prism = ({ size = 22 }) => <PrimMark size={size} className="text-white" />;
+// PRIM's real colored app icon (dark tile + gradient prism + refracted beams).
+const Prism = ({ size = 22 }) => <PrimAppIcon size={size} />;
 const Check = ({ s = 11, c = '#fff' }) => (
   <svg width={s} height={s} viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4 4 10-10" stroke={c} strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
 );
@@ -90,7 +91,6 @@ export default function OnboardingFlow({ open = true, onComplete, onSkip }) {
   const [activeTab, setActiveTab] = useState('cpa');
   const [visited, setVisited] = useState(['cpa']);
   const [importState, setImportState] = useState('idle'); // idle | reading | done
-  const [platforms, setPlatforms] = useState({ ringy: false, text: false, vanilla: false });
   const [showNewLead, setShowNewLead] = useState(false);
   const [confetti, setConfetti] = useState([]);
 
@@ -187,7 +187,7 @@ export default function OnboardingFlow({ open = true, onComplete, onSkip }) {
   const restart = () => {
     setStep(0); setImportState('idle'); setVisited(['cpa']); setActiveTab('cpa');
     setShowNewLead(false); setSettingsTab('identity'); setSettingsSaved(false);
-    setPlatforms({ ringy: false, text: false, vanilla: false }); setConfetti([]);
+    setConfetti([]);
   };
 
   const finish = async () => {
@@ -220,7 +220,7 @@ export default function OnboardingFlow({ open = true, onComplete, onSkip }) {
       {/* top bar */}
       <div style={{ position: 'relative', zIndex: 5, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 30px', maxWidth: 1180, margin: '0 auto', width: '100%' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 38, height: 38, borderRadius: 11, background: 'linear-gradient(150deg,#11162B,#241F4D)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: `0 8px 22px -8px ${a.glow}` }}><Prism /></div>
+          <div style={{ width: 38, height: 38, borderRadius: 11, boxShadow: `0 8px 22px -8px ${a.glow}`, lineHeight: 0 }}><Prism size={38} /></div>
           <div>
             <div style={{ fontWeight: 700, fontSize: 17, letterSpacing: '.04em' }}>PRIM</div>
             <div style={{ fontSize: 10.5, color: LIGHT.text3, letterSpacing: '.16em', textTransform: 'uppercase' }}>Agent Onboarding</div>
@@ -239,7 +239,7 @@ export default function OnboardingFlow({ open = true, onComplete, onSkip }) {
 
       {/* stage */}
       <div style={{ position: 'relative', zIndex: 5, maxWidth: 1180, margin: '0 auto', width: '100%', padding: '14px 30px 40px', minHeight: 560 }}>
-        {step === 0 && <StepSettings {...{ D, name, setName, displayName, initials, settingsTab, setSettingsTab, mode, chooseMode, accent, chooseAccent, platforms, setPlatforms, saveSettings, settingsSaved }} />}
+        {step === 0 && <StepSettings {...{ D, name, setName, displayName, initials, settingsTab, setSettingsTab, mode, chooseMode, accent, chooseAccent, saveSettings, settingsSaved }} />}
         {step === 1 && <StepTour {...{ D, activeTab, visited, selectTab, showNewLead, setShowNewLead }} />}
         {step === 2 && <StepPlatforms D={D} />}
         {step === 3 && <StepImport {...{ D, importState, runImport }} />}
@@ -270,7 +270,13 @@ export default function OnboardingFlow({ open = true, onComplete, onSkip }) {
 }
 
 /* ============================================================ STEP 1 — settings */
-function StepSettings({ D, name, setName, displayName, initials, settingsTab, setSettingsTab, mode, chooseMode, accent, chooseAccent, platforms, setPlatforms, saveSettings, settingsSaved }) {
+function StepSettings({ D, name, setName, displayName, initials, settingsTab, setSettingsTab, mode, chooseMode, accent, chooseAccent, saveSettings, settingsSaved }) {
+  // Illustrative preference state — mirrors PRIM's real Preferences panel
+  // (teach-only here; the live values are saved in Settings).
+  const [prefLang, setPrefLang] = useState('en');
+  const [prefSource, setPrefSource] = useState('');
+  const [prefDigest, setPrefDigest] = useState('weekly');
+  const [prefUpdates, setPrefUpdates] = useState(true);
   const navItems = [['identity', 'Identity'], ['sub', 'Subscription'], ['email', 'Email sender'], ['notif', 'Notifications'], ['appearance', 'Appearance'], ['prefs', 'Preferences']];
   const lab = { display: 'block', fontSize: 10.5, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase', color: D.t2, marginBottom: 7 };
   const inC = { width: '100%', padding: '12px 13px', background: D.input, border: `1px solid rgba(124,134,176,.2)`, borderRadius: 9, color: D.text, fontSize: 13.5, fontFamily: FONT, boxSizing: 'border-box', outline: 'none' };
@@ -315,11 +321,21 @@ function StepSettings({ D, name, setName, displayName, initials, settingsTab, se
               </Panel>
             )}
             {settingsTab === 'sub' && (
-              <Panel><H3 D={D}>Subscription</H3><PDesc D={D}>Your current plan and billing.</PDesc>
-                <div style={{ background: D.input, border: `1px solid rgba(124,134,176,.2)`, borderRadius: 12, padding: 18, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div><div style={{ display: 'flex', gap: 9, alignItems: 'center', marginBottom: 5 }}><b style={{ fontSize: 16, color: D.text }}>Complimentary</b><span style={{ fontSize: 10, fontWeight: 800, padding: '3px 9px', borderRadius: 999, background: 'rgba(52,211,153,.16)', color: D.green, border: '1px solid rgba(52,211,153,.4)' }}>ACTIVE</span></div><div style={{ fontSize: 12, color: D.t2 }}>Full access · no card on file · granted by your agency</div></div>
-                  <span style={{ padding: '9px 16px', borderRadius: 9, border: `1px solid rgba(124,134,176,.25)`, color: D.t2, fontSize: 12.5, fontWeight: 700 }}>Manage plan</span>
+              <Panel><H3 D={D}>Subscription</H3><PDesc D={D}>PRIM plans — pick what fits as you grow. Your access is set by your agency.</PDesc>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12 }}>
+                  {['starter', 'pro', 'team'].map(key => {
+                    const pl = PLAN_DISPLAY[key]; const hot = !!pl.popular;
+                    return (
+                      <div key={key} style={{ position: 'relative', background: D.input, border: `1.5px solid ${hot ? 'var(--pof-accent)' : 'rgba(124,134,176,.2)'}`, borderRadius: 12, padding: '16px 14px' }}>
+                        {hot && <span style={{ position: 'absolute', top: -9, left: 14, fontSize: 8.5, fontWeight: 800, letterSpacing: '.05em', padding: '3px 8px', borderRadius: 999, background: 'linear-gradient(135deg, var(--pof-from), var(--pof-to))', color: '#fff' }}>MOST POPULAR</span>}
+                        <div style={{ fontSize: 14, fontWeight: 800, color: D.text }}>{pl.name}</div>
+                        <div style={{ fontSize: 21, fontWeight: 800, color: D.text, marginTop: 6 }}>${pl.monthly}<span style={{ fontSize: 11, fontWeight: 600, color: D.t3 }}> /mo</span></div>
+                        <div style={{ fontSize: 10.5, color: D.t2, marginTop: 7, lineHeight: 1.4 }}>{pl.tagline}</div>
+                      </div>
+                    );
+                  })}
                 </div>
+                <div style={{ fontSize: 11, color: D.t3, marginTop: 12 }}>Upgrade or change anytime in Settings → Subscription.</div>
               </Panel>
             )}
             {settingsTab === 'email' && (
@@ -363,15 +379,37 @@ function StepSettings({ D, name, setName, displayName, initials, settingsTab, se
               </Panel>
             )}
             {settingsTab === 'prefs' && (
-              <Panel><H3 D={D}>Preferences</H3><PDesc D={D}>Which CRMs you pay for — their cost rolls into your True CPA. (Illustrative here; real hookups live in Settings.)</PDesc>
-                <label style={lab}>CRM platforms you use</label>
-                {[['ringy', 'Ringy'], ['text', 'TextDrip'], ['vanilla', 'VanillaSoft']].map(([k, l]) => {
-                  const on = platforms[k];
-                  return <button key={k} onClick={() => setPlatforms(p => ({ ...p, [k]: !p[k] }))} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '13px 16px', borderRadius: 11, cursor: 'pointer', marginBottom: 9, fontSize: 14, fontWeight: 600, border: `1.5px solid ${on ? 'var(--pof-accent)' : 'rgba(124,134,176,.2)'}`, background: on ? 'var(--pof-soft)' : 'rgba(124,134,176,.05)', color: on ? 'var(--pof-accent)' : D.t2 }}>
-                    <span>{l}</span>
-                    <span style={{ width: 36, height: 20, borderRadius: 999, position: 'relative', background: on ? 'var(--pof-accent)' : 'rgba(124,134,176,.3)' }}><span style={{ position: 'absolute', top: 2, left: on ? 18 : 2, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left .15s' }} /></span>
-                  </button>;
-                })}
+              <Panel><H3 D={D}>Preferences</H3><PDesc D={D}>Day-to-day defaults — Assistant language, your lead-form default, and email preferences. (Illustrative here; saved for real in Settings.)</PDesc>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: D.input, border: `1px solid ${D.border}`, borderRadius: 11, padding: '13px 15px', marginBottom: 10 }}>
+                  <div><div style={{ fontSize: 13, fontWeight: 600, color: D.text }}>PRIM Assistant language</div><div style={{ fontSize: 11, color: D.t3, marginTop: 2 }}>Drives chatbot replies, voice, and proactive starters.</div></div>
+                  <div style={{ display: 'flex', gap: 3, background: 'rgba(124,134,176,.12)', borderRadius: 8, padding: 3, flex: '0 0 auto' }}>
+                    {[['en', 'English'], ['es', 'Español']].map(([k, l]) => (
+                      <button key={k} onClick={() => setPrefLang(k)} style={{ padding: '6px 12px', borderRadius: 6, border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer', background: prefLang === k ? 'var(--pof-accent)' : 'transparent', color: prefLang === k ? '#fff' : D.t2 }}>{l}</button>
+                    ))}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: D.input, border: `1px solid ${D.border}`, borderRadius: 11, padding: '13px 15px', marginBottom: 10 }}>
+                  <div><div style={{ fontSize: 13, fontWeight: 600, color: D.text }}>Default lead source</div><div style={{ fontSize: 11, color: D.t3, marginTop: 2 }}>Pre-selects this when you open the lead form.</div></div>
+                  <select value={prefSource} onChange={e => setPrefSource(e.target.value)} style={{ ...inC, width: 190, padding: '9px 11px', flex: '0 0 auto' }}>
+                    <option value="">No default (pick each time)</option>
+                    <option value="Referral">Referral</option>
+                    <option value="Web Lead">Web Lead</option>
+                    <option value="Benepath">Benepath</option>
+                    <option value="Aged Lead">Aged Lead</option>
+                  </select>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: D.input, border: `1px solid ${D.border}`, borderRadius: 11, padding: '13px 15px', marginBottom: 10 }}>
+                  <div><div style={{ fontSize: 13, fontWeight: 600, color: D.text }}>Weekly digest email</div><div style={{ fontSize: 11, color: D.t3, marginTop: 2 }}>Monday recap of your CPA, deals, and pipeline.</div></div>
+                  <div style={{ display: 'flex', gap: 3, background: 'rgba(124,134,176,.12)', borderRadius: 8, padding: 3, flex: '0 0 auto' }}>
+                    {[['weekly', 'Weekly'], ['never', 'Never']].map(([k, l]) => (
+                      <button key={k} onClick={() => setPrefDigest(k)} style={{ padding: '6px 12px', borderRadius: 6, border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer', background: prefDigest === k ? 'var(--pof-accent)' : 'transparent', color: prefDigest === k ? '#fff' : D.t2 }}>{l}</button>
+                    ))}
+                  </div>
+                </div>
+                <button onClick={() => setPrefUpdates(v => !v)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', textAlign: 'left', background: D.input, border: `1px solid ${D.border}`, borderRadius: 11, padding: '13px 15px', cursor: 'pointer' }}>
+                  <div><div style={{ fontSize: 13, fontWeight: 600, color: D.text }}>Product update emails</div><div style={{ fontSize: 11, color: D.t3, marginTop: 2 }}>Heads-up when new features ship. ~1–2 / month.</div></div>
+                  <span style={{ width: 38, height: 21, borderRadius: 999, position: 'relative', flex: '0 0 auto', background: prefUpdates ? 'var(--pof-accent)' : 'rgba(124,134,176,.3)' }}><span style={{ position: 'absolute', top: 2, left: prefUpdates ? 19 : 2, width: 17, height: 17, borderRadius: '50%', background: '#fff', transition: 'left .15s' }} /></span>
+                </button>
               </Panel>
             )}
           </div>
@@ -537,7 +575,7 @@ function StepUnlock({ firstName, confetti, finish, restart }) {
       </div>
       <div style={{ position: 'relative', display: 'inline-flex', marginBottom: 24, animation: 'pof-pop .6s ease both' }}>
         <div style={{ position: 'absolute', inset: -30, borderRadius: '50%', background: `radial-gradient(circle, var(--pof-glow), transparent 65%)`, animation: 'pof-glow 4s ease-in-out infinite' }} />
-        <div style={{ position: 'relative', width: 96, height: 96, borderRadius: 26, background: 'linear-gradient(150deg,#11162B,#241F4D)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: `0 24px 50px -16px var(--pof-glow)` }}><Prism size={52} /></div>
+        <div style={{ position: 'relative', width: 96, height: 96, borderRadius: 26, boxShadow: `0 24px 50px -16px var(--pof-glow)`, lineHeight: 0 }}><Prism size={96} /></div>
       </div>
       <h2 style={{ fontWeight: 700, fontSize: 42, letterSpacing: '-.02em', color: LIGHT.text, margin: '0 0 12px' }}>You're ready, {firstName}.</h2>
       <p style={{ fontSize: 17, lineHeight: 1.6, color: LIGHT.text2, margin: '0 auto 28px', maxWidth: 460 }}>You've set up your profile, toured every tab, and seen Smart Import in action. The app is unlocked — go close some deals.</p>
@@ -557,7 +595,7 @@ function AppNav({ D, activeTab, visited = [], onSelect, highlightMuted }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '11px 16px', background: 'linear-gradient(180deg,#171D38,#0E1428)', borderBottom: `1px solid ${D.border}` }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 9, flex: '0 0 auto' }}>
-        <div style={{ width: 30, height: 30, borderRadius: 9, background: 'linear-gradient(150deg,#11162B,#241F4D)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Prism size={17} /></div>
+        <div style={{ width: 30, height: 30, borderRadius: 9, lineHeight: 0 }}><Prism size={30} /></div>
         <div><div style={{ fontWeight: 700, fontSize: 13, color: '#fff', lineHeight: 1 }}>PRIM</div><div style={{ fontSize: 8.5, color: '#5C688C', letterSpacing: '.04em' }}>Performance · Revenue</div></div>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 5, overflowX: 'auto', flex: 1, padding: '2px 0' }}>
