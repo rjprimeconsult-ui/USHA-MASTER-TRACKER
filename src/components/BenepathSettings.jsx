@@ -313,12 +313,23 @@ export default function BenepathSettings({ stages = [] }) {
             <p>Set the <strong>Success</strong> field to <code className="bg-slate-100 dark:bg-slate-700 px-1 py-0.5 rounded font-mono">success</code> (PRIM&rsquo;s reply contains that word). Save.</p>
 
             {/* Step 5 */}
-            <p className="font-bold text-slate-700 dark:text-slate-200 pt-1">Step 5 — Test &amp; go live</p>
+            <p className="font-bold text-slate-700 dark:text-slate-200 pt-1">Step 5 — Test the connection</p>
+            <p><strong>Test Integration</strong> → Product <strong>Leads</strong>, Lead Type <strong>Group Health</strong> → <strong>Test Connection</strong>. The result should read <strong>Status 200 · Successful</strong>. (If nothing happens, make sure both dropdowns are set and you&rsquo;ve clicked <strong>Save</strong> in Api Fields first.)</p>
+
+            {/* Step 6 — the critical live-delivery step */}
+            <p className="font-bold text-slate-700 dark:text-slate-200 pt-1">Step 6 — Turn on LIVE delivery (required)</p>
+            <p className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300 px-3 py-2">
+              ⚠️ A successful <strong>Test</strong> does <strong>not</strong> mean real leads will flow — the Test button bypasses campaign routing. You must attach PRIM to your campaign, or live leads never get sent.
+            </p>
             <ol className="space-y-1.5 list-decimal list-inside">
-              <li><strong>Test Integration</strong> → Product <strong>Leads</strong>, Lead Type <strong>Group Health</strong> → <strong>Test Connection</strong>. The result should read <strong>Status 200 · Successful</strong>. (If nothing happens, make sure both dropdowns are set and you&rsquo;ve clicked <strong>Save</strong> in Api Fields first.)</li>
-              <li>On the <strong>Integrations</strong> list, confirm the PRIM row&rsquo;s status dot is <strong>green (Active)</strong> and the integration is attached to your lead campaign(s).</li>
-              <li>Back here, pick your <strong>Default Stage</strong> above and <strong>Save</strong>.</li>
+              <li>Go to <strong>Campaigns → (your lead campaign) → Tracking &amp; Integrations</strong>.</li>
+              <li>Click <strong>+ Add Lead Integration</strong>, choose <strong>PRIM</strong>, then <strong>Save</strong>. The per-campaign <strong>Config</strong> can stay empty <code className="bg-slate-100 dark:bg-slate-700 px-1 py-0.5 rounded font-mono">{'{}'}</code> — it uses your saved settings.</li>
+              <li>It&rsquo;s confirmed live when the integration log shows a row with <strong>Test = No · Successful</strong> for a real lead.</li>
             </ol>
+
+            {/* Step 7 */}
+            <p className="font-bold text-slate-700 dark:text-slate-200 pt-1">Step 7 — Set your default stage</p>
+            <p>Back here, pick your <strong>Default Stage</strong> above and <strong>Save</strong>.</p>
             <p className="text-[11px] text-slate-400 dark:text-slate-500">
               Each Benepath lead becomes a new prospect (Source &amp; CRM &ldquo;Benepath&rdquo;) at your default stage and starts its follow-up cadence. Duplicates just fill missing details and never change a stage you&rsquo;ve set. It runs 24/7 — PRIM doesn&rsquo;t need to be open.
             </p>
