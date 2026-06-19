@@ -11,8 +11,12 @@ Live and verified end-to-end. Final config:
 - **Agent's product is Group Health (employer), not individual Health.** Normalizer captures Company Name + # Employees + coverage expiration; buckets to indvOrFamily Small Bizz (<5) / Employer 5-10 (5+); folds business context into situation. Source = CRM = leadVendor = "Benepath".
 - Benepath portal setup: New Integration → POST → Posting URL (PRIM's) → ping OFF; Request Headers empty; Api Fields → Content Type `application/json`, Lead Type **Group Health**, Liquid body template (in the in-app guide, copy button); Response Type Success = `success`; Test with Product Leads + Group Health.
 - In-app step-by-step guide rewritten in `BenepathSettings.jsx` for self-serve by other agents.
-- Gotchas learned: Response Type "Success" is a body-string match (use `success`, not "HTTP 200"); Benepath has no DOB (use Age / for Group Health, business fields); integration Lead Type must match the campaign product or leads don't route.
-- Remaining (Juan's side): delete test prospects; confirm integration green/Active + attached to Group Health campaigns; set Default Stage.
+- Gotchas learned:
+  - Response Type "Success" is a body-string match — use `success` (matches our `"status":"success"`), NOT "HTTP 200".
+  - Benepath has no DOB (use Age / for Group Health, business fields).
+  - Integration Lead Type must match the campaign product (Group Health) or leads don't route.
+  - **LIVE DELIVERY ≠ TEST.** The Test Connection button posts regardless of campaign wiring, so tests can succeed while real leads never deliver (log shows only `Test = Yes` rows). Real leads only flow once the connector is added as a **Lead Integration on the campaign**: Campaigns → <campaign> → **Tracking & Integrations** → Add Lead Integration → select **PRIM** → Save. The per-campaign **Config** can stay empty `{}` (it inherits the connector's URL + template). Confirmed working 2026-06-19: log row with `Test = No · Successful` = live delivery is on.
+- Remaining (Juan's side): delete test prospects; set Default Stage; (live delivery wiring DONE).
 
 ## Goal
 
