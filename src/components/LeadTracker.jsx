@@ -53,7 +53,7 @@ import AnnouncementBanner from './AnnouncementBanner';
 import UpdateBanner from './UpdateBanner';
 import AgentChatbot from './AgentChatbot';
 import OnboardingWalkthrough from './OnboardingWalkthrough';
-import FirstRunWizard from './FirstRunWizard';
+import OnboardingFlow from './OnboardingFlow';
 import PaywallGate, { TrialBanner } from './PaywallGate';
 import ScreenshotImport from './ScreenshotImport';
 import AssociationCommissionDetailImport from './AssociationCommissionDetailImport';
@@ -2529,26 +2529,28 @@ export default function LeadTracker() {
         }}
       />
 
-      {/* First-Run Wizard — auto-launches once per agent (brand new
-          accounts). Gets them to first value in ~60 seconds: pick tier,
-          choose how to start, see what Books does, jump into the app. */}
-      <FirstRunWizard
+      {/* First-run onboarding — the must-finish, interactive teach flow.
+          Auto-launches once per brand-new agent (same first-run gate as
+          before) and is replayable from Settings. Step 1 persists
+          theme / accent / display name to the real agent profile. The
+          tour, Platforms, and Smart Import panels are a scripted sample. */}
+      <OnboardingFlow
         open={showFirstRunWizard}
-        onClose={() => setShowFirstRunWizard(false)}
         onComplete={async () => {
           try {
             const { markCompleted } = await import('@/lib/onboarding');
             await markCompleted();
             setOnboardingCompletedFlag(true);
           } catch { /* ignore */ }
+          setShowFirstRunWizard(false);
         }}
-        onOpenSmartImport={() => {
-          setView('books');
-          setSmartImportOpenSignal(s => s + 1);
+        onSkip={async () => {
+          try {
+            const { markSkipped } = await import('@/lib/onboarding');
+            await markSkipped();
+          } catch { /* ignore */ }
+          setShowFirstRunWizard(false);
         }}
-        onOpenLeadForm={() => newLead()}
-        onNavigate={(v) => setView(v)}
-        onOpenChat={() => setChatOpenSignal(s => s + 1)}
       />
 
       {/* 12-step walkthrough — replay-only from Settings now that the
