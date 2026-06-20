@@ -53,6 +53,36 @@ const Kpi = memo(({ label, value, numeric, isCurrency = true, isPercent = false,
 ));
 Kpi.displayName = 'Kpi';
 
+// Polished hover card for the Invested vs Earned chart (replaces the cramped
+// always-on bar labels). Shows Earned, Invested, and the Net for the week.
+function InvestedEarnedTooltip({ active, payload, label }) {
+  if (!active || !payload?.length) return null;
+  const inv = payload.find(p => p.dataKey === 'invested')?.value || 0;
+  const earn = payload.find(p => p.dataKey === 'earned')?.value || 0;
+  const net = earn - inv;
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white/95 backdrop-blur px-3 py-2 text-xs shadow-xl">
+      <div className="font-bold text-slate-900 mb-1.5">{label}</div>
+      <div className="flex items-center gap-2 mb-0.5">
+        <span className="w-2 h-2 rounded-full bg-emerald-500" />
+        <span className="text-slate-500">Earned</span>
+        <span className="ml-6 font-semibold text-slate-900 tabular-nums">{fmt(earn)}</span>
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="w-2 h-2 rounded-full bg-red-500" />
+        <span className="text-slate-500">Invested</span>
+        <span className="ml-6 font-semibold text-slate-900 tabular-nums">{fmt(inv)}</span>
+      </div>
+      <div className="mt-1.5 pt-1.5 border-t border-slate-100 flex items-center gap-2">
+        <span className="text-slate-500">Net</span>
+        <span className={`ml-auto font-bold tabular-nums ${net >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+          {net < 0 ? '−' : ''}{fmt(Math.abs(net))}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 // readOnly: rendered inside the Team leader mirror with ANOTHER user's data —
 // the action buttons call no-op handlers there; PaymentAlertsWidget (an action
 // widget) is hidden. Analytics rendering is identical.
@@ -114,6 +144,19 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
   const leadInvestByWeek = booksCostByWeek.lead;
   const softwareByWeek = booksCostByWeek.software;
 
+  // Override commissions (team leaders / FTA+ earn these on sub-agents' deals),
+  // bucketed by the override's statement period week. Empty for everyone else,
+  // so this naturally only affects agents who actually earn overrides.
+  const overrideByWeek = useMemo(() => {
+    const m = {};
+    (overrides || []).forEach(o => {
+      if (!o?.period) return;
+      const w = getWeekStart(o.period);
+      m[w] = (m[w] || 0) + Number(o.amount || 0);
+    });
+    return m;
+  }, [overrides]);
+
   // Earned is driven SOLELY by Issued-lead commissions (the auto-sync).
   // Manual advances/paid in the investment log are tracked for record-keeping
   // but do NOT feed Earned/ROI/Net — otherwise they double-count the same money.
@@ -131,11 +174,11 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
       const manualEarned = inv ? (inv.advances || 0) + (inv.paid || 0) : 0;
       const autoCloses = closedByWeek[w] || [];
       const autoCommission = autoCloses.reduce((s, l) => s + (l.dealValue || 0), 0);
-      const earned = autoCommission; // single source of truth
+      const earned = autoCommission + (overrideByWeek[w] || 0); // own advances + override commissions
       weeks.push({ week: w, label: weekLabel(w), invested, earned, auto: autoCommission, autoDeals: autoCloses.length, manualEarned, platformInvested });
     }
     return weeks;
-  }, [investments, closedByWeek, platformByWeek, leadInvestByWeek, softwareByWeek]);
+  }, [investments, closedByWeek, platformByWeek, leadInvestByWeek, softwareByWeek, overrideByWeek]);
 
   const thisWeekRow = weekly[weekly.length - 1];
 
@@ -397,7 +440,7 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
   );
 
   const allWeeks = useMemo(() => {
-    const blank = (w) => ({ id: null, weekStart: w, leadSpend: 0, crmWeekly: 0, crmDaily: 0, advances: 0, paid: 0, notes: '', autoDeals: 0, autoCommission: 0, platformSpend: 0, leadInvest: 0, softwareSpend: 0 });
+    const blank = (w) => ({ id: null, weekStart: w, leadSpend: 0, crmWeekly: 0, crmDaily: 0, advances: 0, paid: 0, notes: '', autoDeals: 0, autoCommission: 0, platformSpend: 0, leadInvest: 0, softwareSpend: 0, overrideIncome: 0 });
     const merged = {};
     investments.forEach(i => { merged[i.weekStart] = { ...blank(i.weekStart), ...i }; });
     Object.entries(closedByWeek).forEach(([w, leadsArr]) => {
@@ -409,8 +452,9 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
     Object.entries(platformByWeek).forEach(([w, total]) => { (merged[w] ||= blank(w)).platformSpend = total; });
     Object.entries(leadInvestByWeek).forEach(([w, total]) => { (merged[w] ||= blank(w)).leadInvest = total; });
     Object.entries(softwareByWeek).forEach(([w, total]) => { (merged[w] ||= blank(w)).softwareSpend = total; });
+    Object.entries(overrideByWeek).forEach(([w, total]) => { (merged[w] ||= blank(w)).overrideIncome = total; });
     return Object.values(merged).sort((a, b) => b.weekStart.localeCompare(a.weekStart));
-  }, [investments, closedByWeek, platformByWeek, leadInvestByWeek, softwareByWeek]);
+  }, [investments, closedByWeek, platformByWeek, leadInvestByWeek, softwareByWeek, overrideByWeek]);
 
   // Header summary
   const thisWeekCloseCount = (closedByWeek[thisWeek] || []).length;
@@ -865,19 +909,18 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-semibold text-slate-900">Invested vs. Earned — last 8 weeks</h3>
           </div>
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={weekly}>
-              <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} />
-              <XAxis dataKey="label" fontSize={11} />
-              <YAxis fontSize={11} />
-              <Tooltip />
-              <Legend />
-              <Bar dataKey="invested" name="Invested" fill="#ef4444" radius={[4, 4, 0, 0]} animationDuration={900}>
-                <LabelList dataKey="invested" position="top" fill={chartColors.label} fontSize={11} fontWeight={700} formatter={(v) => v > 0 ? fmt(v) : ''} />
-              </Bar>
-              <Bar dataKey="earned" name="Earned" fill="#10b981" radius={[4, 4, 0, 0]} animationDuration={900}>
-                <LabelList dataKey="earned" position="top" fill={chartColors.label} fontSize={11} fontWeight={700} formatter={(v) => v > 0 ? fmt(v) : ''} />
-              </Bar>
+          <ResponsiveContainer width="100%" height={280}>
+            <BarChart data={weekly} margin={{ top: 14, right: 10, left: 0, bottom: 0 }} barGap={4} barCategoryGap="26%">
+              <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} vertical={false} />
+              <XAxis dataKey="label" fontSize={11} tickLine={false} axisLine={false} tick={{ fill: chartColors.label }} dy={4} />
+              <YAxis
+                fontSize={11} tickLine={false} axisLine={false} width={48} tick={{ fill: chartColors.label }}
+                tickFormatter={(v) => v >= 1000 ? `$${(v / 1000).toFixed(v % 1000 === 0 ? 0 : 1)}k` : `$${v}`}
+              />
+              <Tooltip cursor={{ fill: 'rgba(148,163,184,0.12)' }} content={<InvestedEarnedTooltip />} />
+              <Legend iconType="circle" wrapperStyle={{ fontSize: 12, paddingTop: 10 }} />
+              <Bar dataKey="invested" name="Invested" fill="#ef4444" radius={[5, 5, 0, 0]} maxBarSize={24} animationDuration={800} />
+              <Bar dataKey="earned" name="Earned" fill="#10b981" radius={[5, 5, 0, 0]} maxBarSize={24} animationDuration={800} />
             </BarChart>
           </ResponsiveContainer>
         </Chart3DCard>
@@ -951,7 +994,7 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
             <tbody>
               {allWeeks.map(w => {
                 const leadSpendDisplay = (w.leadSpend || 0) + (w.leadInvest || 0);
-                const totIn = w.autoCommission || 0;
+                const totIn = (w.autoCommission || 0) + (w.overrideIncome || 0);
                 const totOut = leadSpendDisplay + (w.platformSpend || 0) + (w.softwareSpend || 0);
                 return (
                   <tr key={w.weekStart} className="border-t border-slate-100">
@@ -971,9 +1014,10 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
                       ) : <span className="text-slate-300">—</span>}
                     </td>
                     <td className="text-right p-2">
-                      {w.autoDeals > 0 ? (
+                      {(w.autoDeals > 0 || w.overrideIncome > 0) ? (
                         <span className="text-emerald-700 font-medium">
-                          {fmt(w.autoCommission)} <span className="text-xs text-emerald-600">({w.autoDeals})</span>
+                          {fmt(w.autoCommission || 0)}{w.autoDeals > 0 && <span className="text-xs text-emerald-600"> ({w.autoDeals})</span>}
+                          {w.overrideIncome > 0 && <span className="text-[10px] text-violet-500 font-medium"> +{fmt(w.overrideIncome)} ovr</span>}
                         </span>
                       ) : <span className="text-slate-300">—</span>}
                     </td>
