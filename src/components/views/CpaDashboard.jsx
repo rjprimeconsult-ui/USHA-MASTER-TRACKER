@@ -98,6 +98,22 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
     return m;
   }, [platformsFromBooks]);
 
+  // Books "Lead Investment" + "Software" bucketed by Friday-week — these join
+  // platforms in the Invested total so the chart + Investment Log match the
+  // same lead-acquisition basis as the True CPA tile.
+  const booksCostByWeek = useMemo(() => {
+    const lead = {}, software = {};
+    (businessExpenses || []).forEach(e => {
+      if (!e?.date) return;
+      const w = getWeekStart(e.date);
+      if (e.category === 'LEAD_INVESTMENT') lead[w] = (lead[w] || 0) + Number(e.amount || 0);
+      else if (e.category === 'SOFTWARE') software[w] = (software[w] || 0) + Number(e.amount || 0);
+    });
+    return { lead, software };
+  }, [businessExpenses]);
+  const leadInvestByWeek = booksCostByWeek.lead;
+  const softwareByWeek = booksCostByWeek.software;
+
   // Earned is driven SOLELY by Issued-lead commissions (the auto-sync).
   // Manual advances/paid in the investment log are tracked for record-keeping
   // but do NOT feed Earned/ROI/Net — otherwise they double-count the same money.
@@ -106,9 +122,12 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
     for (let i = 7; i >= 0; i--) {
       const w = weekAgo(i);
       const inv = investments.find(x => x.weekStart === w);
-      const baseInvested = inv ? (inv.leadSpend || 0) + (inv.crmWeekly || 0) + (inv.crmDaily || 0) : 0;
+      const manualLead = inv ? (inv.leadSpend || 0) : 0;
       const platformInvested = platformByWeek[w] || 0;
-      const invested = baseInvested + platformInvested;
+      // Invested = all lead-acquisition spend: lead investment + software +
+      // every platform (Ringy/TextDrip/VanillaSoft/OnlySales). CRM Wk/Day are
+      // retired (those costs live in the platform categories now).
+      const invested = manualLead + (leadInvestByWeek[w] || 0) + platformInvested + (softwareByWeek[w] || 0);
       const manualEarned = inv ? (inv.advances || 0) + (inv.paid || 0) : 0;
       const autoCloses = closedByWeek[w] || [];
       const autoCommission = autoCloses.reduce((s, l) => s + (l.dealValue || 0), 0);
@@ -116,7 +135,7 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
       weeks.push({ week: w, label: weekLabel(w), invested, earned, auto: autoCommission, autoDeals: autoCloses.length, manualEarned, platformInvested });
     }
     return weeks;
-  }, [investments, closedByWeek]);
+  }, [investments, closedByWeek, platformByWeek, leadInvestByWeek, softwareByWeek]);
 
   const thisWeekRow = weekly[weekly.length - 1];
 
@@ -378,20 +397,20 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
   );
 
   const allWeeks = useMemo(() => {
+    const blank = (w) => ({ id: null, weekStart: w, leadSpend: 0, crmWeekly: 0, crmDaily: 0, advances: 0, paid: 0, notes: '', autoDeals: 0, autoCommission: 0, platformSpend: 0, leadInvest: 0, softwareSpend: 0 });
     const merged = {};
-    investments.forEach(i => { merged[i.weekStart] = { ...i, autoDeals: 0, autoCommission: 0, platformSpend: 0 }; });
+    investments.forEach(i => { merged[i.weekStart] = { ...blank(i.weekStart), ...i }; });
     Object.entries(closedByWeek).forEach(([w, leadsArr]) => {
-      merged[w] ||= { id: null, weekStart: w, leadSpend: 0, crmWeekly: 0, crmDaily: 0, advances: 0, paid: 0, notes: '', autoDeals: 0, autoCommission: 0, platformSpend: 0 };
+      merged[w] ||= blank(w);
       merged[w].autoDeals = leadsArr.length;
       merged[w].autoCommission = leadsArr.reduce((s, l) => s + (l.dealValue || 0), 0);
     });
-    // Merge in any week that has platform spend but no investment row + no closed deals
-    Object.entries(platformByWeek).forEach(([w, total]) => {
-      merged[w] ||= { id: null, weekStart: w, leadSpend: 0, crmWeekly: 0, crmDaily: 0, advances: 0, paid: 0, notes: '', autoDeals: 0, autoCommission: 0, platformSpend: 0 };
-      merged[w].platformSpend = total;
-    });
+    // Books-sourced costs (also surface weeks with only Books spend, no row/deals)
+    Object.entries(platformByWeek).forEach(([w, total]) => { (merged[w] ||= blank(w)).platformSpend = total; });
+    Object.entries(leadInvestByWeek).forEach(([w, total]) => { (merged[w] ||= blank(w)).leadInvest = total; });
+    Object.entries(softwareByWeek).forEach(([w, total]) => { (merged[w] ||= blank(w)).softwareSpend = total; });
     return Object.values(merged).sort((a, b) => b.weekStart.localeCompare(a.weekStart));
-  }, [investments, closedByWeek, platformByWeek]);
+  }, [investments, closedByWeek, platformByWeek, leadInvestByWeek, softwareByWeek]);
 
   // Header summary
   const thisWeekCloseCount = (closedByWeek[thisWeek] || []).length;
@@ -920,10 +939,9 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
             <thead className="bg-slate-50 text-slate-600 text-xs">
               <tr>
                 <th className="text-left p-2">Week</th>
-                <th className="text-right p-2">Lead Spend</th>
-                <th className="text-right p-2">CRM Wk</th>
-                <th className="text-right p-2">CRM Day</th>
-                <th className="text-right p-2" title="TextDrip + Ringy + VanillaSoft credits">Platforms</th>
+                <th className="text-right p-2" title="Manual lead spend + Books “Lead Investment”">Lead Spend</th>
+                <th className="text-right p-2" title="Ringy + TextDrip + VanillaSoft + OnlySales (from Books)">Platforms</th>
+                <th className="text-right p-2" title="Books “Software” category">Software</th>
                 <th className="text-right p-2">Auto-synced Advances</th>
                 <th className="text-right p-2">Total In</th>
                 <th className="text-right p-2">Total Out</th>
@@ -932,20 +950,24 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
             </thead>
             <tbody>
               {allWeeks.map(w => {
+                const leadSpendDisplay = (w.leadSpend || 0) + (w.leadInvest || 0);
                 const totIn = w.autoCommission || 0;
-                const totOut = (w.leadSpend || 0) + (w.crmWeekly || 0) + (w.crmDaily || 0) + (w.platformSpend || 0);
+                const totOut = leadSpendDisplay + (w.platformSpend || 0) + (w.softwareSpend || 0);
                 return (
                   <tr key={w.weekStart} className="border-t border-slate-100">
                     <td className="p-2 font-medium">
                       {weekRangeLabel(w.weekStart)}
                       {!w.id && <span className="ml-2 text-[10px] font-medium px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase tracking-wide">auto</span>}
                     </td>
-                    <td className="text-right p-2">{fmt(w.leadSpend)}</td>
-                    <td className="text-right p-2">{fmt(w.crmWeekly)}</td>
-                    <td className="text-right p-2">{fmt(w.crmDaily)}</td>
+                    <td className="text-right p-2">{leadSpendDisplay > 0 ? fmt(leadSpendDisplay) : <span className="text-slate-300">—</span>}</td>
                     <td className="text-right p-2">
                       {w.platformSpend > 0 ? (
                         <span className="text-violet-700 font-medium">{fmt(w.platformSpend)}</span>
+                      ) : <span className="text-slate-300">—</span>}
+                    </td>
+                    <td className="text-right p-2">
+                      {w.softwareSpend > 0 ? (
+                        <span className="text-indigo-700 font-medium">{fmt(w.softwareSpend)}</span>
                       ) : <span className="text-slate-300">—</span>}
                     </td>
                     <td className="text-right p-2">
