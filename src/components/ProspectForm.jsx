@@ -8,6 +8,7 @@ import { US_STATES } from '@/lib/commission';
 import { timezoneFromState, QUOTE_PRODUCTS } from '@/lib/prospects';
 import { formatPhoneInput, formatCurrencyInput, formatDobInput, toDateTimeLocalInput, uid } from '@/lib/utils';
 import { MoneyCell } from './motion/MotionPrimitives';
+import DateTimePicker from './DateTimePicker';
 
 const inp = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500';
 
@@ -265,7 +266,7 @@ export default function ProspectForm({ open, prospect, stages, customFields = []
           {/* Workflow */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <Field label="Appointment Date + Time">
-              <input type="datetime-local" className={inp} value={form.appointmentTime || ''} onChange={e => set({ appointmentTime: e.target.value })} />
+              <DateTimePicker className={inp} value={form.appointmentTime || ''} onChange={(v) => set({ appointmentTime: v })} />
             </Field>
             <Field label="Last Contact">
               <input type="date" className={inp} value={form.lastContact || ''} onChange={e => set({ lastContact: e.target.value })} />

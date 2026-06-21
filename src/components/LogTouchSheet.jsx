@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { X, Phone, MessageSquare, Mail, Voicemail, MoreHorizontal } from 'lucide-react';
 import { CHANNELS, OUTCOMES, reminderPresetAt } from '@/lib/followupEngine.mjs';
+import DateTimePicker from './DateTimePicker';
 
 const CHANNEL_ICON = { Call: Phone, Text: MessageSquare, Email: Mail, Voicemail, Other: MoreHorizontal };
 
@@ -141,10 +142,9 @@ export default function LogTouchSheet({ open, prospectName, defaultChannel = 'Ca
                 })}
               </div>
               {reminderPreset === 'custom' && (
-                <input
-                  type="datetime-local"
+                <DateTimePicker
                   value={customAt}
-                  onChange={e => setCustomAt(e.target.value)}
+                  onChange={setCustomAt}
                   className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500"
                 />
               )}

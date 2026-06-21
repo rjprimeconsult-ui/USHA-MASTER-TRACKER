@@ -9,6 +9,7 @@ import {
 } from '@/lib/constants';
 import { newProspect, prospectDedupKey } from '@/lib/prospects';
 import { authedFetch } from '@/lib/authedFetch';
+import DateTimePicker from './DateTimePicker';
 
 const inp = 'w-full bg-white text-slate-900 border border-slate-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500';
 
@@ -346,7 +347,7 @@ export default function SmartProspectImportWizard({ open, onClose, onImport, sta
                               <input className={inp} value={p.leadVendor || ''} onChange={e => setEdit(i, { leadVendor: e.target.value })} disabled={skipped} title={p.leadVendor} />
                             </td>
                             <td className="px-2 py-1.5">
-                              <input type="datetime-local" className={inp} value={p.appointmentTime || ''} onChange={e => setEdit(i, { appointmentTime: e.target.value })} disabled={skipped} />
+                              <DateTimePicker className={inp} value={p.appointmentTime || ''} onChange={(v) => setEdit(i, { appointmentTime: v })} disabled={skipped} />
                             </td>
                             <td className="px-2 py-1.5">
                               <input className={inp + ' text-right'} value={p.quoteSize || ''} onChange={e => setEdit(i, { quoteSize: e.target.value })} disabled={skipped} />
