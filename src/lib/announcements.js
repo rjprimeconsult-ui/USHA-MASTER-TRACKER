@@ -37,7 +37,7 @@ export const ANNOUNCEMENTS = [
     date: '2026-06-21',
     emoji: '⏰',
     title: 'A smoother way to pick appointment times',
-    body: 'Setting an appointment time is easier now. The Hour, Minute, and AM/PM columns stop at the ends instead of looping around — minutes stop at 59, hours stop at 12 — so scrolling lands you on the exact time instead of spinning past it. Works on prospects, follow-up reminders, and imports.',
+    body: 'Setting an appointment time is faster now — just type it. "600" becomes 6:00, "230p" becomes 2:30 PM, "1400" becomes 2:00 PM. Prefer clicking? Pick the hour and a quarter-hour (00 / 15 / 30 / 45) with an AM/PM toggle. No more scrolling past the time you wanted. Works on prospects, follow-up reminders, and imports.',
     cta: { label: 'Open Prospects', view: 'prospects' },
   },
   {

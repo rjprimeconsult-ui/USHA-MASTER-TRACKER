@@ -49,3 +49,39 @@ export function composeDateTimeLocal({ date, hour12, minute, ampm }) {
 export function clampIndex(i, len) {
   return Math.max(0, Math.min(len - 1, i));
 }
+
+// Parse free-typed shorthand into { hour12, minute, ampm } — or null if it
+// can't be read as a valid time. Lets agents type "600" -> 6:00, "1230" ->
+// 12:30, "9" -> 9:00, "6:07" -> 6:07. A trailing a/p/am/pm sets the meridiem;
+// 24-hour entry ("1400" -> 2:00 PM) is understood too. `ampm` is null when the
+// input didn't specify one, so the caller keeps the current AM/PM toggle.
+export function parseTypedTime(raw) {
+  let s = String(raw == null ? '' : raw).trim().toLowerCase();
+  if (!s) return null;
+
+  let ampm = null;
+  if (/p\.?m?\.?$/.test(s)) ampm = 'PM';
+  else if (/a\.?m?\.?$/.test(s)) ampm = 'AM';
+  s = s.replace(/\s*[ap]\.?m?\.?$/, '').trim();
+
+  let hour, minute;
+  if (s.includes(':')) {
+    const [hp, mp] = s.split(':');
+    hour = parseInt(hp, 10);
+    minute = parseInt(mp || '0', 10);
+  } else {
+    const d = s.replace(/\D/g, '');
+    if (!d) return null;
+    if (d.length <= 2) { hour = parseInt(d, 10); minute = 0; }
+    else if (d.length === 3) { hour = parseInt(d.slice(0, 1), 10); minute = parseInt(d.slice(1), 10); }
+    else { hour = parseInt(d.slice(0, 2), 10); minute = parseInt(d.slice(2, 4), 10); }
+  }
+  if (Number.isNaN(hour) || Number.isNaN(minute)) return null;
+
+  // 24-hour entry → fold into 12-hour + meridiem.
+  if (hour >= 13 && hour <= 23) { ampm = ampm || 'PM'; hour -= 12; }
+  else if (hour === 0) { hour = 12; }
+
+  if (hour < 1 || hour > 12 || minute < 0 || minute > 59) return null;
+  return { hour12: hour, minute, ampm };
+}

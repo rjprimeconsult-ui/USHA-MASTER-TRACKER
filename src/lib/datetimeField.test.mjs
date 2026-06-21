@@ -6,7 +6,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { to24, to12, parseDateTimeLocal, composeDateTimeLocal, clampIndex } from './datetimeField.mjs';
+import { to24, to12, parseDateTimeLocal, composeDateTimeLocal, clampIndex, parseTypedTime } from './datetimeField.mjs';
 
 test('to24 — 12 AM is midnight (00), 12 PM is noon (12)', () => {
   assert.equal(to24(12, 'AM'), 0);
@@ -66,4 +66,39 @@ test('clampIndex — never wraps; stays within [0, len-1]', () => {
   assert.equal(clampIndex(59, 60), 59);
   assert.equal(clampIndex(60, 60), 59);  // 59 does NOT roll to 0
   assert.equal(clampIndex(5, 12), 5);
+});
+
+test('parseTypedTime — shorthand digits become hour:minute', () => {
+  assert.deepEqual(parseTypedTime('600'), { hour12: 6, minute: 0, ampm: null });
+  assert.deepEqual(parseTypedTime('630'), { hour12: 6, minute: 30, ampm: null });
+  assert.deepEqual(parseTypedTime('1230'), { hour12: 12, minute: 30, ampm: null });
+  assert.deepEqual(parseTypedTime('915'), { hour12: 9, minute: 15, ampm: null });
+  assert.deepEqual(parseTypedTime('9'), { hour12: 9, minute: 0, ampm: null });
+  assert.deepEqual(parseTypedTime('12'), { hour12: 12, minute: 0, ampm: null });
+  assert.deepEqual(parseTypedTime('0915'), { hour12: 9, minute: 15, ampm: null });
+});
+
+test('parseTypedTime — accepts a colon and any exact minute', () => {
+  assert.deepEqual(parseTypedTime('6:07'), { hour12: 6, minute: 7, ampm: null });
+  assert.deepEqual(parseTypedTime('11:59'), { hour12: 11, minute: 59, ampm: null });
+});
+
+test('parseTypedTime — trailing a/p/am/pm sets the meridiem', () => {
+  assert.deepEqual(parseTypedTime('230p'), { hour12: 2, minute: 30, ampm: 'PM' });
+  assert.deepEqual(parseTypedTime('600am'), { hour12: 6, minute: 0, ampm: 'AM' });
+  assert.deepEqual(parseTypedTime('9:15 pm'), { hour12: 9, minute: 15, ampm: 'PM' });
+});
+
+test('parseTypedTime — understands 24-hour entry', () => {
+  assert.deepEqual(parseTypedTime('1400'), { hour12: 2, minute: 0, ampm: 'PM' });
+  assert.deepEqual(parseTypedTime('2359'), { hour12: 11, minute: 59, ampm: 'PM' });
+  assert.deepEqual(parseTypedTime('13:45'), { hour12: 1, minute: 45, ampm: 'PM' });
+});
+
+test('parseTypedTime — garbage / out-of-range returns null', () => {
+  assert.equal(parseTypedTime(''), null);
+  assert.equal(parseTypedTime('abc'), null);
+  assert.equal(parseTypedTime('6:60'), null);   // minute out of range
+  assert.equal(parseTypedTime('99'), null);     // hour out of range
+  assert.equal(parseTypedTime('2500'), null);   // hour 25 invalid
 });
