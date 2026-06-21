@@ -168,7 +168,7 @@ function Column({ label, items, render, selected, onPick, onStep }) {
       </button>
       <div
         ref={listRef}
-        className="h-32 w-14 overflow-y-auto snap-y snap-mandatory rounded-lg bg-slate-50 dark:bg-slate-900/40 [scrollbar-width:thin]"
+        className="h-32 w-14 overflow-y-auto overscroll-contain snap-y snap-mandatory rounded-lg bg-slate-50 dark:bg-slate-900/40 [scrollbar-width:thin]"
       >
         {items.map((it) => {
           const isSel = it === selected;
