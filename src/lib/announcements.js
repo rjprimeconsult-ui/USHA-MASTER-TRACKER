@@ -33,6 +33,14 @@
 
 export const ANNOUNCEMENTS = [
   {
+    id: '2026-06-21-clamping-time-picker',
+    date: '2026-06-21',
+    emoji: '⏰',
+    title: 'A smoother way to pick appointment times',
+    body: 'Setting an appointment time is easier now. The Hour, Minute, and AM/PM columns stop at the ends instead of looping around — minutes stop at 59, hours stop at 12 — so scrolling lands you on the exact time instead of spinning past it. Works on prospects, follow-up reminders, and imports.',
+    cta: { label: 'Open Prospects', view: 'prospects' },
+  },
+  {
     id: '2026-06-11-prospect-multi-quotes',
     date: '2026-06-11',
     emoji: '💲',
