@@ -153,14 +153,13 @@ export default function BlastsView({ blasts = [], onDelete, onAdd, readOnly = fa
         <div className="premium-card p-4 space-y-3">
           <div className="flex items-center justify-between">
             <div className="text-sm font-bold text-slate-900 dark:text-slate-100">Log a blast</div>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400">For TextDrip or any blast not auto-captured. Ringy blasts log themselves.</p>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">For TextDrip blasts. Ringy blasts log themselves automatically.</p>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-300 space-y-1">
               <span className="block">Platform</span>
               <select value={form.platform} onChange={e => setField('platform', e.target.value)} className="w-full border border-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 text-xs">
                 <option value="Textdrip">TextDrip</option>
-                <option value="Ringy">Ringy</option>
               </select>
             </label>
             <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-300 space-y-1">
@@ -207,7 +206,7 @@ export default function BlastsView({ blasts = [], onDelete, onAdd, readOnly = fa
             <strong>Ringy blasts log themselves</strong> — applying a repurpose tag in Ringy rolls up here automatically (manage it under Prospects → Ringy settings). For <strong>TextDrip</strong>, use &ldquo;Log a blast&rdquo; above, or connect the Cowork skill below.
           </p>
           <p className="text-xs text-slate-600 dark:text-slate-300">
-            In your Cowork <strong>ringy-textdrip-blast</strong> skill, in the &ldquo;Log every blast&rdquo; step — right after it appends the row to <code className="bg-slate-100 dark:bg-slate-700 px-1 rounded">blast-log.csv</code> — also POST that same row (JSON) to your Posting URL below. PRIM logs it automatically; re-sends are de-duped.
+            In your Cowork <strong>ringy-textdrip-blast</strong> skill, in the &ldquo;Log every blast&rdquo; step — right after it appends the row to <code className="bg-slate-100 dark:bg-slate-700 px-1 rounded">blast-log.csv</code> — POST the <strong>TextDrip</strong> rows (JSON) to your Posting URL below. PRIM logs them automatically; re-sends are de-duped. <strong>Skip Ringy rows</strong> — Ringy is counted natively and POSTing it here would double-count.
           </p>
           <div>
             <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-300 mb-1">Posting URL</label>
@@ -225,11 +224,11 @@ export default function BlastsView({ blasts = [], onDelete, onAdd, readOnly = fa
             <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-300 mb-1">Example POST body (same fields as blast-log.csv)</div>
             <pre className="bg-slate-900 text-slate-100 rounded-lg p-3 overflow-x-auto text-[10px] leading-relaxed font-mono whitespace-pre">{`{
   "run_date": "2026-06-22",
-  "platform": "Ringy",
+  "platform": "Textdrip",
   "range_start": "2025-01-01",
   "range_end": "2026-05-31",
-  "campaign_or_tag": "REPUROSED - AGED - POST O/E DRIP",
-  "contacts": 2000,
+  "campaign_or_tag": "New Aged leads",
+  "contacts": 4587,
   "send_time": "10:30",
   "numbers_used": "",
   "notes": "blast 1 of 2"

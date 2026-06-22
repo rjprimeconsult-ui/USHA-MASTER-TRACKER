@@ -34,7 +34,7 @@ import ReportsView from './views/ReportsView';
 import ProspectsView from './views/ProspectsView';
 import CommissionCalculator from './views/CommissionCalculator';
 import BlastsView from './views/BlastsView';
-import { normalizeBlastPayload, upsertBlast } from '@/lib/blastLog.mjs';
+import { normalizeBlastPayload, upsertBlast, normPlatform } from '@/lib/blastLog.mjs';
 import DuplicateResolver from './DuplicateResolver';
 import { findDuplicateGroups, enumeratePairs, shouldSkipPair } from '@/lib/duplicateResolver.mjs';
 import { nameKey, buildAdvancePatch } from '@/lib/statement';
@@ -109,9 +109,20 @@ const BLAST_KEY = 'blast_log_v1';
 // display shape BlastsView expects. Kept separate from blast_log_v1 (manual /
 // skill entries) so the accurate DB counter is never overwritten by app state.
 function counterToBlast(r) {
+  // The counter PK stores run_date as the UTC day (server-stamped). For display
+  // and Today/Last-7 bucketing, convert the real instant (first_at) to the
+  // viewer's LOCAL calendar day so an evening blast in a western timezone shows
+  // on the day the agent actually ran it — not the next UTC day. The UTC run_date
+  // is still kept in _native for the delete PK match.
+  const localDate = (() => {
+    const d = new Date(r.first_at || r.last_at);
+    if (Number.isNaN(d.getTime())) return r.run_date;
+    const p = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  })();
   return {
     id: `bc:${r.run_date}:${r.platform}:${r.tag}`,
-    runDate: r.run_date,
+    runDate: localDate,
     platform: r.platform,
     campaignOrTag: r.tag,
     contacts: r.contacts,
@@ -434,7 +445,16 @@ export default function LeadTracker() {
       setAdvanceMonthsHistory(amRaw ? JSON.parse(amRaw) : []);
 
       const blastRaw = await storage.getItem(BLAST_KEY);
-      setBlasts(blastRaw ? JSON.parse(blastRaw) : []);
+      const blastParsed = blastRaw ? JSON.parse(blastRaw) : [];
+      // Ringy is now owned exclusively by the atomic blast_counters table. Purge
+      // any legacy Ringy rows from blast_log_v1 — broken pre-migration auto rows
+      // (the ones that logged 119 of 2,000) AND any old skill-POST Ringy rows —
+      // so they can't double-count against the counter. One-time, self-healing.
+      const blastClean = blastParsed.filter(b => normPlatform(b?.platform) !== 'Ringy');
+      setBlasts(blastClean);
+      if (blastClean.length !== blastParsed.length) {
+        storage.setItem(BLAST_KEY, JSON.stringify(blastClean));
+      }
 
       // Ringy native blast counters live in their own table (atomic increments).
       // Read-only here; the webhook is the sole writer. Graceful before migration.
@@ -2226,7 +2246,11 @@ export default function LeadTracker() {
                     .eq('run_date', row._native.run_date)
                     .eq('platform', row._native.platform)
                     .eq('tag', row._native.tag)
-                    .then(() => {});
+                    .then(({ error }) => {
+                      // DB delete failed (RLS/expired session/network) — restore
+                      // the row so the UI stays truthful instead of reappearing on reload.
+                      if (error) setNativeBlasts(prev => prev.some(b => b.id === id) ? prev : [...prev, row]);
+                    });
                 }
               } else {
                 setBlasts(prev => prev.filter(b => b.id !== id));

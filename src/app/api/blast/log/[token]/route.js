@@ -94,11 +94,13 @@ export async function POST(req, ctx) {
     // ---- Parse + normalize ----
     const body = await parseBody(req);
     const blast = normalizeBlastPayload(body);
-    // A blast must name a platform to be meaningful (the skill always sends
-    // Ringy/Textdrip). Skip anything without one — an empty platform would also
-    // collapse distinct rows under one dedup key.
-    if (!blast.platform) {
-      console.log(`[blast/log] user=${userId} skipped — no platform`);
+    // A blast must name a platform to be meaningful. Also REJECT Ringy: it is now
+    // captured authoritatively and atomically by the Ringy webhook into
+    // blast_counters (one increment per lead). Accepting a Ringy skill-POST here
+    // too would double-count the same blast. This endpoint handles TextDrip (and
+    // any non-Ringy) only.
+    if (!blast.platform || blast.platform === 'Ringy') {
+      console.log(`[blast/log] user=${userId} skipped — platform=${blast.platform || 'none'} (Ringy is captured natively)`);
       return ok200({ action: 'skipped' });
     }
 

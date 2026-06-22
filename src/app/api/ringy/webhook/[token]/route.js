@@ -40,7 +40,11 @@ async function incrementRingyBlast(admin, userId, disposition, nowIso) {
     p_tag:      String(disposition || '').trim(),
     p_inc:      1,
   });
-  if (error) console.error(`[ringy/webhook] blast increment error user=${userId}: ${error.message}`);
+  if (error) {
+    console.error(`[ringy/webhook] blast increment error user=${userId}: ${error.message}`);
+    return { ok: false, error: error.message };
+  }
+  return { ok: true };
 }
 
 function cleanEnv(s) {
@@ -128,7 +132,17 @@ export async function POST(req, ctx) {
     // settings (blastDetectionEnabled:false) or add custom patterns.
     if (cfg.blastDetectionEnabled !== false
         && checkIsBlastDisposition(normalized.disposition, cfg.blastDispositionPatterns)) {
-      await incrementRingyBlast(admin, userId, normalized.disposition, now);
+      const res = await incrementRingyBlast(admin, userId, normalized.disposition, now);
+      if (!res.ok) {
+        // Fail LOUD, not silent: if the atomic increment didn't land (RPC missing
+        // because the migration hasn't run, transient DB error, etc.) return a
+        // non-200 so Ringy retries this hit and it recovers — instead of silently
+        // dropping the count (which is how a 2,000 blast became 119).
+        console.error(`[ringy/webhook] blast increment failed user=${userId} — returning 503 so Ringy retries`);
+        return new Response(JSON.stringify({ ok: false, error: 'blast increment failed' }), {
+          status: 503, headers: { 'Content-Type': 'application/json' },
+        });
+      }
       console.log(`[ringy/webhook] user=${userId} action=blast_aggregated`);
       return ok200({ action: 'blast_aggregated' });
     }
