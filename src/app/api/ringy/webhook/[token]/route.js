@@ -18,53 +18,29 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { normalizeRingyPayload, upsertRingyLead, checkIsBlastDisposition } from '@/lib/ringy.mjs';
-import { aggregateBlast } from '@/lib/blastLog.mjs';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 /**
- * aggregateRingyBlast — a blast/repurpose tag fires ONE Ringy POST per lead, so
- * a 2,000-lead blast arrives as 2,000 POSTs. Instead of creating 2,000
- * prospects, roll them up into ONE daily blast_log_v1 entry whose contact count
- * climbs by 1 per POST. CAS-retry on the single row (jittered backoff) to
- * survive the burst; on terminal contention we drop one hit (slight undercount)
- * rather than fail — the webhook must always return fast and 200.
+ * incrementRingyBlast — a blast/repurpose tag fires ONE Ringy POST per lead, so
+ * a 2,000-lead blast arrives as 2,000 POSTs in a burst. We record each hit with
+ * a single ATOMIC database increment (the increment_blast RPC) keyed on
+ * (user, day, platform, tag). Postgres serializes the increments at the row
+ * level, so the burst lands as exactly 2,000 with NO lost updates — unlike a
+ * read-modify-write of a JSON blob, where concurrent writers lose the
+ * compare-and-swap race and silently drop. One fast statement per POST: no
+ * retry loop, no whole-array rewrite, so it also doesn't bog the app down.
  */
-async function aggregateRingyBlast(admin, userId, disposition, nowIso) {
-  const record = {
-    runDate:       nowIso.slice(0, 10), // YYYY-MM-DD
-    platform:      'Ringy',
-    rangeStart:    '',
-    rangeEnd:      '',
-    campaignOrTag: String(disposition || '').trim(),
-    contacts:      0,
-    sendTime:      '',
-    numbersUsed:   '',
-    notes:         '',
-    source:        'auto',
-  };
-  for (let attempt = 0; attempt < 10; attempt++) {
-    const cur = await admin.from('user_kv').select('value, updated_at')
-      .eq('user_id', userId).eq('key', 'blast_log_v1').maybeSingle();
-    if (cur.error) { console.error(`[ringy/webhook] blast read error user=${userId}: ${cur.error.message}`); return null; }
-    const list  = Array.isArray(cur.data?.value) ? cur.data.value : [];
-    const prior = cur.data?.updated_at ?? null;
-    const { list: updated } = aggregateBlast(list, record, nowIso, 1);
-    const ts = new Date().toISOString();
-    if (prior === null) {
-      const ins = await admin.from('user_kv').insert({ user_id: userId, key: 'blast_log_v1', value: updated, updated_at: ts });
-      if (!ins.error) return updated;
-    } else {
-      const upd = await admin.from('user_kv').update({ value: updated, updated_at: ts })
-        .eq('user_id', userId).eq('key', 'blast_log_v1').eq('updated_at', prior).select('user_id');
-      if (!upd.error && Array.isArray(upd.data) && upd.data.length > 0) return updated;
-    }
-    // Jittered backoff to break up the thundering herd of per-lead POSTs.
-    await new Promise((r) => setTimeout(r, 20 + Math.floor(Math.random() * 30 * (attempt + 1))));
-  }
-  console.error(`[ringy/webhook] blast aggregation contention — gave up user=${userId}`);
-  return null;
+async function incrementRingyBlast(admin, userId, disposition, nowIso) {
+  const { error } = await admin.rpc('increment_blast', {
+    p_user:     userId,
+    p_date:     nowIso.slice(0, 10), // YYYY-MM-DD
+    p_platform: 'Ringy',
+    p_tag:      String(disposition || '').trim(),
+    p_inc:      1,
+  });
+  if (error) console.error(`[ringy/webhook] blast increment error user=${userId}: ${error.message}`);
 }
 
 function cleanEnv(s) {
@@ -152,7 +128,7 @@ export async function POST(req, ctx) {
     // settings (blastDetectionEnabled:false) or add custom patterns.
     if (cfg.blastDetectionEnabled !== false
         && checkIsBlastDisposition(normalized.disposition, cfg.blastDispositionPatterns)) {
-      await aggregateRingyBlast(admin, userId, normalized.disposition, now);
+      await incrementRingyBlast(admin, userId, normalized.disposition, now);
       console.log(`[ringy/webhook] user=${userId} action=blast_aggregated`);
       return ok200({ action: 'blast_aggregated' });
     }

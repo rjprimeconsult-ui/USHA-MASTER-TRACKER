@@ -104,6 +104,23 @@ const CB_KEY   = 'chargebacks_v1';
 const OVR_KEY  = 'overrides_v1';
 const OWN_ADV_KEY = 'own_advances_v1';
 const BLAST_KEY = 'blast_log_v1';
+
+// Map a row from the blast_counters table (atomic Ringy native capture) into the
+// display shape BlastsView expects. Kept separate from blast_log_v1 (manual /
+// skill entries) so the accurate DB counter is never overwritten by app state.
+function counterToBlast(r) {
+  return {
+    id: `bc:${r.run_date}:${r.platform}:${r.tag}`,
+    runDate: r.run_date,
+    platform: r.platform,
+    campaignOrTag: r.tag,
+    contacts: r.contacts,
+    rangeStart: '', rangeEnd: '', sendTime: '', numbersUsed: '', notes: '',
+    source: 'auto',
+    createdAt: r.first_at,
+    _native: { run_date: r.run_date, platform: r.platform, tag: r.tag },
+  };
+}
 const AM_KEY   = 'advance_months_history_v1';
 const PE_KEY   = 'platform_expenses_v1';
 const BE_KEY   = 'business_expenses_v1';
@@ -242,6 +259,7 @@ export default function LeadTracker() {
   const [overrides, setOverrides] = useState([]);
   const [ownAdvances, setOwnAdvances] = useState([]);
   const [blasts, setBlasts] = useState([]);
+  const [nativeBlasts, setNativeBlasts] = useState([]); // Ringy atomic counters (blast_counters table)
   const [advanceMonthsHistory, setAdvanceMonthsHistory] = useState([]);
   const [platformExpenses, setPlatformExpenses] = useState([]);
   const [businessExpenses, setBusinessExpenses] = useState([]);
@@ -417,6 +435,15 @@ export default function LeadTracker() {
 
       const blastRaw = await storage.getItem(BLAST_KEY);
       setBlasts(blastRaw ? JSON.parse(blastRaw) : []);
+
+      // Ringy native blast counters live in their own table (atomic increments).
+      // Read-only here; the webhook is the sole writer. Graceful before migration.
+      if (supabaseConfigured()) {
+        try {
+          const { data: bc, error: bcErr } = await supabase.from('blast_counters').select('*');
+          if (!bcErr && Array.isArray(bc)) setNativeBlasts(bc.map(counterToBlast));
+        } catch { /* table not migrated yet — ignore */ }
+      }
 
       const peRaw = await storage.getItem(PE_KEY);
       const peInitial = peRaw ? JSON.parse(peRaw) : [];
@@ -2189,8 +2216,22 @@ export default function LeadTracker() {
         </ViewMount>
         <ViewMount visible={view === 'blasts'} viewKey="blasts">
           <BlastsView
-            blasts={blasts}
-            onDelete={(id) => setBlasts(prev => prev.filter(b => b.id !== id))}
+            blasts={[...nativeBlasts, ...blasts]}
+            onDelete={(id) => {
+              if (String(id).startsWith('bc:')) {
+                const row = nativeBlasts.find(b => b.id === id);
+                setNativeBlasts(prev => prev.filter(b => b.id !== id));
+                if (row && supabaseConfigured()) {
+                  supabase.from('blast_counters').delete()
+                    .eq('run_date', row._native.run_date)
+                    .eq('platform', row._native.platform)
+                    .eq('tag', row._native.tag)
+                    .then(() => {});
+                }
+              } else {
+                setBlasts(prev => prev.filter(b => b.id !== id));
+              }
+            }}
             onAdd={(form) => setBlasts(prev => upsertBlast(prev, normalizeBlastPayload(form), new Date().toISOString()).list)}
           />
         </ViewMount>
