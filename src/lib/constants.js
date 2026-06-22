@@ -220,6 +220,7 @@ export const NAV_TABS = [
   { id: 'pipeline',     label: 'Pipeline',      icon: 'Columns' },
   { id: 'prospects',    label: 'Prospects',     icon: 'UserPlus' },
   { id: 'platforms',    label: 'Platforms',     icon: 'DollarSign' },
+  { id: 'blasts',       label: 'Blasts',        icon: 'Send' },
   { id: 'books',        label: 'Books',         icon: 'BookOpen' },
   { id: 'reports',      label: 'Reports',       icon: 'FileText' },
   { id: 'calculator',   label: 'Calculator',    icon: 'Calculator' },

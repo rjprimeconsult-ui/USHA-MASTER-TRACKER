@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
-  Calculator, Repeat, CheckSquare, LayoutDashboard, Users, Columns, Upload, Settings, Sparkles, DollarSign, BookOpen, LogOut, UserPlus, User as UserIcon, FileText, Merge,
+  Calculator, Repeat, CheckSquare, LayoutDashboard, Users, Columns, Upload, Settings, Sparkles, DollarSign, BookOpen, LogOut, UserPlus, User as UserIcon, FileText, Merge, Send,
 } from 'lucide-react';
 import { PrimAppIcon } from '@/components/PrimLogo';
 import { storage, onStorageError } from '@/lib/storage';
@@ -33,6 +33,7 @@ import BusinessBooksView from './views/BusinessBooksView';
 import ReportsView from './views/ReportsView';
 import ProspectsView from './views/ProspectsView';
 import CommissionCalculator from './views/CommissionCalculator';
+import BlastsView from './views/BlastsView';
 import DuplicateResolver from './DuplicateResolver';
 import { findDuplicateGroups, enumeratePairs, shouldSkipPair } from '@/lib/duplicateResolver.mjs';
 import { nameKey, buildAdvancePatch } from '@/lib/statement';
@@ -83,7 +84,7 @@ const TeamView = nextDynamic(() => import('./views/TeamView'), {
   loading: () => <div className="text-sm text-slate-400 p-4">Loading team…</div>,
 });
 
-const ICONS = { Calculator, Repeat, CheckSquare, LayoutDashboard, Users, Columns, Upload, DollarSign, BookOpen, UserPlus, FileText };
+const ICONS = { Calculator, Repeat, CheckSquare, LayoutDashboard, Users, Columns, Upload, DollarSign, BookOpen, UserPlus, FileText, Send };
 
 // Normalise an AI-returned datetime to the "YYYY-MM-DDTHH:mm" form that
 // <input type="datetime-local"> requires (handles space-separated, seconds, zone).
@@ -101,6 +102,7 @@ const TIER_KEY = 'agent_tier_v1';
 const CB_KEY   = 'chargebacks_v1';
 const OVR_KEY  = 'overrides_v1';
 const OWN_ADV_KEY = 'own_advances_v1';
+const BLAST_KEY = 'blast_log_v1';
 const AM_KEY   = 'advance_months_history_v1';
 const PE_KEY   = 'platform_expenses_v1';
 const BE_KEY   = 'business_expenses_v1';
@@ -238,6 +240,7 @@ export default function LeadTracker() {
   const [chargebacks, setChargebacks] = useState([]);
   const [overrides, setOverrides] = useState([]);
   const [ownAdvances, setOwnAdvances] = useState([]);
+  const [blasts, setBlasts] = useState([]);
   const [advanceMonthsHistory, setAdvanceMonthsHistory] = useState([]);
   const [platformExpenses, setPlatformExpenses] = useState([]);
   const [businessExpenses, setBusinessExpenses] = useState([]);
@@ -410,6 +413,9 @@ export default function LeadTracker() {
 
       const amRaw = await storage.getItem(AM_KEY);
       setAdvanceMonthsHistory(amRaw ? JSON.parse(amRaw) : []);
+
+      const blastRaw = await storage.getItem(BLAST_KEY);
+      setBlasts(blastRaw ? JSON.parse(blastRaw) : []);
 
       const peRaw = await storage.getItem(PE_KEY);
       const peInitial = peRaw ? JSON.parse(peRaw) : [];
@@ -645,6 +651,7 @@ export default function LeadTracker() {
   useEffect(() => { if (loaded) storage.setItem(OVR_KEY, JSON.stringify(overrides)); }, [overrides, loaded]);
   useEffect(() => { if (loaded) storage.setItem(OWN_ADV_KEY, JSON.stringify(ownAdvances)); }, [ownAdvances, loaded]);
   useEffect(() => { if (loaded) storage.setItem(AM_KEY, JSON.stringify(advanceMonthsHistory)); }, [advanceMonthsHistory, loaded]);
+  useEffect(() => { if (loaded) storage.setItem(BLAST_KEY, JSON.stringify(blasts)); }, [blasts, loaded]);
   // [retired 2026-05-26] platform_expenses_v1 is no longer a source of
   // truth — PlatformsView reads from businessExpenses via the
   // platformExpensesAsView memo. The legacy store is cleared during
@@ -2178,6 +2185,9 @@ export default function LeadTracker() {
             expenses={platformExpensesAsView}
             onJumpToBooks={() => setView('books')}
           />
+        </ViewMount>
+        <ViewMount visible={view === 'blasts'} viewKey="blasts">
+          <BlastsView blasts={blasts} onDelete={(id) => setBlasts(prev => prev.filter(b => b.id !== id))} />
         </ViewMount>
         <ViewMount visible={view === 'prospects'} viewKey="prospects">
           <ProspectsView
