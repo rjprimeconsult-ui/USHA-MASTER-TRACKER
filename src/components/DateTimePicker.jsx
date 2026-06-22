@@ -123,7 +123,7 @@ export default function DateTimePicker({ value = '', onChange, className = '', d
       {open && typeof document !== 'undefined' && createPortal(
         <div
           ref={popRef}
-          style={{ position: 'fixed', top: pos.top, left: pos.left, minWidth: Math.max(pos.width, 300), zIndex: 60 }}
+          style={{ position: 'fixed', top: pos.top, left: pos.left, minWidth: Math.max(pos.width, 300), zIndex: 90 }}
           className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl shadow-2xl p-3 space-y-3"
         >
           <div>
