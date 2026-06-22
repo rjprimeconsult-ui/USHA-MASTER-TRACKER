@@ -1,7 +1,7 @@
 'use client';
 import { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { CalendarClock, Check } from 'lucide-react';
+import { CalendarClock, Check, X } from 'lucide-react';
 import { parseDateTimeLocal, composeDateTimeLocal, parseTypedTime } from '@/lib/datetimeField.mjs';
 
 /**
@@ -96,17 +96,29 @@ export default function DateTimePicker({ value = '', onChange, className = '', d
 
   return (
     <>
-      <button
-        type="button"
-        id={id}
-        ref={triggerRef}
-        disabled={disabled}
-        onClick={() => { if (!open) setTimeText(`${hour12}:${p2(minute)}`); setOpen((o) => !o); }}
-        className={`${className} flex items-center justify-between gap-2 text-left ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-      >
-        <span className={display ? '' : 'text-slate-400'}>{display || 'mm/dd/yyyy --:-- --'}</span>
-        <CalendarClock size={15} className="text-slate-400 shrink-0" />
-      </button>
+      <div className="relative">
+        <button
+          type="button"
+          id={id}
+          ref={triggerRef}
+          disabled={disabled}
+          onClick={() => { if (!open) setTimeText(`${hour12}:${p2(minute)}`); setOpen((o) => !o); }}
+          className={`${className} flex items-center justify-between gap-2 text-left ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+        >
+          <span className={display ? '' : 'text-slate-400'}>{display || 'mm/dd/yyyy --:-- --'}</span>
+          <CalendarClock size={15} className="text-slate-400 shrink-0" />
+        </button>
+        {value && !disabled && (
+          <button
+            type="button"
+            title="Clear appointment"
+            onClick={(e) => { e.stopPropagation(); onChange?.(''); setTimeText(''); setOpen(false); }}
+            className="absolute top-1/2 -translate-y-1/2 right-8 p-0.5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+          >
+            <X size={14} />
+          </button>
+        )}
+      </div>
 
       {open && typeof document !== 'undefined' && createPortal(
         <div
@@ -164,13 +176,22 @@ export default function DateTimePicker({ value = '', onChange, className = '', d
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
-            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg py-2 flex items-center justify-center gap-1.5"
-          >
-            <Check size={15} /> Done
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => { onChange?.(''); setTimeText(''); setOpen(false); }}
+              className="flex-1 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 text-sm font-semibold rounded-lg py-2 flex items-center justify-center gap-1.5"
+            >
+              <X size={15} /> Clear
+            </button>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg py-2 flex items-center justify-center gap-1.5"
+            >
+              <Check size={15} /> Done
+            </button>
+          </div>
         </div>,
         document.body,
       )}
