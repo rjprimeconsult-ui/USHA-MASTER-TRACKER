@@ -563,7 +563,7 @@ function ClosedDeals({ leads, onEdit, onUpdate, onDelete, onImportFromScreenshot
 
         return (
           <div key={ym} className="premium-card overflow-hidden">
-            <div className="bg-yellow-300 px-4 py-1.5 font-bold text-slate-900 text-sm tracking-wider border-b-2 border-yellow-500">
+            <div className="bg-yellow-300 px-4 py-1.5 font-bold text-black text-sm tracking-wider border-b-2 border-yellow-500">
               {monthLabel(ym)} · {items.length} DEAL{items.length !== 1 ? 'S' : ''}
               {issuedItems.length !== items.length && (
                 <> ({issuedItems.length} issued{pendingCount ? `, ${pendingCount} pending` : ''}{lostCount ? `, ${lostCount} lost` : ''})</>
