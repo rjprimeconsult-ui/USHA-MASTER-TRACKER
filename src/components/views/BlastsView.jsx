@@ -27,9 +27,17 @@ const PLATFORM_STYLE = {
   Textdrip: 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300',
 };
 
-// Bucket a blast by its run date (lenient), falling back to when PRIM received it.
+// Bucket a blast by its run date (lenient), falling back to when PRIM received
+// it. A date-only run date is parsed as LOCAL midnight so the Today / Last-7-day
+// buckets line up with the agent's calendar — new Date('YYYY-MM-DD') is UTC
+// midnight, which mis-buckets in western timezones.
 function blastDate(b) {
-  const d = new Date(b?.runDate);
+  const raw = String(b?.runDate || '').trim();
+  let m = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  m = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (m) return new Date(Number(m[3]), Number(m[1]) - 1, Number(m[2]));
+  const d = new Date(raw);
   if (!Number.isNaN(d.getTime())) return d;
   const c = new Date(b?.createdAt);
   return Number.isNaN(c.getTime()) ? null : c;

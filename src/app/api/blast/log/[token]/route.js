@@ -94,9 +94,11 @@ export async function POST(req, ctx) {
     // ---- Parse + normalize ----
     const body = await parseBody(req);
     const blast = normalizeBlastPayload(body);
-    // Need at least a platform or a contact count to be a meaningful blast.
-    if (!blast.platform && !blast.contacts) {
-      console.log(`[blast/log] user=${userId} skipped — empty payload`);
+    // A blast must name a platform to be meaningful (the skill always sends
+    // Ringy/Textdrip). Skip anything without one — an empty platform would also
+    // collapse distinct rows under one dedup key.
+    if (!blast.platform) {
+      console.log(`[blast/log] user=${userId} skipped — no platform`);
       return ok200({ action: 'skipped' });
     }
 

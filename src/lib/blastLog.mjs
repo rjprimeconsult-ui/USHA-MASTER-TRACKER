@@ -62,9 +62,14 @@ export function normalizeBlastPayload(body) {
   };
 }
 
-/** Dedup key — a blast is "the same" if date+platform+time+campaign match. */
+/**
+ * Dedup key — a blast is "the same" only if date+platform+time+campaign AND the
+ * lead range all match. Including the range means two distinct same-day/
+ * same-time TextDrip windows (different ranges) log as separate rows, while a
+ * true re-POST (identical fields) still de-dupes.
+ */
 export function blastKey(b) {
-  return ['runDate', 'platform', 'sendTime', 'campaignOrTag']
+  return ['runDate', 'platform', 'sendTime', 'campaignOrTag', 'rangeStart', 'rangeEnd']
     .map(k => String(b?.[k] || '').trim().toLowerCase())
     .join('|');
 }
@@ -83,6 +88,7 @@ export function upsertBlast(list, record, now) {
     const entry = { id: _uid(), ...record, createdAt: ts };
     return { list: [...arr, entry], action: 'create' };
   }
-  const updated = { ...arr[idx], ...record };
+  // Preserve the original id + createdAt; refresh the rest from the new payload.
+  const updated = { ...arr[idx], ...record, id: arr[idx].id, createdAt: arr[idx].createdAt };
   return { list: arr.map((b, i) => (i === idx ? updated : b)), action: 'update' };
 }

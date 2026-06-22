@@ -72,7 +72,32 @@ test('upsert: two blasts same day, different send time = two rows', () => {
   assert.equal(r2.list.length, 2);
 });
 
-test('blastKey is case/space-insensitive on the four parts', () => {
+test('upsert: same date/time/campaign, different platform = two rows', () => {
+  let list = [];
+  ({ list } = upsertBlast(list, normalizeBlastPayload({ run_date: '2026-06-16', platform: 'Ringy', send_time: '10:30', campaign_or_tag: 'AGED' }), NOW));
+  const r2 = upsertBlast(list, normalizeBlastPayload({ run_date: '2026-06-16', platform: 'Textdrip', send_time: '10:30', campaign_or_tag: 'AGED' }), NOW);
+  assert.equal(r2.action, 'create');
+  assert.equal(r2.list.length, 2);
+});
+
+test('upsert: same day/platform/time/campaign but different range = two rows', () => {
+  let list = [];
+  ({ list } = upsertBlast(list, normalizeBlastPayload({ run_date: '2026-06-17', platform: 'Textdrip', send_time: '12:30', campaign_or_tag: 'New Aged leads TEST', range_start: '2026-02-04', range_end: '2026-02-14', contacts: 4587 }), NOW));
+  const r2 = upsertBlast(list, normalizeBlastPayload({ run_date: '2026-06-17', platform: 'Textdrip', send_time: '12:30', campaign_or_tag: 'New Aged leads TEST', range_start: '2026-02-15', range_end: '2026-02-22', contacts: 4679 }), NOW);
+  assert.equal(r2.action, 'create');
+  assert.equal(r2.list.length, 2);
+});
+
+test('upsert: re-POST preserves original id + createdAt, refreshes contacts', () => {
+  const first = upsertBlast([], normalizeBlastPayload({ run_date: '2026-06-16', platform: 'Ringy', send_time: '10:30', campaign_or_tag: 'AGED', contacts: 2000 }), '2026-06-16T10:00:00.000Z');
+  const second = upsertBlast(first.list, normalizeBlastPayload({ run_date: '2026-06-16', platform: 'Ringy', send_time: '10:30', campaign_or_tag: 'AGED', contacts: 2050 }), '2026-06-16T11:00:00.000Z');
+  assert.equal(second.action, 'update');
+  assert.equal(second.list[0].id, first.list[0].id);
+  assert.equal(second.list[0].createdAt, first.list[0].createdAt); // not bumped
+  assert.equal(second.list[0].contacts, 2050);
+});
+
+test('blastKey is case/space-insensitive on the parts', () => {
   const a = { runDate: '2026-06-16', platform: 'Ringy', sendTime: '10:30', campaignOrTag: 'AGED' };
   const b = { runDate: '2026-06-16', platform: 'ringy', sendTime: ' 10:30 ', campaignOrTag: 'aged' };
   assert.equal(blastKey(a), blastKey(b));
