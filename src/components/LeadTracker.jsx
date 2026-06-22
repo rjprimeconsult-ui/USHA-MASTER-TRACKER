@@ -114,21 +114,24 @@ function counterToBlast(r) {
   // viewer's LOCAL calendar day so an evening blast in a western timezone shows
   // on the day the agent actually ran it — not the next UTC day. The UTC run_date
   // is still kept in _native for the delete PK match.
-  const localDate = (() => {
-    const d = new Date(r.first_at || r.last_at);
-    if (Number.isNaN(d.getTime())) return r.run_date;
-    const p = (n) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-  })();
+  const d = new Date(r.first_at || r.last_at);
+  const valid = !Number.isNaN(d.getTime());
+  const p = (n) => String(n).padStart(2, '0');
+  // Bucket/display day AND send time both derive from the real start instant
+  // (first_at), converted to the viewer's local timezone. sendTime = when the
+  // blast started (HH:MM) — useful for time-of-day analytics later.
+  const localDate = valid ? `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}` : r.run_date;
+  const localTime = valid ? `${p(d.getHours())}:${p(d.getMinutes())}` : '';
   return {
     id: `bc:${r.run_date}:${r.platform}:${r.tag}`,
     runDate: localDate,
     platform: r.platform,
     campaignOrTag: r.tag,
     contacts: r.contacts,
-    rangeStart: '', rangeEnd: '', sendTime: '', numbersUsed: '', notes: '',
+    rangeStart: '', rangeEnd: '', sendTime: localTime, numbersUsed: '', notes: '',
     source: 'auto',
     createdAt: r.first_at,
+    lastAt: r.last_at,
     _native: { run_date: r.run_date, platform: r.platform, tag: r.tag },
   };
 }
