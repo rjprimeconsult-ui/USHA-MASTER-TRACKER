@@ -7,7 +7,7 @@
  * collapsible setup panel with the Posting URL.
  */
 import { useState, useEffect, useMemo } from 'react';
-import { Send, Copy, Check, RefreshCw, Trash2, ChevronDown, ChevronUp, Loader2, Plus } from 'lucide-react';
+import { Send, Copy, Check, RefreshCw, Trash2, Pencil, ChevronDown, ChevronUp, Loader2, Plus } from 'lucide-react';
 import { supabase, supabaseConfigured } from '@/lib/supabase';
 
 // Local-time YYYY-MM-DD for the manual form's default date.
@@ -52,7 +52,7 @@ function blastDate(b) {
 }
 const num = (n) => (Number(n) || 0).toLocaleString();
 
-export default function BlastsView({ blasts = [], onDelete, onAdd, readOnly = false }) {
+export default function BlastsView({ blasts = [], onDelete, onAdd, onEdit, readOnly = false }) {
   const [config, setConfig] = useState(null);
   const [copied, setCopied] = useState('');
   const [regenerating, setRegenerating] = useState(false);
@@ -60,15 +60,44 @@ export default function BlastsView({ blasts = [], onDelete, onAdd, readOnly = fa
   const [platformFilter, setPlatformFilter] = useState('all');
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [editingId, setEditingId] = useState(null);  // null = new; else the row id being edited
+  const [editKind, setEditKind] = useState(null);    // 'auto' (Ringy counter) | 'log' (manual/skill)
 
+  const autoEdit = editKind === 'auto';
   const setField = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const openNew = () => {
+    const wasNew = showForm && !editingId;
+    setForm(EMPTY_FORM); setEditingId(null); setEditKind(null); setShowSetup(false);
+    setShowForm(!wasNew); // toggle off if already on the new form, else open fresh
+  };
+  const openEdit = (b) => {
+    setForm({
+      platform: b.platform || 'Textdrip',
+      runDate: b.runDate || '',
+      campaignOrTag: b.campaignOrTag || '',
+      contacts: String(b.contacts ?? ''),
+      sendTime: b.sendTime || '',
+      rangeStart: b.rangeStart || '',
+      rangeEnd: b.rangeEnd || '',
+      notes: b.notes || '',
+    });
+    setEditingId(b.id);
+    setEditKind(b.source === 'auto' ? 'auto' : 'log');
+    setShowSetup(false);
+    setShowForm(true);
+  };
+  const closeForm = () => { setForm(EMPTY_FORM); setEditingId(null); setEditKind(null); setShowForm(false); };
   const submitForm = () => {
-    const platform = form.platform;
     const contacts = parseInt(String(form.contacts).replace(/[^0-9]/g, ''), 10);
-    if (!platform || !Number.isFinite(contacts) || contacts <= 0) return;
-    onAdd?.({ ...form, runDate: form.runDate || todayStr() });
-    setForm(EMPTY_FORM);
-    setShowForm(false);
+    if (!Number.isFinite(contacts) || contacts <= 0) return;
+    if (editingId) {
+      onEdit?.(editingId, { ...form, runDate: form.runDate || todayStr() });
+    } else {
+      if (!form.platform) return;
+      onAdd?.({ ...form, runDate: form.runDate || todayStr() });
+    }
+    closeForm();
   };
 
   useEffect(() => {
@@ -138,62 +167,74 @@ export default function BlastsView({ blasts = [], onDelete, onAdd, readOnly = fa
         </div>
         {!readOnly && (
           <div className="flex items-center gap-2">
-            <button onClick={() => { setShowForm(s => !s); setShowSetup(false); }} className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-3 py-1.5 text-xs font-semibold flex items-center gap-1.5">
+            <button onClick={openNew} className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-3 py-1.5 text-xs font-semibold flex items-center gap-1.5">
               <Plus size={14} /> Log a blast
             </button>
-            <button onClick={() => { setShowSetup(s => !s); setShowForm(false); }} className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 flex items-center gap-1">
+            <button onClick={() => { setShowSetup(s => !s); closeForm(); }} className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 flex items-center gap-1">
               Setup {showSetup ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
             </button>
           </div>
         )}
       </div>
 
-      {/* Manual log form */}
+      {/* Blast form — log a new blast or edit an existing row */}
       {!readOnly && showForm && (
         <div className="premium-card p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="text-sm font-bold text-slate-900 dark:text-slate-100">Log a blast</div>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400">For TextDrip blasts. Ringy blasts log themselves automatically.</p>
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="text-sm font-bold text-slate-900 dark:text-slate-100">{editingId ? 'Edit blast' : 'Log a blast'}</div>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              {autoEdit
+                ? 'Auto-captured Ringy blast — fix the count, campaign/tag, or notes. Date & time are set automatically.'
+                : 'For TextDrip blasts. Ringy blasts log themselves automatically.'}
+            </p>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-300 space-y-1">
               <span className="block">Platform</span>
-              <select value={form.platform} onChange={e => setField('platform', e.target.value)} className="w-full border border-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 text-xs">
-                <option value="Textdrip">TextDrip</option>
-              </select>
+              {editingId ? (
+                <input type="text" value={form.platform === 'Textdrip' ? 'TextDrip' : form.platform} disabled className="w-full border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/60 dark:text-slate-300 rounded-lg px-2 py-1.5 text-xs opacity-70" />
+              ) : (
+                <select value={form.platform} onChange={e => setField('platform', e.target.value)} className="w-full border border-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 text-xs">
+                  <option value="Textdrip">TextDrip</option>
+                </select>
+              )}
             </label>
             <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-300 space-y-1">
-              <span className="block">Date</span>
-              <input type="date" value={form.runDate || todayStr()} onChange={e => setField('runDate', e.target.value)} className="w-full border border-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 text-xs" />
+              <span className="block">Date {autoEdit && <span className="font-normal text-slate-400">(auto)</span>}</span>
+              <input type="date" value={form.runDate || todayStr()} onChange={e => setField('runDate', e.target.value)} disabled={autoEdit} className="w-full border border-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 text-xs disabled:opacity-60 disabled:cursor-not-allowed" />
             </label>
             <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-300 space-y-1">
               <span className="block">Contacts <span className="text-rose-500">*</span></span>
               <input type="text" inputMode="numeric" value={form.contacts} onChange={e => setField('contacts', e.target.value)} placeholder="2000" className="w-full border border-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 text-xs" />
             </label>
             <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-300 space-y-1">
-              <span className="block">Send time</span>
-              <input type="time" value={form.sendTime} onChange={e => setField('sendTime', e.target.value)} className="w-full border border-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 text-xs" />
+              <span className="block">Send time {autoEdit && <span className="font-normal text-slate-400">(auto)</span>}</span>
+              <input type="time" value={form.sendTime} onChange={e => setField('sendTime', e.target.value)} disabled={autoEdit} className="w-full border border-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 text-xs disabled:opacity-60 disabled:cursor-not-allowed" />
             </label>
             <label className="col-span-2 text-[11px] font-semibold text-slate-500 dark:text-slate-300 space-y-1">
               <span className="block">Campaign / Tag</span>
               <input type="text" value={form.campaignOrTag} onChange={e => setField('campaignOrTag', e.target.value)} placeholder="New Aged leads" className="w-full border border-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 text-xs" />
             </label>
-            <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-300 space-y-1">
-              <span className="block">Range start</span>
-              <input type="text" value={form.rangeStart} onChange={e => setField('rangeStart', e.target.value)} placeholder="optional" className="w-full border border-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 text-xs" />
-            </label>
-            <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-300 space-y-1">
-              <span className="block">Range end</span>
-              <input type="text" value={form.rangeEnd} onChange={e => setField('rangeEnd', e.target.value)} placeholder="optional" className="w-full border border-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 text-xs" />
-            </label>
+            {!autoEdit && (
+              <>
+                <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-300 space-y-1">
+                  <span className="block">Range start</span>
+                  <input type="text" value={form.rangeStart} onChange={e => setField('rangeStart', e.target.value)} placeholder="optional" className="w-full border border-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 text-xs" />
+                </label>
+                <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-300 space-y-1">
+                  <span className="block">Range end</span>
+                  <input type="text" value={form.rangeEnd} onChange={e => setField('rangeEnd', e.target.value)} placeholder="optional" className="w-full border border-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 text-xs" />
+                </label>
+              </>
+            )}
             <label className="col-span-2 sm:col-span-4 text-[11px] font-semibold text-slate-500 dark:text-slate-300 space-y-1">
               <span className="block">Notes</span>
               <input type="text" value={form.notes} onChange={e => setField('notes', e.target.value)} placeholder="optional" className="w-full border border-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 text-xs" />
             </label>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={submitForm} disabled={!(parseInt(String(form.contacts).replace(/[^0-9]/g, ''), 10) > 0)} className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg px-4 py-2 text-sm font-semibold">Add blast</button>
-            <button onClick={() => { setForm(EMPTY_FORM); setShowForm(false); }} className="text-slate-500 dark:text-slate-400 hover:text-slate-700 text-sm px-3 py-2">Cancel</button>
+            <button onClick={submitForm} disabled={!(parseInt(String(form.contacts).replace(/[^0-9]/g, ''), 10) > 0)} className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg px-4 py-2 text-sm font-semibold">{editingId ? 'Save changes' : 'Add blast'}</button>
+            <button onClick={closeForm} className="text-slate-500 dark:text-slate-400 hover:text-slate-700 text-sm px-3 py-2">Cancel</button>
           </div>
         </div>
       )}
@@ -272,7 +313,7 @@ export default function BlastsView({ blasts = [], onDelete, onAdd, readOnly = fa
                   <th className="text-left p-2">Send Time</th>
                   <th className="text-left p-2">Numbers</th>
                   <th className="text-left p-2">Notes</th>
-                  {!readOnly && <th className="w-10 p-2" />}
+                  {!readOnly && <th className="w-20 p-2" />}
                 </tr>
               </thead>
               <tbody>
@@ -287,8 +328,9 @@ export default function BlastsView({ blasts = [], onDelete, onAdd, readOnly = fa
                     <td className="p-2 text-slate-400 dark:text-slate-500 text-[10px] font-mono max-w-[160px] truncate" title={b.numbersUsed}>{b.numbersUsed || '—'}</td>
                     <td className="p-2 text-slate-500 dark:text-slate-400 text-xs max-w-[220px]">{b.notes || '—'}</td>
                     {!readOnly && (
-                      <td className="p-2 text-right">
-                        <button onClick={() => onDelete?.(b.id)} title="Remove this blast" className="text-slate-400 hover:text-red-600 p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20"><Trash2 size={14} /></button>
+                      <td className="p-2 text-right whitespace-nowrap">
+                        <button onClick={() => openEdit(b)} title="Edit this blast" className="text-slate-400 hover:text-indigo-600 p-1 rounded hover:bg-indigo-50 dark:hover:bg-indigo-900/20"><Pencil size={14} /></button>
+                        <button onClick={() => onDelete?.(b.id)} title="Remove this blast" className="text-slate-400 hover:text-red-600 p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 ml-1"><Trash2 size={14} /></button>
                       </td>
                     )}
                   </tr>

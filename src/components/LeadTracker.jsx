@@ -128,7 +128,7 @@ function counterToBlast(r) {
     platform: r.platform,
     campaignOrTag: r.tag,
     contacts: r.contacts,
-    rangeStart: '', rangeEnd: '', sendTime: localTime, numbersUsed: '', notes: '',
+    rangeStart: '', rangeEnd: '', sendTime: localTime, numbersUsed: '', notes: r.notes || '',
     source: 'auto',
     createdAt: r.first_at,
     lastAt: r.last_at,
@@ -2260,6 +2260,43 @@ export default function LeadTracker() {
               }
             }}
             onAdd={(form) => setBlasts(prev => upsertBlast(prev, normalizeBlastPayload(form), new Date().toISOString()).list)}
+            onEdit={(id, form) => {
+              if (String(id).startsWith('bc:')) {
+                // Auto-captured Ringy row → correct it in the blast_counters table.
+                const row = nativeBlasts.find(b => b.id === id);
+                if (!row) return;
+                const contacts = parseInt(String(form.contacts).replace(/[^0-9]/g, ''), 10) || 0;
+                const newTag = String(form.campaignOrTag || '').trim();
+                const newNotes = String(form.notes || '');
+                const optimistic = {
+                  ...row, contacts, campaignOrTag: newTag, notes: newNotes,
+                  id: `bc:${row._native.run_date}:${row._native.platform}:${newTag}`,
+                  _native: { ...row._native, tag: newTag },
+                };
+                setNativeBlasts(prev => prev.map(b => (b.id === id ? optimistic : b)));
+                if (supabaseConfigured()) {
+                  supabase.from('blast_counters')
+                    .update({ contacts, tag: newTag, notes: newNotes })
+                    .eq('run_date', row._native.run_date)
+                    .eq('platform', row._native.platform)
+                    .eq('tag', row._native.tag)
+                    .then(({ error }) => {
+                      if (error) {
+                        setNativeBlasts(prev => prev.map(b => (b.id === optimistic.id ? row : b)));
+                        alert('Could not save the edit. For Ringy rows, make sure the blast-counters edit migration has been run in Supabase.');
+                      }
+                    });
+                }
+              } else {
+                // Manual / skill row → update in place in blast_log_v1, preserving
+                // id/createdAt/source and the one field the form doesn't expose (numbersUsed).
+                setBlasts(prev => prev.map(b => {
+                  if (b.id !== id) return b;
+                  const n = normalizeBlastPayload({ ...form, runDate: form.runDate || b.runDate });
+                  return { ...b, runDate: n.runDate, platform: n.platform, campaignOrTag: n.campaignOrTag, contacts: n.contacts, sendTime: n.sendTime, rangeStart: n.rangeStart, rangeEnd: n.rangeEnd, notes: n.notes };
+                }));
+              }
+            }}
           />
         </ViewMount>
         <ViewMount visible={view === 'prospects'} viewKey="prospects">
