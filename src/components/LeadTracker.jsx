@@ -34,6 +34,7 @@ import ReportsView from './views/ReportsView';
 import ProspectsView from './views/ProspectsView';
 import CommissionCalculator from './views/CommissionCalculator';
 import BlastsView from './views/BlastsView';
+import { normalizeBlastPayload, upsertBlast } from '@/lib/blastLog.mjs';
 import DuplicateResolver from './DuplicateResolver';
 import { findDuplicateGroups, enumeratePairs, shouldSkipPair } from '@/lib/duplicateResolver.mjs';
 import { nameKey, buildAdvancePatch } from '@/lib/statement';
@@ -2187,7 +2188,11 @@ export default function LeadTracker() {
           />
         </ViewMount>
         <ViewMount visible={view === 'blasts'} viewKey="blasts">
-          <BlastsView blasts={blasts} onDelete={(id) => setBlasts(prev => prev.filter(b => b.id !== id))} />
+          <BlastsView
+            blasts={blasts}
+            onDelete={(id) => setBlasts(prev => prev.filter(b => b.id !== id))}
+            onAdd={(form) => setBlasts(prev => upsertBlast(prev, normalizeBlastPayload(form), new Date().toISOString()).list)}
+          />
         </ViewMount>
         <ViewMount visible={view === 'prospects'} viewKey="prospects">
           <ProspectsView

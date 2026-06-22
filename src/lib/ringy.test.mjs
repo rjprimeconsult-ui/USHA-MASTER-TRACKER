@@ -13,6 +13,8 @@ import {
   normalizeRingyPayload,
   mapDispositionToStage,
   upsertRingyLead,
+  checkIsBlastDisposition,
+  DEFAULT_BLAST_PATTERNS,
 } from './ringy.mjs';
 
 // ============================================================
@@ -190,6 +192,50 @@ test('mapDispositionToStage: empty mapping → defaultStage', () => {
 
 test('mapDispositionToStage: null mapping → defaultStage', () => {
   assert.equal(mapDispositionToStage('Appointment Set', null, 'PENDING_DECISION'), 'PENDING_DECISION');
+});
+
+// ============================================================
+// checkIsBlastDisposition — native blast/repurpose detection
+// ============================================================
+test('checkIsBlastDisposition: matches the real "REPUROSED - AGED - POST O/E DRIP" tag with no config', () => {
+  assert.equal(checkIsBlastDisposition('REPUROSED - AGED - POST O/E DRIP'), true);
+});
+
+test('checkIsBlastDisposition: matches correctly-spelled REPURPOSED', () => {
+  assert.equal(checkIsBlastDisposition('Repurposed - Aged'), true);
+});
+
+test('checkIsBlastDisposition: matches the "POST O/E DRIP" fragment alone', () => {
+  assert.equal(checkIsBlastDisposition('post oe drip'), true);
+  assert.equal(checkIsBlastDisposition('POST O/E DRIP'), true);
+});
+
+test('checkIsBlastDisposition: normal dispositions do NOT match (no false positives)', () => {
+  assert.equal(checkIsBlastDisposition('Appointment Set'), false);
+  assert.equal(checkIsBlastDisposition('Not Interested'), false);
+  assert.equal(checkIsBlastDisposition('Follow Up'), false);
+  assert.equal(checkIsBlastDisposition('Expressed Interest'), false);
+  assert.equal(checkIsBlastDisposition('Post-Appointment Follow Up'), false);
+});
+
+test('checkIsBlastDisposition: empty / null → false', () => {
+  assert.equal(checkIsBlastDisposition(''), false);
+  assert.equal(checkIsBlastDisposition(null), false);
+  assert.equal(checkIsBlastDisposition(undefined), false);
+});
+
+test('checkIsBlastDisposition: honors an agent custom pattern', () => {
+  assert.equal(checkIsBlastDisposition('MY BLAST CAMPAIGN', ['blast']), true);
+  // custom pattern absent → falls back to defaults only
+  assert.equal(checkIsBlastDisposition('MY BLAST CAMPAIGN', []), false);
+});
+
+test('checkIsBlastDisposition: invalid-regex custom pattern degrades to substring match', () => {
+  assert.equal(checkIsBlastDisposition('weekly (special) run', ['(special']), true);
+});
+
+test('DEFAULT_BLAST_PATTERNS is a non-empty array', () => {
+  assert.ok(Array.isArray(DEFAULT_BLAST_PATTERNS) && DEFAULT_BLAST_PATTERNS.length > 0);
 });
 
 // ============================================================

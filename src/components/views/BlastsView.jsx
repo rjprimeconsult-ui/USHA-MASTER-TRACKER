@@ -7,8 +7,16 @@
  * collapsible setup panel with the Posting URL.
  */
 import { useState, useEffect, useMemo } from 'react';
-import { Send, Copy, Check, RefreshCw, Trash2, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
+import { Send, Copy, Check, RefreshCw, Trash2, ChevronDown, ChevronUp, Loader2, Plus } from 'lucide-react';
 import { supabase, supabaseConfigured } from '@/lib/supabase';
+
+// Local-time YYYY-MM-DD for the manual form's default date.
+function todayStr() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+const EMPTY_FORM = { platform: 'Textdrip', runDate: '', campaignOrTag: '', contacts: '', sendTime: '', rangeStart: '', rangeEnd: '', notes: '' };
 
 async function bearer() {
   if (!supabaseConfigured()) return null;
@@ -44,12 +52,24 @@ function blastDate(b) {
 }
 const num = (n) => (Number(n) || 0).toLocaleString();
 
-export default function BlastsView({ blasts = [], onDelete, readOnly = false }) {
+export default function BlastsView({ blasts = [], onDelete, onAdd, readOnly = false }) {
   const [config, setConfig] = useState(null);
   const [copied, setCopied] = useState('');
   const [regenerating, setRegenerating] = useState(false);
   const [showSetup, setShowSetup] = useState(false);
   const [platformFilter, setPlatformFilter] = useState('all');
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState(EMPTY_FORM);
+
+  const setField = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const submitForm = () => {
+    const platform = form.platform;
+    const contacts = parseInt(String(form.contacts).replace(/[^0-9]/g, ''), 10);
+    if (!platform || !Number.isFinite(contacts) || contacts <= 0) return;
+    onAdd?.({ ...form, runDate: form.runDate || todayStr() });
+    setForm(EMPTY_FORM);
+    setShowForm(false);
+  };
 
   useEffect(() => {
     if (readOnly) return;
@@ -117,16 +137,75 @@ export default function BlastsView({ blasts = [], onDelete, readOnly = false }) 
           </div>
         </div>
         {!readOnly && (
-          <button onClick={() => setShowSetup(s => !s)} className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 flex items-center gap-1">
-            Setup {showSetup ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={() => { setShowForm(s => !s); setShowSetup(false); }} className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-3 py-1.5 text-xs font-semibold flex items-center gap-1.5">
+              <Plus size={14} /> Log a blast
+            </button>
+            <button onClick={() => { setShowSetup(s => !s); setShowForm(false); }} className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 flex items-center gap-1">
+              Setup {showSetup ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            </button>
+          </div>
         )}
       </div>
+
+      {/* Manual log form */}
+      {!readOnly && showForm && (
+        <div className="premium-card p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-bold text-slate-900 dark:text-slate-100">Log a blast</div>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">For TextDrip or any blast not auto-captured. Ringy blasts log themselves.</p>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-300 space-y-1">
+              <span className="block">Platform</span>
+              <select value={form.platform} onChange={e => setField('platform', e.target.value)} className="w-full border border-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 text-xs">
+                <option value="Textdrip">TextDrip</option>
+                <option value="Ringy">Ringy</option>
+              </select>
+            </label>
+            <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-300 space-y-1">
+              <span className="block">Date</span>
+              <input type="date" value={form.runDate || todayStr()} onChange={e => setField('runDate', e.target.value)} className="w-full border border-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 text-xs" />
+            </label>
+            <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-300 space-y-1">
+              <span className="block">Contacts <span className="text-rose-500">*</span></span>
+              <input type="text" inputMode="numeric" value={form.contacts} onChange={e => setField('contacts', e.target.value)} placeholder="2000" className="w-full border border-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 text-xs" />
+            </label>
+            <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-300 space-y-1">
+              <span className="block">Send time</span>
+              <input type="time" value={form.sendTime} onChange={e => setField('sendTime', e.target.value)} className="w-full border border-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 text-xs" />
+            </label>
+            <label className="col-span-2 text-[11px] font-semibold text-slate-500 dark:text-slate-300 space-y-1">
+              <span className="block">Campaign / Tag</span>
+              <input type="text" value={form.campaignOrTag} onChange={e => setField('campaignOrTag', e.target.value)} placeholder="New Aged leads" className="w-full border border-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 text-xs" />
+            </label>
+            <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-300 space-y-1">
+              <span className="block">Range start</span>
+              <input type="text" value={form.rangeStart} onChange={e => setField('rangeStart', e.target.value)} placeholder="optional" className="w-full border border-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 text-xs" />
+            </label>
+            <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-300 space-y-1">
+              <span className="block">Range end</span>
+              <input type="text" value={form.rangeEnd} onChange={e => setField('rangeEnd', e.target.value)} placeholder="optional" className="w-full border border-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 text-xs" />
+            </label>
+            <label className="col-span-2 sm:col-span-4 text-[11px] font-semibold text-slate-500 dark:text-slate-300 space-y-1">
+              <span className="block">Notes</span>
+              <input type="text" value={form.notes} onChange={e => setField('notes', e.target.value)} placeholder="optional" className="w-full border border-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 text-xs" />
+            </label>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={submitForm} disabled={!(parseInt(String(form.contacts).replace(/[^0-9]/g, ''), 10) > 0)} className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg px-4 py-2 text-sm font-semibold">Add blast</button>
+            <button onClick={() => { setForm(EMPTY_FORM); setShowForm(false); }} className="text-slate-500 dark:text-slate-400 hover:text-slate-700 text-sm px-3 py-2">Cancel</button>
+          </div>
+        </div>
+      )}
 
       {/* Setup panel */}
       {!readOnly && showSetup && (
         <div className="premium-card p-4 space-y-3">
           <div className="text-sm font-bold text-slate-900 dark:text-slate-100">Connect your blast skill</div>
+          <p className="text-xs text-slate-600 dark:text-slate-300">
+            <strong>Ringy blasts log themselves</strong> — applying a repurpose tag in Ringy rolls up here automatically (manage it under Prospects → Ringy settings). For <strong>TextDrip</strong>, use &ldquo;Log a blast&rdquo; above, or connect the Cowork skill below.
+          </p>
           <p className="text-xs text-slate-600 dark:text-slate-300">
             In your Cowork <strong>ringy-textdrip-blast</strong> skill, in the &ldquo;Log every blast&rdquo; step — right after it appends the row to <code className="bg-slate-100 dark:bg-slate-700 px-1 rounded">blast-log.csv</code> — also POST that same row (JSON) to your Posting URL below. PRIM logs it automatically; re-sends are de-duped.
           </p>
@@ -179,7 +258,7 @@ export default function BlastsView({ blasts = [], onDelete, readOnly = false }) 
         </div>
         {sorted.length === 0 ? (
           <div className="p-10 text-center text-sm text-slate-400 dark:text-slate-500">
-            No blasts logged yet. {!readOnly && 'Open Setup above and connect your blast skill — each run will appear here automatically.'}
+            No blasts logged yet. {!readOnly && 'Ringy repurpose tags log here automatically — use “Log a blast” above for TextDrip or anything else.'}
           </div>
         ) : (
           <div className="overflow-auto">

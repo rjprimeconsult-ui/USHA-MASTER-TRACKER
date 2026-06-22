@@ -70,6 +70,8 @@ export default function RingySettings({ stages = [] }) {
   const [loadErr, setLoadErr]     = useState('');
   const [mapping, setMapping]     = useState([]);      // [{ disposition, stage }]
   const [defaultStage, setDefaultStage] = useState('');
+  const [blastDetectionEnabled, setBlastDetectionEnabled] = useState(true);
+  const [blastPatterns, setBlastPatterns] = useState(''); // textarea, one pattern per line
   const [saving, setSaving]       = useState(false);
   const [saveMsg, setSaveMsg]     = useState('');      // '' | 'saved' | error text
   const [regenerating, setRegenerating] = useState(false);
@@ -93,6 +95,8 @@ export default function RingySettings({ stages = [] }) {
         setConfig(data);
         setMapping(data.mapping ?? []);
         setDefaultStage(data.defaultStage || (stages.length > 0 ? stages[0].id : ''));
+        setBlastDetectionEnabled(data.blastDetectionEnabled !== false);
+        setBlastPatterns(Array.isArray(data.blastDispositionPatterns) ? data.blastDispositionPatterns.join('\n') : '');
       } catch (e) {
         if (!alive) return;
         setLoadErr(e.message || 'Failed to load Ringy config');
@@ -121,7 +125,7 @@ export default function RingySettings({ stages = [] }) {
     try {
       const data = await authedFetch('/api/ringy/config', {
         method: 'POST',
-        body: JSON.stringify({ mapping, defaultStage, regenerateToken: true }),
+        body: JSON.stringify({ mapping, defaultStage, regenerateToken: true, blastDetectionEnabled, blastDispositionPatterns: patternsArray() }),
       });
       setConfig(data);
       setMapping(data.mapping ?? []);
@@ -138,7 +142,7 @@ export default function RingySettings({ stages = [] }) {
     try {
       const data = await authedFetch('/api/ringy/config', {
         method: 'POST',
-        body: JSON.stringify({ mapping, defaultStage }),
+        body: JSON.stringify({ mapping, defaultStage, blastDetectionEnabled, blastDispositionPatterns: patternsArray() }),
       });
       setConfig(data);
       setMapping(data.mapping ?? []);
@@ -150,6 +154,8 @@ export default function RingySettings({ stages = [] }) {
       setSaving(false);
     }
   };
+
+  const patternsArray = () => blastPatterns.split('\n').map(s => s.trim()).filter(Boolean);
 
   const addRow = () => setMapping(m => [...m, { disposition: '', stage: stages[0]?.id ?? '' }]);
   const removeRow = (i) => setMapping(m => m.filter((_, idx) => idx !== i));
@@ -270,6 +276,37 @@ export default function RingySettings({ stages = [] }) {
             <option key={s.id} value={s.id}>{s.label}</option>
           ))}
         </select>
+      </div>
+
+      {/* 3b. Blast / repurpose auto-capture */}
+      <div className="border border-slate-200 dark:border-slate-700 rounded-xl p-3 space-y-2">
+        <label className="flex items-start gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={blastDetectionEnabled}
+            onChange={e => setBlastDetectionEnabled(e.target.checked)}
+            className="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+          />
+          <span>
+            <span className="block text-xs font-semibold text-slate-700 dark:text-slate-300">Auto-log repurpose / blast tags to the Blasts tab</span>
+            <span className="block text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+              A blast tag fires one webhook per lead. When on, PRIM rolls those into one daily entry on the <strong>Blasts</strong> tab instead of creating a prospect for each. The known <code className="bg-slate-100 dark:bg-slate-700 px-1 rounded">REPUROSED&nbsp;…&nbsp;DRIP</code> tag is detected automatically.
+            </span>
+          </span>
+        </label>
+        {blastDetectionEnabled && (
+          <div className="pl-6">
+            <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-300 mb-1">Extra blast tag patterns (optional, one per line)</label>
+            <textarea
+              value={blastPatterns}
+              onChange={e => setBlastPatterns(e.target.value)}
+              rows={2}
+              placeholder={'e.g. blast\naged.*drip'}
+              className="w-full border border-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">Matched case-insensitively against the disposition. Plain words or regex both work — these add to the built-in defaults.</p>
+          </div>
+        )}
       </div>
 
       {/* 4. Save button + feedback */}

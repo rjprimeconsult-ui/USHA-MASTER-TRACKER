@@ -77,6 +77,10 @@ export function blastKey(b) {
 /**
  * upsertBlast(list, record, now) — immutable. Re-POST of the same blast updates
  * it in place (refreshing contacts/notes); a new blast is appended.
+ *
+ * REPLACE semantics: the incoming record carries the FULL contact count for the
+ * blast. Use this for the skill-POST path and the manual "Log a blast" form,
+ * where one POST = one whole blast.
  * @returns {{ list: object[], action: 'create'|'update' }}
  */
 export function upsertBlast(list, record, now) {
@@ -90,5 +94,33 @@ export function upsertBlast(list, record, now) {
   }
   // Preserve the original id + createdAt; refresh the rest from the new payload.
   const updated = { ...arr[idx], ...record, id: arr[idx].id, createdAt: arr[idx].createdAt };
+  return { list: arr.map((b, i) => (i === idx ? updated : b)), action: 'update' };
+}
+
+/**
+ * aggregateBlast(list, record, now, incBy=1) — immutable. INCREMENT semantics:
+ * on a matching blast key it ADDS incBy to the existing contact count instead
+ * of replacing it.
+ *
+ * This is the Ringy native-capture path: applying a blast/repurpose tag in
+ * Ringy fires one webhook POST PER LEAD, so a 2,000-lead blast arrives as 2,000
+ * separate POSTs that must roll up into ONE daily entry whose `contacts` climbs
+ * to 2,000 — not get overwritten to 1 each time (which is what upsertBlast would
+ * do). `record.contacts` is ignored here; the tally is driven by incBy.
+ *
+ * @returns {{ list: object[], action: 'create'|'update' }}
+ */
+export function aggregateBlast(list, record, now, incBy = 1) {
+  const arr = Array.isArray(list) ? list : [];
+  const ts = now || new Date().toISOString();
+  const inc = Number.isFinite(Number(incBy)) ? Number(incBy) : 1;
+  const key = blastKey(record);
+  const idx = arr.findIndex(b => blastKey(b) === key);
+  if (idx === -1) {
+    const entry = { id: _uid(), ...record, contacts: inc, source: record.source || 'auto', createdAt: ts, lastAt: ts };
+    return { list: [...arr, entry], action: 'create' };
+  }
+  const prev = arr[idx];
+  const updated = { ...prev, contacts: (Number(prev.contacts) || 0) + inc, lastAt: ts };
   return { list: arr.map((b, i) => (i === idx ? updated : b)), action: 'update' };
 }

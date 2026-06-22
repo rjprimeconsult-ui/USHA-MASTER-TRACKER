@@ -83,3 +83,25 @@ create unique index if not exists profiles_blast_webhook_token_key
 
 ## Out of scope (v1)
 Per-lead tagging in PRIM; CPA/analytics tie-in; cap enforcement/warnings; running the blast from PRIM (it stays in Cowork).
+
+---
+
+## Addendum — Skill-independent native capture (2026-06-22)
+
+**Why:** the Cowork skill is one person's personal tool. Agents must have their blasts logged whether or not they use the skill. Feasibility was assessed per platform.
+
+### Ringy — native auto-capture ✅ (skill-independent)
+A blast in Ringy = bulk-applying the repurpose tag, which fires Ringy's existing webhook **once per lead** to PRIM's Ringy webhook (the same pipe that already feeds leads). Without intervention this would create ~2,000 prospects. Instead:
+- **Detect:** `checkIsBlastDisposition(disposition, customPatterns)` in `ringy.mjs` — matches `DEFAULT_BLAST_PATTERNS` (`repuro?sed`, `repurposed`, `post o/?e drip`) plus any agent-configured patterns. Default-on; specific enough to never collide with a normal disposition.
+- **Aggregate:** `aggregateBlast(list, record, now, incBy=1)` in `blastLog.mjs` — **increment** semantics (vs `upsertBlast`'s replace): each per-lead POST bumps the day's `contacts` by 1, rolling 2,000 hits into ONE daily `blast_log_v1` entry keyed `(runDate, platform:'Ringy', campaignOrTag:disposition)`. `source:'auto'`.
+- **Webhook:** `/api/ringy/webhook/[token]` — after loading config, if detection matches it calls `aggregateRingyBlast` (CAS-retry, jittered backoff for the burst) and returns `action:'blast_aggregated'` *instead of* the prospect upsert.
+- **Config:** `ringy_config_v1.blastDetectionEnabled` (default true) + `blastDispositionPatterns` (extra patterns), surfaced/saved via `/api/ringy/config` and toggled in `RingySettings.jsx`.
+- **One-time setup per agent:** the blast tag must be configured in Ringy to POST to the PRIM webhook (same automated-action mechanism that already feeds their leads).
+
+### TextDrip — no native path ❌
+TextDrip exposes no outbound webhook on campaign-add and no pollable "contacts added to campaign" endpoint (confirmed vs PRIM's `textdripServer.js` + TextDrip API docs). PRIM cannot auto-detect a TextDrip blast on its own. Fallbacks:
+- **Manual "Log a blast" form** in the Blasts tab (`BlastsView` `onAdd` → `upsertBlast`) — works for any agent, any platform.
+- **Cowork skill POST** (already shipped) — auto for skill users.
+
+### Files (addendum)
+- Edit: `src/lib/blastLog.mjs` (+`aggregateBlast`) & test; `src/lib/ringy.mjs` (+`checkIsBlastDisposition`/`DEFAULT_BLAST_PATTERNS`) & test; `src/app/api/ringy/webhook/[token]/route.js`; `src/app/api/ringy/config/route.js`; `src/components/RingySettings.jsx`; `src/components/views/BlastsView.jsx` (manual form); `src/components/LeadTracker.jsx` (`onAdd`).

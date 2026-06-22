@@ -154,6 +154,46 @@ export function mapDispositionToStage(disposition, mapping, defaultStage) {
   return defaultStage || '';
 }
 
+// ---------- Blast / repurpose tag detection ----------
+
+/**
+ * Disposition patterns (case-insensitive regexes) that mark a Ringy tag as a
+ * "blast" / repurpose action rather than a real prospect disposition. Covers
+ * the known "REPUROSED - AGED - POST O/E DRIP" tag (and the correctly-spelled
+ * "REPURPOSED") out of the box, so native blast capture works with ZERO config.
+ *
+ * These are deliberately specific so they never collide with a normal USHA
+ * disposition (a legit disposition matching one of these would be aggregated
+ * into the Blasts log instead of creating a prospect).
+ */
+export const DEFAULT_BLAST_PATTERNS = ['repuro?sed', 'repurposed', 'post\\s*o/?e\\s*drip'];
+
+/**
+ * checkIsBlastDisposition(disposition, customPatterns) — true when the Ringy
+ * disposition matches any custom pattern OR any default blast pattern. Each
+ * pattern is tried as a case-insensitive regex, falling back to a substring
+ * test if it isn't valid regex. Empty disposition → false.
+ *
+ * @param {string} disposition
+ * @param {string[]} [customPatterns]  Extra agent-configured patterns.
+ * @returns {boolean}
+ */
+export function checkIsBlastDisposition(disposition, customPatterns) {
+  const d = String(disposition || '').trim();
+  if (!d) return false;
+  const patterns = [
+    ...(Array.isArray(customPatterns) ? customPatterns : []),
+    ...DEFAULT_BLAST_PATTERNS,
+  ];
+  const lc = d.toLowerCase();
+  return patterns.some((p) => {
+    const s = String(p || '').trim();
+    if (!s) return false;
+    try { return new RegExp(s, 'i').test(d); }
+    catch { return lc.includes(s.toLowerCase()); }
+  });
+}
+
 // ---------- Upsert ----------
 
 /**

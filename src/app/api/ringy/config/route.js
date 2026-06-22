@@ -97,6 +97,10 @@ function buildResponseShape(origin, token, cfg) {
     connected:      !!token,
     lastReceivedAt: cfg.lastReceivedAt ?? null,
     importedCount:  cfg.importedCount  ?? 0,
+    // Native blast/repurpose capture: on by default; patterns add to the
+    // built-in defaults (they never need to re-type the known tag).
+    blastDetectionEnabled:    cfg.blastDetectionEnabled !== false,
+    blastDispositionPatterns: Array.isArray(cfg.blastDispositionPatterns) ? cfg.blastDispositionPatterns : [],
   };
 }
 
@@ -135,7 +139,7 @@ export async function POST(req) {
 
     let body;
     try { body = await req.json(); } catch { return jsonResponse(400, { error: 'Invalid JSON' }); }
-    const { mapping, defaultStage, regenerateToken } = body || {};
+    const { mapping, defaultStage, regenerateToken, blastDetectionEnabled, blastDispositionPatterns } = body || {};
 
     const now = new Date().toISOString();
 
@@ -157,6 +161,13 @@ export async function POST(req) {
       ...existingCfg,
       mapping:      Array.isArray(mapping)      ? mapping      : existingCfg.mapping      ?? [],
       defaultStage: typeof defaultStage === 'string' ? defaultStage : existingCfg.defaultStage ?? '',
+      blastDetectionEnabled:
+        typeof blastDetectionEnabled === 'boolean' ? blastDetectionEnabled
+        : (existingCfg.blastDetectionEnabled !== false),
+      blastDispositionPatterns:
+        Array.isArray(blastDispositionPatterns)
+          ? blastDispositionPatterns.map(s => String(s || '').trim()).filter(Boolean)
+          : (Array.isArray(existingCfg.blastDispositionPatterns) ? existingCfg.blastDispositionPatterns : []),
     };
 
     const { error: saveErr } = await admin

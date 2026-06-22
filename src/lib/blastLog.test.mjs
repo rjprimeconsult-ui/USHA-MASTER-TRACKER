@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeBlastPayload, normPlatform, blastKey, upsertBlast } from './blastLog.mjs';
+import { normalizeBlastPayload, normPlatform, blastKey, upsertBlast, aggregateBlast } from './blastLog.mjs';
 
 const NOW = '2026-06-22T12:00:00.000Z';
 
@@ -101,4 +101,74 @@ test('blastKey is case/space-insensitive on the parts', () => {
   const a = { runDate: '2026-06-16', platform: 'Ringy', sendTime: '10:30', campaignOrTag: 'AGED' };
   const b = { runDate: '2026-06-16', platform: 'ringy', sendTime: ' 10:30 ', campaignOrTag: 'aged' };
   assert.equal(blastKey(a), blastKey(b));
+});
+
+// ============================================================
+// aggregateBlast — increment semantics (Ringy per-lead fan-out)
+// ============================================================
+function ringyRec() {
+  return { runDate: '2026-06-22', platform: 'Ringy', rangeStart: '', rangeEnd: '', campaignOrTag: 'REPUROSED - AGED - POST O/E DRIP', sendTime: '', numbersUsed: '', notes: '' };
+}
+
+test('aggregateBlast: first hit creates a row with contacts = incBy', () => {
+  const { list, action } = aggregateBlast([], ringyRec(), NOW, 1);
+  assert.equal(action, 'create');
+  assert.equal(list.length, 1);
+  assert.equal(list[0].contacts, 1);
+  assert.equal(list[0].source, 'auto');
+  assert.ok(list[0].id);
+  assert.equal(list[0].createdAt, NOW);
+});
+
+test('aggregateBlast: 2,000 per-lead hits accumulate to 2000 (not stuck at 1)', () => {
+  let list = [];
+  for (let i = 0; i < 2000; i++) {
+    ({ list } = aggregateBlast(list, ringyRec(), NOW, 1));
+  }
+  assert.equal(list.length, 1);            // one daily entry, not 2000 rows
+  assert.equal(list[0].contacts, 2000);    // the whole point
+});
+
+test('aggregateBlast: ignores record.contacts — tally is driven by incBy', () => {
+  let list = [];
+  ({ list } = aggregateBlast(list, { ...ringyRec(), contacts: 999 }, NOW, 1));
+  ({ list } = aggregateBlast(list, { ...ringyRec(), contacts: 999 }, NOW, 1));
+  assert.equal(list[0].contacts, 2);
+});
+
+test('aggregateBlast: respects an explicit incBy batch size', () => {
+  let list = [];
+  ({ list } = aggregateBlast(list, ringyRec(), NOW, 50));
+  ({ list } = aggregateBlast(list, ringyRec(), NOW, 25));
+  assert.equal(list[0].contacts, 75);
+});
+
+test('aggregateBlast: different day = a separate daily row', () => {
+  let list = [];
+  ({ list } = aggregateBlast(list, ringyRec(), NOW, 1));
+  ({ list } = aggregateBlast(list, { ...ringyRec(), runDate: '2026-06-23' }, NOW, 1));
+  assert.equal(list.length, 2);
+});
+
+test('aggregateBlast: different tag same day = a separate row', () => {
+  let list = [];
+  ({ list } = aggregateBlast(list, ringyRec(), NOW, 1));
+  ({ list } = aggregateBlast(list, { ...ringyRec(), campaignOrTag: 'REPUROSED - YOUNG' }, NOW, 1));
+  assert.equal(list.length, 2);
+});
+
+test('aggregateBlast: preserves id/createdAt across accumulation, stamps lastAt', () => {
+  let list = [];
+  ({ list } = aggregateBlast(list, ringyRec(), '2026-06-22T10:00:00.000Z', 1));
+  const firstId = list[0].id;
+  ({ list } = aggregateBlast(list, ringyRec(), '2026-06-22T10:05:00.000Z', 1));
+  assert.equal(list[0].id, firstId);
+  assert.equal(list[0].createdAt, '2026-06-22T10:00:00.000Z');
+  assert.equal(list[0].lastAt, '2026-06-22T10:05:00.000Z');
+});
+
+test('aggregateBlast: does not mutate the input list', () => {
+  const orig = [];
+  aggregateBlast(orig, ringyRec(), NOW, 1);
+  assert.equal(orig.length, 0);
 });

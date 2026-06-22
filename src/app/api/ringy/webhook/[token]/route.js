@@ -17,10 +17,55 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
-import { normalizeRingyPayload, upsertRingyLead } from '@/lib/ringy.mjs';
+import { normalizeRingyPayload, upsertRingyLead, checkIsBlastDisposition } from '@/lib/ringy.mjs';
+import { aggregateBlast } from '@/lib/blastLog.mjs';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+
+/**
+ * aggregateRingyBlast — a blast/repurpose tag fires ONE Ringy POST per lead, so
+ * a 2,000-lead blast arrives as 2,000 POSTs. Instead of creating 2,000
+ * prospects, roll them up into ONE daily blast_log_v1 entry whose contact count
+ * climbs by 1 per POST. CAS-retry on the single row (jittered backoff) to
+ * survive the burst; on terminal contention we drop one hit (slight undercount)
+ * rather than fail — the webhook must always return fast and 200.
+ */
+async function aggregateRingyBlast(admin, userId, disposition, nowIso) {
+  const record = {
+    runDate:       nowIso.slice(0, 10), // YYYY-MM-DD
+    platform:      'Ringy',
+    rangeStart:    '',
+    rangeEnd:      '',
+    campaignOrTag: String(disposition || '').trim(),
+    contacts:      0,
+    sendTime:      '',
+    numbersUsed:   '',
+    notes:         '',
+    source:        'auto',
+  };
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const cur = await admin.from('user_kv').select('value, updated_at')
+      .eq('user_id', userId).eq('key', 'blast_log_v1').maybeSingle();
+    if (cur.error) { console.error(`[ringy/webhook] blast read error user=${userId}: ${cur.error.message}`); return null; }
+    const list  = Array.isArray(cur.data?.value) ? cur.data.value : [];
+    const prior = cur.data?.updated_at ?? null;
+    const { list: updated } = aggregateBlast(list, record, nowIso, 1);
+    const ts = new Date().toISOString();
+    if (prior === null) {
+      const ins = await admin.from('user_kv').insert({ user_id: userId, key: 'blast_log_v1', value: updated, updated_at: ts });
+      if (!ins.error) return updated;
+    } else {
+      const upd = await admin.from('user_kv').update({ value: updated, updated_at: ts })
+        .eq('user_id', userId).eq('key', 'blast_log_v1').eq('updated_at', prior).select('user_id');
+      if (!upd.error && Array.isArray(upd.data) && upd.data.length > 0) return updated;
+    }
+    // Jittered backoff to break up the thundering herd of per-lead POSTs.
+    await new Promise((r) => setTimeout(r, 20 + Math.floor(Math.random() * 30 * (attempt + 1))));
+  }
+  console.error(`[ringy/webhook] blast aggregation contention — gave up user=${userId}`);
+  return null;
+}
 
 function cleanEnv(s) {
   return String(s || '').trim().replace(/^['"]|['"]$/g, '');
@@ -87,15 +132,9 @@ export async function POST(req, ctx) {
     // ---- Normalize ----
     const normalized = normalizeRingyPayload(body);
 
-    // Skip if there's no phone and no leadId (nothing to key off of)
-    if (!normalized.phone && !normalized.ringyLeadId) {
-      console.log(`[ringy/webhook] user=${userId} skipped — no phone or leadId`);
-      return noop200();
-    }
-
     const now = new Date().toISOString();
 
-    // ---- Load config (mapping / defaultStage) ----
+    // ---- Load config (mapping / defaultStage / blast detection) ----
     const cfgResult = await admin.from('user_kv').select('value')
       .eq('user_id', userId).eq('key', 'ringy_config_v1').maybeSingle();
     if (cfgResult.error) {
@@ -105,6 +144,24 @@ export async function POST(req, ctx) {
     const cfg          = cfgResult.data?.value ?? {};
     const mapping      = Array.isArray(cfg.mapping) ? cfg.mapping : [];
     const defaultStage = cfg.defaultStage ?? 'PENDING_DECISION';
+
+    // ---- Blast / repurpose detection (skill-independent native capture) ----
+    // Applying a blast tag in Ringy fires one POST per lead. Detect it and roll
+    // those per-lead hits into ONE daily Blasts entry instead of creating a
+    // prospect for each. On by default; an agent can disable it in Ringy
+    // settings (blastDetectionEnabled:false) or add custom patterns.
+    if (cfg.blastDetectionEnabled !== false
+        && checkIsBlastDisposition(normalized.disposition, cfg.blastDispositionPatterns)) {
+      await aggregateRingyBlast(admin, userId, normalized.disposition, now);
+      console.log(`[ringy/webhook] user=${userId} action=blast_aggregated`);
+      return ok200({ action: 'blast_aggregated' });
+    }
+
+    // Skip if there's no phone and no leadId (nothing to key off of)
+    if (!normalized.phone && !normalized.ringyLeadId) {
+      console.log(`[ringy/webhook] user=${userId} skipped — no phone or leadId`);
+      return noop200();
+    }
 
     // ---- Upsert into prospects_v1 with optimistic-concurrency retry ----
     // The webhook is the authoritative server-side writer of the whole prospects
