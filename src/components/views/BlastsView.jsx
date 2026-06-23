@@ -1,14 +1,13 @@
 'use client';
 /**
- * BlastsView — the "Blasts" tab. A read-only log of every blast / repurpose
- * run, fed automatically by the Cowork ringy-textdrip-blast skill via the
- * blast webhook. Shows plain Today / last-7-day totals (no caps — caps are a
- * Cowork-side guideline, not enforced here) + a table of every blast, plus a
- * collapsible setup panel with the Posting URL.
+ * BlastsView — the "Blasts" tab. Plain Today / last-7-day totals + a table of
+ * every Ringy / TextDrip blast, a "Log a blast" form (manual TextDrip entries),
+ * per-row edit/delete, and a collapsible setup panel with the step-by-step for
+ * getting Ringy blasts to auto-log. Ringy rows come from the blast_counters
+ * table (via LeadTracker); manual rows from blast_log_v1.
  */
-import { useState, useEffect, useMemo } from 'react';
-import { Send, Copy, Check, RefreshCw, Trash2, Pencil, ChevronDown, ChevronUp, Loader2, Plus } from 'lucide-react';
-import { supabase, supabaseConfigured } from '@/lib/supabase';
+import { useState, useMemo } from 'react';
+import { Send, Trash2, Pencil, ChevronDown, ChevronUp, Plus } from 'lucide-react';
 
 // Local-time YYYY-MM-DD for the manual form's default date.
 function todayStr() {
@@ -17,18 +16,6 @@ function todayStr() {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 const EMPTY_FORM = { platform: 'Textdrip', runDate: '', campaignOrTag: '', contacts: '', sendTime: '', rangeStart: '', rangeEnd: '', notes: '' };
-
-async function bearer() {
-  if (!supabaseConfigured()) return null;
-  try { const { data } = await supabase.auth.getSession(); return data.session?.access_token || null; } catch { return null; }
-}
-async function authedFetch(url, options = {}) {
-  const token = await bearer();
-  const res = await fetch(url, { ...options, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(options.headers || {}) } });
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok) throw Object.assign(new Error(json.error || `HTTP ${res.status}`), { status: res.status });
-  return json;
-}
 
 const PLATFORM_STYLE = {
   Ringy:    'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300',
@@ -53,9 +40,6 @@ function blastDate(b) {
 const num = (n) => (Number(n) || 0).toLocaleString();
 
 export default function BlastsView({ blasts = [], onDelete, onAdd, onEdit, readOnly = false }) {
-  const [config, setConfig] = useState(null);
-  const [copied, setCopied] = useState('');
-  const [regenerating, setRegenerating] = useState(false);
   const [showSetup, setShowSetup] = useState(false);
   const [platformFilter, setPlatformFilter] = useState('all');
   const [showForm, setShowForm] = useState(false);
@@ -100,16 +84,6 @@ export default function BlastsView({ blasts = [], onDelete, onAdd, onEdit, readO
     closeForm();
   };
 
-  useEffect(() => {
-    if (readOnly) return;
-    let alive = true;
-    (async () => {
-      try { const data = await authedFetch('/api/blast/config'); if (alive) setConfig(data); }
-      catch { if (alive) setConfig({ postingUrl: '', connected: false }); }
-    })();
-    return () => { alive = false; };
-  }, [readOnly]);
-
   const { todayTotals, weekTotals } = useMemo(() => {
     const now = new Date();
     const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -131,16 +105,6 @@ export default function BlastsView({ blasts = [], onDelete, onAdd, onEdit, readO
     const rows = platformFilter === 'all' ? blasts : blasts.filter(b => b.platform === platformFilter);
     return [...rows].sort((a, b) => (blastDate(b)?.getTime() || 0) - (blastDate(a)?.getTime() || 0));
   }, [blasts, platformFilter]);
-
-  const copy = async (text, which) => {
-    try { await navigator.clipboard.writeText(text); setCopied(which); setTimeout(() => setCopied(''), 2000); } catch { /* clipboard unavailable */ }
-  };
-  const regenerate = async () => {
-    if (!confirm('Regenerate the Posting URL? Your blast skill will stop logging to PRIM until you paste the new URL into it.')) return;
-    setRegenerating(true);
-    try { const data = await authedFetch('/api/blast/config', { method: 'POST', body: JSON.stringify({ regenerateToken: true }) }); setConfig(data); }
-    catch { /* ignore */ } finally { setRegenerating(false); }
-  };
 
   const RollupCard = ({ label, t }) => (
     <div className="premium-card p-4">
@@ -235,41 +199,33 @@ export default function BlastsView({ blasts = [], onDelete, onAdd, onEdit, readO
         </div>
       )}
 
-      {/* Setup panel */}
+      {/* Setup panel — how blasts get logged */}
       {!readOnly && showSetup && (
-        <div className="premium-card p-4 space-y-3">
-          <div className="text-sm font-bold text-slate-900 dark:text-slate-100">Connect your blast skill</div>
-          <p className="text-xs text-slate-600 dark:text-slate-300">
-            <strong>Ringy blasts log themselves</strong> — applying a repurpose tag in Ringy rolls up here automatically. <strong>Using your own tag name?</strong> Add it under <strong>Prospects → Settings → Ringy → &ldquo;Your blast tags&rdquo;</strong> so PRIM recognizes it. For <strong>TextDrip</strong>, use &ldquo;Log a blast&rdquo; above, or connect the Cowork skill below.
-          </p>
-          <p className="text-xs text-slate-600 dark:text-slate-300">
-            In your Cowork <strong>ringy-textdrip-blast</strong> skill, in the &ldquo;Log every blast&rdquo; step — right after it appends the row to <code className="bg-slate-100 dark:bg-slate-700 px-1 rounded">blast-log.csv</code> — POST the <strong>TextDrip</strong> rows (JSON) to your Posting URL below. PRIM logs them automatically; re-sends are de-duped. <strong>Skip Ringy rows</strong> — Ringy is counted natively and POSTing it here would double-count.
-          </p>
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-300 mb-1">Posting URL</label>
+        <div className="premium-card p-4 space-y-4">
+          <div className="text-sm font-bold text-slate-900 dark:text-slate-100">How blasts get logged</div>
+
+          {/* Ringy — automatic */}
+          <div className="space-y-1.5">
             <div className="flex items-center gap-2">
-              <input readOnly value={config?.postingUrl || (config ? '' : 'Loading…')} className="flex-1 border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 rounded-lg px-3 py-2 text-xs font-mono text-slate-700 dark:text-slate-200 select-all" />
-              <button onClick={() => copy(config?.postingUrl, 'url')} className="border border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg px-3 py-2 text-xs font-semibold flex items-center gap-1.5 shrink-0">
-                {copied === 'url' ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} />}{copied === 'url' ? 'Copied' : 'Copy'}
-              </button>
-              <button onClick={regenerate} disabled={regenerating} title="Regenerate (old URL stops working)" className="border border-amber-200 dark:border-amber-700 hover:bg-amber-50 dark:hover:bg-amber-900/20 text-amber-700 dark:text-amber-400 disabled:opacity-60 rounded-lg px-3 py-2 text-xs font-semibold flex items-center gap-1.5 shrink-0">
-                {regenerating ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}Regenerate
-              </button>
+              <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">Ringy</span>
+              <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Automatic — one-time setup per agent</span>
             </div>
+            <ol className="list-decimal list-inside text-xs text-slate-600 dark:text-slate-300 space-y-1">
+              <li>In PRIM: <strong>Prospects → Settings → Ringy</strong> → under <strong>&ldquo;Your blast tags&rdquo;</strong> type the exact tag you apply for a blast → <strong>Save</strong>.</li>
+              <li>On that same page, <strong>Copy your Webhook URL</strong>.</li>
+              <li>In Ringy, open that tag&rsquo;s <strong>Automated Action</strong> → check <strong>Post to a custom webhook</strong> → paste the Webhook URL.</li>
+              <li>Click <strong>ADD VALUE</strong> → key <code className="bg-slate-100 dark:bg-slate-700 px-1 rounded">disposition</code> → <strong>Custom</strong> → type your tag name → <strong>Save</strong>.</li>
+            </ol>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">Then every lead you tag rolls up here as one daily entry — no prospects created. The standard <code className="bg-slate-100 dark:bg-slate-700 px-1 rounded">REPUROSED&nbsp;…&nbsp;DRIP</code> tag is recognized automatically (skip step 1).</p>
           </div>
-          <div>
-            <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-300 mb-1">Example POST body (same fields as blast-log.csv)</div>
-            <pre className="bg-slate-900 text-slate-100 rounded-lg p-3 overflow-x-auto text-[10px] leading-relaxed font-mono whitespace-pre">{`{
-  "run_date": "2026-06-22",
-  "platform": "Textdrip",
-  "range_start": "2025-01-01",
-  "range_end": "2026-05-31",
-  "campaign_or_tag": "New Aged leads",
-  "contacts": 4587,
-  "send_time": "10:30",
-  "numbers_used": "",
-  "notes": "blast 1 of 2"
-}`}</pre>
+
+          {/* TextDrip — manual */}
+          <div className="space-y-1.5 border-t border-slate-200 dark:border-slate-700 pt-3">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">TextDrip</span>
+              <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Manual</span>
+            </div>
+            <p className="text-xs text-slate-600 dark:text-slate-300">TextDrip can&rsquo;t report campaign adds automatically, so log those by hand: click <strong>&ldquo;Log a blast&rdquo;</strong> above and enter the count, campaign, date, and lead range.</p>
           </div>
         </div>
       )}
