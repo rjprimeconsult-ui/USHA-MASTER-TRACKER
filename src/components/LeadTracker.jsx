@@ -128,7 +128,7 @@ function counterToBlast(r) {
     platform: r.platform,
     campaignOrTag: r.tag,
     contacts: r.contacts,
-    rangeStart: '', rangeEnd: '', sendTime: localTime, numbersUsed: '', notes: r.notes || '',
+    rangeStart: r.range_start || '', rangeEnd: r.range_end || '', sendTime: localTime, numbersUsed: '', notes: r.notes || '',
     source: 'auto',
     createdAt: r.first_at,
     lastAt: r.last_at,
@@ -2268,15 +2268,18 @@ export default function LeadTracker() {
                 const contacts = parseInt(String(form.contacts).replace(/[^0-9]/g, ''), 10) || 0;
                 const newTag = String(form.campaignOrTag || '').trim();
                 const newNotes = String(form.notes || '');
+                const newRangeStart = String(form.rangeStart || '').trim();
+                const newRangeEnd = String(form.rangeEnd || '').trim();
                 const optimistic = {
                   ...row, contacts, campaignOrTag: newTag, notes: newNotes,
+                  rangeStart: newRangeStart, rangeEnd: newRangeEnd,
                   id: `bc:${row._native.run_date}:${row._native.platform}:${newTag}`,
                   _native: { ...row._native, tag: newTag },
                 };
                 setNativeBlasts(prev => prev.map(b => (b.id === id ? optimistic : b)));
                 if (supabaseConfigured()) {
                   supabase.from('blast_counters')
-                    .update({ contacts, tag: newTag, notes: newNotes })
+                    .update({ contacts, tag: newTag, notes: newNotes, range_start: newRangeStart, range_end: newRangeEnd })
                     .eq('run_date', row._native.run_date)
                     .eq('platform', row._native.platform)
                     .eq('tag', row._native.tag)

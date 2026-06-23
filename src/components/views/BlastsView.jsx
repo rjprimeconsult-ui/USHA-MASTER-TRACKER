@@ -184,7 +184,7 @@ export default function BlastsView({ blasts = [], onDelete, onAdd, onEdit, readO
             <div className="text-sm font-bold text-slate-900 dark:text-slate-100">{editingId ? 'Edit blast' : 'Log a blast'}</div>
             <p className="text-[11px] text-slate-500 dark:text-slate-400">
               {autoEdit
-                ? 'Auto-captured Ringy blast — fix the count, campaign/tag, or notes. Date & time are set automatically.'
+                ? 'Auto-captured Ringy blast — fix the count, campaign/tag, lead range, or notes. Date & time are set automatically.'
                 : 'For TextDrip blasts. Ringy blasts log themselves automatically.'}
             </p>
           </div>
@@ -215,18 +215,14 @@ export default function BlastsView({ blasts = [], onDelete, onAdd, onEdit, readO
               <span className="block">Campaign / Tag</span>
               <input type="text" value={form.campaignOrTag} onChange={e => setField('campaignOrTag', e.target.value)} placeholder="New Aged leads" className="w-full border border-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 text-xs" />
             </label>
-            {!autoEdit && (
-              <>
-                <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-300 space-y-1">
-                  <span className="block">Range start</span>
-                  <input type="text" value={form.rangeStart} onChange={e => setField('rangeStart', e.target.value)} placeholder="optional" className="w-full border border-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 text-xs" />
-                </label>
-                <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-300 space-y-1">
-                  <span className="block">Range end</span>
-                  <input type="text" value={form.rangeEnd} onChange={e => setField('rangeEnd', e.target.value)} placeholder="optional" className="w-full border border-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 text-xs" />
-                </label>
-              </>
-            )}
+            <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-300 space-y-1">
+              <span className="block">Range start</span>
+              <input type="text" value={form.rangeStart} onChange={e => setField('rangeStart', e.target.value)} placeholder="optional" className="w-full border border-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 text-xs" />
+            </label>
+            <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-300 space-y-1">
+              <span className="block">Range end</span>
+              <input type="text" value={form.rangeEnd} onChange={e => setField('rangeEnd', e.target.value)} placeholder="optional" className="w-full border border-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 text-xs" />
+            </label>
             <label className="col-span-2 sm:col-span-4 text-[11px] font-semibold text-slate-500 dark:text-slate-300 space-y-1">
               <span className="block">Notes</span>
               <input type="text" value={form.notes} onChange={e => setField('notes', e.target.value)} placeholder="optional" className="w-full border border-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 text-xs" />
