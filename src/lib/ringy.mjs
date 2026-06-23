@@ -169,28 +169,39 @@ export function mapDispositionToStage(disposition, mapping, defaultStage) {
 export const DEFAULT_BLAST_PATTERNS = ['repuro?sed', 'repurposed', 'post\\s*o/?e\\s*drip'];
 
 /**
- * checkIsBlastDisposition(disposition, customPatterns) — true when the Ringy
- * disposition matches any custom pattern OR any default blast pattern. Each
- * pattern is tried as a case-insensitive regex, falling back to a substring
- * test if it isn't valid regex. Empty disposition → false.
+ * checkIsBlastDisposition(disposition, agentTags) — true when the Ringy
+ * disposition is a blast/repurpose tag. Two ways to match:
+ *
+ *   1. Agent-defined tags (`agentTags`) — matched EXACTLY (case-insensitive,
+ *      trimmed). Each agent lists the tag name(s) they personally use, so a tag
+ *      like "CMPGN-REPURPOSE" is recognized while a normal disposition that
+ *      merely contains a word ("Aged — Not Interested") never is.
+ *   2. The built-in DEFAULT_BLAST_PATTERNS — regex, typo-tolerant — so the
+ *      standard "REPUROSED … DRIP" tag is recognized for everyone with no setup.
+ *
+ * Empty disposition → false.
  *
  * @param {string} disposition
- * @param {string[]} [customPatterns]  Extra agent-configured patterns.
+ * @param {string[]} [agentTags]  The agent's own blast tag names (exact match).
  * @returns {boolean}
  */
-export function checkIsBlastDisposition(disposition, customPatterns) {
+export function checkIsBlastDisposition(disposition, agentTags) {
   const d = String(disposition || '').trim();
   if (!d) return false;
-  const patterns = [
-    ...(Array.isArray(customPatterns) ? customPatterns : []),
-    ...DEFAULT_BLAST_PATTERNS,
-  ];
-  const lc = d.toLowerCase();
-  return patterns.some((p) => {
-    const s = String(p || '').trim();
-    if (!s) return false;
-    try { return new RegExp(s, 'i').test(d); }
-    catch { return lc.includes(s.toLowerCase()); }
+  const dl = d.toLowerCase();
+
+  // 1) Agent's own tags — exact match (predictable, no false positives).
+  if (Array.isArray(agentTags)) {
+    for (const t of agentTags) {
+      const tag = String(t || '').trim().toLowerCase();
+      if (tag && tag === dl) return true;
+    }
+  }
+
+  // 2) Built-in safety net for the standard repurpose tag.
+  return DEFAULT_BLAST_PATTERNS.some((p) => {
+    try { return new RegExp(p, 'i').test(d); }
+    catch { return dl.includes(String(p).toLowerCase()); }
   });
 }
 

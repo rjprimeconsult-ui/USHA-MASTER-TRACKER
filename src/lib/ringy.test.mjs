@@ -224,14 +224,25 @@ test('checkIsBlastDisposition: empty / null → false', () => {
   assert.equal(checkIsBlastDisposition(undefined), false);
 });
 
-test('checkIsBlastDisposition: honors an agent custom pattern', () => {
-  assert.equal(checkIsBlastDisposition('MY BLAST CAMPAIGN', ['blast']), true);
-  // custom pattern absent → falls back to defaults only
-  assert.equal(checkIsBlastDisposition('MY BLAST CAMPAIGN', []), false);
+test('checkIsBlastDisposition: matches an agent tag EXACTLY (case-insensitive, trimmed)', () => {
+  assert.equal(checkIsBlastDisposition('CMPGN-REPURPOSE', ['CMPGN-REPURPOSE']), true);
+  assert.equal(checkIsBlastDisposition('cmpgn-repurpose', ['  CMPGN-REPURPOSE  ']), true);
+  // not configured + not a default → not a blast
+  assert.equal(checkIsBlastDisposition('CMPGN-REPURPOSE', []), false);
+  assert.equal(checkIsBlastDisposition('CMPGN-REPURPOSE'), false);
 });
 
-test('checkIsBlastDisposition: invalid-regex custom pattern degrades to substring match', () => {
-  assert.equal(checkIsBlastDisposition('weekly (special) run', ['(special']), true);
+test('checkIsBlastDisposition: agent tag is EXACT — a tag that is a substring of a normal disposition does NOT match', () => {
+  // "Aged" as a blast tag must not swallow "Aged - Not Interested"
+  assert.equal(checkIsBlastDisposition('Aged - Not Interested', ['Aged']), false);
+  assert.equal(checkIsBlastDisposition('Aged', ['Aged']), true);
+});
+
+test('checkIsBlastDisposition: agent tags coexist with the built-in default', () => {
+  // agent tag matches
+  assert.equal(checkIsBlastDisposition('CMPGN-REPURPOSE', ['CMPGN-REPURPOSE']), true);
+  // and the standard tag still matches even with a custom list set
+  assert.equal(checkIsBlastDisposition('REPUROSED - AGED - POST O/E DRIP', ['CMPGN-REPURPOSE']), true);
 });
 
 test('DEFAULT_BLAST_PATTERNS is a non-empty array', () => {

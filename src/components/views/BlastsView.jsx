@@ -240,7 +240,7 @@ export default function BlastsView({ blasts = [], onDelete, onAdd, onEdit, readO
         <div className="premium-card p-4 space-y-3">
           <div className="text-sm font-bold text-slate-900 dark:text-slate-100">Connect your blast skill</div>
           <p className="text-xs text-slate-600 dark:text-slate-300">
-            <strong>Ringy blasts log themselves</strong> — applying a repurpose tag in Ringy rolls up here automatically (manage it under Prospects → Ringy settings). For <strong>TextDrip</strong>, use &ldquo;Log a blast&rdquo; above, or connect the Cowork skill below.
+            <strong>Ringy blasts log themselves</strong> — applying a repurpose tag in Ringy rolls up here automatically. <strong>Using your own tag name?</strong> Add it under <strong>Prospects → Settings → Ringy → &ldquo;Your blast tags&rdquo;</strong> so PRIM recognizes it. For <strong>TextDrip</strong>, use &ldquo;Log a blast&rdquo; above, or connect the Cowork skill below.
           </p>
           <p className="text-xs text-slate-600 dark:text-slate-300">
             In your Cowork <strong>ringy-textdrip-blast</strong> skill, in the &ldquo;Log every blast&rdquo; step — right after it appends the row to <code className="bg-slate-100 dark:bg-slate-700 px-1 rounded">blast-log.csv</code> — POST the <strong>TextDrip</strong> rows (JSON) to your Posting URL below. PRIM logs them automatically; re-sends are de-duped. <strong>Skip Ringy rows</strong> — Ringy is counted natively and POSTing it here would double-count.

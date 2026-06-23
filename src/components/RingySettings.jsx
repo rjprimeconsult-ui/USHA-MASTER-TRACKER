@@ -290,21 +290,21 @@ export default function RingySettings({ stages = [] }) {
           <span>
             <span className="block text-xs font-semibold text-slate-700 dark:text-slate-300">Auto-log repurpose / blast tags to the Blasts tab</span>
             <span className="block text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-              A blast tag fires one webhook per lead. When on, PRIM rolls those into one daily entry on the <strong>Blasts</strong> tab instead of creating a prospect for each. The known <code className="bg-slate-100 dark:bg-slate-700 px-1 rounded">REPUROSED&nbsp;…&nbsp;DRIP</code> tag is detected automatically.
+              A blast tag fires one webhook per lead. When on, PRIM rolls those into one daily entry on the <strong>Blasts</strong> tab instead of creating a prospect for each.
             </span>
           </span>
         </label>
         {blastDetectionEnabled && (
           <div className="pl-6">
-            <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-300 mb-1">Extra blast tag patterns (optional, one per line)</label>
+            <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-300 mb-1">Your blast tags (one per line)</label>
             <textarea
               value={blastPatterns}
               onChange={e => setBlastPatterns(e.target.value)}
               rows={2}
-              placeholder={'e.g. blast\naged.*drip'}
-              className="w-full border border-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              placeholder={'e.g. CMPGN-REPURPOSE'}
+              className="w-full border border-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
-            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">Matched case-insensitively against the disposition. Plain words or regex both work — these add to the built-in defaults.</p>
+            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">Type the exact Ringy disposition tag(s) you apply for a blast — one per line. Any lead with that tag rolls up on the Blasts tab instead of becoming a prospect. The standard <code className="bg-slate-100 dark:bg-slate-700 px-1 rounded">REPUROSED&nbsp;…&nbsp;DRIP</code> tag is always recognized too.</p>
           </div>
         )}
       </div>
