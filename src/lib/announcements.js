@@ -33,6 +33,14 @@
 
 export const ANNOUNCEMENTS = [
   {
+    id: '2026-06-30-closed-deals-quarters',
+    date: '2026-06-30',
+    emoji: '📊',
+    title: 'Closed Deals: see any quarter, with clearer colors',
+    body: 'In the Big Picture panel you can now switch between Q1, Q2, Q3, Q4, and full-year YTD — so you can see how your CRM sources and lead types performed in any quarter, not just the current one. The Lead Type chart also got stronger, easier-to-tell-apart colors.',
+    cta: { label: 'Open Closed Deals', view: 'closed' },
+  },
+  {
     id: '2026-06-21-clamping-time-picker',
     date: '2026-06-21',
     emoji: '⏰',
