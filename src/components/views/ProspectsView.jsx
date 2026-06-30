@@ -1623,18 +1623,18 @@ export default function ProspectsView({
         }}
       />
 
-      {/* Calendar widget — sits right under the Follow-ups dropdown so
-          both collapsible widgets cluster at the top of the page. Click
-          any day in the expanded grid to drop down that day's
-          appointments. The legacy TodayPanel (white APPOINTMENTS +
-          OVERDUE FOLLOW-UPS box) was removed — that data already lives
+      {prospects.length > 0 && (
+        <FollowupScorecard prospects={prospects} stages={cfg.stages} />
+      )}
+
+      {/* Calendar widget — appointments month grid; click a day in the
+          expanded grid to drop down that day's appointments. Ordered last,
+          below the performance scorecard (Needs-a-touch → Follow-up
+          performance → Calendar). The legacy TodayPanel (white APPOINTMENTS
+          + OVERDUE FOLLOW-UPS box) was removed — that data already lives
           inside the calendar dropdown and the Follow-ups widget. */}
       {prospects.length > 0 && (
         <CalendarPanel prospects={visible} stages={cfg.stages} onView={onView} />
-      )}
-
-      {prospects.length > 0 && (
-        <FollowupScorecard prospects={prospects} stages={cfg.stages} />
       )}
 
       {/* Bulk action bar — appears whenever something is selected, in either view */}
