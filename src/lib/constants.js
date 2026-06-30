@@ -39,11 +39,11 @@ export const CRMS = [
 ];
 
 export const CAMPAIGNS = [
-  { id: 'AGED.50',           badge: 'bg-sky-200 text-slate-800',    color: '#bae6fd' },
-  { id: 'AGED.25',           badge: 'bg-pink-200 text-slate-800',   color: '#fbcfe8' },
-  { id: 'AGED.35',           badge: 'bg-violet-200 text-slate-800', color: '#ddd6fe' },
+  { id: 'AGED.50',           badge: 'bg-sky-200 text-slate-800',    color: '#0ea5e9' },
+  { id: 'AGED.25',           badge: 'bg-pink-200 text-slate-800',   color: '#f59e0b' },
+  { id: 'AGED.35',           badge: 'bg-violet-200 text-slate-800', color: '#14b8a6' },
   { id: 'AGED1.00',          badge: 'bg-violet-500 text-white',     color: '#8b5cf6' },
-  { id: 'AGED.20',           badge: 'bg-slate-300 text-slate-800',  color: '#cbd5e1' },
+  { id: 'AGED.20',           badge: 'bg-slate-300 text-slate-800',  color: '#64748b' },
   { id: 'AGED.15',           badge: 'bg-red-500 text-white',        color: '#ef4444' },
   { id: 'AGED.17',           badge: 'bg-red-900 text-white',        color: '#7f1d1d' },
   { id: 'PREMIUM SHARED',    badge: 'bg-green-200 text-slate-800',  color: '#bbf7d0' },
@@ -56,16 +56,20 @@ export const CAMPAIGNS = [
   { id: 'REFERRAL',          badge: 'bg-purple-500 text-white',     color: '#a855f7' },
 ];
 
+// `color` drives the donut slices on the Closed Deals "Big Picture" Lead Type
+// chart. Kept strong + maximally distinct (no two greens, no washed-out
+// pastels) so agents can tell the slices apart at a glance — matching the
+// saturated CRM-source palette. (`badge` classes are left as-is.)
 export const LEAD_CATEGORIES = [
-  { id: 'AGED',          badge: 'bg-emerald-100 text-emerald-800 border border-emerald-300', color: '#34d399' },
+  { id: 'AGED',          badge: 'bg-emerald-100 text-emerald-800 border border-emerald-300', color: '#16a34a' },
   { id: 'SHARED',        badge: 'bg-blue-600 text-white',       color: '#2563eb' },
   { id: 'REFERRAL',      badge: 'bg-purple-500 text-white',     color: '#a855f7' },
   { id: 'DIALER',        badge: 'bg-orange-500 text-white',     color: '#f97316' },
   { id: 'REPEAT CLIENT', badge: 'bg-red-500 text-white',        color: '#ef4444' },
-  { id: 'JACKPOT',       badge: 'bg-yellow-300 text-slate-800', color: '#fde047' },
+  { id: 'JACKPOT',       badge: 'bg-yellow-300 text-slate-800', color: '#f59e0b' },
   { id: 'D7',            badge: 'bg-pink-500 text-white',       color: '#ec4899' },
-  { id: 'GOOGLE LEADS',  badge: 'bg-slate-300 text-slate-800',  color: '#cbd5e1' },
-  { id: 'BENEPATH',      badge: 'bg-teal-600 text-white',       color: '#0d9488' },
+  { id: 'GOOGLE LEADS',  badge: 'bg-slate-300 text-slate-800',  color: '#64748b' },
+  { id: 'BENEPATH',      badge: 'bg-teal-600 text-white',       color: '#06b6d4' },
 ];
 
 export const MAIN_PRODUCTS = [

@@ -309,7 +309,7 @@ function ClosedDeals({ leads, onEdit, onUpdate, onDelete, onImportFromScreenshot
   // bigDrill holds the drilled-into lead category (or null) for the
   // Big Picture Lead Type donut — applies to whichever range is active.
   const [showBigPicture, setShowBigPicture] = useState(false);
-  const [bigRange, setBigRange] = useState('ytd'); // 'qtd' | 'ytd'
+  const [bigRange, setBigRange] = useState('ytd'); // 'q1' | 'q2' | 'q3' | 'q4' | 'ytd'
   const [bigDrill, setBigDrill] = useState(null);  // lead category or null
 
   // Inline edit helper — patches a single field on a lead and saves via
@@ -368,28 +368,31 @@ function ClosedDeals({ leads, onEdit, onUpdate, onDelete, onImportFromScreenshot
     return Object.entries(m).sort((a, b) => b[0].localeCompare(a[0]));
   }, [visible]);
 
-  // QTD + YTD windows relative to today. QTD = deals closed in the
-  // current calendar quarter; YTD = deals closed in the current year.
-  // Both count Issued + Pending, matching the per-month pie charts.
+  // Selectable Big Picture windows for the current year: each calendar
+  // quarter (Q1=Jan–Mar … Q4=Oct–Dec) plus the full year (YTD). Future
+  // quarters simply come back empty until they fill in. All count Issued +
+  // Pending + Lost, matching the per-month pie charts.
   const bigPicture = useMemo(() => {
     const now = new Date();
     const year = now.getFullYear();
-    const curQuarter = Math.floor(now.getMonth() / 3); // 0-3
     const ytdItems = visible.filter(l => dealDate(l).slice(0, 4) === String(year));
-    const qtdItems = ytdItems.filter(l => {
+    const inQuarter = (l, q) => {
       const m = parseInt(dealDate(l).slice(5, 7), 10);
-      return Number.isFinite(m) && Math.floor((m - 1) / 3) === curQuarter;
-    });
-    return {
-      quarterLabel: `Q${curQuarter + 1} ${year}`,
-      yearLabel: `${year} YTD`,
-      qtd: { items: qtdItems, crm: buildCrmData(qtdItems), cat: buildCatData(qtdItems) },
-      ytd: { items: ytdItems, crm: buildCrmData(ytdItems), cat: buildCatData(ytdItems) },
+      return Number.isFinite(m) && Math.floor((m - 1) / 3) === q;
     };
+    const win = (items, key, label) => ({ key, label, items, crm: buildCrmData(items), cat: buildCatData(items) });
+    const ranges = [
+      win(ytdItems.filter(l => inQuarter(l, 0)), 'q1', `Q1 ${year}`),
+      win(ytdItems.filter(l => inQuarter(l, 1)), 'q2', `Q2 ${year}`),
+      win(ytdItems.filter(l => inQuarter(l, 2)), 'q3', `Q3 ${year}`),
+      win(ytdItems.filter(l => inQuarter(l, 3)), 'q4', `Q4 ${year}`),
+      win(ytdItems, 'ytd', `${year} YTD`),
+    ];
+    return { year, ranges };
   }, [visible]);
 
-  const bigActive = bigRange === 'qtd' ? bigPicture.qtd : bigPicture.ytd;
-  const bigActiveLabel = bigRange === 'qtd' ? bigPicture.quarterLabel : bigPicture.yearLabel;
+  const bigActive = bigPicture.ranges.find(r => r.key === bigRange) || bigPicture.ranges[bigPicture.ranges.length - 1];
+  const bigActiveLabel = bigActive.label;
   // Campaign drill-down for the Big Picture Lead Type donut — recomputed
   // against the active window so QTD vs YTD shows the right campaigns.
   const bigCampaign = bigDrill ? buildCampaignData(bigActive.items, bigDrill) : null;
@@ -486,21 +489,18 @@ function ClosedDeals({ leads, onEdit, onUpdate, onDelete, onImportFromScreenshot
 
         {showBigPicture && (
           <div className="px-4 pb-4 border-t border-slate-100">
-            {/* QTD / YTD toggle */}
+            {/* Quarter / YTD toggle — Q1–Q4 of the current year + full-year YTD */}
             <div className="flex items-center gap-3 flex-wrap pt-4 pb-3">
               <div className="flex border border-slate-200 rounded-lg overflow-hidden text-sm">
-                <button
-                  onClick={() => setBigRange('qtd')}
-                  className={`px-3 py-1.5 font-medium ${bigRange === 'qtd' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
-                >
-                  {bigPicture.quarterLabel}
-                </button>
-                <button
-                  onClick={() => setBigRange('ytd')}
-                  className={`px-3 py-1.5 font-medium ${bigRange === 'ytd' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
-                >
-                  {bigPicture.yearLabel}
-                </button>
+                {bigPicture.ranges.map((r, i) => (
+                  <button
+                    key={r.key}
+                    onClick={() => setBigRange(r.key)}
+                    className={`px-3 py-1.5 font-medium ${i > 0 ? 'border-l border-slate-200' : ''} ${bigRange === r.key ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+                  >
+                    {r.key === 'ytd' ? r.label : r.key.toUpperCase()}
+                  </button>
+                ))}
               </div>
               <span className="text-xs text-slate-500">
                 {bigActive.items.length} deal{bigActive.items.length !== 1 ? 's' : ''} in this window
