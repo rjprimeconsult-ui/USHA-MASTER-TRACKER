@@ -1,0 +1,54 @@
+name: Monthly security check
+
+# Lightweight recurring dependency-security re-check (from the 2026-06-30 audit).
+# Runs on the 1st of every month + can be run manually from the Actions tab.
+# It scans dependencies for new advisories. It FAILS (emailing the repo owner)
+# only on a NEW CRITICAL vulnerability — moderates/highs are printed for review
+# but don't cry wolf every month (the current Next.js high is Vercel-mitigated
+# and accepted). If it ever fails, tell Meruem/Claude and we'll fix it.
+
+on:
+  schedule:
+    - cron: '0 13 1 * *'   # 13:00 UTC (~9am ET) on the 1st of each month
+  workflow_dispatch: {}      # allow manual runs from the Actions tab
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Dependency vulnerability scan
+        run: |
+          echo "=== PRIM dependency security check — $(date -u) ==="
+          npm audit --json > audit.json 2>/dev/null || true
+
+          read CRIT HIGH MOD LOW < <(node -e '
+            let a = {};
+            try { a = require("./audit.json"); } catch (e) {}
+            const v = (a.metadata && a.metadata.vulnerabilities) || {};
+            process.stdout.write([v.critical||0, v.high||0, v.moderate||0, v.low||0].join(" "));
+          ')
+
+          echo ""
+          echo "Summary:  Critical=$CRIT  High=$HIGH  Moderate=$MOD  Low=$LOW"
+          echo ""
+          echo "--- Full advisory detail ---"
+          npm audit || true
+          echo ""
+          echo "--- Newer versions of key packages? ---"
+          npm outdated next @supabase/supabase-js stripe @anthropic-ai/sdk || true
+          echo ""
+
+          if [ "${CRIT:-0}" -gt 0 ]; then
+            echo "::error::$CRIT CRITICAL dependency vulnerability(ies) found in PRIM — review and patch."
+            exit 1
+          fi
+          echo "OK: no critical vulnerabilities. Any highs/moderates above are for review, not urgent."
