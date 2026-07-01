@@ -1,0 +1,42 @@
+-- Profiles privilege lockdown — 2026-06-30
+--
+-- SECURITY FIX (critical). The original `profiles_self_update` policy
+-- (schema.sql) was `FOR UPDATE USING (auth.uid() = id)` with NO WITH CHECK
+-- and no column-level restriction. Because privileged columns live on the
+-- profiles row (is_admin, subscription_tier, subscription_status,
+-- is_complimentary, stripe_customer_id, *_webhook_token), any signed-in user
+-- could PATCH their OWN row via the public anon key + PostgREST and set
+-- is_admin = true — self-escalating to platform admin, which unlocks
+-- /api/admin/impersonate (log in as any user) and the admin "read-all" RLS
+-- over every customer's user_kv (all leads/PII). Same gap allowed free
+-- self-grant of subscription_tier='team' / is_complimentary=true.
+--
+-- Found by the 2026-06-30 security audit. Confirmed no unauthorized admin had
+-- occurred at fix time (only the owner held is_admin).
+--
+-- FIX: drop the policy entirely. The browser never legitimately writes to
+-- profiles — every real write goes through the service-role key in server
+-- routes (stripe-server.js insert on signup, blast/config token update), which
+-- bypasses RLS. So removing client UPDATE access to profiles changes nothing
+-- for legitimate use.
+--
+-- Applied in the Supabase SQL editor 2026-06-30 ("Success. No rows returned").
+
+DROP POLICY IF EXISTS "profiles_self_update" ON profiles;
+
+-- Post-fix audit (run to confirm no one self-promoted before the fix):
+--   SELECT id, email, is_admin, subscription_tier, is_complimentary
+--   FROM profiles
+--   WHERE is_admin = true OR is_complimentary = true OR subscription_tier = 'team';
+--
+-- Confirm the policy is gone:
+--   SELECT policyname FROM pg_policies WHERE tablename = 'profiles';
+--   -- expect profiles_self_read + profiles_admin_read, but NOT profiles_self_update.
+--
+-- FUTURE: if the browser ever needs to self-edit a non-privileged profile
+-- column, DO NOT restore the old policy. Instead grant only that column and
+-- pin the sensitive ones, e.g.:
+--   REVOKE UPDATE ON profiles FROM authenticated;
+--   GRANT UPDATE (display_name) ON profiles TO authenticated;
+--   CREATE POLICY "profiles_self_update" ON profiles FOR UPDATE
+--     USING (auth.uid() = id) WITH CHECK (auth.uid() = id);
