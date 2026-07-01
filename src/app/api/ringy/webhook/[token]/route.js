@@ -82,6 +82,13 @@ export async function POST(req, ctx) {
 
     const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
 
+    // ⚠️ CRITICAL CAPTURE PATH — do NOT add pre-processing here (rate limiting,
+    // analytics, extra DB round-trips) before the blast increment. Under a fast
+    // Ringy burst, latency added here drops hits: on 2026-07-01 a rate-limit RPC
+    // in this exact spot dropped ~3,700 of a 6,000-lead blast. Anything like that
+    // must run AFTER capture or asynchronously. Test any webhook change with
+    // scripts/blast-burst-smoketest.mjs before shipping.
+
     // ---- Resolve token → userId ----
     const { data: profileRow, error: profileErr } = await admin
       .from('profiles')
