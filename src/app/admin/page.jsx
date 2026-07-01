@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { fmt, fmt2 } from '@/lib/utils';
 import { OrbBackdrop } from '@/components/motion/MotionPrimitives';
+import AdminTickets from '@/components/AdminTickets';
 
 /**
  * Read-only admin dashboard.
@@ -350,6 +351,9 @@ export default function AdminPage() {
             <AlertCircle size={14} /> {error}
           </div>
         )}
+
+        {/* Support tickets queue */}
+        <AdminTickets />
 
         {/* Slack broadcast */}
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
