@@ -33,6 +33,14 @@
 
 export const ANNOUNCEMENTS = [
   {
+    id: '2026-07-01-report-an-issue',
+    date: '2026-07-01',
+    emoji: '🛟',
+    title: 'Hit a snag? Use the new "Report an issue" button',
+    body: 'Something not working right? Look for the "Report an issue" button in the bottom-left corner. Pick a category, tell us what happened (a screenshot helps), and it goes straight to our support queue. We\'ll get on it and email you the moment it\'s resolved.',
+    cta: { label: 'Got it', view: 'prospects' },
+  },
+  {
     id: '2026-06-30-closed-deals-quarters',
     date: '2026-06-30',
     emoji: '📊',
