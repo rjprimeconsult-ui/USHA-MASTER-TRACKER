@@ -82,6 +82,16 @@ export async function POST(req, ctx) {
 
     const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
 
+    // Generous fail-open rate limit — caps a runaway flood on a leaked token
+    // (~10k/min, far above any real blast). Never blocks capture if the limiter
+    // RPC is unavailable (e.g. migration not yet run) — errors just proceed.
+    try {
+      const { data: rlOk, error: rlErr } = await admin.rpc('check_webhook_rate_limit', { p_token: token, p_limit: 10000, p_window_secs: 60 });
+      if (!rlErr && rlOk === false) {
+        return new Response(JSON.stringify({ error: 'rate limited' }), { status: 429, headers: { 'Content-Type': 'application/json' } });
+      }
+    } catch { /* fail open */ }
+
     // ---- Resolve token → userId ----
     const { data: profileRow, error: profileErr } = await admin
       .from('profiles')
