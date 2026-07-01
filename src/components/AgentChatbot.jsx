@@ -141,8 +141,12 @@ function renderInline(s) {
       out.push(<code key={key++} className="bg-slate-100 text-slate-800 rounded px-1 py-0.5 text-[0.85em] font-mono">{tok.slice(1, -1)}</code>);
     } else if (tok.startsWith('[')) {
       const linkM = tok.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
-      if (linkM) {
-        out.push(<a key={key++} href={linkM[2]} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline">{linkM[1]}</a>);
+      // Only render an anchor for safe schemes — never javascript:/data: (the
+      // URL is model-influenced, and React does not strip dangerous hrefs).
+      if (linkM && /^(https?:|mailto:)/i.test(linkM[2].trim())) {
+        out.push(<a key={key++} href={linkM[2].trim()} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline">{linkM[1]}</a>);
+      } else if (linkM) {
+        out.push(linkM[1]);
       } else {
         out.push(tok);
       }

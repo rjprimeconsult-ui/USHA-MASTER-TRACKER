@@ -229,7 +229,9 @@ export default function AdminPage() {
     try {
       const [profilesRes, kvRes] = await Promise.all([
         supabase.from('profiles').select('id, email, display_name, tier, is_admin, created_at, updated_at').order('created_at', { ascending: false }),
-        supabase.from('user_kv').select('user_id, key, value, updated_at'),
+        // Exclude secret-bearing rows (e.g. textdrip_secret_v1) so raw
+        // third-party API keys are never shipped to the admin browser.
+        supabase.from('user_kv').select('user_id, key, value, updated_at').not('key', 'like', '%_secret_%'),
       ]);
       if (profilesRes.error) throw profilesRes.error;
       if (kvRes.error)       throw kvRes.error;

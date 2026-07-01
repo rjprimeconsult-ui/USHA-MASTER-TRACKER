@@ -22,7 +22,8 @@ function generateToken() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return (crypto.randomUUID() + crypto.randomUUID()).replace(/-/g, '').slice(0, 32);
   }
-  return Array.from({ length: 32 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+  // No non-crypto fallback: never mint a security token from Math.random().
+  throw new Error('No secure RNG available to generate a webhook token');
 }
 
 function originFromRequest(req) {

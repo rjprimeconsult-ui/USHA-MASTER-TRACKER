@@ -37,7 +37,7 @@ export async function POST(req) {
 
     // Resolve the invitee to a user id if they already have a PRIM account.
     const { data: inviteeProf } = await admin
-      .from('profiles').select('id').ilike('email', email).maybeSingle();
+      .from('profiles').select('id').eq('email', email).maybeSingle();
     const inviteeId = inviteeProf?.id || null;
 
     const edges = await fetchAllEdges(admin);
