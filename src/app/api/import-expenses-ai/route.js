@@ -212,6 +212,8 @@ function buildTransactionSchema(allowedCategoryIds) {
 // ---- File extraction helpers ----
 
 function extractXlsxText(buffer) {
+  // Cap upload size before parsing — bounds any parser DoS on untrusted files.
+  if (buffer.length > 20 * 1024 * 1024) throw new Error('File too large (max 20MB)');
   const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true });
   const parts = [];
   for (const name of wb.SheetNames) {
