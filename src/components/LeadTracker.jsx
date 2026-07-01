@@ -54,6 +54,8 @@ import ImpersonationBanner from './ImpersonationBanner';
 import AnnouncementBanner from './AnnouncementBanner';
 import UpdateBanner from './UpdateBanner';
 import AgentChatbot from './AgentChatbot';
+import ReportIssue from './ReportIssue';
+import LastErrorCapture from './LastErrorCapture';
 import OnboardingWalkthrough from './OnboardingWalkthrough';
 import OnboardingFlow from './OnboardingFlow';
 import PaywallGate, { TrialBanner } from './PaywallGate';
@@ -2494,6 +2496,10 @@ export default function LeadTracker() {
 
       {/* One-time no-PHI acknowledgement (gates the app on first sign-in) */}
       <NoPhiBanner />
+
+      {/* Agent support: PHI-free last-error capture + floating "Report an issue" */}
+      <LastErrorCapture />
+      <ReportIssue currentView={view} />
 
       {/* Association Bonus residual book — CommissionDetail.csv import.
           Writes to isolated storage keys; never touches leads or P&L. */}
