@@ -384,7 +384,12 @@ function CalendarPanel({ prospects, stages, onView }) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const [anchor, setAnchor] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
-  const [focusedDay, setFocusedDay] = useState(null); // 'YYYY-MM-DD' or null
+  // Default the focused day to today so the expanded calendar shows today's
+  // appointments right away; clicking another day switches to it.
+  const [focusedDay, setFocusedDay] = useState(() => {
+    const t = new Date();
+    return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+  });
   // Collapsed by default — first impression is a single line, agents expand
   // only when they want to see the grid.
   const [collapsed, setCollapsed] = useState(true);
@@ -424,15 +429,15 @@ function CalendarPanel({ prospects, stages, onView }) {
   const focusedDate = focusedDay ? new Date(focusedDay + 'T00:00:00') : null;
 
   const dayCellClass = (count, isToday, isFocused) => {
-    // Fixed-height (28px) cells instead of aspect-square — keeps the widget
-    // compact even on wide containers.
-    let base = 'h-7 flex items-center justify-center gap-0.5 rounded text-[11px] cursor-pointer transition select-none';
-    if (isFocused) return base + ' border border-indigo-600 bg-indigo-100 ring-1 ring-indigo-400';
-    if (isToday)   return base + ' border border-indigo-300 bg-indigo-50 hover:bg-indigo-100';
-    if (count >= 4) return base + ' border border-violet-400 bg-violet-200 hover:bg-violet-300 text-violet-900 font-bold';
-    if (count >= 2) return base + ' border border-violet-300 bg-violet-100 hover:bg-violet-200 text-violet-800 font-semibold';
-    if (count >= 1) return base + ' border border-violet-200 bg-violet-50 hover:bg-violet-100 text-violet-700';
-    return base + ' border border-slate-200 bg-white hover:bg-slate-50 text-slate-700';
+    // Roomy month-view cells that fill the full-width panel. Day number sits
+    // top-left; a count pill sits at the bottom (rendered in the grid below).
+    let base = 'h-16 flex flex-col items-start p-1.5 rounded-lg text-xs cursor-pointer transition select-none border';
+    if (isFocused) return base + ' border-indigo-600 bg-indigo-100 ring-1 ring-indigo-400';
+    if (isToday)   return base + ' border-indigo-300 bg-indigo-50 hover:bg-indigo-100';
+    if (count >= 4) return base + ' border-violet-400 bg-violet-200 hover:bg-violet-300 text-violet-900';
+    if (count >= 2) return base + ' border-violet-300 bg-violet-100 hover:bg-violet-200 text-violet-800';
+    if (count >= 1) return base + ' border-violet-200 bg-violet-50 hover:bg-violet-100 text-violet-700';
+    return base + ' border-slate-200 bg-white hover:bg-slate-50 text-slate-700';
   };
 
   const focusedDateLabel = focusedDate ? (
@@ -442,7 +447,7 @@ function CalendarPanel({ prospects, stages, onView }) {
   ) : '';
 
   return (
-    <div className={`premium-card p-2.5 ${collapsed ? '' : 'max-w-md'}`}>
+    <div className="premium-card p-2.5">
       {/* Header — collapsible */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <button
@@ -485,16 +490,16 @@ function CalendarPanel({ prospects, stages, onView }) {
       {!collapsed && (
         <>
           {/* Weekday header */}
-          <div className="grid grid-cols-7 gap-1 mt-3 mb-1">
+          <div className="grid grid-cols-7 gap-2 mt-3 mb-1">
             {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
-              <div key={d} className="text-[9px] font-bold text-slate-500 uppercase tracking-wider text-center">{d}</div>
+              <div key={d} className="text-[10px] font-bold text-slate-500 uppercase tracking-wider text-center">{d}</div>
             ))}
           </div>
 
-          {/* Day grid — compact (smaller cells than the standalone calendar) */}
-          <div className="grid grid-cols-7 gap-1">
+          {/* Day grid — roomy month view that fills the full-width panel */}
+          <div className="grid grid-cols-7 gap-2">
             {cells.map((c, i) => {
-              if (!c) return <div key={`blank-${i}`} className="aspect-square" />;
+              if (!c) return <div key={`blank-${i}`} className="h-16" />;
               const isToday = c.key === todayKey;
               const isFocused = c.key === focusedDay;
               return (
@@ -504,8 +509,12 @@ function CalendarPanel({ prospects, stages, onView }) {
                   className={dayCellClass(c.count, isToday, isFocused)}
                   title={c.count > 0 ? `${c.count} appointment${c.count !== 1 ? 's' : ''}` : 'No appointments'}
                 >
-                  <span>{c.date.getDate()}</span>
-                  {c.count > 0 && <span className="text-[8px] font-bold opacity-70">·{c.count}</span>}
+                  <span className="font-semibold text-sm">{c.date.getDate()}</span>
+                  {c.count > 0 && (
+                    <span className="mt-auto text-[9px] font-bold text-indigo-700 bg-white rounded-full px-1.5 py-0.5 shadow-sm">
+                      {c.count} appt{c.count !== 1 ? 's' : ''}
+                    </span>
+                  )}
                 </button>
               );
             })}
