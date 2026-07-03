@@ -13,6 +13,7 @@ import { renderPostSaleHtml } from '@/lib/postSaleHtml';
 import { loadAgentProfile } from '@/lib/agentProfile';
 import { useBetaFeature } from '@/lib/useBetaFeature';
 import { supabase, supabaseConfigured } from '@/lib/supabase';
+import { GlassModal } from './motion/MotionPrimitives';
 
 /**
  * Lead-form trigger + preview modal for post-sale emails.
@@ -209,11 +210,7 @@ function SendModal({ lead, onClose, onLogged }) {
   };
 
   return (
-    <div
-      className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+    <GlassModal open onClose={onClose} maxWidth="max-w-2xl" zIndexClass="z-[60]" className="max-h-[90vh] overflow-y-auto">
         <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Mail size={18} className="text-indigo-600" />
@@ -364,7 +361,6 @@ function SendModal({ lead, onClose, onLogged }) {
             </button>
           )}
         </div>
-      </div>
-    </div>
+    </GlassModal>
   );
 }
