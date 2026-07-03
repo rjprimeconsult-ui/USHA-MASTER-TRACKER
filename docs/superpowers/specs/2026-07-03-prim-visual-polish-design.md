@@ -61,7 +61,7 @@ Add to `globals.css`. Uses `mask-image` (with `-webkit-mask-image` for Safari) s
 - **Design decision — static fade, not scroll-position-aware.** The fade shows at *both* edges always, even when scrolled to the start/end. This is acceptable and standard; making it position-aware would require JS scroll listeners on every container (rejected — not worth the cost for this pass).
 - **Known conflicts to verify live (do NOT force):**
   - `mask-image` clips `position: sticky` descendants. `ClosedDeals.jsx` has a `sticky left-0` Name column; masking its container may fade/clip that column oddly. Verify; if it looks wrong, skip that container or use `scroll-fade-x` tuned so the sticky column sits inside the opaque band.
-  - `ProspectsView.jsx` Kanban uses a custom synced dual-scrollbar (`KanbanScroller`, ~lines 1277–1327). Verify the mask doesn't fight it; apply carefully or skip.
+  - `ProspectsView.jsx` Kanban uses a custom synced dual-scrollbar (`KanbanScroller`, ~lines 1277–1327). Verify the mask doesn't fight it; apply carefully or skip. (This is the same "apply-but-verify" surface listed as Priority 1 item 3 in §5 — treat both mentions as one decision.)
 
 ### 3.2 `<Tooltip>` — styled, accessible, dependency-free
 
@@ -100,7 +100,7 @@ Point the following **17 modals** at the existing `GlassModal` (`src/components/
 - `src/components/ScreenshotImport.jsx`
 
 **`GlassModal` gets a small, bounded extension** to absorb the medium cases without breaking the simple ones:
-- `zIndexClass` prop (default `z-50`) — for the modals currently on `z-40` / `z-[60]` / `z-[70]`, so stacking order is preserved.
+- `zIndexClass` prop (default `z-50`) — for the modals currently on `z-40` / `z-[60]` / `z-[70]`, so stacking order is preserved. **Implementation note:** the prop must *replace* the literal `z-50` currently hardcoded in `GlassModal`'s overlay `className` (`MotionPrimitives.jsx:363`), not be appended — appending `z-40` alongside `z-50` yields two conflicting z-index utilities and undefined stacking.
 - `sheet` boolean prop — when true, the panel is a full-width bottom sheet on mobile (`items-end`, `rounded-t-2xl`) and a centered card on `sm:` and up. Only `LogTouchSheet` uses this.
 - Keep existing `open`, `onClose`, `children`, `maxWidth`, `className`.
 
@@ -121,7 +121,7 @@ Apply `.scroll-fade-x` (or `.scroll-fade-y` where vertical) to existing overflow
 **Priority 1 — horizontal boards / nav (highest value):**
 1. `src/components/views/Pipeline.jsx` (~line 33) — Kanban stage row, `overflow-x-auto`.
 2. `src/components/LeadTracker.jsx` (~line 2082) — the nav tab row (`<nav className="overflow-x-auto">`); scrolls on narrow viewports with no cue.
-3. `src/components/views/ProspectsView.jsx` (~lines 1277–1327) — Kanban board (custom `KanbanScroller`; verify against the synced scrollbar).
+3. `src/components/views/ProspectsView.jsx` (~lines 1277–1327) — Kanban board (custom `KanbanScroller`; verify against the synced scrollbar — this is the same apply-but-verify surface flagged in §3.1).
 
 **Priority 2 — wide data tables (`overflow-x-auto` with explicit min-widths):**
 4. `src/components/views/ClosedDeals.jsx` (~line 603, `minWidth:1180`, **sticky Name column — verify**)
@@ -202,7 +202,12 @@ Port the operator-owned `ember-constellation` effect into PRIM as a React backgr
 - **Keep the existing gates:** `prefers-reduced-motion` → no-op (static PRIM background shows). Skip on coarse-pointer / small viewports (`< ~900px`) like the kit's `effect-loader.js` `heavyOK()` — mobile keeps the current static look.
 - **Cleanup on unmount** (remove listeners, cancel RAF) — already in the effect's `cleanup()`; preserve it.
 
-**Replaces `OrbBackdrop`:** at both mount sites. `OrbBackdrop` can stay in the codebase (unreferenced) or be removed; the plan should note which. Do not run both at once (double background).
+**Replaces `OrbBackdrop` — but only at the two user-facing sites.** `OrbBackdrop` is mounted at **four** places:
+- `AuthGate.jsx` `SignInScreen()` (~line 99) — **replace** with `<ConstellationBackground intensity="prominent" />`.
+- `LeadTracker.jsx` app shell (~line 2045) — **replace** with `<ConstellationBackground intensity="medium" />`.
+- `src/app/admin/page.jsx` (~lines 312 and 711) — **leave on `OrbBackdrop`.** The admin dashboard is internal (owner-only) and out of scope for this pass.
+
+Because admin still uses it, **`OrbBackdrop` must NOT be deleted** — keep it exported and imported in `admin/page.jsx`. (Admin could adopt the `medium` constellation in a later pass if desired.) Never run both backgrounds on the same screen (double background).
 
 ---
 
