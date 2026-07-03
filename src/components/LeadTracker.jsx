@@ -69,7 +69,8 @@ import { enqueuePending, cancelAllForLead } from '@/lib/pendingEmailQueue';
 import Toast from './Toast';
 import Profile from './Profile';
 import { loadAgentProfile } from '@/lib/agentProfile';
-import { fireConfetti, FadeIn, OrbBackdrop } from './motion/MotionPrimitives';
+import { fireConfetti, FadeIn } from './motion/MotionPrimitives';
+import ConstellationBackground from './motion/ConstellationBackground';
 import { useAuth } from './auth/AuthProvider';
 import { motion } from 'framer-motion';
 import TextDripReviewModal from './TextDripReviewModal';
@@ -2042,7 +2043,7 @@ export default function LeadTracker() {
   return (
     <PaywallGate>
     <div className="min-h-screen bg-prim-canvas text-slate-900 relative transition-colors duration-300">
-      <OrbBackdrop />
+      <ConstellationBackground intensity="medium" />
       {/* Trial countdown banner (auto-hides for active paid subs).
           Stats give the banner real value-built numbers so the urgent-day
           copy can say "Keep your N leads + $X tracked" instead of a
