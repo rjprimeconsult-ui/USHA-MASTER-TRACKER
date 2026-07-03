@@ -520,7 +520,9 @@ git commit -m "Rollout F: blastTagOptions (learned-from-history tag list; TDD)"
 - [ ] **Step 3: Inline editing for Lead Range / Campaign/Tag / Notes** — in each row (`sorted.map(b => …)`), make those three `<td>`s click-to-edit: clicking swaps the display for the matching editor (range field from Step 1, tag combobox from Step 2, plain text input for notes). **On commit (Enter or blur)**, build a COMPLETE form object from the row and call `onEdit(b.id, fullForm)`:
 
 ```jsx
-// count-safety: send the row's full field set, overriding just the edited one
+// count-safety: send the row's full field set, overriding just the edited one.
+// This field list MUST mirror openEdit()'s form shape (BlastsView.jsx:59-68);
+// if a blast field is ever added there, add it here too, or onEdit will blank it.
 const commit = (b, changed) => onEdit?.(b.id, {
   platform: b.platform, runDate: b.runDate, campaignOrTag: b.campaignOrTag,
   contacts: String(b.contacts ?? ''), sendTime: b.sendTime || '',
