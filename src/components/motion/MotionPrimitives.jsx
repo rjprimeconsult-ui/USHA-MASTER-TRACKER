@@ -352,15 +352,20 @@ export function OrbBackdrop() {
 // ---------- GlassModal ----------
 // Wraps modal content in a frosted-glass container with backdrop blur of the page behind.
 // Used by all modal dialogs for consistent "luxe" feel.
-export function GlassModal({ open, onClose, children, maxWidth = 'max-w-2xl', className = '' }) {
+// - zIndexClass: stacking layer for the overlay (some modals sit above others).
+// - sheet: when true, renders as a bottom sheet on mobile (slides to the
+//   bottom edge, top corners rounded) and a centered card on sm+ screens.
+export function GlassModal({ open, onClose, children, maxWidth = 'max-w-2xl', className = '', zIndexClass = 'z-50', sheet = false }) {
   if (!open) return null;
+  const overlayLayout = sheet ? 'items-end sm:items-center p-0 sm:p-4' : 'items-center p-4';
+  const panelRounding = sheet ? 'rounded-t-2xl sm:rounded-2xl' : 'rounded-2xl';
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.2 }}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md"
+      className={`fixed inset-0 ${zIndexClass} flex ${overlayLayout} justify-center bg-slate-900/40 backdrop-blur-md`}
       onClick={onClose}
     >
       <motion.div
@@ -369,7 +374,7 @@ export function GlassModal({ open, onClose, children, maxWidth = 'max-w-2xl', cl
         exit={{ opacity: 0, scale: 0.96, y: 8 }}
         transition={{ type: 'spring', stiffness: 320, damping: 28 }}
         onClick={(e) => e.stopPropagation()}
-        className={`${maxWidth} w-full bg-white/85 backdrop-blur-2xl border border-white/60 shadow-2xl shadow-indigo-500/10 rounded-2xl ${className}`}
+        className={`${maxWidth} w-full bg-white/85 backdrop-blur-2xl border border-white/60 shadow-2xl shadow-indigo-500/10 ${panelRounding} ${className}`}
       >
         {children}
       </motion.div>
