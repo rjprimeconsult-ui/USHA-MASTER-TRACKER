@@ -3,21 +3,22 @@
 **Date:** 2026-07-03
 **Status:** Approved design → ready for implementation plan
 **Owner:** Juan (product) · built by Fable 5 (implementation)
-**Scope:** One combined visual-enhancement pass across PRIM (primtracker.com), delivered as a single branch/PR.
+**Scope:** One combined pass across PRIM (primtracker.com), delivered as a single branch/PR. Five visual rollouts (A–E) plus one contained functional rollout (F) — a Blast-Log field/editing UX change.
 
 ---
 
 ## 1. Goal & guiding constraints
 
-Raise PRIM's visual polish to a consistently premium feel without changing any behavior, data, or workflow. This is a *look-and-feel* pass only.
+Raise PRIM's visual polish to a consistently premium feel. Rollouts **A–E are look-and-feel only** — no behavior, data, or workflow change. **Rollout F is the one functional change**: a self-contained improvement to how the Blast Log's lead range, campaign/tag, and notes are entered/edited (§9). It changes *data-entry UX only* — no data-model change, and it stays strictly off the blast capture/counting path.
 
 **Hard constraints (apply to every rollout):**
 
 1. **Zero new dependencies.** Everything uses what PRIM already ships: `framer-motion` (^12), `lucide-react`, `recharts`, `canvas-confetti`, and plain CSS/Canvas 2D. If a change appears to need a new package, stop and flag it — it almost certainly has a dependency-free equivalent here.
 2. **Both themes at full parity.** PRIM has light and dark themes (dark applied via a `.dark` class on `<html>`; see `globals.css` remaps and `ThemeProvider.jsx`). Every change must look correct in both. Verify both.
 3. **Reduced-motion respected.** PRIM already honors `prefers-reduced-motion` in `globals.css`. New motion must gate on it (the constellation and any new animation must degrade to static/off).
-4. **No behavior/logic changes.** Modals keep their existing props, state, and side effects. Tooltips carry the same text the `title=` did. Nav still switches views. Only presentation changes.
-5. **Live-verifiable.** Each rollout is checked in the running app (preview) in both themes before it's considered done. The pure-logic surface is thin; verification is mostly visual.
+4. **No behavior/logic changes in A–E.** Modals keep their existing props, state, and side effects. Tooltips carry the same text the `title=` did. Nav still switches views. Only presentation changes. (Rollout F is the sole, deliberate exception, scoped in §9.)
+5. **Do not touch the blast capture/counting path.** Per the 2026-07-01 undercount incident (AGENTS.md guard markers on the Ringy/Benepath/blast webhook routes + `increment_blast`), no rollout — F included — may add any processing to the webhook/counting path. F edits only already-stored blast fields via the existing `onEdit` prop.
+6. **Live-verifiable.** Each rollout is checked in the running app (preview) in both themes before it's considered done. The pure-logic surface is thin; verification is mostly visual (F also gets a functional check that blast counts are unaffected).
 
 **Non-goals (explicitly out of scope for this pass):**
 
@@ -211,7 +212,35 @@ Because admin still uses it, **`OrbBackdrop` must NOT be deleted** — keep it e
 
 ---
 
-## 9. Cross-cutting requirements
+## 9. Rollout F — Blast Log: single-field lead range, inline editing, smart Campaign/Tag
+
+**This is the one functional rollout** (data-entry behavior change), confined to `src/components/views/BlastsView.jsx`. Treat with more care than A–E: it has real save paths and its own functional verification.
+
+**HARD CONSTRAINT — do not touch the blast capture/counting path** (restated from §1.5). Nothing here may add processing to the Ringy/Benepath/blast webhook routes or `increment_blast`. This rollout edits only already-stored blast fields (`campaignOrTag`, `rangeStart`, `rangeEnd`, `notes`) through the existing `onEdit(id, patch)` prop. The Campaign/Tag pick-list is a display/edit affordance only — it never affects Ringy auto-detection or the count.
+
+**Current data model (unchanged by this rollout):** each blast row is `{ id, platform, runDate, campaignOrTag, contacts, sendTime, rangeStart, rangeEnd, notes, numbersUsed, source }`. `source: 'auto'` = Ringy webhook capture; `'log'` = manual/TextDrip. Persistence lives in the parent via `onEdit` / `onAdd` / `onDelete` props (`BlastsView` is presentational). **Do not change storage:** keep `rangeStart` / `rangeEnd` as the two stored strings and `campaignOrTag` as the stored string. Everything below is UI over that same shape.
+
+### F1 — Lead Range as one typed field
+- Replace the two separate `rangeStart` / `rangeEnd` inputs (in the add/edit form, and the F2 inline editor) with a **single text field** the agent types spreadsheet-style, e.g. `01/01/2025 → 05/31/2026`.
+- **Parsing (kept deliberately simple — the stored values are free-form date *strings*, not normalized dates):** on commit, split the typed value on the first range separator into `rangeStart` + `rangeEnd` (trim each). No separator → the whole value is `rangeStart`, `rangeEnd` empty. Blank → both empty. Do **not** normalize/reformat the text — the log already holds mixed formats (`01/01/2025`, `3/14/2026`, `03-26-2026`); preserve exactly what the agent types.
+- **Separator rule (important):** only treat a hyphen as the range separator when it is space-surrounded (` - `), and also accept ` → `, ` – `, and `to`. This prevents a hyphenated single date like `03-26-2026` from being mis-split. Prefer showing ` → ` as the canonical separator.
+- **Display (unchanged):** render as `rangeStart → rangeEnd` (or just `rangeStart`, or `—`), exactly as the row does today.
+
+### F2 — Inline editing in the log (Lead Range, Campaign/Tag, Notes only)
+- These **three** cells become **click-to-edit in place** in the Blast Log table: click the cell → it becomes its editor (the F1 field for Lead Range, the F3 combobox for Campaign/Tag, a plain text input for Notes) → **Enter or blur commits** via `onEdit(id, patch)`; **Esc cancels**. Only the changed field is patched.
+- **The pencil icon stays** for the remaining fields (Contacts, Send Time, Numbers, Platform, Date) so nothing becomes uneditable — it opens the existing form exactly as today. (Rationale: agent asked for inline on precisely Lead Range / Campaign/Tag / Notes; the sensitive Contacts *count* deliberately keeps the form step.)
+- **Auto Ringy rows:** the three inline fields ARE editable on `source: 'auto'` rows — this matches today's edit form, which explicitly lets you "fix the count, campaign/tag, lead range, or notes" on auto rows. **Date & Send Time stay locked** on auto rows, as today.
+- Keep the delete (trash) button.
+
+### F3 — Campaign/Tag combobox with custom entries
+- Replace the free-text `campaignOrTag` input (in both the add/edit form and the F2 inline editor) with a **combobox**: a dropdown of existing options plus free typing to add a new one.
+- **Options = learned from history:** the distinct non-empty `campaignOrTag` values already present in the agent's `blasts` array (deduped, most-recent-first is fine). **No new storage, no settings screen** — a newly typed tag persists automatically once its row is saved, so it appears in the list next time. ("Add your own" = type it; saving the row commits it to history.)
+- **Pre-fill:** Ringy (`source: 'auto'`) rows already carry `campaignOrTag` from the webhook — show it selected. TextDrip / manual rows start empty; the agent picks from the dropdown or types a new tag.
+- **Dependency-free:** a small custom combobox or a `<datalist>`-backed `<input>` is fine — no new package.
+
+---
+
+## 10. Cross-cutting requirements
 
 - **Dark + light parity** verified for: the `<Tooltip>` bubble, every converted modal, and both constellation presets. The scroll-fade mask is alpha-based (theme-agnostic).
 - **Accessibility:** `aria-label` preserved/added wherever `title` is removed from an icon-only control; `<Tooltip>` responds to keyboard focus.
@@ -222,22 +251,24 @@ Because admin still uses it, **`OrbBackdrop` must NOT be deleted** — keep it e
   - C — a tooltip appears on hover *and* on keyboard focus; no native `title` double-shows.
   - D — nav hover reads calm; active pill still animates; horizontal scroll intact.
   - E — login (prominent) + in-app (medium) in both themes; cursor interaction works; reduced-motion shows static; tab-hidden pauses (spot-check CPU).
+  - F — type a combined lead range and confirm it splits into `rangeStart`/`rangeEnd` and renders right (test a single date and a hyphenated `03-26-2026` value — the latter must NOT split); inline-edit Lead Range, Campaign/Tag, and Notes and confirm each saves; the Campaign/Tag dropdown lists previously-used tags and accepts a brand-new one; **spot-check that blast totals are unchanged after an edit** (counting path untouched); auto Ringy rows still lock Date & Send Time.
 - **Build + lint clean** (`npm run build`, ESLint) with no *new* errors beyond the repo's known pre-existing noise.
 
-## 10. Ship ritual (per AGENTS.md)
+## 11. Ship ritual (per AGENTS.md)
 
 This is a user-facing refresh, so at ship time it gets an `ANNOUNCEMENTS` "What's New" entry (`src/lib/announcements.js`) describing the polish + new animated background. Decide on a Slack `[announce]`-tagged deploy at that point (defer the announce decision to ship).
 
 ---
 
-## 11. Suggested build order (for the implementation plan)
+## 12. Suggested build order (for the implementation plan)
 
 1. Shared primitives: `.scroll-fade-*` CSS + `<Tooltip>` component.
 2. Rollout E scaffolding: `ConstellationBackground` (port + recolor + presets + perf) — biggest single new piece; land it early to verify perf.
 3. Rollout A: modals (mechanical, one file at a time; portal/bottom-sheet cases last).
 4. Rollout B: scroll-fade application (priority order).
 5. Rollout C: tooltip conversions (densest views first).
-6. Rollout D: nav hover (tune live, last — it's cosmetic).
-7. Full both-theme verification pass + announcement entry.
+6. Rollout F: Blast Log fields (functional; `BlastsView.jsx` only; verify blast counts unaffected). Independent of the others.
+7. Rollout D: nav hover (tune live, near-last — it's cosmetic).
+8. Full both-theme verification pass + announcement entry.
 
 Each rollout is independently revertible if one looks wrong in the combined pass.
