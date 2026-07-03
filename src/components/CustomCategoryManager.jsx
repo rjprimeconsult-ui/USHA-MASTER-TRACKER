@@ -6,6 +6,7 @@ import {
   CATEGORY_COLOR_PALETTE, badgeForColor,
 } from '@/lib/customCategories';
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '@/lib/constants';
+import { GlassModal } from './motion/MotionPrimitives';
 
 /**
  * Manage custom expense/income categories.
@@ -101,8 +102,7 @@ export default function CustomCategoryManager({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+    <GlassModal open maxWidth="max-w-2xl" className="max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-slate-200 bg-gradient-to-br from-indigo-50 to-violet-50">
           <div className="flex items-center gap-3">
@@ -215,8 +215,7 @@ export default function CustomCategoryManager({
             <Check size={14} /> Done
           </button>
         </div>
-      </div>
-    </div>
+    </GlassModal>
   );
 }
 
