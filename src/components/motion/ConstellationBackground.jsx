@@ -10,6 +10,13 @@ import { useIsDark } from '@/lib/useIsDark';
 // content (-z-10). Perf-hardened: particle cap + pause when tab hidden +
 // reduced-motion / small-screen / coarse-pointer gate.
 //
+// STACKING REQUIREMENT: the nearest positioned ancestor MUST create a
+// stacking context (add Tailwind `isolate`), otherwise this -z-10 layer
+// joins the ROOT stacking context and the ancestor's own opaque background
+// paints OVER it — the effect renders zero visible pixels. With `isolate`
+// on the parent, the canvas paints above the parent's background but below
+// all of its content, which is the intent.
+//
 // intensity: 'prominent' (login) | 'medium' (app-wide).
 const PRESETS = {
   prominent: { density: 9000,  maxPts: 140, link: 130, dotAlpha: 0.90, lineAlpha: 0.55, opacity: 1.0 },

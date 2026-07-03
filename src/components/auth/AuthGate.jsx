@@ -93,7 +93,7 @@ function SignInScreen() {
 
   return (
     <div
-      className="min-h-screen relative flex items-center justify-center p-4 overflow-hidden"
+      className="min-h-screen relative isolate flex items-center justify-center p-4 overflow-hidden"
       style={{ background: 'linear-gradient(135deg, #f8fafc 0%, #eef2ff 45%, #f5f3ff 100%)' }}
     >
       <ConstellationBackground intensity="prominent" />
