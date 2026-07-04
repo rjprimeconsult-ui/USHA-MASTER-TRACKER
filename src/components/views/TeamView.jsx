@@ -614,7 +614,7 @@ export default function TeamView({ showToast = () => {} }) {
                 </div>
               </div>
             </div>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto scroll-fade-x">
               <table className="w-full text-sm premium-table" style={{ minWidth: 760 }}>
                 <thead className="bg-slate-50 text-slate-600 text-xs">
                   <tr>
@@ -676,7 +676,7 @@ export default function TeamView({ showToast = () => {} }) {
               <h3 className="font-semibold text-slate-900 mb-3 flex items-center">
                 <span className="section-accent" />Accountability
               </h3>
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto scroll-fade-x">
                 <table className="w-full text-sm premium-table" style={{ minWidth: 420 }}>
                   <thead className="bg-slate-50 text-slate-600 text-xs">
                     <tr>

@@ -325,7 +325,7 @@ export default function CommissionCalculator({ defaultTier = 'WA', onSaveDefault
               </span>
             </div>
           </div>
-          <div className="overflow-x-auto -mx-4 px-4">
+          <div className="overflow-x-auto -mx-4 px-4 scroll-fade-x">
             <table className="w-full text-sm premium-table">
               <thead>
                 <tr className="text-[10px] uppercase tracking-wider text-slate-500 font-bold border-b border-slate-200">

@@ -600,7 +600,7 @@ function ClosedDeals({ leads, onEdit, onUpdate, onDelete, onImportFromScreenshot
                   />
                 )}
               </div>
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto scroll-fade-x">
                 {/* min-w forces horizontal scroll when needed instead of
                     squeezing columns into illegible slivers. */}
                 <table className="text-sm premium-table" style={{ minWidth: '1180px', width: '100%' }}>

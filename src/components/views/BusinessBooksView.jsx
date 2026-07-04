@@ -1333,7 +1333,7 @@ function BusinessBooksView({
             compact
           />
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto scroll-fade-x">
             <table className="w-full text-sm premium-table">
               <thead>
                 <tr className="border-b border-slate-200 text-left">
