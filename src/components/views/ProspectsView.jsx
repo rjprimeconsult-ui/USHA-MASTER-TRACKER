@@ -1319,7 +1319,7 @@ function KanbanScroller({ topScrollRef, bodyScrollRef, innerWidth, setInnerWidth
       >
         <div style={{ width: innerWidth || 1, height: 1 }} />
       </div>
-      <div ref={bodyScrollRef} onScroll={onBodyScroll} className="overflow-x-auto pb-3">
+      <div ref={bodyScrollRef} onScroll={onBodyScroll} className="overflow-x-auto pb-3 scroll-fade-x">
         {children}
       </div>
     </div>

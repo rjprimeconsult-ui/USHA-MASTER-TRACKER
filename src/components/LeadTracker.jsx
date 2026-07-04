@@ -2080,7 +2080,7 @@ export default function LeadTracker() {
             </button>
           </div>
         </div>
-        <nav className="relative max-w-screen-2xl mx-auto px-4 overflow-x-auto">
+        <nav className="relative max-w-screen-2xl mx-auto px-4 overflow-x-auto scroll-fade-x">
           <div className="flex gap-1 pb-2">
             {NAV_TABS.filter(t => t.id !== 'team' || teamEntitled).map(t => {
               const Icon = ICONS[t.icon];
