@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import { X, LifeBuoy, Loader2, Check } from 'lucide-react';
 import { TICKET_CATEGORIES } from '@/lib/tickets.mjs';
 import { authedFetch } from '@/lib/authedFetch';
+import { GlassModal } from './motion/MotionPrimitives';
 
 const inp = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500';
 
@@ -66,8 +67,7 @@ export default function ReportIssue({ currentView = '' }) {
       </button>
 
       {open && typeof document !== 'undefined' && createPortal(
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={close}>
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+        <GlassModal open={open} onClose={close} maxWidth="max-w-lg">
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
               <h2 className="font-bold text-slate-900">Report an issue</h2>
               <button onClick={close} className="text-slate-400 hover:text-slate-700"><X size={20} /></button>
@@ -109,8 +109,7 @@ export default function ReportIssue({ currentView = '' }) {
                 </div>
               </div>
             )}
-          </div>
-        </div>,
+        </GlassModal>,
         document.body,
       )}
     </>
