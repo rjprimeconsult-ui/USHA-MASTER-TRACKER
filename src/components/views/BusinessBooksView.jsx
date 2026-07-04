@@ -20,6 +20,7 @@ import CustomCategoryManager from '../CustomCategoryManager';
 import AgentSettingsPanel from '../AgentSettingsPanel';
 import EmptyState from '../EmptyState';
 import { authedFetch } from '@/lib/authedFetch';
+import Tooltip from '@/components/Tooltip';
 
 const ACCOUNTS_KEY = 'business_accounts_v1';
 
@@ -780,9 +781,11 @@ function BusinessBooksView({
             <div className="text-[11px] text-slate-500">
               deductible business out
               {ytdPlatformExpenses > 0 && (
-                <span title="Platform charges (Ringy/TextDrip/VanillaSoft) live in Books and are ALREADY counted in this YTD total. Shown here only so you can see how much of it is platform spend.">
-                  {' '}· <span className="text-indigo-600 font-semibold">of which {fmt2(ytdPlatformExpenses)} Platforms</span>
-                </span>
+                <Tooltip label="Platform charges (Ringy/TextDrip/VanillaSoft) live in Books and are ALREADY counted in this YTD total. Shown here only so you can see how much of it is platform spend.">
+                  <span>
+                    {' '}· <span className="text-indigo-600 font-semibold">of which {fmt2(ytdPlatformExpenses)} Platforms</span>
+                  </span>
+                </Tooltip>
               )}
             </div>
           </TiltCard>
@@ -808,16 +811,16 @@ function BusinessBooksView({
               <div className="text-xs font-bold text-slate-500 tracking-wider">{ymLabel(activeMonth)}</div>
             </div>
             <div className="mt-1 flex items-baseline gap-2 text-sm" style={{ transform: 'translateZ(10px)' }}>
-              <span className="kpi-num text-emerald-600" title={
+              <Tooltip label={
                 `Books income: ${fmt2(monthBooksIncTotal)}` +
                 (monthOwnCommissions > 0 ? ` · Advances: ${fmt2(monthOwnCommissions)}` : '') +
                 (monthOverrideIncome > 0 ? ` · Overrides: ${fmt2(monthOverrideIncome)}` : '')
-              }>+{fmt2(monthIncTotal)}</span>
+              }><span className="kpi-num text-emerald-600">+{fmt2(monthIncTotal)}</span></Tooltip>
               <span className="text-slate-300">·</span>
-              <span className="kpi-num text-red-500" title={
+              <Tooltip label={
                 `All Books expenses: ${fmt2(monthExpTotal)}` +
                 (monthPlatformTotal > 0 ? ` (of which Platforms: ${fmt2(monthPlatformTotal)})` : '')
-              }>−{fmt2(monthExpTotal)}</span>
+              }><span className="kpi-num text-red-500">−{fmt2(monthExpTotal)}</span></Tooltip>
               <span className="text-slate-300">=</span>
               <span className={`kpi-num ${monthNet >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
                 {monthNet >= 0 ? '+' : '−'}{fmt2(Math.abs(monthNet))}
@@ -846,13 +849,14 @@ function BusinessBooksView({
           </div>
           {!readOnly && (
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowSmartImport(true)}
-              className="bg-gradient-to-br from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white rounded-lg px-4 py-2 text-sm font-semibold transition flex items-center gap-2 shadow-md shadow-indigo-500/30"
-              title="Drop any expense file (XLSX, CSV, or PDF) — AI parses + categorizes everything"
-            >
-              ✨ Smart Import (AI)
-            </button>
+            <Tooltip label="Drop any expense file (XLSX, CSV, or PDF) — AI parses + categorizes everything">
+              <button
+                onClick={() => setShowSmartImport(true)}
+                className="bg-gradient-to-br from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white rounded-lg px-4 py-2 text-sm font-semibold transition flex items-center gap-2 shadow-md shadow-indigo-500/30"
+              >
+                ✨ Smart Import (AI)
+              </button>
+            </Tooltip>
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={importing}
@@ -1033,49 +1037,54 @@ function BusinessBooksView({
         <div className="flex items-center gap-2 flex-wrap">
           {tab === 'expenses' && expenses.length > 0 && (
             <>
-              <button
-                onClick={runRecategorize}
-                className="text-xs text-indigo-700 hover:text-indigo-900 underline-offset-2 hover:underline"
-                title="Re-scan vendor names against keyword rules and propose category fixes (deterministic — fast and free)"
-              >
-                Re-scan (rules)
-              </button>
-              <button
-                onClick={runAiRescan}
-                disabled={aiRescanning}
-                className="text-xs text-violet-700 hover:text-violet-900 flex items-center gap-1 border border-violet-200 hover:border-violet-400 bg-white rounded-lg px-2.5 py-1 transition disabled:opacity-50"
-                title="Re-classify every expense using the latest AI rubric + your vendor memory + your custom categories. Runs in batches of 100. Cost: under $0.05 typical."
-              >
-                <Sparkles size={12} />
-                {aiRescanning
-                  ? (aiRescanProgress.total > 0
-                      ? `Re-scanning ${aiRescanProgress.done}/${aiRescanProgress.total}…`
-                      : 'Re-scanning…')
-                  : 'Re-scan with AI'}
-              </button>
+              <Tooltip label="Re-scan vendor names against keyword rules and propose category fixes (deterministic — fast and free)">
+                <button
+                  onClick={runRecategorize}
+                  className="text-xs text-indigo-700 hover:text-indigo-900 underline-offset-2 hover:underline"
+                >
+                  Re-scan (rules)
+                </button>
+              </Tooltip>
+              <Tooltip label="Re-classify every expense using the latest AI rubric + your vendor memory + your custom categories. Runs in batches of 100. Cost: under $0.05 typical.">
+                <button
+                  onClick={runAiRescan}
+                  disabled={aiRescanning}
+                  className="text-xs text-violet-700 hover:text-violet-900 flex items-center gap-1 border border-violet-200 hover:border-violet-400 bg-white rounded-lg px-2.5 py-1 transition disabled:opacity-50"
+                >
+                  <Sparkles size={12} />
+                  {aiRescanning
+                    ? (aiRescanProgress.total > 0
+                        ? `Re-scanning ${aiRescanProgress.done}/${aiRescanProgress.total}…`
+                        : 'Re-scanning…')
+                    : 'Re-scan with AI'}
+                </button>
+              </Tooltip>
             </>
           )}
-          <button
-            onClick={() => setShowCategoryManager(true)}
-            className="text-xs text-violet-700 hover:text-violet-900 flex items-center gap-1 border border-violet-200 hover:border-violet-400 bg-white rounded-lg px-2.5 py-1 transition"
-            title="Add or edit your own custom categories"
-          >
-            <Tag size={12} /> Manage categories
-          </button>
-          <button
-            onClick={() => setShowAccountManager(true)}
-            className="text-xs text-indigo-700 hover:text-indigo-900 flex items-center gap-1 border border-indigo-200 hover:border-indigo-400 bg-white rounded-lg px-2.5 py-1 transition"
-            title="Add or remove your accounts / credit cards"
-          >
-            <Wallet size={12} /> Manage accounts
-          </button>
-          <button
-            onClick={() => setShowSettings(true)}
-            className="text-xs text-slate-700 hover:text-slate-900 flex items-center gap-1 border border-slate-200 hover:border-slate-400 bg-white rounded-lg px-2.5 py-1 transition"
-            title="My Rubric, Import History, Vendor Memory, AI cost"
-          >
-            <Settings size={12} /> Settings
-          </button>
+          <Tooltip label="Add or edit your own custom categories">
+            <button
+              onClick={() => setShowCategoryManager(true)}
+              className="text-xs text-violet-700 hover:text-violet-900 flex items-center gap-1 border border-violet-200 hover:border-violet-400 bg-white rounded-lg px-2.5 py-1 transition"
+            >
+              <Tag size={12} /> Manage categories
+            </button>
+          </Tooltip>
+          <Tooltip label="Add or remove your accounts / credit cards">
+            <button
+              onClick={() => setShowAccountManager(true)}
+              className="text-xs text-indigo-700 hover:text-indigo-900 flex items-center gap-1 border border-indigo-200 hover:border-indigo-400 bg-white rounded-lg px-2.5 py-1 transition"
+            >
+              <Wallet size={12} /> Manage accounts
+            </button>
+          </Tooltip>
+          <Tooltip label="My Rubric, Import History, Vendor Memory, AI cost">
+            <button
+              onClick={() => setShowSettings(true)}
+              className="text-xs text-slate-700 hover:text-slate-900 flex items-center gap-1 border border-slate-200 hover:border-slate-400 bg-white rounded-lg px-2.5 py-1 transition"
+            >
+              <Settings size={12} /> Settings
+            </button>
+          </Tooltip>
         </div>
       </div>
 
@@ -1184,14 +1193,15 @@ function BusinessBooksView({
             />
           </div>
           <div className="flex items-end">
-            <button
-              onClick={submitDraft}
-              disabled={!draft.amount || Number(draft.amount) <= 0 || isPeriodClosed('books', draft.date)}
-              title={isPeriodClosed('books', draft.date) ? `${ymLabel(ymOf(draft.date))} is closed — reopen to add` : ''}
-              className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white rounded-lg px-3 py-1.5 text-sm font-semibold transition flex items-center justify-center gap-1"
-            >
-              {isPeriodClosed('books', draft.date) ? <><Lock size={12} /> Locked</> : 'Add'}
-            </button>
+            <Tooltip label={isPeriodClosed('books', draft.date) ? `${ymLabel(ymOf(draft.date))} is closed — reopen to add` : ''}>
+              <button
+                onClick={submitDraft}
+                disabled={!draft.amount || Number(draft.amount) <= 0 || isPeriodClosed('books', draft.date)}
+                className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white rounded-lg px-3 py-1.5 text-sm font-semibold transition flex items-center justify-center gap-1"
+              >
+                {isPeriodClosed('books', draft.date) ? <><Lock size={12} /> Locked</> : 'Add'}
+              </button>
+            </Tooltip>
           </div>
         </div>
       </div>
@@ -1202,9 +1212,11 @@ function BusinessBooksView({
           <h3 className="font-semibold text-slate-900 flex items-center gap-2">
             {ymLabel(activeMonth)} — {tab === 'expenses' ? 'Expenses' : 'Income'}
             {isPeriodClosed('books', activeMonth) && (
-              <span title="This month is closed for editing" className="inline-flex items-center gap-1 text-[10px] font-bold uppercase bg-amber-100 text-amber-800 border border-amber-300 rounded px-1.5 py-0.5">
-                <Lock size={10} /> Closed
-              </span>
+              <Tooltip label="This month is closed for editing">
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase bg-amber-100 text-amber-800 border border-amber-300 rounded px-1.5 py-0.5">
+                  <Lock size={10} /> Closed
+                </span>
+              </Tooltip>
             )}
           </h3>
           <div className="flex items-center gap-2">
@@ -1219,29 +1231,31 @@ function BusinessBooksView({
               {list.length} entr{list.length === 1 ? 'y' : 'ies'} · {fmt2(monthTotal)}
             </span>
             {isPeriodClosed('books', activeMonth) ? (
-              <button
-                onClick={async () => {
-                  if (window.confirm(`Reopen ${ymLabel(activeMonth)} for editing? You'll be able to add/edit/delete entries again.`)) {
-                    await reopenBookMonth('books', activeMonth);
-                  }
-                }}
-                title="Reopen this month for editing"
-                className="text-xs flex items-center gap-1 border border-amber-300 hover:border-amber-500 hover:bg-amber-50 text-amber-800 rounded-lg px-2.5 py-1 transition"
-              >
-                <Unlock size={12} /> Reopen month
-              </button>
+              <Tooltip label="Reopen this month for editing">
+                <button
+                  onClick={async () => {
+                    if (window.confirm(`Reopen ${ymLabel(activeMonth)} for editing? You'll be able to add/edit/delete entries again.`)) {
+                      await reopenBookMonth('books', activeMonth);
+                    }
+                  }}
+                  className="text-xs flex items-center gap-1 border border-amber-300 hover:border-amber-500 hover:bg-amber-50 text-amber-800 rounded-lg px-2.5 py-1 transition"
+                >
+                  <Unlock size={12} /> Reopen month
+                </button>
+              </Tooltip>
             ) : (
-              <button
-                onClick={async () => {
-                  if (window.confirm(`Close ${ymLabel(activeMonth)}? Adds, edits, deletes, and Smart Imports for this month will be blocked. You can reopen it any time.`)) {
-                    await closeBookMonth('books', activeMonth);
-                  }
-                }}
-                title="Lock this month so Smart Imports and edits can't change it"
-                className="text-xs flex items-center gap-1 border border-slate-200 hover:border-slate-400 hover:bg-slate-50 text-slate-700 rounded-lg px-2.5 py-1 transition"
-              >
-                <Lock size={12} /> Close month
-              </button>
+              <Tooltip label="Lock this month so Smart Imports and edits can't change it">
+                <button
+                  onClick={async () => {
+                    if (window.confirm(`Close ${ymLabel(activeMonth)}? Adds, edits, deletes, and Smart Imports for this month will be blocked. You can reopen it any time.`)) {
+                      await closeBookMonth('books', activeMonth);
+                    }
+                  }}
+                  className="text-xs flex items-center gap-1 border border-slate-200 hover:border-slate-400 hover:bg-slate-50 text-slate-700 rounded-lg px-2.5 py-1 transition"
+                >
+                  <Lock size={12} /> Close month
+                </button>
+              </Tooltip>
             )}
           </div>
         </div>
@@ -1338,14 +1352,16 @@ function BusinessBooksView({
               <thead>
                 <tr className="border-b border-slate-200 text-left">
                   <th className="py-2 px-2 w-8 text-center">
-                    <input
-                      type="checkbox"
-                      checked={allVisibleSelected}
-                      ref={el => { if (el) el.indeterminate = someVisibleSelected; }}
-                      onChange={toggleSelectAllVisible}
-                      title={allVisibleSelected ? 'Unselect all visible' : 'Select all visible'}
-                      className="accent-indigo-600 w-4 h-4 cursor-pointer"
-                    />
+                    <Tooltip label={allVisibleSelected ? 'Unselect all visible' : 'Select all visible'} side="bottom">
+                      <input
+                        type="checkbox"
+                        checked={allVisibleSelected}
+                        ref={el => { if (el) el.indeterminate = someVisibleSelected; }}
+                        onChange={toggleSelectAllVisible}
+                        aria-label={allVisibleSelected ? 'Unselect all visible' : 'Select all visible'}
+                        className="accent-indigo-600 w-4 h-4 cursor-pointer"
+                      />
+                    </Tooltip>
                   </th>
                   <th className="py-2 px-2 text-xs font-bold text-slate-500 uppercase tracking-wider">Date</th>
                   <th className="py-2 px-2 text-xs font-bold text-slate-500 uppercase tracking-wider">Category</th>
@@ -1379,14 +1395,16 @@ function BusinessBooksView({
                   return (
                     <tr key={`${e.id}|${idx}`} className={`border-b border-slate-100 ${rowLocked ? 'bg-amber-50/30' : isSelected ? 'bg-rose-50/40' : 'hover:bg-slate-50'}`}>
                       <td className="py-2 px-2 text-center">
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => toggleRowSelected(e.id)}
-                          disabled={rowLocked}
-                          className="accent-indigo-600 w-4 h-4 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                          title={rowLocked ? 'Closed month — reopen to select' : ''}
-                        />
+                        <Tooltip label={rowLocked ? 'Closed month — reopen to select' : ''}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleRowSelected(e.id)}
+                            disabled={rowLocked}
+                            aria-label={rowLocked ? 'Closed month — reopen to select' : 'Select row'}
+                            className="accent-indigo-600 w-4 h-4 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                          />
+                        </Tooltip>
                       </td>
                       <td className="py-2 px-2">
                         <input
@@ -1425,27 +1443,28 @@ function BusinessBooksView({
                         />
                       </td>
                       <td className="py-2 px-2">
-                        <input
-                          type="text"
-                          list="known-accounts"
-                          value={e.account || ''}
-                          onChange={(ev) => lockedUpdate({ ...e, account: ev.target.value })}
-                          onBlur={(ev) => {
-                            // Datalist picks don't always fire the input
-                            // event in every browser (Chrome quirk on
-                            // mouse-click selection), so the controlled
-                            // value can snap back to blank. Commit on
-                            // blur as a safety net.
-                            const next = ev.target.value || '';
-                            if (!rowLocked && next !== (e.account || '')) {
-                              lockedUpdate({ ...e, account: next });
-                            }
-                          }}
-                          readOnly={rowLocked}
-                          placeholder="—"
-                          title={rowLocked ? 'Closed month — reopen to edit' : (e.paymentMethod ? `Payment method: ${e.paymentMethod}` : '')}
-                          className={`w-28 border border-transparent rounded px-1 py-0.5 text-xs bg-transparent ${rowLocked ? 'text-slate-400 cursor-not-allowed' : 'text-slate-700 hover:border-slate-200'}`}
-                        />
+                        <Tooltip label={rowLocked ? 'Closed month — reopen to edit' : (e.paymentMethod ? `Payment method: ${e.paymentMethod}` : '')}>
+                          <input
+                            type="text"
+                            list="known-accounts"
+                            value={e.account || ''}
+                            onChange={(ev) => lockedUpdate({ ...e, account: ev.target.value })}
+                            onBlur={(ev) => {
+                              // Datalist picks don't always fire the input
+                              // event in every browser (Chrome quirk on
+                              // mouse-click selection), so the controlled
+                              // value can snap back to blank. Commit on
+                              // blur as a safety net.
+                              const next = ev.target.value || '';
+                              if (!rowLocked && next !== (e.account || '')) {
+                                lockedUpdate({ ...e, account: next });
+                              }
+                            }}
+                            readOnly={rowLocked}
+                            placeholder="—"
+                            className={`w-28 border border-transparent rounded px-1 py-0.5 text-xs bg-transparent ${rowLocked ? 'text-slate-400 cursor-not-allowed' : 'text-slate-700 hover:border-slate-200'}`}
+                          />
+                        </Tooltip>
                         {e.paymentMethod && (
                           <div className="text-[9px] text-slate-400 leading-none mt-0.5">{e.paymentMethod}</div>
                         )}
@@ -1471,28 +1490,34 @@ function BusinessBooksView({
                       </td>
                       <td className="py-2 px-2">
                         {e.attachment ? (
-                          <button
-                            onClick={async () => setViewAttachment(await loadAttachmentForView(e.attachment))}
-                            className="text-indigo-600 hover:bg-indigo-50 p-1 rounded inline-flex items-center gap-1 text-xs"
-                            title={e.attachment.name}
-                          >
-                            <Eye size={14} />
-                          </button>
+                          <Tooltip label={e.attachment.name}>
+                            <button
+                              onClick={async () => setViewAttachment(await loadAttachmentForView(e.attachment))}
+                              aria-label={e.attachment.name}
+                              className="text-indigo-600 hover:bg-indigo-50 p-1 rounded inline-flex items-center gap-1 text-xs"
+                            >
+                              <Eye size={14} />
+                            </button>
+                          </Tooltip>
                         ) : (
                           !rowLocked && <RowAttachmentButton entry={e} onUpdate={onUpdate} />
                         )}
                       </td>
                       <td className="py-2 px-2 text-right">
                         {rowLocked ? (
-                          <Lock size={12} className="text-amber-500 inline" title="Closed month — reopen to delete" />
+                          <Tooltip label="Closed month — reopen to delete">
+                            <Lock size={12} className="text-amber-500 inline" aria-label="Closed month — reopen to delete" />
+                          </Tooltip>
                         ) : (
-                          <button
-                            onClick={() => onDelete(e.id)}
-                            className="text-slate-400 hover:text-red-600 transition"
-                            title="Delete"
-                          >
-                            <Trash2 size={14} />
-                          </button>
+                          <Tooltip label="Delete">
+                            <button
+                              onClick={() => onDelete(e.id)}
+                              aria-label="Delete"
+                              className="text-slate-400 hover:text-red-600 transition"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </Tooltip>
                         )}
                       </td>
                     </tr>
@@ -1580,7 +1605,9 @@ function BusinessBooksView({
                           <td className="py-2 px-2">
                             <input type="checkbox" checked={p.picked} onChange={() => togglePick(p.id)} className="w-4 h-4" />
                           </td>
-                          <td className="py-2 px-2 text-slate-900 truncate max-w-[200px]" title={p.vendor}>{p.vendor || '—'}</td>
+                          <td className="py-2 px-2 text-slate-900 max-w-[200px]">
+                            {p.vendor ? <Tooltip label={p.vendor} className="truncate max-w-full">{p.vendor}</Tooltip> : '—'}
+                          </td>
                           <td className="py-2 px-2 text-right font-semibold text-slate-700">{fmt2(p.amount)}</td>
                           <td className="py-2 px-2"><span className={`text-[11px] px-2 py-0.5 rounded font-bold ${fromCat.badge}`}>{fromCat.label}</span></td>
                           <td className="py-2 px-2"><span className={`text-[11px] px-2 py-0.5 rounded font-bold ${toCat.badge}`}>{toCat.label}</span></td>
@@ -1690,16 +1717,18 @@ function AccountManager({ accounts = [], usageCounts = {}, onAdd, onRemove, onCl
                       <span className="text-sm text-slate-800 truncate">{a}</span>
                       {used > 0 && <span className="text-[10px] text-slate-400">· {used} {used === 1 ? 'entry' : 'entries'}</span>}
                     </div>
-                    <button
-                      onClick={() => {
-                        if (used > 0 && !window.confirm(`Remove "${a}" from your account list? ${used} existing ${used === 1 ? 'entry keeps' : 'entries keep'} their value — this only takes it off the pick-list.`)) return;
-                        onRemove(a);
-                      }}
-                      className="text-slate-400 hover:text-red-600 transition p-1"
-                      title="Remove from list"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                    <Tooltip label="Remove from list">
+                      <button
+                        onClick={() => {
+                          if (used > 0 && !window.confirm(`Remove "${a}" from your account list? ${used} existing ${used === 1 ? 'entry keeps' : 'entries keep'} their value — this only takes it off the pick-list.`)) return;
+                          onRemove(a);
+                        }}
+                        aria-label="Remove from list"
+                        className="text-slate-400 hover:text-red-600 transition p-1"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </Tooltip>
                   </li>
                 );
               })}
@@ -1731,13 +1760,15 @@ function RowAttachmentButton({ entry, onUpdate }) {
   };
   return (
     <>
-      <button
-        onClick={() => ref.current?.click()}
-        className="text-slate-400 hover:text-indigo-600 p-1 rounded inline-flex items-center text-xs"
-        title="Attach receipt"
-      >
-        <Paperclip size={14} />
-      </button>
+      <Tooltip label="Attach receipt">
+        <button
+          onClick={() => ref.current?.click()}
+          aria-label="Attach receipt"
+          className="text-slate-400 hover:text-indigo-600 p-1 rounded inline-flex items-center text-xs"
+        >
+          <Paperclip size={14} />
+        </button>
+      </Tooltip>
       <input ref={ref} type="file" accept="image/*,application/pdf" onChange={onPick} className="hidden" />
     </>
   );
