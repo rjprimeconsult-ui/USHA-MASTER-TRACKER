@@ -16,7 +16,7 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Merge, SkipForward, MessageCircle } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { GlassModal } from './motion/MotionPrimitives';
 
 export default function TextDripReviewModal({ open, items = [], onResolve, onClose }) {
   // choices[i] = 'merge' | 'skip'
@@ -45,24 +45,7 @@ export default function TextDripReviewModal({ open, items = [], onResolve, onClo
   const mergeCount = Object.values(choices).filter(v => v === 'merge').length;
 
   const modal = (
-    <AnimatePresence>
-      <motion.div
-        key="td-review-backdrop"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
-        onClick={onClose}
-      >
-        <motion.div
-          key="td-review-panel"
-          initial={{ opacity: 0, y: 16, scale: 0.97 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: 16, scale: 0.97 }}
-          transition={{ type: 'spring', stiffness: 320, damping: 28 }}
-          onClick={e => e.stopPropagation()}
-          className="premium-card max-w-3xl w-full max-h-[88vh] overflow-y-auto"
-        >
+    <GlassModal open onClose={onClose} maxWidth="max-w-3xl" className="premium-card max-h-[88vh] overflow-y-auto">
           {/* Header */}
           <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-700">
             <div className="flex items-center gap-3">
@@ -113,9 +96,7 @@ export default function TextDripReviewModal({ open, items = [], onResolve, onClo
               Apply ({mergeCount} merge{mergeCount !== 1 ? 's' : ''}, {items.length - mergeCount} skip{items.length - mergeCount !== 1 ? 's' : ''})
             </button>
           </div>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>
+    </GlassModal>
   );
 
   return createPortal(modal, document.body);
