@@ -1,6 +1,6 @@
 'use client';
 import { useMemo, useState, memo } from 'react';
-import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LabelList } from 'recharts';
+import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, LabelList } from 'recharts';
 import { Users, Repeat, TrendingUp, Award, Calendar, Pause, Play, Ban, Edit2, Upload, Database, FileText, Trash2, AlertTriangle } from 'lucide-react';
 import { ASSOCIATION_PRICING, QUARTERS, isPricedAssociation } from '@/lib/constants';
 import { fmt, fmt2, usDate, monthsActiveTotal, monthsActiveInQuarter, getCurrentQuarter, getNextQuarter } from '@/lib/utils';
@@ -18,6 +18,7 @@ import {
 } from '@/lib/associationResiduals';
 import { TiltCard, CountUp, Stagger, StaggerItem, Chart3DCard } from '../motion/MotionPrimitives';
 import { useChartColors } from '@/lib/useIsDark';
+import Tooltip from '@/components/Tooltip';
 
 // Canonical display order — highest tier first. Any plan not in this list
 // gets sorted to the bottom alphabetically (so unknown plans always trail).
@@ -286,7 +287,7 @@ function AssociationsView({
               <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} />
               <XAxis dataKey="period" fontSize={11} />
               <YAxis fontSize={11} />
-              <Tooltip formatter={(v) => fmt2(v)} />
+              <RechartsTooltip formatter={(v) => fmt2(v)} />
               <Bar dataKey="total" radius={[4, 4, 0, 0]} fill="#6366f1" animationDuration={700}>
                 <LabelList dataKey="total" position="top" fill={chartColors.label} fontSize={10} fontWeight={700} formatter={(v) => v > 0 ? fmt(v) : ''} />
               </Bar>
@@ -340,7 +341,7 @@ function AssociationsView({
               <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} />
               <XAxis dataKey="name" fontSize={12} />
               <YAxis fontSize={11} />
-              <Tooltip formatter={(v) => fmt2(v)} />
+              <RechartsTooltip formatter={(v) => fmt2(v)} />
               <Bar dataKey="value" radius={[4, 4, 0, 0]} animationDuration={900}>
                 {quarterData.map((_, i) => <Cell key={i} fill={QUARTER_COLORS[i % QUARTER_COLORS.length]} />)}
                 <LabelList dataKey="value" position="top" fill={chartColors.label} fontSize={11} fontWeight={700} formatter={(v) => v > 0 ? fmt(v) : ''} />
@@ -422,15 +423,23 @@ function AssociationsView({
                     <td className="text-right p-2">
                       <div className="flex justify-end gap-1">
                         {c.associationStatus === 'active' && (
-                          <button onClick={() => onPause(c.id)} title="Pause" className="text-amber-600 hover:bg-amber-50 p-1 rounded"><Pause size={14} /></button>
+                          <Tooltip label="Pause">
+                            <button onClick={() => onPause(c.id)} aria-label="Pause" className="text-amber-600 hover:bg-amber-50 p-1 rounded"><Pause size={14} /></button>
+                          </Tooltip>
                         )}
                         {c.associationStatus === 'paused' && (
-                          <button onClick={() => onResume(c.id)} title="Resume" className="text-emerald-600 hover:bg-emerald-50 p-1 rounded"><Play size={14} /></button>
+                          <Tooltip label="Resume">
+                            <button onClick={() => onResume(c.id)} aria-label="Resume" className="text-emerald-600 hover:bg-emerald-50 p-1 rounded"><Play size={14} /></button>
+                          </Tooltip>
                         )}
                         {c.associationStatus !== 'cancelled' && (
-                          <button onClick={() => onCancel(c.id)} title="Cancel" className="text-red-600 hover:bg-red-50 p-1 rounded"><Ban size={14} /></button>
+                          <Tooltip label="Cancel">
+                            <button onClick={() => onCancel(c.id)} aria-label="Cancel" className="text-red-600 hover:bg-red-50 p-1 rounded"><Ban size={14} /></button>
+                          </Tooltip>
                         )}
-                        <button onClick={() => onEdit(c)} title="Edit" className="text-slate-500 hover:bg-slate-100 p-1 rounded"><Edit2 size={14} /></button>
+                        <Tooltip label="Edit">
+                          <button onClick={() => onEdit(c)} aria-label="Edit" className="text-slate-500 hover:bg-slate-100 p-1 rounded"><Edit2 size={14} /></button>
+                        </Tooltip>
                       </div>
                     </td>
                   </tr>
@@ -559,15 +568,23 @@ function ResidualBookTable({ fullBook, leads, onEdit, onPause, onResume, onCance
                   {p.lead ? (
                     <div className="flex justify-end gap-1">
                       {p.lead.associationStatus === 'active' && (
-                        <button onClick={() => onPause(p.lead.id)} title="Pause" className="text-amber-600 hover:bg-amber-50 p-1 rounded"><Pause size={14} /></button>
+                        <Tooltip label="Pause">
+                          <button onClick={() => onPause(p.lead.id)} aria-label="Pause" className="text-amber-600 hover:bg-amber-50 p-1 rounded"><Pause size={14} /></button>
+                        </Tooltip>
                       )}
                       {p.lead.associationStatus === 'paused' && (
-                        <button onClick={() => onResume(p.lead.id)} title="Resume" className="text-emerald-600 hover:bg-emerald-50 p-1 rounded"><Play size={14} /></button>
+                        <Tooltip label="Resume">
+                          <button onClick={() => onResume(p.lead.id)} aria-label="Resume" className="text-emerald-600 hover:bg-emerald-50 p-1 rounded"><Play size={14} /></button>
+                        </Tooltip>
                       )}
                       {p.lead.associationStatus !== 'cancelled' && (
-                        <button onClick={() => onCancel(p.lead.id)} title="Cancel" className="text-red-600 hover:bg-red-50 p-1 rounded"><Ban size={14} /></button>
+                        <Tooltip label="Cancel">
+                          <button onClick={() => onCancel(p.lead.id)} aria-label="Cancel" className="text-red-600 hover:bg-red-50 p-1 rounded"><Ban size={14} /></button>
+                        </Tooltip>
                       )}
-                      <button onClick={() => onEdit(p.lead)} title="Edit" className="text-slate-500 hover:bg-slate-100 p-1 rounded"><Edit2 size={14} /></button>
+                      <Tooltip label="Edit">
+                        <button onClick={() => onEdit(p.lead)} aria-label="Edit" className="text-slate-500 hover:bg-slate-100 p-1 rounded"><Edit2 size={14} /></button>
+                      </Tooltip>
                     </div>
                   ) : (
                     <span className="text-[10px] text-slate-400">—</span>
@@ -670,17 +687,18 @@ function CommissionDetailPanel({
         </div>
         <div className="flex items-center gap-1.5">
           {onClearResidualBook && abDetail && abDetail.length > 0 && (
-            <button
-              onClick={() => {
-                if (confirm(`Clear all ${abDetail.length} residual rows and derived rates? You'll need to re-upload your CommissionDetail.csv. Leads, advances, and Books are NOT affected.`)) {
-                  onClearResidualBook();
-                }
-              }}
-              className="text-xs bg-rose-50 hover:bg-rose-100 text-rose-700 font-medium px-3 py-1.5 rounded-lg flex items-center gap-1.5"
-              title="Reset the residual book — useful if duplicates accumulated from multiple imports"
-            >
-              <Trash2 size={12} /> Clear
-            </button>
+            <Tooltip label="Reset the residual book — useful if duplicates accumulated from multiple imports">
+              <button
+                onClick={() => {
+                  if (confirm(`Clear all ${abDetail.length} residual rows and derived rates? You'll need to re-upload your CommissionDetail.csv. Leads, advances, and Books are NOT affected.`)) {
+                    onClearResidualBook();
+                  }
+                }}
+                className="text-xs bg-rose-50 hover:bg-rose-100 text-rose-700 font-medium px-3 py-1.5 rounded-lg flex items-center gap-1.5"
+              >
+                <Trash2 size={12} /> Clear
+              </button>
+            </Tooltip>
           )}
           <button
             onClick={onOpenImport}
@@ -722,14 +740,18 @@ function CommissionDetailPanel({
             <span className="text-emerald-600">({matchStats.total > 0 ? Math.round(matchStats.exact / matchStats.total * 100) : 0}%)</span>
           </span>
           {matchStats.unmatched > 0 && (
-            <span className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-200 text-slate-700 px-2 py-1 rounded" title="In your tracker but not found in the imported CommissionDetail. Either: (1) you haven't imported the period that covers them, (2) they churned, or (3) the lead's name doesn't match the carrier's spelling.">
-              <span className="font-bold">{matchStats.unmatched}</span> projected
-            </span>
+            <Tooltip label="In your tracker but not found in the imported CommissionDetail. Either: (1) you haven't imported the period that covers them, (2) they churned, or (3) the lead's name doesn't match the carrier's spelling.">
+              <span className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-200 text-slate-700 px-2 py-1 rounded">
+                <span className="font-bold">{matchStats.unmatched}</span> projected
+              </span>
+            </Tooltip>
           )}
           {matchStats.ambiguous > 0 && (
-            <span className="inline-flex items-center gap-1.5 bg-amber-50 border border-amber-200 text-amber-800 px-2 py-1 rounded" title="Same name appears multiple times in your residual book. Auto-match would risk pulling the wrong rate, so we fall back to projection.">
-              <span className="font-bold">{matchStats.ambiguous}</span> ambiguous
-            </span>
+            <Tooltip label="Same name appears multiple times in your residual book. Auto-match would risk pulling the wrong rate, so we fall back to projection.">
+              <span className="inline-flex items-center gap-1.5 bg-amber-50 border border-amber-200 text-amber-800 px-2 py-1 rounded">
+                <span className="font-bold">{matchStats.ambiguous}</span> ambiguous
+              </span>
+            </Tooltip>
           )}
         </div>
       )}
@@ -746,30 +768,38 @@ function CommissionDetailPanel({
 function ResidualSourceBadge({ source }) {
   if (source === 'exact') {
     return (
-      <span className="ml-1 text-[9px] uppercase tracking-wide bg-emerald-100 text-emerald-700 px-1 rounded" title="Pulled directly from your CommissionDetail upload — exact rate this customer pays you">
-        EXACT
-      </span>
+      <Tooltip label="Pulled directly from your CommissionDetail upload — exact rate this customer pays you">
+        <span className="ml-1 text-[9px] uppercase tracking-wide bg-emerald-100 text-emerald-700 px-1 rounded">
+          EXACT
+        </span>
+      </Tooltip>
     );
   }
   if (source === 'agent') {
     return (
-      <span className="ml-1 text-[9px] uppercase tracking-wide bg-indigo-100 text-indigo-700 px-1 rounded" title="Estimated from your current contract rate. Upload a CommissionDetail with this customer in it to see their exact rate.">
-        PROJECTED
-      </span>
+      <Tooltip label="Estimated from your current contract rate. Upload a CommissionDetail with this customer in it to see their exact rate.">
+        <span className="ml-1 text-[9px] uppercase tracking-wide bg-indigo-100 text-indigo-700 px-1 rounded">
+          PROJECTED
+        </span>
+      </Tooltip>
     );
   }
   if (source === 'ambiguous') {
     return (
-      <span className="ml-1 text-[9px] uppercase tracking-wide bg-amber-100 text-amber-700 px-1 rounded" title="Multiple customers with this name in your residual book — couldn't auto-resolve. Showing projection instead.">
-        AMBIGUOUS
-      </span>
+      <Tooltip label="Multiple customers with this name in your residual book — couldn't auto-resolve. Showing projection instead.">
+        <span className="ml-1 text-[9px] uppercase tracking-wide bg-amber-100 text-amber-700 px-1 rounded">
+          AMBIGUOUS
+        </span>
+      </Tooltip>
     );
   }
   // baseline / unknown
   return (
-    <span className="ml-1 text-[9px] uppercase tracking-wide bg-slate-100 text-slate-600 px-1 rounded" title="USHA baseline contract rate. Upload your CommissionDetail to enable agent-tier-aware rates.">
-      BASELINE
-    </span>
+    <Tooltip label="USHA baseline contract rate. Upload your CommissionDetail to enable agent-tier-aware rates.">
+      <span className="ml-1 text-[9px] uppercase tracking-wide bg-slate-100 text-slate-600 px-1 rounded">
+        BASELINE
+      </span>
+    </Tooltip>
   );
 }
 
