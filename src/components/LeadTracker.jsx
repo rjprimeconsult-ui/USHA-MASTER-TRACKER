@@ -2098,7 +2098,14 @@ export default function LeadTracker() {
                   )}
                   <span className="relative flex items-center gap-1.5">
                     <Icon size={14} />
-                    {t.label}
+                    {active ? t.label : (
+                      <span className="nav-roll">
+                        <span className="nav-roll-inner">
+                          <span>{t.label}</span>
+                          <span aria-hidden="true">{t.label}</span>
+                        </span>
+                      </span>
+                    )}
                   </span>
                 </button>
               );

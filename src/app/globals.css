@@ -536,6 +536,30 @@ body {
 .prim-tip-right::after  { left: 100%;   top: 50%;  transform: translateY(-50%); margin-left: 6px; }
 .dark .prim-tip::after  { background: #e2e8f0; color: #0f172a; }
 
+/* ---------- Nav label roll-up (Rollout D) ---------------------------------
+   Two stacked copies of a nav-tab label inside a fixed-height clip; on hover
+   of an INACTIVE tab both copies translate up one line so the second rolls
+   in. Rendered only on inactive tabs (active tab keeps a plain label).
+   Height/line-height are 1.25rem to match Tailwind text-sm's line box, so
+   the nav bar height and vertical alignment are unchanged. */
+.nav-roll {
+  display: inline-block;
+  overflow: hidden;
+  height: 1.25rem;
+  line-height: 1.25rem;
+}
+.nav-roll-inner {
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.28s cubic-bezier(0.65, 0, 0.35, 1);
+}
+button:hover .nav-roll .nav-roll-inner {
+  transform: translateY(-1.25rem);
+}
+@media (prefers-reduced-motion: reduce) {
+  .nav-roll-inner { transition: none; }
+}
+
 /* Hover lift — for clickable cards. Pairs with .premium-card. Do not use
    on cards that already do a 3D tilt (TiltCard) — transforms conflict. */
 .premium-lift {
