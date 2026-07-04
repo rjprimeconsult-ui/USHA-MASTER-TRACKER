@@ -6,8 +6,10 @@
  * getting Ringy blasts to auto-log. Ringy rows come from the blast_counters
  * table (via LeadTracker); manual rows from blast_log_v1.
  */
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { Send, Trash2, Pencil, ChevronDown, ChevronUp, Plus } from 'lucide-react';
+import { splitLeadRange, joinLeadRange } from '@/lib/blastRange.mjs';
+import { blastTagOptions } from '@/lib/blastTags.mjs';
 
 // Local-time YYYY-MM-DD for the manual form's default date.
 function todayStr() {
@@ -47,8 +49,62 @@ export default function BlastsView({ blasts = [], onDelete, onAdd, onEdit, readO
   const [editingId, setEditingId] = useState(null);  // null = new; else the row id being edited
   const [editKind, setEditKind] = useState(null);    // 'auto' (Ringy counter) | 'log' (manual/skill)
 
+  // Form lead-range field: raw draft while focused so the user can type a
+  // trailing " - " mid-keystroke; canonical joinLeadRange() display when idle
+  // (mirrors the MoneyCell focused/draft pattern in MotionPrimitives.jsx).
+  const [rangeFocused, setRangeFocused] = useState(false);
+  const [rangeDraft, setRangeDraft] = useState('');
+  // Inline cell editing in the log table: one cell at a time.
+  const [inline, setInline] = useState(null); // { rowId, field: 'range'|'tag'|'notes', draft } | null
+  const inlineCancelRef = useRef(false);      // set by Escape so the ensuing blur skips the commit
+
   const autoEdit = editKind === 'auto';
   const setField = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const tagOptions = useMemo(() => blastTagOptions(blasts), [blasts]);
+
+  const isInline = (id, field) => !readOnly && inline?.rowId === id && inline?.field === field;
+  const startInline = (b, field) => {
+    if (readOnly) return;
+    inlineCancelRef.current = false;
+    setInline({
+      rowId: b.id, field,
+      draft: field === 'range' ? joinLeadRange(b.rangeStart, b.rangeEnd)
+        : field === 'tag' ? (b.campaignOrTag || '')
+        : (b.notes || ''),
+    });
+  };
+  // count-safety: send the row's full field set, overriding just the edited one.
+  // This field list MUST mirror openEdit()'s form shape (see openEdit below);
+  // if a blast field is ever added there, add it here too, or onEdit will blank it.
+  const commitInline = (b, changed) => onEdit?.(b.id, {
+    platform: b.platform, runDate: b.runDate, campaignOrTag: b.campaignOrTag,
+    contacts: String(b.contacts ?? ''), sendTime: b.sendTime || '',
+    rangeStart: b.rangeStart || '', rangeEnd: b.rangeEnd || '', notes: b.notes || '',
+    ...changed, // { campaignOrTag } | { rangeStart, rangeEnd } | { notes }
+  });
+  const finishInline = (b) => {
+    if (!inline) return;
+    const { field, draft } = inline;
+    if (field === 'range') {
+      const { start, end } = splitLeadRange(draft);
+      if (start !== (b.rangeStart || '') || end !== (b.rangeEnd || '')) commitInline(b, { rangeStart: start, rangeEnd: end });
+    } else if (field === 'tag') {
+      if (draft !== (b.campaignOrTag || '')) commitInline(b, { campaignOrTag: draft });
+    } else if (field === 'notes') {
+      if (draft !== (b.notes || '')) commitInline(b, { notes: draft });
+    } // value unchanged → no-op: just close the editor, never call onEdit
+  };
+  const inlineKeyDown = (e) => {
+    if (e.key === 'Enter') e.currentTarget.blur(); // blur commits
+    else if (e.key === 'Escape') { inlineCancelRef.current = true; e.currentTarget.blur(); } // blur skips commit
+  };
+  const blurInline = (b) => {
+    const cancelled = inlineCancelRef.current;
+    inlineCancelRef.current = false;
+    if (!cancelled) finishInline(b);
+    setInline(null);
+  };
 
   const openNew = () => {
     const wasNew = showForm && !editingId;
@@ -120,6 +176,12 @@ export default function BlastsView({ blasts = [], onDelete, onAdd, onEdit, readO
 
   return (
     <div className="max-w-screen-2xl mx-auto px-4 py-4 space-y-4">
+      {/* Shared tag suggestions — rendered ONCE; used by the form combobox and inline tag editors */}
+      {!readOnly && (
+        <datalist id="blast-tags">
+          {tagOptions.map(t => <option key={t} value={t} />)}
+        </datalist>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2">
@@ -177,15 +239,24 @@ export default function BlastsView({ blasts = [], onDelete, onAdd, onEdit, readO
             </label>
             <label className="col-span-2 text-[11px] font-semibold text-slate-500 dark:text-slate-300 space-y-1">
               <span className="block">Campaign / Tag</span>
-              <input type="text" value={form.campaignOrTag} onChange={e => setField('campaignOrTag', e.target.value)} placeholder="New Aged leads" className="w-full border border-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 text-xs" />
+              <input type="text" list="blast-tags" value={form.campaignOrTag} onChange={e => setField('campaignOrTag', e.target.value)} placeholder="New Aged leads" className="w-full border border-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 text-xs" />
             </label>
-            <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-300 space-y-1">
-              <span className="block">Range start</span>
-              <input type="text" value={form.rangeStart} onChange={e => setField('rangeStart', e.target.value)} placeholder="optional" className="w-full border border-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 text-xs" />
-            </label>
-            <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-300 space-y-1">
-              <span className="block">Range end</span>
-              <input type="text" value={form.rangeEnd} onChange={e => setField('rangeEnd', e.target.value)} placeholder="optional" className="w-full border border-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 text-xs" />
+            <label className="col-span-2 text-[11px] font-semibold text-slate-500 dark:text-slate-300 space-y-1">
+              <span className="block">Lead range</span>
+              <input
+                type="text"
+                value={rangeFocused ? rangeDraft : joinLeadRange(form.rangeStart, form.rangeEnd)}
+                onFocus={() => { setRangeDraft(joinLeadRange(form.rangeStart, form.rangeEnd)); setRangeFocused(true); }}
+                onChange={e => {
+                  const raw = e.target.value;
+                  setRangeDraft(raw);
+                  const { start, end } = splitLeadRange(raw);
+                  setForm(f => ({ ...f, rangeStart: start, rangeEnd: end }));
+                }}
+                onBlur={() => setRangeFocused(false)}
+                placeholder="01/01/2025 → 05/31/2026"
+                className="w-full border border-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-lg px-2 py-1.5 text-xs"
+              />
             </label>
             <label className="col-span-2 sm:col-span-4 text-[11px] font-semibold text-slate-500 dark:text-slate-300 space-y-1">
               <span className="block">Notes</span>
@@ -273,12 +344,70 @@ export default function BlastsView({ blasts = [], onDelete, onAdd, onEdit, readO
                   <tr key={b.id} className="border-t border-slate-100 dark:border-slate-700/60 align-top">
                     <td className="p-2 font-medium whitespace-nowrap">{b.runDate || '—'}</td>
                     <td className="p-2"><span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded ${PLATFORM_STYLE[b.platform] || 'bg-slate-100 text-slate-600'}`}>{b.platform === 'Textdrip' ? 'TextDrip' : b.platform || '—'}</span></td>
-                    <td className="p-2 text-slate-500 dark:text-slate-400 whitespace-nowrap text-xs">{b.rangeStart || '—'}{b.rangeEnd ? ` → ${b.rangeEnd}` : ''}</td>
-                    <td className="p-2 text-slate-600 dark:text-slate-300 text-xs">{b.campaignOrTag || '—'}</td>
+                    <td
+                      className={`p-2 text-slate-500 dark:text-slate-400 whitespace-nowrap text-xs ${!readOnly && !isInline(b.id, 'range') ? 'cursor-text hover:bg-slate-50 dark:hover:bg-slate-700/40' : ''}`}
+                      onClick={!readOnly && !isInline(b.id, 'range') ? () => startInline(b, 'range') : undefined}
+                      title={!readOnly && !isInline(b.id, 'range') ? 'Click to edit' : undefined}
+                    >
+                      {isInline(b.id, 'range') ? (
+                        <input
+                          autoFocus
+                          type="text"
+                          value={inline.draft}
+                          onChange={e => { const v = e.target.value; setInline(s => s && { ...s, draft: v }); }}
+                          onKeyDown={inlineKeyDown}
+                          onBlur={() => blurInline(b)}
+                          placeholder="01/01/2025 → 05/31/2026"
+                          className="w-44 border border-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-lg px-2 py-1 text-xs"
+                        />
+                      ) : (
+                        <>{b.rangeStart || '—'}{b.rangeEnd ? ` → ${b.rangeEnd}` : ''}</>
+                      )}
+                    </td>
+                    <td
+                      className={`p-2 text-slate-600 dark:text-slate-300 text-xs ${!readOnly && !isInline(b.id, 'tag') ? 'cursor-text hover:bg-slate-50 dark:hover:bg-slate-700/40' : ''}`}
+                      onClick={!readOnly && !isInline(b.id, 'tag') ? () => startInline(b, 'tag') : undefined}
+                      title={!readOnly && !isInline(b.id, 'tag') ? 'Click to edit' : undefined}
+                    >
+                      {isInline(b.id, 'tag') ? (
+                        <input
+                          autoFocus
+                          type="text"
+                          list="blast-tags"
+                          value={inline.draft}
+                          onChange={e => { const v = e.target.value; setInline(s => s && { ...s, draft: v }); }}
+                          onKeyDown={inlineKeyDown}
+                          onBlur={() => blurInline(b)}
+                          placeholder="New Aged leads"
+                          className="w-40 border border-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-lg px-2 py-1 text-xs"
+                        />
+                      ) : (
+                        b.campaignOrTag || '—'
+                      )}
+                    </td>
                     <td className="p-2 text-right font-bold text-slate-900 dark:text-slate-100 whitespace-nowrap">{num(b.contacts)}</td>
                     <td className="p-2 text-slate-500 dark:text-slate-400 whitespace-nowrap">{b.sendTime || '—'}</td>
                     <td className="p-2 text-slate-400 dark:text-slate-500 text-[10px] font-mono max-w-[160px] truncate" title={b.numbersUsed}>{b.numbersUsed || '—'}</td>
-                    <td className="p-2 text-slate-500 dark:text-slate-400 text-xs max-w-[220px]">{b.notes || '—'}</td>
+                    <td
+                      className={`p-2 text-slate-500 dark:text-slate-400 text-xs max-w-[220px] ${!readOnly && !isInline(b.id, 'notes') ? 'cursor-text hover:bg-slate-50 dark:hover:bg-slate-700/40' : ''}`}
+                      onClick={!readOnly && !isInline(b.id, 'notes') ? () => startInline(b, 'notes') : undefined}
+                      title={!readOnly && !isInline(b.id, 'notes') ? 'Click to edit' : undefined}
+                    >
+                      {isInline(b.id, 'notes') ? (
+                        <input
+                          autoFocus
+                          type="text"
+                          value={inline.draft}
+                          onChange={e => { const v = e.target.value; setInline(s => s && { ...s, draft: v }); }}
+                          onKeyDown={inlineKeyDown}
+                          onBlur={() => blurInline(b)}
+                          placeholder="optional"
+                          className="w-52 max-w-full border border-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-lg px-2 py-1 text-xs"
+                        />
+                      ) : (
+                        b.notes || '—'
+                      )}
+                    </td>
                     {!readOnly && (
                       <td className="p-2 text-right whitespace-nowrap">
                         <button onClick={() => openEdit(b)} title="Edit this blast" className="text-slate-400 hover:text-indigo-600 p-1 rounded hover:bg-indigo-50 dark:hover:bg-indigo-900/20"><Pencil size={14} /></button>
