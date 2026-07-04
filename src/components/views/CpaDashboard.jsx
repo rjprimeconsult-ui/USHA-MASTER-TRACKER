@@ -977,7 +977,7 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
             </button>
           )}
         </div>
-        <div className="overflow-auto">
+        <div className="overflow-auto scroll-fade-x">
           <table className="w-full text-sm premium-table">
             <thead className="bg-slate-50 text-slate-600 text-xs">
               <tr>
@@ -1067,7 +1067,7 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
             </button>
           )}
         </div>
-        <div className="overflow-auto">
+        <div className="overflow-auto scroll-fade-x">
           <table className="w-full text-sm premium-table">
             <thead className="bg-slate-50 text-slate-600 text-xs">
               <tr>

@@ -379,7 +379,7 @@ function AssociationsView({
         <div className="p-4 border-b border-slate-200">
           <h3 className="font-semibold text-slate-900">All Association Clients</h3>
         </div>
-        <div className="overflow-auto">
+        <div className="overflow-auto scroll-fade-x">
           <table className="w-full text-sm premium-table">
             <thead className="bg-slate-50 text-slate-600 text-xs">
               <tr>
@@ -523,7 +523,7 @@ function ResidualBookTable({ fullBook, leads, onEdit, onPause, onResume, onCance
         </div>
       </div>
 
-      <div className="overflow-auto">
+      <div className="overflow-auto scroll-fade-x">
         <table className="w-full text-sm premium-table">
           <thead className="bg-slate-50 text-slate-600 text-xs">
             <tr>

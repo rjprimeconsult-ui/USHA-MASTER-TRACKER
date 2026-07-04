@@ -253,7 +253,7 @@ export default function BlastsView({ blasts = [], onDelete, onAdd, onEdit, readO
             No blasts logged yet. {!readOnly && 'Ringy repurpose tags log here automatically — use “Log a blast” above for TextDrip or anything else.'}
           </div>
         ) : (
-          <div className="overflow-auto">
+          <div className="overflow-auto scroll-fade-x">
             <table className="w-full text-sm premium-table">
               <thead className="bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs">
                 <tr>

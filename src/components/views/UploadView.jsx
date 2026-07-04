@@ -1448,7 +1448,7 @@ function SalesReportGap({ leads, onApply }) {
                   <button onClick={() => setAddMissing(new Set())} className="text-slate-600 hover:underline">Clear all</button>
                 </div>
               </div>
-              <div className="overflow-auto max-h-96">
+              <div className="overflow-auto max-h-96 scroll-fade-y">
                 <table className="w-full text-sm premium-table">
                   <thead className="bg-slate-50 text-slate-600 text-xs sticky top-0">
                     <tr>
@@ -1489,7 +1489,7 @@ function SalesReportGap({ leads, onApply }) {
                   <button onClick={() => setFixStages(new Set())} className="text-slate-600 hover:underline">Clear all</button>
                 </div>
               </div>
-              <div className="overflow-auto max-h-96">
+              <div className="overflow-auto max-h-96 scroll-fade-y">
                 <table className="w-full text-sm premium-table">
                   <thead className="bg-slate-50 text-slate-600 text-xs sticky top-0">
                     <tr>
