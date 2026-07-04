@@ -110,6 +110,7 @@
   /* Common subtle backgrounds — match the new surface hierarchy. */
   .dark .bg-slate-50\/60   { background-color: rgb(19 27 48 / 0.6); }
   .dark .bg-slate-50\/80   { background-color: rgb(19 27 48 / 0.8); }
+  .dark .bg-white\/80      { background-color: rgb(31 41 69 / 0.90); }
   .dark .bg-white\/85      { background-color: rgb(31 41 69 / 0.92); }
   .dark .bg-white\/90      { background-color: rgb(31 41 69 / 0.95); }
 
@@ -515,6 +516,13 @@ body {
   -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%);
           mask-image: linear-gradient(to bottom, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%);
 }
+
+/* ---------- Sign-in page canvas ------------------------------------------
+   Theme-aware page gradient behind the login card (was a hardcoded light
+   inline style, which left dark-theme users with a light page + remapped
+   near-white headings = unreadable). Constellation draws on top of it. */
+.login-canvas { background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 45%, #f5f3ff 100%); }
+.dark .login-canvas { background: linear-gradient(135deg, #0B1120 0%, #131B30 45%, #171430 100%); }
 
 /* ---------- Styled tooltip (Rollout C) -----------------------------------
    Dependency-free. Shows on hover AND keyboard focus (native title only

@@ -92,10 +92,7 @@ function SignInScreen() {
   };
 
   return (
-    <div
-      className="min-h-screen relative isolate flex items-center justify-center p-4 overflow-hidden"
-      style={{ background: 'linear-gradient(135deg, #f8fafc 0%, #eef2ff 45%, #f5f3ff 100%)' }}
-    >
+    <div className="login-canvas min-h-screen relative isolate flex items-center justify-center p-4 overflow-hidden">
       <ConstellationBackground intensity="prominent" />
       {/* The card is the LCP element on the public root URL. It is rendered
           fully visible (no JS-gated opacity fade) so it paints immediately on
