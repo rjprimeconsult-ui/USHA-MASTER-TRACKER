@@ -20,6 +20,7 @@ import { computeFollowupStats } from '@/lib/followupStats.mjs';
 import { leadPremium } from '@/lib/reports.mjs';
 import FollowupDueWidget from '../FollowupDueWidget';
 import PaymentAlertsWidget from '../PaymentAlertsWidget';
+import StyledTooltip from '@/components/Tooltip';
 
 const Kpi = memo(({ label, value, numeric, isCurrency = true, isPercent = false, sub, grad, Icon, onClick, active }) => (
   <TiltCard
@@ -545,36 +546,41 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
         {kpiPeriod === 'week' && (
           <>
             <div className="flex items-center gap-1">
-              <button
-                onClick={() => {
-                  const d = new Date(kpiWeekStart + 'T00:00:00');
-                  d.setDate(d.getDate() - 7);
-                  setKpiWeekStart(getWeekStart(d.toISOString().slice(0, 10)));
-                }}
-                title="Previous week"
-                className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"
-              >
-                <ChevronLeft size={16} />
-              </button>
-              <input
-                type="date"
-                value={kpiWeekStart}
-                onChange={e => e.target.value && setKpiWeekStart(getWeekStart(e.target.value))}
-                className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm"
-                title="Pick any date; it snaps to the Fri-Thu week it belongs to."
-              />
-              <button
-                onClick={() => {
-                  const d = new Date(kpiWeekStart + 'T00:00:00');
-                  d.setDate(d.getDate() + 7);
-                  setKpiWeekStart(getWeekStart(d.toISOString().slice(0, 10)));
-                }}
-                disabled={kpiWeekStart >= thisWeek}
-                title="Next week"
-                className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <ChevronRight size={16} />
-              </button>
+              <StyledTooltip label="Previous week" side="bottom">
+                <button
+                  onClick={() => {
+                    const d = new Date(kpiWeekStart + 'T00:00:00');
+                    d.setDate(d.getDate() - 7);
+                    setKpiWeekStart(getWeekStart(d.toISOString().slice(0, 10)));
+                  }}
+                  aria-label="Previous week"
+                  className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+              </StyledTooltip>
+              <StyledTooltip label="Pick any date; it snaps to the Fri-Thu week it belongs to." side="bottom">
+                <input
+                  type="date"
+                  value={kpiWeekStart}
+                  onChange={e => e.target.value && setKpiWeekStart(getWeekStart(e.target.value))}
+                  className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm"
+                />
+              </StyledTooltip>
+              <StyledTooltip label="Next week" side="bottom">
+                <button
+                  onClick={() => {
+                    const d = new Date(kpiWeekStart + 'T00:00:00');
+                    d.setDate(d.getDate() + 7);
+                    setKpiWeekStart(getWeekStart(d.toISOString().slice(0, 10)));
+                  }}
+                  disabled={kpiWeekStart >= thisWeek}
+                  aria-label="Next week"
+                  className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </StyledTooltip>
             </div>
             <button
               onClick={() => setKpiWeekStart(thisWeek)}
@@ -588,35 +594,39 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
         {kpiPeriod === 'month' && (
           <>
             <div className="flex items-center gap-1">
-              <button
-                onClick={() => {
-                  const [y, m] = kpiMonth.split('-').map(Number);
-                  const d = new Date(y, m - 2, 1);
-                  setKpiMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
-                }}
-                title="Previous month"
-                className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"
-              >
-                <ChevronLeft size={16} />
-              </button>
+              <StyledTooltip label="Previous month" side="bottom">
+                <button
+                  onClick={() => {
+                    const [y, m] = kpiMonth.split('-').map(Number);
+                    const d = new Date(y, m - 2, 1);
+                    setKpiMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+                  }}
+                  aria-label="Previous month"
+                  className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+              </StyledTooltip>
               <input
                 type="month"
                 value={kpiMonth}
                 onChange={e => e.target.value && setKpiMonth(e.target.value)}
                 className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm"
               />
-              <button
-                onClick={() => {
-                  const [y, m] = kpiMonth.split('-').map(Number);
-                  const d = new Date(y, m, 1);
-                  setKpiMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
-                }}
-                disabled={kpiMonth >= thisMonth}
-                title="Next month"
-                className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <ChevronRight size={16} />
-              </button>
+              <StyledTooltip label="Next month" side="bottom">
+                <button
+                  onClick={() => {
+                    const [y, m] = kpiMonth.split('-').map(Number);
+                    const d = new Date(y, m, 1);
+                    setKpiMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+                  }}
+                  disabled={kpiMonth >= thisMonth}
+                  aria-label="Next month"
+                  className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </StyledTooltip>
             </div>
             <button
               onClick={() => setKpiMonth(thisMonth)}
@@ -982,9 +992,9 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
             <thead className="bg-slate-50 text-slate-600 text-xs">
               <tr>
                 <th className="text-left p-2">Week</th>
-                <th className="text-right p-2" title="Manual lead spend + Books “Lead Investment”">Lead Spend</th>
-                <th className="text-right p-2" title="Ringy + TextDrip + VanillaSoft + OnlySales (from Books)">Platforms</th>
-                <th className="text-right p-2" title="Books “Software” category">Software</th>
+                <th className="text-right p-2"><StyledTooltip label="Manual lead spend + Books “Lead Investment”" side="bottom">Lead Spend</StyledTooltip></th>
+                <th className="text-right p-2"><StyledTooltip label="Ringy + TextDrip + VanillaSoft + OnlySales (from Books)" side="bottom">Platforms</StyledTooltip></th>
+                <th className="text-right p-2"><StyledTooltip label="Books “Software” category" side="bottom">Software</StyledTooltip></th>
                 <th className="text-right p-2">Auto-synced Advances</th>
                 <th className="text-right p-2">Total In</th>
                 <th className="text-right p-2">Total Out</th>
@@ -1026,20 +1036,24 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
                     <td className="text-right p-2">
                       {!readOnly && (
                         <div className="flex justify-end gap-1">
-                          <button
-                            onClick={() => onEditInvestment(w)}
-                            title={w.id ? 'Edit this week' : 'Add manual investment entry for this week'}
-                            className="text-slate-400 hover:text-indigo-600 p-1 rounded hover:bg-indigo-50"
-                          >
-                            <Edit2 size={14} />
-                          </button>
-                          <button
-                            onClick={() => w.id ? onDeleteInvestment(w.id) : onDeleteAutoWeek(w.weekStart)}
-                            title={w.id ? 'Delete this week' : 'Remove auto-synced row (reverts Issued leads back to Pending)'}
-                            className="text-slate-400 hover:text-red-600 p-1 rounded hover:bg-red-50"
-                          >
-                            <Trash2 size={14} />
-                          </button>
+                          <StyledTooltip label={w.id ? 'Edit this week' : 'Add manual investment entry for this week'}>
+                            <button
+                              onClick={() => onEditInvestment(w)}
+                              aria-label={w.id ? 'Edit this week' : 'Add manual investment entry for this week'}
+                              className="text-slate-400 hover:text-indigo-600 p-1 rounded hover:bg-indigo-50"
+                            >
+                              <Edit2 size={14} />
+                            </button>
+                          </StyledTooltip>
+                          <StyledTooltip label={w.id ? 'Delete this week' : 'Remove auto-synced row (reverts Issued leads back to Pending)'}>
+                            <button
+                              onClick={() => w.id ? onDeleteInvestment(w.id) : onDeleteAutoWeek(w.weekStart)}
+                              aria-label={w.id ? 'Delete this week' : 'Remove auto-synced row (reverts Issued leads back to Pending)'}
+                              className="text-slate-400 hover:text-red-600 p-1 rounded hover:bg-red-50"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </StyledTooltip>
                         </div>
                       )}
                     </td>
@@ -1090,12 +1104,14 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
                   <td className="text-right p-2">{a.appointments}</td>
                   <td className="text-right p-2">{a.pitches}</td>
                   <td className="text-right p-2 text-emerald-700 font-medium">{a.closes}</td>
-                  <td className="p-2 text-xs text-slate-500 max-w-xs truncate" title={a.notes}>{a.notes || <span className="text-slate-300">—</span>}</td>
+                  <td className="p-2 text-xs text-slate-500 max-w-xs">
+                    {a.notes ? <StyledTooltip label={a.notes} className="truncate max-w-full">{a.notes}</StyledTooltip> : <span className="text-slate-300">—</span>}
+                  </td>
                   <td className="text-right p-2">
                     {!readOnly && (
                       <div className="flex justify-end gap-1">
-                        <button onClick={() => onEditActivity(a)} title="Edit" className="text-slate-400 hover:text-indigo-600 p-1 rounded hover:bg-indigo-50"><Edit2 size={14} /></button>
-                        <button onClick={() => onDeleteActivity(a.id)} title="Delete" className="text-slate-400 hover:text-red-600 p-1 rounded hover:bg-red-50"><Trash2 size={14} /></button>
+                        <StyledTooltip label="Edit"><button onClick={() => onEditActivity(a)} aria-label="Edit" className="text-slate-400 hover:text-indigo-600 p-1 rounded hover:bg-indigo-50"><Edit2 size={14} /></button></StyledTooltip>
+                        <StyledTooltip label="Delete"><button onClick={() => onDeleteActivity(a.id)} aria-label="Delete" className="text-slate-400 hover:text-red-600 p-1 rounded hover:bg-red-50"><Trash2 size={14} /></button></StyledTooltip>
                       </div>
                     )}
                   </td>
