@@ -25,6 +25,7 @@ import SmartProspectImportWizard from '../SmartProspectImportWizard';
 import SourceColorManager from '../SourceColorManager';
 import { useSourceColors, colorForSource } from '@/lib/sourceColors';
 import { dueStatus } from '@/lib/followupEngine.mjs';
+import Tooltip from '@/components/Tooltip';
 
 const inp = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500';
 
@@ -121,7 +122,11 @@ function FollowupDot({ prospect }) {
   };
   const m = map[s.state];
   if (!m) return null; // 'none' / 'done'
-  return <span title={m.t} className={`inline-block w-2 h-2 rounded-full ${m.c} flex-shrink-0`} />;
+  return (
+    <Tooltip label={m.t}>
+      <span className={`inline-block w-2 h-2 rounded-full ${m.c} flex-shrink-0`} />
+    </Tooltip>
+  );
 }
 
 // ---------- TextDrip Chat Section ----------
@@ -463,26 +468,30 @@ function CalendarPanel({ prospects, stages, onView }) {
         </button>
         {!collapsed && (
           <div className="flex items-center gap-1">
-            <button
-              onClick={() => setAnchor(new Date(anchor.getFullYear(), anchor.getMonth() - 1, 1))}
-              className="p-1 rounded border border-slate-200 hover:bg-slate-50 text-slate-600"
-              title="Previous month"
-            >
-              <ChevronLeft size={12} />
-            </button>
+            <Tooltip label="Previous month">
+              <button
+                onClick={() => setAnchor(new Date(anchor.getFullYear(), anchor.getMonth() - 1, 1))}
+                className="p-1 rounded border border-slate-200 hover:bg-slate-50 text-slate-600"
+                aria-label="Previous month"
+              >
+                <ChevronLeft size={12} />
+              </button>
+            </Tooltip>
             <button
               onClick={() => { setAnchor(new Date(today.getFullYear(), today.getMonth(), 1)); setFocusedDay(null); }}
               className="text-xs text-indigo-600 hover:text-indigo-800 font-medium px-2"
             >
               Today
             </button>
-            <button
-              onClick={() => setAnchor(new Date(anchor.getFullYear(), anchor.getMonth() + 1, 1))}
-              className="p-1 rounded border border-slate-200 hover:bg-slate-50 text-slate-600"
-              title="Next month"
-            >
-              <ChevronRight size={12} />
-            </button>
+            <Tooltip label="Next month">
+              <button
+                onClick={() => setAnchor(new Date(anchor.getFullYear(), anchor.getMonth() + 1, 1))}
+                className="p-1 rounded border border-slate-200 hover:bg-slate-50 text-slate-600"
+                aria-label="Next month"
+              >
+                <ChevronRight size={12} />
+              </button>
+            </Tooltip>
           </div>
         )}
       </div>
@@ -533,13 +542,15 @@ function CalendarPanel({ prospects, stages, onView }) {
                     · {focusedItems.length === 0 ? 'No appointments' : `${focusedItems.length} appointment${focusedItems.length !== 1 ? 's' : ''}`}
                   </span>
                 </div>
-                <button
-                  onClick={() => setFocusedDay(null)}
-                  className="text-slate-400 hover:text-slate-700 p-1"
-                  title="Close"
-                >
-                  <X size={12} />
-                </button>
+                <Tooltip label="Close">
+                  <button
+                    onClick={() => setFocusedDay(null)}
+                    className="text-slate-400 hover:text-slate-700 p-1"
+                    aria-label="Close"
+                  >
+                    <X size={12} />
+                  </button>
+                </Tooltip>
               </div>
               {focusedItems.length === 0 ? (
                 <div className="text-xs text-slate-500 italic py-2">Nothing scheduled for this day.</div>
@@ -1579,34 +1590,37 @@ export default function ProspectsView({
         <div className="flex items-center gap-2 flex-wrap justify-end">
           <input type="file" ref={fileRef} accept=".csv,.xlsx,.xls" onChange={onPickFile} className="hidden" />
           {onSyncTextDrip && (
-            <button
-              onClick={async () => {
-                if (tdSyncing) return;
-                setTdSyncing(true);
-                try { await onSyncTextDrip(); } finally { setTdSyncing(false); }
-              }}
-              disabled={tdSyncing}
-              className="border border-violet-200 hover:border-violet-400 hover:bg-violet-50 text-violet-700 rounded-lg px-3 py-2 text-sm font-semibold flex items-center gap-1.5 disabled:opacity-60 disabled:cursor-wait"
-              title="Pull tagged contacts from TextDrip into Prospects"
-            >
-              {tdSyncing ? (<><Loader2 size={14} className="animate-spin" /> Syncing…</>) : (<>💬 Sync TextDrip</>)}
-            </button>
+            <Tooltip label="Pull tagged contacts from TextDrip into Prospects">
+              <button
+                onClick={async () => {
+                  if (tdSyncing) return;
+                  setTdSyncing(true);
+                  try { await onSyncTextDrip(); } finally { setTdSyncing(false); }
+                }}
+                disabled={tdSyncing}
+                className="border border-violet-200 hover:border-violet-400 hover:bg-violet-50 text-violet-700 rounded-lg px-3 py-2 text-sm font-semibold flex items-center gap-1.5 disabled:opacity-60 disabled:cursor-wait"
+              >
+                {tdSyncing ? (<><Loader2 size={14} className="animate-spin" /> Syncing…</>) : (<>💬 Sync TextDrip</>)}
+              </button>
+            </Tooltip>
           )}
           {!readOnly && (<>
-          <button onClick={() => setShowSmartImport(true)}
-            className="bg-gradient-to-br from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white rounded-lg px-3 py-2 text-sm font-semibold flex items-center gap-1.5 shadow-md shadow-indigo-500/30"
-            title="Drop any pipeline file (Excel, CSV, PDF, screenshot) — AI extracts every prospect">
-            ✨ Smart Import (AI)
-          </button>
+          <Tooltip label="Drop any pipeline file (Excel, CSV, PDF, screenshot) — AI extracts every prospect">
+            <button onClick={() => setShowSmartImport(true)}
+              className="bg-gradient-to-br from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white rounded-lg px-3 py-2 text-sm font-semibold flex items-center gap-1.5 shadow-md shadow-indigo-500/30">
+              ✨ Smart Import (AI)
+            </button>
+          </Tooltip>
           <button onClick={() => fileRef.current?.click()}
             className="border border-slate-200 hover:bg-slate-50 rounded-lg px-3 py-2 text-sm font-semibold flex items-center gap-1.5">
             <Upload size={14} /> Classic
           </button>
-          <button onClick={() => setShowSourceColors(true)}
-            className="border border-violet-200 hover:border-violet-400 hover:bg-violet-50 text-violet-700 rounded-lg px-3 py-2 text-sm font-semibold flex items-center gap-1.5"
-            title="Color-code prospect cards by lead source">
-            <Palette size={14} /> Color sources
-          </button>
+          <Tooltip label="Color-code prospect cards by lead source">
+            <button onClick={() => setShowSourceColors(true)}
+              className="border border-violet-200 hover:border-violet-400 hover:bg-violet-50 text-violet-700 rounded-lg px-3 py-2 text-sm font-semibold flex items-center gap-1.5">
+              <Palette size={14} /> Color sources
+            </button>
+          </Tooltip>
           <button onClick={() => setShowSettings(true)}
             className="border border-slate-200 hover:bg-slate-50 rounded-lg px-3 py-2 text-sm font-semibold flex items-center gap-1.5">
             <SettingsIcon size={14} /> Settings
