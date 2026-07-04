@@ -429,6 +429,10 @@ body {
      page. */
   .report-scroll { overflow: visible !important; }
   .report-scroll > table { min-width: 0 !important; width: 100% !important; }
+  /* scroll-fade-x's edge mask is honored by Chromium's print renderer and
+     would clip the first/last table columns to transparent on every printed
+     page. Neutralize it for print only; the fade remains on-screen. */
+  .report-scroll { -webkit-mask-image: none !important; mask-image: none !important; }
   /* Repeat table headers on every page; never split a row. */
   .report-sheet thead { display: table-header-group; }
   .report-sheet tr { break-inside: avoid; }
