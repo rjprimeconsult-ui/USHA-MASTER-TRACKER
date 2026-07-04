@@ -9,6 +9,7 @@ import {
   activeBook,
 } from '@/lib/associationResiduals';
 import { fmt2 } from '@/lib/utils';
+import { GlassModal } from './motion/MotionPrimitives';
 
 /**
  * CommissionDetail.csv uploader for the Associations tab.
@@ -79,11 +80,7 @@ export default function AssociationCommissionDetailImport({ existingRows = [], o
   };
 
   return (
-    <div
-      className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+    <GlassModal open onClose={onClose} maxWidth="max-w-2xl" zIndexClass="z-40" className="max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
           <div>
@@ -156,8 +153,7 @@ export default function AssociationCommissionDetailImport({ existingRows = [], o
             />
           )}
         </div>
-      </div>
-    </div>
+    </GlassModal>
   );
 }
 
