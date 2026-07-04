@@ -563,18 +563,20 @@ export default function AgentChatbot({ onNavigate, onAction, buildContext, openS
 
   return (
     <>
-      <Tooltip label="Ask the assistant" side="left">
-        <button
-          onClick={() => setOpen(o => !o)}
-          className="fixed bottom-20 right-4 z-30 bg-gradient-to-br from-indigo-600 to-violet-600 text-white rounded-full shadow-lg w-12 h-12 flex items-center justify-center hover:shadow-xl hover:scale-105 transition group"
-          aria-label="Ask the assistant"
-        >
-          {open ? <X size={20} /> : <MessageCircle size={20} />}
-          {!open && messages.length === 0 && (
-            <span className="absolute -top-1 -right-1 bg-rose-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 ring-2 ring-white">AI</span>
-          )}
-        </button>
-      </Tooltip>
+      <div className="fixed bottom-20 right-4 z-30">
+        <Tooltip label="Ask the assistant" side="left">
+          <button
+            onClick={() => setOpen(o => !o)}
+            className="bg-gradient-to-br from-indigo-600 to-violet-600 text-white rounded-full shadow-lg w-12 h-12 flex items-center justify-center hover:shadow-xl hover:scale-105 transition group"
+            aria-label="Ask the assistant"
+          >
+            {open ? <X size={20} /> : <MessageCircle size={20} />}
+            {!open && messages.length === 0 && (
+              <span className="absolute -top-1 -right-1 bg-rose-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 ring-2 ring-white">AI</span>
+            )}
+          </button>
+        </Tooltip>
+      </div>
 
       {open && (
         <div
