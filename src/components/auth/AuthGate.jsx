@@ -5,7 +5,7 @@ import { Mail, Lock, AlertCircle, Loader2 } from 'lucide-react';
 import { PrimAppIcon } from '@/components/PrimLogo';
 import { supabase, supabaseConfigured } from '@/lib/supabase';
 import { useAuth } from './AuthProvider';
-import { OrbBackdrop } from '../motion/MotionPrimitives';
+import ConstellationBackground from '../motion/ConstellationBackground';
 import MigrationPrompt from './MigrationPrompt';
 
 // Routes that render fully WITHOUT authentication — marketing /
@@ -92,11 +92,8 @@ function SignInScreen() {
   };
 
   return (
-    <div
-      className="min-h-screen relative flex items-center justify-center p-4 overflow-hidden"
-      style={{ background: 'linear-gradient(135deg, #f8fafc 0%, #eef2ff 45%, #f5f3ff 100%)' }}
-    >
-      <OrbBackdrop />
+    <div className="login-canvas min-h-screen relative isolate flex items-center justify-center p-4 overflow-hidden">
+      <ConstellationBackground intensity="prominent" />
       {/* The card is the LCP element on the public root URL. It is rendered
           fully visible (no JS-gated opacity fade) so it paints immediately on
           mobile instead of waiting for hydration — and it's the page's <main>

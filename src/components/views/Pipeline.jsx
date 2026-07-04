@@ -30,7 +30,7 @@ function Pipeline({ leads, onStageChange, onEdit, onDelete, onNew, readOnly = fa
   }));
 
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto scroll-fade-x">
       <div className="flex gap-3 min-w-max pb-2">
         {byStage.map(col => {
           const total = col.leads.reduce((s, l) => s + (l.dealValue || 0), 0);

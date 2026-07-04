@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { X, Phone, MessageSquare, Mail, Voicemail, MoreHorizontal } from 'lucide-react';
 import { CHANNELS, OUTCOMES, reminderPresetAt } from '@/lib/followupEngine.mjs';
 import DateTimePicker from './DateTimePicker';
+import { GlassModal } from './motion/MotionPrimitives';
 
 const CHANNEL_ICON = { Call: Phone, Text: MessageSquare, Email: Mail, Voicemail, Other: MoreHorizontal };
 
@@ -86,8 +87,7 @@ export default function LogTouchSheet({ open, prospectName, defaultChannel = 'Ca
   ];
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm" onClick={handleClose}>
-      <div className="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-2xl" onClick={e => e.stopPropagation()}>
+    <GlassModal open onClose={handleClose} maxWidth="sm:max-w-md" zIndexClass="z-[70]" sheet>
         <div className="flex items-center justify-between p-4 border-b border-slate-200">
           <div>
             <h3 className="font-bold text-slate-900">Log follow-up</h3>
@@ -175,7 +175,6 @@ export default function LogTouchSheet({ open, prospectName, defaultChannel = 'Ca
           <button onClick={handleClose} className="px-4 py-2 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-100">Cancel</button>
           <button onClick={save} className="px-4 py-2 rounded-lg text-sm font-bold bg-indigo-600 text-white hover:bg-indigo-700">Save touch</button>
         </div>
-      </div>
-    </div>
+    </GlassModal>
   );
 }

@@ -3,6 +3,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { Sparkles, X, ArrowRight, Bell, History, ExternalLink } from 'lucide-react';
 import { storage } from '@/lib/storage';
 import { SORTED_ANNOUNCEMENTS, ANNOUNCEMENT_ACK_KEY } from '@/lib/announcements';
+import { GlassModal } from './motion/MotionPrimitives';
 
 /**
  * Top-of-app banner that surfaces unread announcements one at a time.
@@ -155,8 +156,7 @@ function BellTrigger({ unreadCount, onClick }) {
 function HistoryModal({ announcements, acked, onDismiss, onDismissAll, onCta, onClose }) {
   const unreadCount = announcements.filter(a => !acked.has(a.id)).length;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[88vh] overflow-y-auto flex flex-col">
+    <GlassModal open maxWidth="max-w-2xl" className="max-h-[88vh] overflow-y-auto flex flex-col">
         <div className="flex items-center justify-between p-5 border-b border-slate-200 bg-gradient-to-br from-indigo-50 to-violet-50">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white shadow-lg">
@@ -226,7 +226,6 @@ function HistoryModal({ announcements, acked, onDismiss, onDismissAll, onCta, on
             </button>
           </div>
         )}
-      </div>
-    </div>
+    </GlassModal>
   );
 }

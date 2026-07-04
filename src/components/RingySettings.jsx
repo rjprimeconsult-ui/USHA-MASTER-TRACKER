@@ -363,7 +363,7 @@ export default function RingySettings({ stages = [] }) {
             </ol>
 
             <p className="font-semibold text-slate-700 dark:text-slate-200 mt-3">Payload keys to configure in Ringy (ADD VALUE for each):</p>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto scroll-fade-x">
               <table className="w-full text-[11px] border-collapse">
                 <thead>
                   <tr className="bg-slate-100 dark:bg-slate-700/60">

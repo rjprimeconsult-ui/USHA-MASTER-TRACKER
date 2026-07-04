@@ -3,6 +3,7 @@ import { useState, useRef, useEffect } from 'react';
 import { X, Upload, Image as ImageIcon, Loader2, CheckCircle2, AlertCircle, FileText } from 'lucide-react';
 import { extractDealFromImage } from '@/lib/screenshotExtract';
 import { CRMS, CAMPAIGNS, LEAD_CATEGORIES, SOURCES, OWNERS, MAIN_PRODUCTS, ADDON_PRODUCTS } from '@/lib/constants';
+import { GlassModal } from './motion/MotionPrimitives';
 
 const inp = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500';
 
@@ -150,8 +151,7 @@ export default function ScreenshotImport({ open, onClose, onCreateLead }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[92vh] overflow-y-auto">
+    <GlassModal open maxWidth="max-w-5xl" className="max-h-[92vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-slate-200">
           <div>
@@ -436,7 +436,6 @@ export default function ScreenshotImport({ open, onClose, onCreateLead }) {
             <CheckCircle2 size={14} /> Create Lead
           </button>
         </div>
-      </div>
-    </div>
+    </GlassModal>
   );
 }

@@ -110,6 +110,7 @@
   /* Common subtle backgrounds — match the new surface hierarchy. */
   .dark .bg-slate-50\/60   { background-color: rgb(19 27 48 / 0.6); }
   .dark .bg-slate-50\/80   { background-color: rgb(19 27 48 / 0.8); }
+  .dark .bg-white\/80      { background-color: rgb(31 41 69 / 0.90); }
   .dark .bg-white\/85      { background-color: rgb(31 41 69 / 0.92); }
   .dark .bg-white\/90      { background-color: rgb(31 41 69 / 0.95); }
 
@@ -429,6 +430,12 @@ body {
      page. */
   .report-scroll { overflow: visible !important; }
   .report-scroll > table { min-width: 0 !important; width: 100% !important; }
+  /* scroll-fade's edge mask is honored by Chromium's print renderer and
+     would clip the first/last table columns to transparent on every printed
+     page. Neutralize ALL fade masks for print — not just the report's — so
+     any future printable surface with a scroll-fade class stays print-safe.
+     The fade remains on-screen. */
+  .report-scroll, .scroll-fade-x, .scroll-fade-y { -webkit-mask-image: none !important; mask-image: none !important; }
   /* Repeat table headers on every page; never split a row. */
   .report-sheet thead { display: table-header-group; }
   .report-sheet tr { break-inside: avoid; }
@@ -496,6 +503,71 @@ body {
 }
 .dark .premium-card::before {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.10);
+}
+
+/* ---------- Scroll-fade edges (Rollout B) --------------------------------
+   Soft mask at the scrollable edges of an overflow container so clipped
+   content reads as "there's more". Alpha mask → theme-agnostic. */
+.scroll-fade-x {
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 24px, #000 calc(100% - 24px), transparent 100%);
+          mask-image: linear-gradient(to right, transparent 0, #000 24px, #000 calc(100% - 24px), transparent 100%);
+}
+.scroll-fade-y {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%);
+          mask-image: linear-gradient(to bottom, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%);
+}
+
+/* ---------- Sign-in page canvas ------------------------------------------
+   Theme-aware page gradient behind the login card (was a hardcoded light
+   inline style, which left dark-theme users with a light page + remapped
+   near-white headings = unreadable). Constellation draws on top of it. */
+.login-canvas { background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 45%, #f5f3ff 100%); }
+.dark .login-canvas { background: linear-gradient(135deg, #0B1120 0%, #131B30 45%, #171430 100%); }
+
+/* ---------- Styled tooltip (Rollout C) -----------------------------------
+   Dependency-free. Shows on hover AND keyboard focus (native title only
+   shows on hover). Bubble is the ::after of a wrapper span. */
+.prim-tip { position: relative; display: inline-flex; }
+.prim-tip::after {
+  content: attr(data-tip);
+  position: absolute; z-index: 60;
+  padding: 4px 8px; border-radius: 6px;
+  background: #0f172a; color: #fff;
+  font-size: 11px; font-weight: 600; line-height: 1.3;
+  width: max-content; max-width: 240px; white-space: normal; text-align: left;
+  opacity: 0; pointer-events: none;
+  transition: opacity .12s ease, transform .12s ease;
+}
+.prim-tip:hover::after,
+.prim-tip:focus-within::after { opacity: 1; }
+.prim-tip-top::after    { bottom: 100%; left: 50%; transform: translateX(-50%); margin-bottom: 6px; }
+.prim-tip-bottom::after { top: 100%;    left: 50%; transform: translateX(-50%); margin-top: 6px; }
+.prim-tip-left::after   { right: 100%;  top: 50%;  transform: translateY(-50%); margin-right: 6px; }
+.prim-tip-right::after  { left: 100%;   top: 50%;  transform: translateY(-50%); margin-left: 6px; }
+.dark .prim-tip::after  { background: #e2e8f0; color: #0f172a; }
+
+/* ---------- Nav label roll-up (Rollout D) ---------------------------------
+   Two stacked copies of a nav-tab label inside a fixed-height clip; on hover
+   of an INACTIVE tab both copies translate up one line so the second rolls
+   in. Rendered only on inactive tabs (active tab keeps a plain label).
+   Height/line-height are 1.25rem to match Tailwind text-sm's line box, so
+   the nav bar height and vertical alignment are unchanged. */
+.nav-roll {
+  display: inline-block;
+  overflow: hidden;
+  height: 1.25rem;
+  line-height: 1.25rem;
+}
+.nav-roll-inner {
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.28s cubic-bezier(0.65, 0, 0.35, 1);
+}
+button:hover .nav-roll .nav-roll-inner {
+  transform: translateY(-1.25rem);
+}
+@media (prefers-reduced-motion: reduce) {
+  .nav-roll-inner { transition: none; }
 }
 
 /* Hover lift — for clickable cards. Pairs with .premium-card. Do not use

@@ -2,9 +2,10 @@
 import { useMemo, memo, useState, useId } from 'react';
 import RepeatedClientBadge from '@/components/RepeatedClientBadge';
 import PaymentAlertsWidget from '@/components/PaymentAlertsWidget';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Sector } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Sector } from 'recharts';
 import { Edit2, Trash2, CheckCircle2, Clock, ImageUp, ArrowLeft, MousePointer2, Trophy, BarChart3, ChevronDown } from 'lucide-react';
 import EmptyState from '../EmptyState';
+import Tooltip from '@/components/Tooltip';
 import { CRMS, CAMPAIGNS, LEAD_CATEGORIES, STAGES, effectiveLeadCategory } from '@/lib/constants';
 import { fmt, fmt2, usDate, monthLabel } from '@/lib/utils';
 import { useLeadOptionsAll, addCustomLeadOption, ADD_CUSTOM_VALUE } from '@/lib/customLeadOptions';
@@ -221,7 +222,7 @@ function LeadAnalyticsDonut({
                   <Cell key={i} fill={`url(#${id}-grad-${i})`} />
                 ))}
               </Pie>
-              <Tooltip
+              <RechartsTooltip
                 contentStyle={{
                   background: 'rgba(15,23,42,0.95)',
                   border: 'none',
@@ -600,7 +601,7 @@ function ClosedDeals({ leads, onEdit, onUpdate, onDelete, onImportFromScreenshot
                   />
                 )}
               </div>
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto scroll-fade-x">
                 {/* min-w forces horizontal scroll when needed instead of
                     squeezing columns into illegible slivers. */}
                 <table className="text-sm premium-table" style={{ minWidth: '1180px', width: '100%' }}>
@@ -762,13 +763,17 @@ function ClosedDeals({ leads, onEdit, onUpdate, onDelete, onImportFromScreenshot
                           </td>
                           <td className="text-right p-2">
                             <div className="flex items-center justify-end gap-1">
-                              <button onClick={() => onEdit(l)} title="Open full editor (products, association, notes, etc.)" className="text-slate-400 hover:text-indigo-600 p-1 rounded hover:bg-indigo-50"><Edit2 size={14} /></button>
+                              <Tooltip label="Open full editor (products, association, notes, etc.)">
+                                <button onClick={() => onEdit(l)} aria-label="Open full editor (products, association, notes, etc.)" className="text-slate-400 hover:text-indigo-600 p-1 rounded hover:bg-indigo-50"><Edit2 size={14} /></button>
+                              </Tooltip>
                               {onDelete && (
-                                <button
-                                  onClick={() => { if (confirm(`Delete deal for ${l.name || '(unnamed)'}? This can't be undone.`)) onDelete(l.id); }}
-                                  title="Delete"
-                                  className="text-slate-400 hover:text-red-600 p-1 rounded hover:bg-red-50"
-                                ><Trash2 size={14} /></button>
+                                <Tooltip label="Delete">
+                                  <button
+                                    onClick={() => { if (confirm(`Delete deal for ${l.name || '(unnamed)'}? This can't be undone.`)) onDelete(l.id); }}
+                                    aria-label="Delete"
+                                    className="text-slate-400 hover:text-red-600 p-1 rounded hover:bg-red-50"
+                                  ><Trash2 size={14} /></button>
+                                </Tooltip>
                               )}
                             </div>
                           </td>

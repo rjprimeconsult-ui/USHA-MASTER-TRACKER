@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { X, Trash2, Calendar, Sparkles } from 'lucide-react';
 import { getWeekStart, weekRangeLabel, today, fmt, fmt2 } from '@/lib/utils';
+import { GlassModal } from './motion/MotionPrimitives';
 
 const Field = ({ label, children }) => (
   <div>
@@ -36,8 +37,7 @@ export default function InvestmentForm({ open, entry, autoHelper, onSave, onClos
   const net = earned - invested;
 
   return (
-    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-md z-40 flex items-center justify-center p-4">
-      <div className="bg-white/90 backdrop-blur-2xl border border-white/60 rounded-2xl max-w-lg w-full max-h-[90vh] overflow-auto shadow-2xl shadow-indigo-500/10">
+    <GlassModal open maxWidth="max-w-lg" zIndexClass="z-40" className="max-h-[90vh] overflow-auto">
         <div className="px-6 py-4 border-b border-slate-200/60 flex justify-between items-center">
           <h2 className="text-lg font-semibold text-slate-900">{form._existing ? 'Edit Weekly Investment' : 'Log Weekly Investment'}</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
@@ -116,7 +116,6 @@ export default function InvestmentForm({ open, entry, autoHelper, onSave, onClos
             <button onClick={() => onSave(form)} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">Log Investment</button>
           </div>
         </div>
-      </div>
-    </div>
+    </GlassModal>
   );
 }

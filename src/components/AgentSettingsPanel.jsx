@@ -13,6 +13,7 @@ import {
 import { loadVendorMemory, saveVendorMemory, recordVendor, normalizeVendor } from '@/lib/vendorMemory';
 import { useCategoriesAll } from '@/lib/customCategories';
 import { PLATFORMS } from '@/lib/constants';
+import { GlassModal } from './motion/MotionPrimitives';
 
 /**
  * Per-agent settings hub.
@@ -71,8 +72,7 @@ export default function AgentSettingsPanel({ open, onClose }) {
   const vendorMemoryCount = Object.keys(vendorMemory || {}).length;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[92vh] overflow-hidden flex flex-col">
+    <GlassModal open maxWidth="max-w-4xl" className="max-h-[92vh] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-slate-200 bg-gradient-to-br from-indigo-50 to-violet-50">
           <div className="flex items-center gap-3">
@@ -304,8 +304,7 @@ export default function AgentSettingsPanel({ open, onClose }) {
             Close
           </button>
         </div>
-      </div>
-    </div>
+    </GlassModal>
   );
 }
 

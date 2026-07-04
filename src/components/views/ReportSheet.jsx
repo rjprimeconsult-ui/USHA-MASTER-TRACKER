@@ -108,7 +108,7 @@ function TableBody({ report }) {
     // the columns legible; on letter-size print the table fits, so the
     // scroll never appears there. `.report-scroll` drops the min-width in
     // print (see globals.css) so the PDF lays out full-width.
-    <div className="overflow-x-auto report-scroll">
+    <div className="overflow-x-auto report-scroll scroll-fade-x">
     <table className="w-full text-sm border-collapse" style={{ minWidth: 640 }}>
       <thead>
         <tr className="border-b-2 border-slate-200">

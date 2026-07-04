@@ -625,7 +625,7 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
                       <button onClick={platformSkipAll} className="bg-white/15 hover:bg-white/25 rounded px-2 py-0.5 text-[10px] font-semibold normal-case">Skip all</button>
                     </div>
                   </div>
-                  <div className="overflow-x-auto">
+                  <div className="overflow-x-auto scroll-fade-x">
                   <table className="w-full text-xs min-w-[720px]">
                     <thead className="bg-indigo-50">
                       <tr className="text-[10px] uppercase tracking-wider text-indigo-700 font-bold">
@@ -704,7 +704,7 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
                     Review low-confidence rows first
                   </label>
                 </div>
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto scroll-fade-x">
                 <table className="w-full text-xs min-w-[720px]">
                   <thead className="bg-slate-50">
                     <tr className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">

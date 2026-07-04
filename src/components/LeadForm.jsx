@@ -12,6 +12,7 @@ import { today, fmt2, formatPhoneInput } from '@/lib/utils';
 import { useLeadOptionsAll, addCustomLeadOption, ADD_CUSTOM_VALUE } from '@/lib/customLeadOptions';
 import SendWelcomeEmail from './SendWelcomeEmail';
 import LeadEmailAuditPanel from './LeadEmailAuditPanel';
+import { GlassModal } from './motion/MotionPrimitives';
 
 const Field = ({ label, children, required }) => (
   <div>
@@ -134,8 +135,7 @@ export default function LeadForm({ open, lead, tier = 'WA', onSave, onClose, onD
   const totalMonthlyPremium = (form.mainProductPremium || 0) + productPremium(form.associationPlan) + addonTotal;
 
   return (
-    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-md overlay-fade z-40 flex items-center justify-center p-4">
-      <div className="bg-white/90 backdrop-blur-2xl border border-white/60 rounded-2xl modal-pop max-w-3xl w-full max-h-[92vh] overflow-auto shadow-2xl shadow-indigo-500/10">
+    <GlassModal open maxWidth="max-w-3xl" zIndexClass="z-40" className="max-h-[92vh] overflow-auto">
         <div className="sticky top-0 bg-white/80 backdrop-blur-xl border-b border-slate-200/60 px-6 py-4 flex justify-between items-center z-10">
           <h2 className="text-lg font-semibold text-slate-900">{form._existing ? 'Edit Lead' : 'New Lead'}</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
@@ -578,7 +578,6 @@ export default function LeadForm({ open, lead, tier = 'WA', onSave, onClose, onD
             </button>
           </div>
         </div>
-      </div>
-    </div>
+    </GlassModal>
   );
 }

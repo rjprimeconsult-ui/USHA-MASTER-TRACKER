@@ -418,7 +418,7 @@ export default function AdminPage() {
             <h2 className="font-semibold text-slate-900">All users</h2>
             <span className="text-xs text-slate-500">Click a row to expand collection details</span>
           </div>
-          <div className="overflow-auto">
+          <div className="overflow-auto scroll-fade-x">
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-slate-600 text-xs">
                 <tr>

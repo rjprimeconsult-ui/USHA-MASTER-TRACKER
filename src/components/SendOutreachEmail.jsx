@@ -25,6 +25,7 @@ import {
 import { nextTemplateIdForProspect } from '@/lib/outreachReminders';
 import { useBetaFeature } from '@/lib/useBetaFeature';
 import { supabase, supabaseConfigured } from '@/lib/supabase';
+import { GlassModal } from './motion/MotionPrimitives';
 
 export default function SendOutreachEmail({ prospect, onLogged }) {
   const { canAccess, loading: accessLoading } = useBetaFeature('outreach_emails');
@@ -142,12 +143,7 @@ function SendModal({ prospect, onClose, onLogged }) {
   if (typeof document === 'undefined') return null;
 
   const modal = (
-    <div
-      className="fixed inset-0 z-[70] bg-slate-900/50 backdrop-blur-sm overflow-y-auto"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div className="min-h-full flex items-center justify-center p-4">
-        <div onClick={e => e.stopPropagation()} className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col">
+    <GlassModal open onClose={onClose} maxWidth="max-w-3xl" zIndexClass="z-[70]" className="max-h-[92vh] flex flex-col">
           {/* Header */}
           <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between flex-shrink-0">
             <div className="flex items-center gap-2">
@@ -270,9 +266,7 @@ function SendModal({ prospect, onClose, onLogged }) {
               </button>
             )}
           </div>
-        </div>
-      </div>
-    </div>
+    </GlassModal>
   );
 
   return createPortal(modal, document.body);

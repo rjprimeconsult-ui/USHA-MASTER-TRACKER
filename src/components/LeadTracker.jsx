@@ -69,7 +69,8 @@ import { enqueuePending, cancelAllForLead } from '@/lib/pendingEmailQueue';
 import Toast from './Toast';
 import Profile from './Profile';
 import { loadAgentProfile } from '@/lib/agentProfile';
-import { fireConfetti, FadeIn, OrbBackdrop } from './motion/MotionPrimitives';
+import { fireConfetti, FadeIn, GlassModal } from './motion/MotionPrimitives';
+import ConstellationBackground from './motion/ConstellationBackground';
 import { useAuth } from './auth/AuthProvider';
 import { motion } from 'framer-motion';
 import TextDripReviewModal from './TextDripReviewModal';
@@ -2041,8 +2042,8 @@ export default function LeadTracker() {
 
   return (
     <PaywallGate>
-    <div className="min-h-screen bg-prim-canvas text-slate-900 relative transition-colors duration-300">
-      <OrbBackdrop />
+    <div className="min-h-screen bg-prim-canvas text-slate-900 relative isolate transition-colors duration-300">
+      <ConstellationBackground intensity="medium" />
       {/* Trial countdown banner (auto-hides for active paid subs).
           Stats give the banner real value-built numbers so the urgent-day
           copy can say "Keep your N leads + $X tracked" instead of a
@@ -2079,7 +2080,7 @@ export default function LeadTracker() {
             </button>
           </div>
         </div>
-        <nav className="relative max-w-screen-2xl mx-auto px-4 overflow-x-auto">
+        <nav className="relative max-w-screen-2xl mx-auto px-4 overflow-x-auto scroll-fade-x">
           <div className="flex gap-1 pb-2">
             {NAV_TABS.filter(t => t.id !== 'team' || teamEntitled).map(t => {
               const Icon = ICONS[t.icon];
@@ -2097,7 +2098,14 @@ export default function LeadTracker() {
                   )}
                   <span className="relative flex items-center gap-1.5">
                     <Icon size={14} />
-                    {t.label}
+                    {active ? t.label : (
+                      <span className="nav-roll">
+                        <span className="nav-roll-inner">
+                          <span>{t.label}</span>
+                          <span aria-hidden="true">{t.label}</span>
+                        </span>
+                      </span>
+                    )}
                   </span>
                 </button>
               );
@@ -2561,17 +2569,13 @@ export default function LeadTracker() {
 
       {/* Settings */}
       {showSettings && (
-        <motion.div
-          initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-          transition={{ duration: 0.2 }}
-          className="fixed inset-0 bg-slate-900/40 backdrop-blur-md z-40 flex items-center justify-center p-4"
-          onClick={() => setShowSettings(false)}
+        <GlassModal
+          open
+          onClose={() => setShowSettings(false)}
+          maxWidth="max-w-2xl"
+          zIndexClass="z-40"
+          className="p-6 max-h-[90vh] overflow-auto"
         >
-          <motion.div
-            initial={{ opacity: 0, scale: 0.96, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }}
-            transition={{ type: 'spring', stiffness: 320, damping: 28 }}
-            onClick={(e) => e.stopPropagation()}
-            className="bg-white/85 backdrop-blur-2xl border border-white/60 shadow-2xl shadow-indigo-500/10 rounded-2xl max-w-2xl w-full p-6 max-h-[90vh] overflow-auto">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold">Settings</h2>
               <button onClick={() => setShowSettings(false)} className="text-slate-400 hover:text-slate-600">×</button>
@@ -2635,8 +2639,7 @@ export default function LeadTracker() {
               <button onClick={() => clearAll('activities')} className="w-full text-left border border-slate-200 rounded-lg px-3 py-2 text-sm hover:bg-slate-50">Clear activities</button>
               <button onClick={() => clearAll('everything')} className="w-full text-left bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm hover:bg-red-100 font-medium">Clear everything</button>
             </div>
-          </motion.div>
-        </motion.div>
+        </GlassModal>
       )}
 
       {/* Profile hub — personal control center */}

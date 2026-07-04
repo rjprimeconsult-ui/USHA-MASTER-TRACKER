@@ -7,6 +7,7 @@ import {
 import { NAV_TABS } from '@/lib/constants';
 import { storage } from '@/lib/storage';
 import { supabase, supabaseConfigured } from '@/lib/supabase';
+import Tooltip from '@/components/Tooltip';
 
 const HISTORY_KEY = 'chat_history_v1';   // cloud-synced via storage adapter
 const LANG_KEY = 'chat_language_v1';     // cloud-synced
@@ -562,16 +563,20 @@ export default function AgentChatbot({ onNavigate, onAction, buildContext, openS
 
   return (
     <>
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="fixed bottom-20 right-4 z-30 bg-gradient-to-br from-indigo-600 to-violet-600 text-white rounded-full shadow-lg w-12 h-12 flex items-center justify-center hover:shadow-xl hover:scale-105 transition group"
-        title="Ask the assistant"
-      >
-        {open ? <X size={20} /> : <MessageCircle size={20} />}
-        {!open && messages.length === 0 && (
-          <span className="absolute -top-1 -right-1 bg-rose-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 ring-2 ring-white">AI</span>
-        )}
-      </button>
+      <div className="fixed bottom-20 right-4 z-30">
+        <Tooltip label="Ask the assistant" side="left">
+          <button
+            onClick={() => setOpen(o => !o)}
+            className="bg-gradient-to-br from-indigo-600 to-violet-600 text-white rounded-full shadow-lg w-12 h-12 flex items-center justify-center hover:shadow-xl hover:scale-105 transition group"
+            aria-label="Ask the assistant"
+          >
+            {open ? <X size={20} /> : <MessageCircle size={20} />}
+            {!open && messages.length === 0 && (
+              <span className="absolute -top-1 -right-1 bg-rose-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 ring-2 ring-white">AI</span>
+            )}
+          </button>
+        </Tooltip>
+      </div>
 
       {open && (
         <div
@@ -589,22 +594,28 @@ export default function AgentChatbot({ onNavigate, onAction, buildContext, openS
               </div>
             </div>
             <div className="flex items-center gap-1">
-              <button
-                onClick={() => setLanguage(l => (l === 'en' ? 'es' : 'en'))}
-                className="text-white/80 hover:text-white p-1 flex items-center gap-1"
-                title={language === 'en' ? 'Switch to Spanish' : 'Cambiar a inglés'}
-              >
-                <Languages size={14} />
-                <span className="text-[10px] font-bold">{language.toUpperCase()}</span>
-              </button>
-              {messages.length > 0 && (
-                <button onClick={clearChat} className="text-white/80 hover:text-white p-1" title="Clear chat">
-                  <Trash2 size={14} />
+              <Tooltip label={language === 'en' ? 'Switch to Spanish' : 'Cambiar a inglés'} side="bottom">
+                <button
+                  onClick={() => setLanguage(l => (l === 'en' ? 'es' : 'en'))}
+                  className="text-white/80 hover:text-white p-1 flex items-center gap-1"
+                  aria-label={language === 'en' ? 'Switch to Spanish' : 'Cambiar a inglés'}
+                >
+                  <Languages size={14} />
+                  <span className="text-[10px] font-bold">{language.toUpperCase()}</span>
                 </button>
+              </Tooltip>
+              {messages.length > 0 && (
+                <Tooltip label="Clear chat" side="bottom">
+                  <button onClick={clearChat} className="text-white/80 hover:text-white p-1" aria-label="Clear chat">
+                    <Trash2 size={14} />
+                  </button>
+                </Tooltip>
               )}
-              <button onClick={() => setOpen(false)} className="text-white/80 hover:text-white p-1" title="Close">
-                <X size={16} />
-              </button>
+              <Tooltip label="Close" side="bottom">
+                <button onClick={() => setOpen(false)} className="text-white/80 hover:text-white p-1" aria-label="Close">
+                  <X size={16} />
+                </button>
+              </Tooltip>
             </div>
           </div>
 
@@ -679,22 +690,26 @@ export default function AgentChatbot({ onNavigate, onAction, buildContext, openS
                     {/* Feedback row on assistant messages with content */}
                     {isAssistant && m.content && !streaming && (
                       <div className="flex items-center gap-2 mt-1.5 pt-1.5 border-t border-slate-100">
-                        <button
-                          onClick={() => sendFeedback(m, 1)}
-                          disabled={fb === 'pending'}
-                          className={`p-1 rounded hover:bg-slate-100 transition ${fb === 1 ? 'text-emerald-600' : 'text-slate-400'}`}
-                          title="Helpful"
-                        >
-                          <ThumbsUp size={12} />
-                        </button>
-                        <button
-                          onClick={() => sendFeedback(m, -1)}
-                          disabled={fb === 'pending'}
-                          className={`p-1 rounded hover:bg-slate-100 transition ${fb === -1 ? 'text-rose-600' : 'text-slate-400'}`}
-                          title="Not helpful"
-                        >
-                          <ThumbsDown size={12} />
-                        </button>
+                        <Tooltip label="Helpful">
+                          <button
+                            onClick={() => sendFeedback(m, 1)}
+                            disabled={fb === 'pending'}
+                            className={`p-1 rounded hover:bg-slate-100 transition ${fb === 1 ? 'text-emerald-600' : 'text-slate-400'}`}
+                            aria-label="Helpful"
+                          >
+                            <ThumbsUp size={12} />
+                          </button>
+                        </Tooltip>
+                        <Tooltip label="Not helpful">
+                          <button
+                            onClick={() => sendFeedback(m, -1)}
+                            disabled={fb === 'pending'}
+                            className={`p-1 rounded hover:bg-slate-100 transition ${fb === -1 ? 'text-rose-600' : 'text-slate-400'}`}
+                            aria-label="Not helpful"
+                          >
+                            <ThumbsDown size={12} />
+                          </button>
+                        </Tooltip>
                         {fb && fb !== 'pending' && (
                           <span className="text-[10px] text-slate-500">{t.feedbackThanks}</span>
                         )}
@@ -750,24 +765,28 @@ export default function AgentChatbot({ onNavigate, onAction, buildContext, openS
               onChange={onPick}
               className="hidden"
             />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={streaming}
-              className="text-slate-500 hover:text-indigo-600 p-1.5 rounded transition"
-              title="Attach file (image or PDF)"
-            >
-              <Paperclip size={16} />
-            </button>
-            <button
-              type="button"
-              onClick={toggleVoice}
-              disabled={streaming}
-              className={`p-1.5 rounded transition ${voiceOn ? 'text-rose-600 animate-pulse' : 'text-slate-500 hover:text-indigo-600'}`}
-              title={voiceOn ? t.voiceListening : 'Voice input'}
-            >
-              {voiceOn ? <MicOff size={16} /> : <Mic size={16} />}
-            </button>
+            <Tooltip label="Attach file (image or PDF)">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={streaming}
+                className="text-slate-500 hover:text-indigo-600 p-1.5 rounded transition"
+                aria-label="Attach file (image or PDF)"
+              >
+                <Paperclip size={16} />
+              </button>
+            </Tooltip>
+            <Tooltip label={voiceOn ? t.voiceListening : 'Voice input'}>
+              <button
+                type="button"
+                onClick={toggleVoice}
+                disabled={streaming}
+                className={`p-1.5 rounded transition ${voiceOn ? 'text-rose-600 animate-pulse' : 'text-slate-500 hover:text-indigo-600'}`}
+                aria-label={voiceOn ? t.voiceListening : 'Voice input'}
+              >
+                {voiceOn ? <MicOff size={16} /> : <Mic size={16} />}
+              </button>
+            </Tooltip>
             <input
               ref={inputRef}
               type="text"

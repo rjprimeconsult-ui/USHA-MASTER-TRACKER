@@ -295,7 +295,7 @@ export default function SmartProspectImportWizard({ open, onClose, onImport, sta
 
               {/* Prospects table */}
               <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto scroll-fade-x">
                   <table className="w-full text-xs">
                     <thead className="bg-slate-50">
                       <tr className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">
