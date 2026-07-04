@@ -1193,7 +1193,7 @@ function BusinessBooksView({
             />
           </div>
           <div className="flex items-end">
-            <Tooltip label={isPeriodClosed('books', draft.date) ? `${ymLabel(ymOf(draft.date))} is closed — reopen to add` : ''}>
+            <Tooltip label={isPeriodClosed('books', draft.date) ? `${ymLabel(ymOf(draft.date))} is closed — reopen to add` : ''} className="w-full">
               <button
                 onClick={submitDraft}
                 disabled={!draft.amount || Number(draft.amount) <= 0 || isPeriodClosed('books', draft.date)}
@@ -1606,7 +1606,7 @@ function BusinessBooksView({
                             <input type="checkbox" checked={p.picked} onChange={() => togglePick(p.id)} className="w-4 h-4" />
                           </td>
                           <td className="py-2 px-2 text-slate-900 max-w-[200px]">
-                            {p.vendor ? <Tooltip label={p.vendor} className="truncate max-w-full">{p.vendor}</Tooltip> : '—'}
+                            {p.vendor ? <Tooltip label={p.vendor} className="block max-w-full"><span className="block truncate">{p.vendor}</span></Tooltip> : '—'}
                           </td>
                           <td className="py-2 px-2 text-right font-semibold text-slate-700">{fmt2(p.amount)}</td>
                           <td className="py-2 px-2"><span className={`text-[11px] px-2 py-0.5 rounded font-bold ${fromCat.badge}`}>{fromCat.label}</span></td>

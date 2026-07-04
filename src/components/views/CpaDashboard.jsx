@@ -1105,7 +1105,7 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
                   <td className="text-right p-2">{a.pitches}</td>
                   <td className="text-right p-2 text-emerald-700 font-medium">{a.closes}</td>
                   <td className="p-2 text-xs text-slate-500 max-w-xs">
-                    {a.notes ? <StyledTooltip label={a.notes} className="truncate max-w-full">{a.notes}</StyledTooltip> : <span className="text-slate-300">—</span>}
+                    {a.notes ? <StyledTooltip label={a.notes} className="block max-w-full"><span className="block truncate">{a.notes}</span></StyledTooltip> : <span className="text-slate-300">—</span>}
                   </td>
                   <td className="text-right p-2">
                     {!readOnly && (
