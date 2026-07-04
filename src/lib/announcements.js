@@ -36,7 +36,7 @@ export const ANNOUNCEMENTS = [
     id: '2026-07-03-visual-refresh',
     date: '2026-07-03',
     emoji: '✨',
-    title: 'A fresh coat of paint ✨',
+    title: 'A fresh coat of paint',
     body: 'Pop-ups now open with one smooth, consistent animation everywhere. Long tables and lists fade softly at the edge when there\'s more to scroll. Tooltips got cleaner and easier to read. Login and the app background now have a subtle animated constellation. And the Blast Log got an upgrade: one combined lead-range box, click any range/tag/notes cell to edit it in place, and a campaign/tag dropdown that remembers the tags you\'ve used before.',
   },
   {

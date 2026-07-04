@@ -87,6 +87,10 @@ export default function BlastsView({ blasts = [], onDelete, onAdd, onEdit, readO
     if (!inline) return;
     const { field, draft } = inline;
     if (field === 'range') {
+      // Untouched draft → true no-op. Guards legacy ranges whose stored text
+      // itself contains a separator (e.g. "05/01 to 05/31"): re-splitting the
+      // joined display would rewrite them on a mere click+blur.
+      if (draft === joinLeadRange(b.rangeStart, b.rangeEnd)) return;
       const { start, end } = splitLeadRange(draft);
       if (start !== (b.rangeStart || '') || end !== (b.rangeEnd || '')) commitInline(b, { rangeStart: start, rangeEnd: end });
     } else if (field === 'tag') {

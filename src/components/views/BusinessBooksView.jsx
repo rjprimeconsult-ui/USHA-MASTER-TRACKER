@@ -782,8 +782,9 @@ function BusinessBooksView({
               deductible business out
               {ytdPlatformExpenses > 0 && (
                 <Tooltip label="Platform charges (Ringy/TextDrip/VanillaSoft) live in Books and are ALREADY counted in this YTD total. Shown here only so you can see how much of it is platform spend.">
-                  <span>
-                    {' '}· <span className="text-indigo-600 font-semibold">of which {fmt2(ytdPlatformExpenses)} Platforms</span>
+                  {/* ml-1, not a leading JSX space: the space collapses inside the inline-flex tooltip wrapper */}
+                  <span className="ml-1">
+                    · <span className="text-indigo-600 font-semibold">of which {fmt2(ytdPlatformExpenses)} Platforms</span>
                   </span>
                 </Tooltip>
               )}
