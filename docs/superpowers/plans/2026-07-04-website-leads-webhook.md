@@ -6,7 +6,7 @@
 
 **Architecture:** Clone the proven Ringy vendor-webhook shape (token in `profiles`, always-200, CAS-retry upsert into `user_kv.prospects_v1`) minus everything Ringy-specific (no blast detection, no disposition mapping). All parsing/extraction/upsert logic is pure and TDD'd in `src/lib/webforms.mjs`; the route stays a thin I/O shell. Settings UI clones the RingySettings card pattern.
 
-**Tech Stack:** Next.js 16 route handlers (nodejs runtime) · Supabase service-role · `node --test` for `.mjs` logic · Anthropic Haiku for the AI fallback (plain `fetch`, no SDK). **Zero new npm dependencies.**
+**Tech Stack:** Next.js 16 route handlers (nodejs runtime) · Supabase service-role · `node --test` for `.mjs` logic · Anthropic Haiku for the AI fallback via the already-shipped `@anthropic-ai/sdk`. **Zero new npm dependencies.**
 
 ---
 
@@ -80,7 +80,7 @@ The module exports: `flattenRecord`, `normalizeBody`, `extractWebformFields`, `b
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  flattenRecord, extractWebformFields, buildRawBlock,
+  flattenRecord, normalizeBody, extractWebformFields, buildRawBlock,
   buildWebformProspect, upsertWebformProspect, buildWebformAiPrompt,
 } from './webforms.mjs';
 
@@ -96,6 +96,13 @@ test('flattenRecord flattens one level of nesting and stringifies scalars', () =
 test('flattenRecord tolerates null/undefined and skips empty values', () => {
   assert.deepEqual(flattenRecord({ a: '', b: null, c: undefined, d: 'x' }), { d: 'x' });
   assert.deepEqual(flattenRecord(null), {});
+});
+
+// ---- normalizeBody: pure body-encoding normalization ----
+test('normalizeBody parses JSON and urlencoded; null on garbage', () => {
+  assert.deepEqual(normalizeBody('application/json', '{"a":"1"}'), { a: '1' });
+  assert.deepEqual(normalizeBody('application/x-www-form-urlencoded; charset=UTF-8', 'your-name=Ana+Diaz&email%5B%5D=ana%40x.com'), { 'your-name': 'Ana Diaz', 'email[]': 'ana@x.com' });
+  assert.equal(normalizeBody('application/json', 'not json'), null);
 });
 
 // ---- extractWebformFields: heuristic mapping ----
@@ -169,13 +176,6 @@ test('E.164 +1 phone dedups against the stored 10-digit number', () => {
   const flat = { name: 'John Smith', phone: '+13055551234', email: 'j@x.com' };
   const { created } = upsertWebformProspect(existing, buildWebformProspect(extractWebformFields(flat), flat, NOW), NOW);
   assert.equal(created, false);
-});
-
-// ---- normalizeBody: pure body-encoding normalization ----
-test('normalizeBody parses JSON and urlencoded; null on garbage', () => {
-  assert.deepEqual(normalizeBody('application/json', '{"a":"1"}'), { a: '1' });
-  assert.deepEqual(normalizeBody('application/x-www-form-urlencoded; charset=UTF-8', 'your-name=Ana+Diaz&email%5B%5D=ana%40x.com'), { 'your-name': 'Ana Diaz', 'email[]': 'ana@x.com' });
-  assert.equal(normalizeBody('application/json', 'not json'), null);
 });
 
 test('phone match → no duplicate; fill-empty; re-submission touch appended with real schema', () => {
