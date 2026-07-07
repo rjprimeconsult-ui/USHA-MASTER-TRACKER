@@ -150,6 +150,11 @@ test('normalizeState returns empty for unrecognized input (never garbage in the 
   assert.equal(normalizeState(''), '');
   assert.equal(normalizeState('ZZ'), '');
 });
+test('normalizeState maps only the 50 US_STATES — DC is not a dropdown option', () => {
+  assert.equal(normalizeState('District of Columbia'), '');
+  assert.equal(normalizeState('Washington DC'), '');
+  assert.equal(normalizeState('DC'), '');
+});
 
 // ---- normalizeIncomeBand: range band -> midpoint number for the income box ----
 test('normalizeIncomeBand returns the band midpoint as a grouped number', () => {
