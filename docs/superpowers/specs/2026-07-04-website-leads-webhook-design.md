@@ -73,19 +73,19 @@ Whatever happened above, the flattened raw payload (as readable `Label: value` l
 - **Dedup on ingress:** compute `prospectDedupKey` (existing helper: phone → email → name) for the incoming lead; if an existing non-archived prospect matches:
   - do NOT create a duplicate;
   - fill-empty on fields (existing values win, blanks get filled — same rule as the Ringy upsert);
-  - append a touch to `touchLog`: kind `note`, body `"Submitted your website form again"` + timestamp (a re-submission is a hot-lead signal, surfaced in the existing touch timeline).
+  - append a re-submission entry to `touchLog` using the **real touch schema** (`{ id, at, channel, outcome, note }` — see `logTouch()` in `src/lib/followupEngine.mjs:157-163`): `{ id: <uuid>, at: <now ISO>, channel: 'Other', outcome: 'Other', note: 'Submitted your website form again' }`. Both values are in the valid enums (`CHANNELS`/`OUTCOMES`, followupEngine.mjs:11-12) so it renders in the existing timeline, and `'Other'` is in neither `CONNECT_OUTCOMES` nor `NO_CONTACT_OUTCOMES`, so it doesn't distort connect-rate stats. **Do NOT route this through `logTouch()`** — that function advances the follow-up cadence and clears open reminders, side effects that belong to agent-initiated touches only, not an automated inbound signal. Append the entry directly in the upsert logic.
   - No match → create new.
 
 ## 6. Config route + Settings UI
 
-**`GET /api/webforms/config`** (bearer auth via `requireUserId`, like Ringy's): returns `{ webhookUrl, connected, lastReceivedAt, receivedCount }`; auto-generates the token on first load.
+**`GET /api/webforms/config`** (bearer auth via `requireUserId` from `src/lib/apiAuth.js`, plus a service-role client for the `profiles` token read/write — note Ringy's config route uses its own inline `authAndClients` helper; either pattern is acceptable, pick one and be consistent): returns `{ webhookUrl, connected, lastReceivedAt, receivedCount }`; auto-generates the token on first load.
 **`POST /api/webforms/config`** with `{ regenerateToken: true }`: new token (old URL dies instantly).
 
 **`WebformsSettings.jsx`** — a card matching RingySettings' look, mounted wherever Ringy/Benepath settings currently are (Prospects → Settings area):
 - The webhook URL with a copy button; "Regenerate" with a confirm (warns the old URL stops working).
 - Status line: `Connected — last lead received <relative time> · <n> total` (or "Waiting for your first lead…").
 - A compact per-platform cheat-sheet (collapsible): Webflow (native form webhook), Typeform/JotForm (webhook setting), WordPress (Gravity Forms/WPForms webhook add-on or Contact Form 7 + webhook plugin), Wix/Squarespace (via Zapier/Make "webhook POST" step). Include the note: "any tool that can POST a form to a URL works."
-- A "Send a test lead" button that POSTs a sample payload to the agent's own webhook URL and confirms the prospect appeared — instant end-to-end validation without touching their website.
+- A "Send a test lead" button that POSTs a sample payload to the agent's own webhook URL and confirms the prospect appeared — instant end-to-end validation without touching their website. The sample is clearly identifiable and disposable: name `"Test Lead (Website Leads)"`, note stating it came from the test button, so the agent can archive/delete it without hunting.
 
 ## 7. Security & abuse posture
 
@@ -98,7 +98,7 @@ Whatever happened above, the flattened raw payload (as readable `Label: value` l
 
 - `src/lib/webforms.test.mjs` (node --test, TDD): heuristic mapping across synonym sets (incl. `first_name`+`last_name` join, `your-name[]`-style keys), the three body-encoding normalizations, confidence rules, raw-preservation block building, dedup fill-empty + touch-append behavior (pure function level).
 - Route-level manual verification: POST JSON / urlencoded / multipart samples with curl to a dev token → prospect appears; unknown token → 200 `{ok:false}`, no prospect; malformed body → flagged raw prospect, still 200.
-- Settings card: copy button, regenerate (old URL 404s→200-noop, new works), test-lead button round-trip, both themes.
+- Settings card: copy button, regenerate (the old URL keeps returning 200 but becomes a no-op that creates nothing; the new URL captures), test-lead button round-trip, both themes.
 - `npm run build` clean; no new deps; Ringy/Benepath/blast routes untouched (`git diff` proves it).
 
 ## 9. Ship ritual
