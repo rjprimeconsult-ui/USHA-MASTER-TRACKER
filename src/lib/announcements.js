@@ -33,6 +33,14 @@
 
 export const ANNOUNCEMENTS = [
   {
+    id: '2026-07-04-website-leads',
+    date: '2026-07-04',
+    emoji: '🌐',
+    title: 'Your website is now a lead source',
+    body: 'Connect any website form to PRIM with your personal webhook URL — find it in Prospects → Settings → Website Leads. Every submission becomes a Prospect automatically, duplicates are caught, and PRIM flags anything it wasn\'t sure about so you can review it.',
+    cta: { label: 'Open Prospects', view: 'prospects' },
+  },
+  {
     id: '2026-07-03-visual-refresh',
     date: '2026-07-03',
     emoji: '✨',

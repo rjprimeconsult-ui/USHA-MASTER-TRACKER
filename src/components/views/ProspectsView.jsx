@@ -291,9 +291,16 @@ function KanbanCard({ prospect, onEdit, onDragStart, isSelected, onToggleSelect,
           <FollowupDot prospect={prospect} />
           <div className="font-semibold text-sm text-slate-900 truncate">{prospect.name || '(no name)'}</div>
         </div>
-        {prospect.indvOrFamily === 'Family' && (
-          <span className="text-[10px] font-bold text-violet-700 bg-violet-100 px-1.5 py-0.5 rounded">FAM</span>
-        )}
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {prospect.needsReview && (
+            <Tooltip label="Imported from your website form — PRIM wasn't 100% sure it read every field right. Open and verify, then clear.">
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">Double-check</span>
+            </Tooltip>
+          )}
+          {prospect.indvOrFamily === 'Family' && (
+            <span className="text-[10px] font-bold text-violet-700 bg-violet-100 px-1.5 py-0.5 rounded">FAM</span>
+          )}
+        </div>
       </div>
       {prospect.phone && (
         <div className="text-xs text-slate-500 flex items-center gap-1"><Phone size={11} /> {prospect.phone}</div>
@@ -716,6 +723,16 @@ function SettingsModal({ open, settings, onSave, onClose, onSyncTextDrip }) {
             <RingySettingsSection stages={draft.stages} />
           </section>
 
+          {/* Website Leads integration */}
+          <section>
+            <div className="flex items-center gap-2 mb-2">
+              <h3 className="text-sm font-bold text-slate-900">Website Leads</h3>
+              <span className="text-[10px] font-bold uppercase tracking-wider bg-teal-100 text-teal-700 px-1.5 py-0.5 rounded">v1</span>
+            </div>
+            <p className="text-[11px] text-slate-500 mb-3">Capture leads straight from your website&apos;s contact form — point any form or automation tool at PRIM&apos;s webhook URL and every submission lands in Prospects automatically. No API key needed.</p>
+            <WebformsSettingsSection />
+          </section>
+
           {/* Benepath integration */}
           <section>
             <div className="flex items-center gap-2 mb-2">
@@ -763,6 +780,17 @@ function RingySettingsSection({ stages }) {
   }, []);
   if (!Comp) return <div className="text-xs text-slate-400 italic">Loading…</div>;
   return <Comp stages={stages} />;
+}
+
+// Thin wrapper that renders WebformsSettings inside the SettingsModal.
+// Lazily imported so the Website Leads bundle is not fetched for agents who haven't set it up.
+function WebformsSettingsSection() {
+  const [Comp, setComp] = useState(null);
+  useEffect(() => {
+    import('@/components/WebformsSettings').then(m => setComp(() => m.default));
+  }, []);
+  if (!Comp) return <div className="text-xs text-slate-400 italic">Loading…</div>;
+  return <Comp />;
 }
 
 // Thin wrapper that renders BenepathSettings inside the SettingsModal.
@@ -1093,6 +1121,20 @@ function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, o
             )}
             {prospect.source && (
               <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">{prospect.source}</span>
+            )}
+            {prospect.needsReview && (
+              <>
+                <Tooltip label="Imported from your website form — PRIM wasn't 100% sure it read every field right. Open and verify, then clear.">
+                  <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">Double-check</span>
+                </Tooltip>
+                {!readOnly && (
+                  <button
+                    onClick={() => onProspectUpdate?.({ ...prospect, needsReview: false })}
+                    className="text-[11px] font-semibold px-2.5 py-1 rounded-full border border-amber-300 text-amber-800 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-300 dark:hover:bg-amber-900/20">
+                    Mark reviewed
+                  </button>
+                )}
+              </>
             )}
           </div>
           <div className="flex items-center gap-2">
