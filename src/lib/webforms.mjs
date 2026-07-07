@@ -306,9 +306,14 @@ function webformDedupKey(p) {
  * @param {object[]} list      Existing prospects.
  * @param {object}   incoming  Result of buildWebformProspect().
  * @param {string}   nowIso    ISO timestamp (injectable for tests).
+ * @param {string}   [incomingMessage]  The fresh message text the visitor typed
+ *   on THIS submission (the extracted message, without the raw block). On a
+ *   re-submission, fill-empty keeps the existing `situation`, so the new
+ *   message would otherwise be lost — we carry it into the touch note instead
+ *   so the agent never misses a hot re-inquiry ("call me ASAP…").
  * @returns {{ list: object[], created: boolean, prospectId: string }}
  */
-export function upsertWebformProspect(list, incoming, nowIso) {
+export function upsertWebformProspect(list, incoming, nowIso, incomingMessage = '') {
   const arr = Array.isArray(list) ? list : [];
   const ts = nowIso || new Date().toISOString();
   const key = webformDedupKey(incoming);
@@ -327,12 +332,19 @@ export function upsertWebformProspect(list, incoming, nowIso) {
 
   // ---- Match: fill-empty (existing wins) + append a passive touch ----
   const existing = arr[matchIdx];
+  // Carry the fresh message into the touch note so a hot re-inquiry isn't lost
+  // to fill-empty. Only when it's non-empty and not already the stored situation.
+  const freshMsg = String(incomingMessage || '').trim();
+  const existingSit = String(existing.situation || '').trim();
+  const note = freshMsg && !existingSit.includes(freshMsg)
+    ? `Submitted your website form again — "${freshMsg.slice(0, 240)}"`
+    : 'Submitted your website form again';
   const touch = {
     id: _uid(),
     at: ts,
     channel: 'Other',
     outcome: 'Other',
-    note: 'Submitted your website form again',
+    note,
   };
   const updated = {
     ...existing,

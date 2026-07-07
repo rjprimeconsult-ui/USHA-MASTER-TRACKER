@@ -104,6 +104,22 @@ test('phone match -> no duplicate; fill-empty; re-submission touch appended with
   assert.equal(tch.at, NOW);
   assert.ok(tch.id);
 });
+test('re-submission carries the fresh message into the touch note (not dropped by fill-empty)', () => {
+  const existing = [{ id: 'p1', name: 'Ana D', phone: '3055550000', situation: 'old inquiry', archivedAt: null, touchLog: [] }];
+  const flat = { name: 'Ana Diaz', phone: '3055550000', message: 'Call me ASAP — need family coverage now' };
+  const incoming = buildWebformProspect(extractWebformFields(flat), flat, NOW);
+  const { list } = upsertWebformProspect(existing, incoming, NOW, 'Call me ASAP — need family coverage now');
+  const tch = list[0].touchLog[list[0].touchLog.length - 1];
+  assert.match(tch.note, /Call me ASAP/);          // the fresh message survives
+  assert.equal(list[0].situation, 'old inquiry');  // existing situation still wins (fill-empty)
+});
+test('re-submission with no new message keeps the generic note', () => {
+  const existing = [{ id: 'p1', name: 'Ana D', phone: '3055550000', situation: 'old', archivedAt: null, touchLog: [] }];
+  const flat = { name: 'Ana Diaz', phone: '3055550000' };
+  const incoming = buildWebformProspect(extractWebformFields(flat), flat, NOW);
+  const { list } = upsertWebformProspect(existing, incoming, NOW, '');
+  assert.equal(list[0].touchLog[0].note, 'Submitted your website form again');
+});
 test('archived prospects are NOT dedup matches', () => {
   const existing = [{ id: 'p1', name: 'A', phone: '111', archivedAt: '2026-01-01', touchLog: [] }];
   const { created } = upsertWebformProspect(existing, buildWebformProspect(extractWebformFields({ name: 'A', phone: '111' }), { name: 'A', phone: '111' }, NOW), NOW);

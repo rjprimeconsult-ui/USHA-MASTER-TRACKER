@@ -190,7 +190,9 @@ export async function POST(req, ctx) {
       }
       const prospects = Array.isArray(cur.data?.value) ? cur.data.value : [];
       const prior = cur.data?.updated_at ?? null;
-      const res = upsertWebformProspect(prospects, incoming, now);
+      // Pass the fresh extracted message so a re-submission's new inquiry text
+      // rides into the touch note (fill-empty would otherwise drop it).
+      const res = upsertWebformProspect(prospects, incoming, now, extraction.fields?.situation || '');
       created = res.created;
       const ts = new Date().toISOString();
 
