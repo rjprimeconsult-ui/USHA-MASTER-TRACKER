@@ -66,9 +66,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS profiles_webforms_webhook_token_key
 
 **Files:** Create `src/lib/webforms.test.mjs` FIRST, then `src/lib/webforms.mjs`.
 
-The module exports: `flattenRecord`, `extractWebformFields`, `buildRawBlock`, `buildWebformProspect`, `upsertWebformProspect`, `buildWebformAiPrompt`, `WEBFORM_MAX_RAW_CHARS`.
+The module exports: `flattenRecord`, `normalizeBody`, `extractWebformFields`, `buildRawBlock`, `buildWebformProspect`, `upsertWebformProspect`, `buildWebformAiPrompt`, `WEBFORM_MAX_RAW_CHARS`.
 
-**Reuse, don't duplicate:** `src/lib/prospects.js` already exports `newProspect()` and `prospectDedupKey()`, and contains a `HEADER_MAP` (~line 119) mapping free-form header strings → prospect field keys, built for CSV imports. **Read it first.** If `HEADER_MAP` (or its matching helper, e.g. `normalizeProspectHeader`) is exported, use it as the first-pass matcher and only add webform-specific synonyms it lacks (e.g. `your-name`, `tel`, `zip[]` bracket forms). If it is NOT exported, export it (a one-line change to prospects.js is allowed) rather than copying the table.
+**⚠️ SELF-CONTAINED module — do NOT import from `prospects.js`.** Verified: `src/lib/prospects.js` has extensionless imports (`./utils`, `./constants`) that only resolve under the Next/webpack build — importing it from an `.mjs` under `node --test` fails with `ERR_MODULE_NOT_FOUND`. The repo's established precedent for exactly this situation is `src/lib/ringy.mjs`, which is deliberately dependency-free ("NO imports from the project"). Follow it: `webforms.mjs` imports nothing from the project.
+- Build the prospect object inline, mirroring `newProspect()`'s field set (`src/lib/prospects.js:75-111` — copy the field list into a comment-pinned literal; note "MIRRORS newProspect() — if that factory gains fields, add them here" the way ringy.mjs documents its mirrored shapes).
+- Implement a local `webformDedupKey(p)` mirroring `prospectDedupKey` (`prospects.js:222`: phone digits → email lowercase → name lowercase), with ONE deliberate improvement for webform traffic: when the phone normalizes to 11 digits starting with `1`, strip the leading `1` (websites commonly send `+1` E.164 numbers while existing prospects store 10 digits — without this, `+13055551234` would never dedup against `3055551234`). Document the divergence in a comment.
+- Do NOT reuse prospects.js' `HEADER_MAP`/`detectFieldFromHeader` — besides being unimportable, its CSV-oriented patterns (`/^date$/→lastContact`, `/^status$/→stage`) would mis-map arbitrary webform keys. Use the webform-specific synonym sets below, with the metadata ignore-list applied FIRST.
+- `normalizeBody(contentType, rawText)` is a pure function here (so the spec §8 "three encodings" line is unit-tested): `application/json` → JSON.parse (throw→null), `application/x-www-form-urlencoded` → URLSearchParams→object; returns null when unparseable. Multipart stays in the route (needs `req.formData()`, not text) and is covered by the Task 7 curl checks.
 
 - [ ] **Step 1: Write the failing tests** — `src/lib/webforms.test.mjs`:
 
@@ -160,6 +164,20 @@ test('no match → appended as new', () => {
   assert.equal(list.length, 1);
   assert.equal(created, true);
 });
+test('E.164 +1 phone dedups against the stored 10-digit number', () => {
+  const existing = [{ id: 'p1', name: 'Jo', phone: '3055551234', archivedAt: null, touchLog: [] }];
+  const flat = { name: 'John Smith', phone: '+13055551234', email: 'j@x.com' };
+  const { created } = upsertWebformProspect(existing, buildWebformProspect(extractWebformFields(flat), flat, NOW), NOW);
+  assert.equal(created, false);
+});
+
+// ---- normalizeBody: pure body-encoding normalization ----
+test('normalizeBody parses JSON and urlencoded; null on garbage', () => {
+  assert.deepEqual(normalizeBody('application/json', '{"a":"1"}'), { a: '1' });
+  assert.deepEqual(normalizeBody('application/x-www-form-urlencoded; charset=UTF-8', 'your-name=Ana+Diaz&email%5B%5D=ana%40x.com'), { 'your-name': 'Ana Diaz', 'email[]': 'ana@x.com' });
+  assert.equal(normalizeBody('application/json', 'not json'), null);
+});
+
 test('phone match → no duplicate; fill-empty; re-submission touch appended with real schema', () => {
   const existing = [{ id: 'p1', name: 'Ana D', phone: '3055550000', email: '', situation: 'old notes', archivedAt: null, touchLog: [] }];
   const incoming = buildWebformProspect(
@@ -201,11 +219,11 @@ test('buildWebformAiPrompt embeds the payload and demands the fixed JSON shape',
   - Synonym sets per spec §4 step 1 (name/first+last join, email, phone, state, zip, message→situation). **Metadata ignore-list** (mapped to nothing, still shown in the raw block): `source, submitted_at, submittedat, timestamp, formid, formname, form_name, page, pageurl, url, referrer, useragent, ip, token`.
   - `confident` = name AND (phone OR email) found.
   - `buildRawBlock(flat)`: header `— Website form submission —` + `key: value` lines, total capped at `WEBFORM_MAX_RAW_CHARS = 4000` (truncate with `…`).
-  - `buildWebformProspect(extraction, flat, nowIso)`: `newProspect({...})` from `@/lib/prospects` — wait, `.mjs` cannot use the `@/` alias under `node --test`: import with a relative path `./prospects.js` (check how other `.mjs` libs in `src/lib` import siblings and match). Sets `source:'Web Lead'`, appends raw block to `situation` (after any extracted message + blank line), `needsReview: true` when not confident, fallback name `'Web Lead — needs review'` when name empty, `createdAt`/`stageEnteredAt` = nowIso.
-  - `upsertWebformProspect(list, incoming, nowIso)`: compute `prospectDedupKey` (imported from `./prospects.js`) for incoming; find first non-archived existing with same key (normalize phone digits the way prospectDedupKey already does — just compare keys); on match: fill-empty fields (existing wins), append the touch `{ id: crypto.randomUUID(), at: nowIso, channel: 'Other', outcome: 'Other', note: 'Submitted your website form again' }` **directly** (spec §5 forbids `logTouch()` — it advances cadence + clears reminders); return `{ list, created: false, prospectId }`. No match: `{ list: [...list, incoming], created: true, prospectId }`.
+  - `buildWebformProspect(extraction, flat, nowIso)`: builds the full prospect literal inline (self-contained — see the module warning above), mirroring `newProspect()`'s field set: id (crypto.randomUUID), name/phone/email/state/zip/timezone, `indvOrFamily:'Indv'`, dobs/income/quoteSize `''`, `quotes:[]`, policyType/meds `''`, situation, startDate `''`, `source:'Web Lead'`, referrer/leadVendor `''`, `crm:'None'`, `stage:'PENDING_DECISION'`, appointmentTime/nextSteps/lastContact `''`, `custom:{}`, `createdAt:nowIso`, `archivedAt:null`, `convertedLeadId:null`, `touchLog:[]`, `stageEnteredAt:nowIso`, `cadence:{stepIndex:0,nextDueAt:null,snoozedUntil:null,completedAt:null}`. Appends raw block to `situation` (after any extracted message + blank line), `needsReview: true` when not confident, fallback name `'Web Lead — needs review'` when name empty.
+  - `upsertWebformProspect(list, incoming, nowIso)`: compute the local `webformDedupKey` for incoming (phone digits with the 11-digit leading-1 strip → email lowercase → name lowercase); find first non-archived existing whose key matches; on match: fill-empty fields (existing wins), append the touch `{ id: crypto.randomUUID(), at: nowIso, channel: 'Other', outcome: 'Other', note: 'Submitted your website form again' }` **directly** (spec §5 forbids `logTouch()` — it advances cadence + clears reminders); return `{ list, created: false, prospectId }`. No match: `{ list: [...list, incoming], created: true, prospectId }`.
   - `buildWebformAiPrompt(flat)`: lean single-record prompt: "Extract ONE lead from this website form submission… return ONLY JSON `{"name":"","phone":"","email":"","state":"","zip":"","situation":""}`, empty strings for unknowns, never invent values." Payload embedded as the `key: value` lines.
 - [ ] **Step 4: Run to verify PASS** — `npm test` → all pass (existing ~395 + these).
-- [ ] **Step 5: Commit** — `git add src/lib/webforms.mjs src/lib/webforms.test.mjs src/lib/prospects.js && git commit -m "Webforms: pure extraction/upsert logic (TDD)"` (include prospects.js only if you exported HEADER_MAP).
+- [ ] **Step 5: Commit** — `git add src/lib/webforms.mjs src/lib/webforms.test.mjs && git commit -m "Webforms: pure extraction/upsert logic, self-contained like ringy.mjs (TDD)"`
 
 ## Task 3: Webhook route
 
@@ -215,9 +233,9 @@ test('buildWebformAiPrompt embeds the payload and demands the fixed JSON shape',
 - [ ] **Step 2: Implement.** Flow:
   1. `await ctx.params` → token; missing → `noop200()`.
   2. Env + admin client (copy pattern). Token lookup on `profiles.webforms_webhook_token`; error or no row → `noop200()` (no oracle).
-  3. **Body parsing (3 encodings):** read `content-type`; JSON → `await req.json()`; `application/x-www-form-urlencoded` → `new URLSearchParams(await req.text())` → object; `multipart/form-data` → `await req.formData()`, keep only string values (skip File parts). Before parsing text bodies, read with a **64KB cap**: `const text = (await req.text()).slice(0, 65536)` (for formData, cap per-value at 8KB when flattening). Unparseable → treat as `{ _raw: text.slice(0, 4000) }` so even garbage becomes a reviewable prospect.
+  3. **Body parsing (3 encodings) — read the body exactly ONCE:** if `content-type` starts with `multipart/form-data` → `await req.formData()`, keep only string values (skip File parts; cap each value at 8KB). Otherwise → `const text = (await req.text()).slice(0, 65536)` (the 64KB cap) then `normalizeBody(contentType, text)` from `webforms.mjs`. `normalizeBody` returning null (garbage) → proceed with `{ _raw: text.slice(0, 4000) }` so even an unparseable body becomes a reviewable prospect. (Never call `req.json()` after `req.text()` — the body stream can only be consumed once.)
   4. `flattenRecord` → `extractWebformFields`.
-  5. **AI fallback only if `!confident`:** call Anthropic Haiku via plain `fetch` (copy the header/model conventions from `src/app/api/import-prospects-ai/route.js` — model `claude-haiku-4-5`, `x-api-key` header) with body = `buildWebformAiPrompt(flat)` and an `AbortController` 8s timeout, wrapped in try/catch. Parse the JSON out of the reply defensively (first `{...}` match). Merge any non-empty AI fields into the extraction (heuristic finds win over AI); result stays `confident:false` → needsReview per spec. AI failure/timeout → continue with what heuristics found (raw preservation covers the rest).
+  5. **AI fallback only if `!confident`:** the repo already ships `@anthropic-ai/sdk` (that's what `import-prospects-ai/route.js:367` uses — `new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })`), so use the SDK (zero-new-deps holds): `client.messages.create({ model: 'claude-haiku-4-5', max_tokens: 500, messages: [{ role: 'user', content: buildWebformAiPrompt(flat) }] })` wrapped in try/catch with a `Promise.race` 8-second timeout (or the SDK's `timeout` option). (If you prefer raw `fetch` instead, the required headers are `x-api-key`, `anthropic-version: 2023-06-01`, `content-type: application/json` against `https://api.anthropic.com/v1/messages` — but the SDK is simpler and already the codebase convention.) Parse the JSON out of the reply defensively (first `{...}` match). Merge any non-empty AI fields into the extraction (heuristic finds win over AI); result stays `confident:false` → needsReview per spec. AI failure/timeout → continue with what heuristics found (raw preservation covers the rest).
   6. `buildWebformProspect` → load `user_kv` `prospects_v1` → `upsertWebformProspect` → **CAS write with the same compare-and-swap retry loop the Ringy route uses** (copy it: re-read on conflict, 5 attempts, backoff `40*attempt` ms).
   7. AFTER the prospect write: best-effort update of `user_kv` key `webforms_config_v1` → `{ lastReceivedAt: now, receivedCount: (n||0)+1 }` (fire-and-forget; failure only logged).
   8. `ok200({ created, needsReview })`. Every failure path above → `noop200()`. Log lines may include userId + counts + whether AI ran — never values.
@@ -265,9 +283,9 @@ test('buildWebformAiPrompt embeds the payload and demands the fixed JSON shape',
   - `curl -X POST <url> --data 'your-name=Ana+Diaz&email%5B%5D=ana%40x.com'` (urlencoded) → created.
   - `curl -X POST <url> -d '{"blob":"???"}' -H 'Content-Type: application/json'` → flagged raw prospect with the payload in notes.
   - Random token URL → 200 `{ok:false}`, nothing created.
-- [ ] **Step 4:** Commit, push branch, open PR titled `"Website Leads: universal form webhook → Prospects"` (body: spec link, what it does, the migration Juan must run, verification notes; ⚠️ merging deploys prod). Do NOT merge.
+- [ ] **Step 4:** Commit, push branch, open PR titled `"Website Leads: universal form webhook → Prospects"` (body: spec link, what it does, the migration Juan must run, verification notes, and a reminder line: "decide on an `[announce]`-tagged Slack deploy at ship time (in-app What's-New entry included)"; ⚠️ merging deploys prod). Do NOT merge.
 
 ## Notes for the executor
-- The `.mjs` module must import `prospects.js` with a relative path (node --test knows nothing about the `@/` alias). Check sibling `.mjs` files for the convention.
+- `webforms.mjs` is SELF-CONTAINED (no project imports) — the `ringy.mjs` precedent. `prospects.js` cannot be imported under `node --test` (extensionless internal imports); do not try.
 - Web-form traffic is low-volume (a visitor at a time) — the CAS loop is belt-and-suspenders, and the 8s AI call in-request is acceptable here (unlike the Ringy burst path, where nothing extra may run before capture — different route, and that rule still stands there).
 - If `prospects_v1` doesn't exist yet for a user (brand-new agent), treat as empty list and create the key — check how the Ringy route handles the missing-row case and mirror it.
