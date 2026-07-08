@@ -110,7 +110,9 @@ function scalarToString(val) {
  * spaces, so `your-name`, `form.phone`, `email[]`, `First Name` all collapse.
  */
 function normKey(key) {
-  return String(key || '').toLowerCase().replace(/[[\]\-_.\s]/g, '');
+  // Collapse to bare alphanumerics so 'your-name', 'Email Address',
+  // 'Pre-existing conditions?', 'ZIP Code' all match their synonym sets.
+  return String(key || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
 // Metadata keys that must NEVER map to a prospect field (still shown in the raw
@@ -129,6 +131,106 @@ const MSG_KEYS   = new Set(['message', 'comments', 'notes', 'details', 'inquiry'
 
 const FIRST_KEYS = new Set(['firstname', 'fname']);
 const LAST_KEYS  = new Set(['lastname', 'lname']);
+
+// Additional structured fields (added 2026-07-04). Keys are normKey-collapsed,
+// covering both clean keys (date_of_birth) and full form labels (Date of Birth).
+const DOB_KEYS     = new Set(['dob', 'dateofbirth', 'birthdate', 'birthday']);
+const INCOME_KEYS  = new Set(['income', 'householdincome', 'yearlyincome', 'annualincome',
+  'yearlyhouseholdincome', 'annualhouseholdincome', 'approximateyearlyhouseholdincome',
+  'approximateincome', 'householdincomerange', 'incomerange']);
+const INDVFAM_KEYS = new Set(['whowillyouneedtoinsure', 'whowillyouinsure', 'whoneedsinsurance',
+  'whoneedscoverage', 'whotoinsure', 'whoareyouinsuring', 'coveragefor', 'insurancefor',
+  'whatbestdescribesyou', 'whobestdescribesyou', 'bestdescribesyou', 'describesyou', 'coveragetype']);
+const HEALTH_KEYS  = new Set(['preexistingconditions', 'preexistingcondition', 'preexisting',
+  'healthconditions', 'healthconcerns', 'healthstatus']);
+const CITY_KEYS    = new Set(['city', 'town']);
+
+// ---------- Field normalizers ----------
+// Group an integer with thousands separators without depending on Intl/ICU.
+function groupThousands(n) {
+  return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+// Exactly the 50 codes in US_STATES (src/lib/commission.js) — the State <select>
+// options. Deliberately NO 'DC': it isn't a dropdown option, so a DC lead must
+// normalize to '' (unsupported) rather than a value the dropdown can't display.
+const STATE_CODES = new Set(['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL',
+  'IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY',
+  'NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY']);
+const STATE_NAME_TO_CODE = {
+  alabama:'AL', alaska:'AK', arizona:'AZ', arkansas:'AR', california:'CA', colorado:'CO',
+  connecticut:'CT', delaware:'DE', florida:'FL', georgia:'GA', hawaii:'HI', idaho:'ID',
+  illinois:'IL', indiana:'IN', iowa:'IA', kansas:'KS', kentucky:'KY', louisiana:'LA', maine:'ME',
+  maryland:'MD', massachusetts:'MA', michigan:'MI', minnesota:'MN', mississippi:'MS', missouri:'MO',
+  montana:'MT', nebraska:'NE', nevada:'NV', newhampshire:'NH', newjersey:'NJ', newmexico:'NM',
+  newyork:'NY', northcarolina:'NC', northdakota:'ND', ohio:'OH', oklahoma:'OK', oregon:'OR',
+  pennsylvania:'PA', rhodeisland:'RI', southcarolina:'SC', southdakota:'SD', tennessee:'TN',
+  texas:'TX', utah:'UT', vermont:'VT', virginia:'VA', washington:'WA', westvirginia:'WV',
+  wisconsin:'WI', wyoming:'WY',
+};
+
+/**
+ * normalizeState(value) — turn a form's state value into the 2-letter code the
+ * PRIM State dropdown expects (US_STATES). 'Florida'→'FL', 'fl'→'FL', 'FL'→'FL'.
+ * Returns '' for anything unrecognized so garbage never lands in the dropdown.
+ */
+export function normalizeState(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const up = raw.toUpperCase();
+  if (STATE_CODES.has(up)) return up;
+  const name = raw.toLowerCase().replace(/[^a-z]/g, '');
+  return STATE_NAME_TO_CODE[name] || '';
+}
+
+/**
+ * normalizeIncomeBand(value) — a range band like "$35,000–$59,999" → its midpoint
+ * as a grouped number ("47,500") for the income box. "Below $X" → midpoint of
+ * [0,X]; "$X+" / plain number → that number. Returns { income, band }.
+ */
+export function normalizeIncomeBand(value) {
+  const band = String(value || '').trim();
+  if (!band) return { income: '', band: '' };
+  const nums = (band.match(/\d[\d,]*/g) || [])
+    .map(n => parseInt(n.replace(/,/g, ''), 10))
+    .filter(Number.isFinite);
+  if (nums.length === 0) return { income: '', band };
+  let mid;
+  if (nums.length >= 2) mid = Math.round((nums[0] + nums[1]) / 2);
+  else if (/below|under|less than|up to/i.test(band)) mid = Math.round(nums[0] / 2);
+  else mid = nums[0]; // "$100,000+", "over $X", or a plain single number
+  return { income: groupThousands(mid), band };
+}
+
+/**
+ * normalizeIndvFamily(value) — a coverage answer → 'Indv' | 'Family' for the
+ * dropdown. Business/Self-Employed insure themselves → 'Indv'. '' if unrecognized
+ * (caller keeps the default). Family is checked first so "family business" → Family.
+ */
+export function normalizeIndvFamily(value) {
+  const v = String(value || '').toLowerCase();
+  if (!v) return '';
+  if (/family|spouse|kids|children|household|couple|dependents|married/.test(v)) return 'Family';
+  if (/individual|just ?me|myself|single|self|business|owner/.test(v)) return 'Indv';
+  return '';
+}
+
+/**
+ * normalizeHealthConcern(value) — a yes/no/unsure flag → PRIM's APPROVED general
+ * impression ("has health concerns" per NoPhiBanner + Terms + the Health Notes
+ * placeholder). Strict matching: only clean yes/no/unsure map — any free-text
+ * (e.g. "diabetes") returns '' so a specific condition is NEVER stored (PHI-safe).
+ */
+export function normalizeHealthConcern(value) {
+  const v = String(value || '').trim().toLowerCase();
+  if (!v) return '';
+  // The `$` anchor is DELIBERATE and load-bearing: only a bare affirmation maps.
+  // "Yes, type 2 diabetes" → '' (no flag) rather than leaking the condition.
+  // Do NOT loosen this to a substring match — it would reintroduce PHI leakage.
+  if (/^(y|yes|true|1)$/.test(v)) return 'Has health concerns';
+  if (/not ?sure|unsure|maybe|don'?t know|idk/.test(v)) return 'May have health concerns (unsure)';
+  return ''; // 'No', 'None', or any specifics → store nothing
+}
 
 /**
  * extractWebformFields(flatOrRaw) — deterministically map recognizable webform
@@ -160,6 +262,11 @@ export function extractWebformFields(raw) {
     if (STATE_KEYS.has(k)) { if (!fields.state) fields.state = value; continue; }
     if (ZIP_KEYS.has(k))   { if (!fields.zip) fields.zip = value; continue; }
     if (MSG_KEYS.has(k))   { if (!fields.situation) fields.situation = value; continue; }
+    if (DOB_KEYS.has(k))     { if (!fields.dob) fields.dob = value; continue; }
+    if (INCOME_KEYS.has(k))  { if (!fields.income) fields.income = value; continue; }
+    if (INDVFAM_KEYS.has(k)) { if (!fields.indvfam) fields.indvfam = value; continue; }
+    if (HEALTH_KEYS.has(k))  { if (!fields.health) fields.health = value; continue; }
+    if (CITY_KEYS.has(k))    { if (!fields.city) fields.city = value; continue; }
     // Unknown key: left for the raw block (not mapped).
   }
 
@@ -231,16 +338,16 @@ export function buildWebformProspect(extraction, raw, nowIso) {
     name,
     phone:         String(fields.phone || '').trim(),
     email:         String(fields.email || '').trim(),
-    state:         String(fields.state || '').trim(),
+    state:         normalizeState(fields.state),            // 'Florida' → 'FL' (dropdown-ready)
     zip:           String(fields.zip || '').trim(),
     timezone:      '',
-    indvOrFamily:  'Indv',
-    dobs:          '',
-    income:        '',
+    indvOrFamily:  normalizeIndvFamily(fields.indvfam) || 'Indv',
+    dobs:          String(fields.dob || '').trim(),
+    income:        normalizeIncomeBand(fields.income).income, // band → midpoint number; band stays in raw block
     quoteSize:     '',
     quotes:        [],
     policyType:    '',
-    meds:          '',
+    meds:          normalizeHealthConcern(fields.health),    // yes/no/unsure → approved general impression only
     situation,
     startDate:     '',
     source:        'Web Lead',

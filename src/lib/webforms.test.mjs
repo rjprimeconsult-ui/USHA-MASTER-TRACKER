@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   flattenRecord, normalizeBody, extractWebformFields, buildRawBlock,
   buildWebformProspect, upsertWebformProspect, buildWebformAiPrompt,
+  normalizeState, normalizeIncomeBand, normalizeIndvFamily, normalizeHealthConcern,
 } from './webforms.mjs';
 
 const NOW = '2026-07-04T18:00:00.000Z';
@@ -130,4 +131,104 @@ test('buildWebformAiPrompt embeds the payload and demands the fixed JSON shape',
   assert.match(p, /weird_field/);
   assert.match(p, /"name"/);
   assert.match(p, /single lead/i);
+});
+
+// ===================== Field mapping & normalization (2026-07-04) =====================
+
+// ---- normalizeState: form value -> the 2-letter code the State dropdown needs ----
+test('normalizeState converts full names and codes to the 2-letter dropdown code', () => {
+  assert.equal(normalizeState('Florida'), 'FL');
+  assert.equal(normalizeState('florida'), 'FL');
+  assert.equal(normalizeState('  FLORIDA '), 'FL');
+  assert.equal(normalizeState('FL'), 'FL');
+  assert.equal(normalizeState('fl'), 'FL');
+  assert.equal(normalizeState('New York'), 'NY');
+  assert.equal(normalizeState('Texas'), 'TX');
+});
+test('normalizeState returns empty for unrecognized input (never garbage in the dropdown)', () => {
+  assert.equal(normalizeState('Nowhere'), '');
+  assert.equal(normalizeState(''), '');
+  assert.equal(normalizeState('ZZ'), '');
+});
+test('normalizeState maps only the 50 US_STATES — DC is not a dropdown option', () => {
+  assert.equal(normalizeState('District of Columbia'), '');
+  assert.equal(normalizeState('Washington DC'), '');
+  assert.equal(normalizeState('DC'), '');
+});
+
+// ---- normalizeIncomeBand: range band -> midpoint number for the income box ----
+test('normalizeIncomeBand returns the band midpoint as a grouped number', () => {
+  assert.equal(normalizeIncomeBand('$35,000–$59,999').income, '47,500');
+  assert.equal(normalizeIncomeBand('$15,000-$34,999').income, '25,000');
+  assert.equal(normalizeIncomeBand('$60,000 – $99,999').income, '80,000');
+});
+test('normalizeIncomeBand handles "Below $X", "$X+", and a plain number', () => {
+  assert.equal(normalizeIncomeBand('Below $15,000').income, '7,500');   // midpoint of 0..15000
+  assert.equal(normalizeIncomeBand('$100,000+').income, '100,000');     // open-ended -> the bound
+  assert.equal(normalizeIncomeBand('50000').income, '50,000');          // already a number
+  assert.equal(normalizeIncomeBand('').income, '');
+  assert.equal(normalizeIncomeBand('n/a').income, '');
+});
+
+// ---- normalizeIndvFamily: coverage answer -> Indv | Family ----
+test('normalizeIndvFamily maps coverage answers to the Indv/Family dropdown', () => {
+  assert.equal(normalizeIndvFamily('Individual'), 'Indv');
+  assert.equal(normalizeIndvFamily('Family'), 'Family');
+  assert.equal(normalizeIndvFamily('Family of 4'), 'Family');
+  assert.equal(normalizeIndvFamily('Self-Employed'), 'Indv');
+  assert.equal(normalizeIndvFamily('Business Owner'), 'Indv');
+  assert.equal(normalizeIndvFamily('Just me'), 'Indv');
+  assert.equal(normalizeIndvFamily('nonsense'), '');   // unrecognized -> caller keeps default
+});
+
+// ---- normalizeHealthConcern: yes/no/unsure -> PRIM's approved general impression ----
+test('normalizeHealthConcern converts a yes/no flag to a general impression (PHI-safe)', () => {
+  assert.equal(normalizeHealthConcern('Yes'), 'Has health concerns');
+  assert.equal(normalizeHealthConcern('yes'), 'Has health concerns');
+  assert.equal(normalizeHealthConcern('Not Sure'), 'May have health concerns (unsure)');
+  assert.equal(normalizeHealthConcern('Unsure'), 'May have health concerns (unsure)');
+  assert.equal(normalizeHealthConcern('No'), '');   // nothing to flag
+  assert.equal(normalizeHealthConcern(''), '');
+});
+
+// ---- extractWebformFields captures the new fields (raw) ----
+test('extractWebformFields captures dob, income, coverage, health, city (label or clean keys)', () => {
+  const r = extractWebformFields({
+    'First Name': 'John', 'Last Name': 'Smith', 'Email Address': 'j@x.com', 'Phone Number': '3055551234',
+    'Date of Birth': '1985-03-02', 'Approximate yearly household income?': '$35,000–$59,999',
+    'Who will you need to insure?': 'Family', 'Pre-existing conditions?': 'Yes',
+    'City': 'MIRAMAR', 'ZIP Code': '33027', 'State': 'Florida',
+  });
+  assert.equal(r.fields.name, 'John Smith');
+  assert.equal(r.fields.dob, '1985-03-02');
+  assert.equal(r.fields.income, '$35,000–$59,999');
+  assert.equal(r.fields.indvfam, 'Family');
+  assert.equal(r.fields.health, 'Yes');
+  assert.equal(r.confident, true);
+});
+
+// ---- buildWebformProspect populates the structured fields (the whole form, end-to-end) ----
+test('buildWebformProspect fills state(FL)/income(midpoint)/dob/indvOrFamily/health-notes', () => {
+  const flat = {
+    first_name: 'John', last_name: 'Smith', email: 'j@x.com', phone: '3055551234',
+    date_of_birth: '1985-03-02', household_income: '$35,000–$59,999',
+    who_to_insure: 'Family', pre_existing_conditions: 'Yes',
+    city: 'MIRAMAR', zip: '33027', state: 'Florida',
+  };
+  const p = buildWebformProspect(extractWebformFields(flat), flat, NOW);
+  assert.equal(p.state, 'FL');                 // dropdown-ready
+  assert.equal(p.income, '47,500');            // band midpoint
+  assert.equal(p.dobs, '1985-03-02');
+  assert.equal(p.indvOrFamily, 'Family');
+  assert.equal(p.meds, 'Has health concerns'); // general impression, not the raw "Yes"
+  assert.match(p.situation, /household_income: \$35,000–\$59,999/); // band preserved in notes (raw block)
+  assert.match(p.situation, /city: MIRAMAR/);  // city preserved (no dedicated field)
+  assert.ok(!p.needsReview);
+});
+test('health "No" leaves Health Notes blank; unrecognized state stays blank', () => {
+  const flat = { name: 'A B', email: 'a@x.com', pre_existing_conditions: 'No', state: 'Atlantis' };
+  const p = buildWebformProspect(extractWebformFields(flat), flat, NOW);
+  assert.equal(p.meds, '');
+  assert.equal(p.state, '');
+  assert.equal(p.indvOrFamily, 'Indv'); // default kept when no coverage answer
 });
