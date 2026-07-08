@@ -151,22 +151,20 @@ function groupThousands(n) {
   return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
 
-// Exactly the 50 codes in US_STATES (src/lib/commission.js) — the State <select>
-// options. Deliberately NO 'DC': it isn't a dropdown option, so a DC lead must
-// normalize to '' (unsupported) rather than a value the dropdown can't display.
-const STATE_CODES = new Set(['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL',
-  'IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY',
-  'NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY']);
+// The 31 WORKING-STATE codes — must stay identical to US_STATES in
+// src/lib/commission.js (the state <select> options). A web lead from a
+// non-working state normalizes to '' (the dropdown can't display it), matching
+// the UI. STATE_NAME_TO_CODE only holds these 31 names, so a full-name lookup
+// for a non-working state (e.g. "California") also returns ''.
+const STATE_CODES = new Set(['AL','AR','CO','DE','FL','GA','IA','IL','IN','KS','KY','LA','MD',
+  'MI','MO','MS','MT','NC','NE','NV','OH','OK','SC','SD','TN','TX','UT','VA','WI','WV','WY']);
 const STATE_NAME_TO_CODE = {
-  alabama:'AL', alaska:'AK', arizona:'AZ', arkansas:'AR', california:'CA', colorado:'CO',
-  connecticut:'CT', delaware:'DE', florida:'FL', georgia:'GA', hawaii:'HI', idaho:'ID',
-  illinois:'IL', indiana:'IN', iowa:'IA', kansas:'KS', kentucky:'KY', louisiana:'LA', maine:'ME',
-  maryland:'MD', massachusetts:'MA', michigan:'MI', minnesota:'MN', mississippi:'MS', missouri:'MO',
-  montana:'MT', nebraska:'NE', nevada:'NV', newhampshire:'NH', newjersey:'NJ', newmexico:'NM',
-  newyork:'NY', northcarolina:'NC', northdakota:'ND', ohio:'OH', oklahoma:'OK', oregon:'OR',
-  pennsylvania:'PA', rhodeisland:'RI', southcarolina:'SC', southdakota:'SD', tennessee:'TN',
-  texas:'TX', utah:'UT', vermont:'VT', virginia:'VA', washington:'WA', westvirginia:'WV',
-  wisconsin:'WI', wyoming:'WY',
+  alabama:'AL', arkansas:'AR', colorado:'CO', delaware:'DE', florida:'FL', georgia:'GA',
+  iowa:'IA', illinois:'IL', indiana:'IN', kansas:'KS', kentucky:'KY', louisiana:'LA',
+  maryland:'MD', michigan:'MI', missouri:'MO', mississippi:'MS', montana:'MT', northcarolina:'NC',
+  nebraska:'NE', nevada:'NV', ohio:'OH', oklahoma:'OK', southcarolina:'SC', southdakota:'SD',
+  tennessee:'TN', texas:'TX', utah:'UT', virginia:'VA', wisconsin:'WI', westvirginia:'WV',
+  wyoming:'WY',
 };
 
 /**

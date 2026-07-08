@@ -5,7 +5,7 @@ import {
   Loader2, Info, AlertCircle, ChevronRight, Plus, X,
 } from 'lucide-react';
 import {
-  TIERS, projectCommission, US_STATES, DEFAULT_ADVANCE_MONTHS,
+  TIERS, projectCommission, stateOptions, DEFAULT_ADVANCE_MONTHS,
 } from '@/lib/commission';
 import { MAIN_PRODUCTS, ADDON_PRODUCTS, ASSOCIATION_PLANS } from '@/lib/constants';
 import { fmt2 } from '@/lib/utils';
@@ -207,7 +207,7 @@ export default function CommissionCalculator({ defaultTier = 'WA', onSaveDefault
               <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">State</label>
               <select className={inp} value={deal.state} onChange={e => set({ state: e.target.value })}>
                 <option value="">— pick —</option>
-                {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                {stateOptions(deal.state).map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
             <div>

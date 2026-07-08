@@ -7,7 +7,7 @@ import {
   compatibleAssociations, isPricedAssociation, ASSOCIATION_PRICING,
   productPremium,
 } from '@/lib/constants';
-import { US_STATES, projectCommission, DEFAULT_ADVANCE_MONTHS } from '@/lib/commission';
+import { stateOptions, projectCommission, DEFAULT_ADVANCE_MONTHS } from '@/lib/commission';
 import { today, fmt2, formatPhoneInput } from '@/lib/utils';
 import { useLeadOptionsAll, addCustomLeadOption, ADD_CUSTOM_VALUE } from '@/lib/customLeadOptions';
 import SendWelcomeEmail from './SendWelcomeEmail';
@@ -301,7 +301,7 @@ export default function LeadForm({ open, lead, tier = 'WA', onSave, onClose, onD
             <Field label="State (affects some rates)">
               <select className={inp} value={form.state || ''} onChange={e => set({ state: e.target.value })}>
                 <option value="">— select —</option>
-                {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                {stateOptions(form.state).map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </Field>
             {showClosedDate && (

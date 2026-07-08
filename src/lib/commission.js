@@ -42,14 +42,23 @@ export function currentAdvanceMonths(history, fallback = DEFAULT_ADVANCE_MONTHS)
   return getAdvanceMonthsForDate(history, new Date().toISOString().slice(0, 10), fallback);
 }
 
-// US states most relevant for rate variations. We keep all 50 so agents can pick,
-// but only a few trigger alternate rates.
+// Working states — the only states we write these products in. Drives the state
+// <select> across Prospects / Leads / Commission Calculator. Reduced from all 50
+// to these 31 on 2026-07-04 (operator). Keep in sync with STATE_CODES /
+// STATE_NAME_TO_CODE in src/lib/webforms.mjs (the web-lead state normalizer).
 export const US_STATES = [
-  'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA',
-  'KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ',
-  'NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT',
-  'VA','WA','WV','WI','WY',
+  'AL','AR','CO','DE','FL','GA','IA','IL','IN','KS','KY','LA','MD','MI','MO',
+  'MS','MT','NC','NE','NV','OH','OK','SC','SD','TN','TX','UT','VA','WI','WV','WY',
 ];
+
+// State <select> options that ALWAYS include the record's current value even if
+// it's no longer a working state — so an existing out-of-list record (e.g. an old
+// 'CA' prospect) still displays and isn't silently blanked. New selections are
+// limited to US_STATES.
+export function stateOptions(current) {
+  const c = String(current || '').trim();
+  return c && !US_STATES.includes(c) ? [c, ...US_STATES] : US_STATES;
+}
 
 // States where HealthAccess Suite has reduced rates
 const HEALTH_ACCESS_REDUCED_STATES = new Set(['CO', 'MD', 'SD']);
