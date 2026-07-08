@@ -1632,7 +1632,7 @@ export default function ProspectsView({
         <div className="flex items-center gap-2 flex-wrap justify-end">
           <input type="file" ref={fileRef} accept=".csv,.xlsx,.xls" onChange={onPickFile} className="hidden" />
           {onSyncTextDrip && (
-            <Tooltip label="Pull tagged contacts from TextDrip into Prospects">
+            <Tooltip label="Pull tagged contacts from TextDrip into Prospects" side="bottom">
               <button
                 onClick={async () => {
                   if (tdSyncing) return;
@@ -1647,7 +1647,7 @@ export default function ProspectsView({
             </Tooltip>
           )}
           {!readOnly && (<>
-          <Tooltip label="Drop any pipeline file (Excel, CSV, PDF, screenshot) — AI extracts every prospect">
+          <Tooltip label="Drop any pipeline file (Excel, CSV, PDF, screenshot) — AI extracts every prospect" side="bottom">
             <button onClick={() => setShowSmartImport(true)}
               className="bg-gradient-to-br from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white rounded-lg px-3 py-2 text-sm font-semibold flex items-center gap-1.5 shadow-md shadow-indigo-500/30">
               ✨ Smart Import (AI)
@@ -1657,7 +1657,7 @@ export default function ProspectsView({
             className="border border-slate-200 hover:bg-slate-50 rounded-lg px-3 py-2 text-sm font-semibold flex items-center gap-1.5">
             <Upload size={14} /> Classic
           </button>
-          <Tooltip label="Color-code prospect cards by lead source">
+          <Tooltip label="Color-code prospect cards by lead source" side="bottom">
             <button onClick={() => setShowSourceColors(true)}
               className="border border-violet-200 hover:border-violet-400 hover:bg-violet-50 text-violet-700 rounded-lg px-3 py-2 text-sm font-semibold flex items-center gap-1.5">
               <Palette size={14} /> Color sources
