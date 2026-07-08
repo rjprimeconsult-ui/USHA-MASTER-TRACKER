@@ -4,7 +4,7 @@ import { X, Trash2, ArrowRight, Calendar } from 'lucide-react';
 import {
   PROSPECT_SOURCES, PROSPECT_CRMS, PROSPECT_POLICY_TYPES,
 } from '@/lib/constants';
-import { US_STATES } from '@/lib/commission';
+import { stateOptions } from '@/lib/commission';
 import { timezoneFromState, QUOTE_PRODUCTS } from '@/lib/prospects';
 import { formatPhoneInput, formatCurrencyInput, formatDobInput, toDateTimeLocalInput, uid } from '@/lib/utils';
 import { MoneyCell, GlassModal } from './motion/MotionPrimitives';
@@ -180,7 +180,7 @@ export default function ProspectForm({ open, prospect, stages, customFields = []
             <Field label="State">
               <select className={inp} value={form.state || ''} onChange={e => onStateChange(e.target.value)}>
                 <option value="">—</option>
-                {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                {stateOptions(form.state).map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </Field>
             <Field label="ZIP">

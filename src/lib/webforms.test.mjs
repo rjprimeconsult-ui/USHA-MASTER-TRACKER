@@ -142,7 +142,7 @@ test('normalizeState converts full names and codes to the 2-letter dropdown code
   assert.equal(normalizeState('  FLORIDA '), 'FL');
   assert.equal(normalizeState('FL'), 'FL');
   assert.equal(normalizeState('fl'), 'FL');
-  assert.equal(normalizeState('New York'), 'NY');
+  assert.equal(normalizeState('North Carolina'), 'NC');
   assert.equal(normalizeState('Texas'), 'TX');
 });
 test('normalizeState returns empty for unrecognized input (never garbage in the dropdown)', () => {
@@ -150,9 +150,11 @@ test('normalizeState returns empty for unrecognized input (never garbage in the 
   assert.equal(normalizeState(''), '');
   assert.equal(normalizeState('ZZ'), '');
 });
-test('normalizeState maps only the 50 US_STATES — DC is not a dropdown option', () => {
-  assert.equal(normalizeState('District of Columbia'), '');
-  assert.equal(normalizeState('Washington DC'), '');
+test('normalizeState maps ONLY the working states — non-working states (CA, NY, DC) → blank', () => {
+  assert.equal(normalizeState('California'), '');
+  assert.equal(normalizeState('CA'), '');
+  assert.equal(normalizeState('New York'), '');
+  assert.equal(normalizeState('NY'), '');
   assert.equal(normalizeState('DC'), '');
 });
 
