@@ -275,6 +275,14 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
     // Total commission income (own + override) = what the agent's "Earned" really is.
     const scopedEarned          = scopedOwnEarned + scopedOverrideIncome;
     const scopedAutoDealCount   = scopedIssued.length;
+    // CPA / True-CPA denominator counts EVERY submitted deal in the period —
+    // Issued, Pending, Declined, Not taken, Withdrawn — not just Issued. The
+    // lead-acquisition cost was spent to submit all of them (Juan, 2026-07-10),
+    // so per-deal cost divides by all submissions. Dated by closedDate||dateAdded
+    // to match the Portal Clients / Closed Deals list (see ClosedDeals `dealDate`).
+    // Money calcs above (Earned, premiums, product mix) stay Issued-only via
+    // scopedIssued — you don't earn commission on a declined deal.
+    const scopedSubmittedDealCount = leads.filter(l => inPeriod(l.closedDate || l.dateAdded)).length;
     // Use the same premium definition as Reports + Book of Business AV
     // (main + add-ons). Association is already folded into mainProductPremium
     // for portal-imported leads, so adding it separately double-counts.
@@ -308,8 +316,8 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
     const scopedTrueCpaBooks = scopedBookLeadInvestment + scopedBookSoftware;
     const scopedInvested = scopedInvestedLeadAcq + scopedTrueCpaBooks;
     const scopedTrueCpaBase = scopedInvested; // alias kept for breakdown panel
-    const scopedTrueCpa = scopedAutoDealCount > 0 ? scopedInvested / scopedAutoDealCount : 0;
-    const scopedCpa = scopedAutoDealCount > 0 ? scopedInvested / scopedAutoDealCount : 0;
+    const scopedTrueCpa = scopedSubmittedDealCount > 0 ? scopedInvested / scopedSubmittedDealCount : 0;
+    const scopedCpa = scopedSubmittedDealCount > 0 ? scopedInvested / scopedSubmittedDealCount : 0;
 
     // ROI uses the same denominator so all per-deal metrics agree:
     //   ROI = (Earned − Invested) ÷ Invested × 100
@@ -378,6 +386,7 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
     return {
       scopedInvestments, scopedIssued, scopedInvested, scopedInvestedLeadAcq,
       scopedOwnEarned, scopedOverrideIncome, scopedOverrideCount, scopedEarned, scopedAutoDealCount,
+      scopedSubmittedDealCount,
       scopedOwnSource, scopedOwnAdvanceRows,
       scopedCpa, scopedRoi, scopedPremiums, scopedNet,
       scopedBusinessExpenses, scopedBusinessExpensesNonInvested, scopedBusinessIncome, scopedTrueNet,
@@ -394,6 +403,7 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
   const {
     scopedInvestments, scopedIssued, scopedInvested, scopedInvestedLeadAcq,
     scopedOwnEarned, scopedOverrideIncome, scopedOverrideCount, scopedEarned, scopedAutoDealCount,
+    scopedSubmittedDealCount,
     scopedOwnSource, scopedOwnAdvanceRows,
     scopedCpa, scopedRoi, scopedPremiums, scopedNet,
     scopedBusinessExpenses, scopedBusinessExpensesNonInvested, scopedBusinessIncome, scopedTrueNet,
@@ -880,7 +890,7 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
                 : 'SOFTWARE category in Books (Calendly, ChatGPT, Canva, etc.)',
               amount: scopedBookSoftware },
           ]}
-          formula={`${fmt(scopedTrueCpaBase)} ÷ ${scopedAutoDealCount} deals = ${fmt2(scopedTrueCpa)}`}
+          formula={`${fmt(scopedTrueCpaBase)} ÷ ${scopedSubmittedDealCount} deals = ${fmt2(scopedTrueCpa)}`}
           excluded={`Office rent · Recruiting · Travel · Vehicle · Meals · Healthcare · Phone/Internet · Coaching · Other — these are real business expenses but don't scale per-deal so they flow into True Net instead.${scopedBookSoftwarePlatformOverlap > 0 ? ` Plus ${fmt2(scopedBookSoftwarePlatformOverlap)} of TextDrip/Ringy/VanillaSoft from Books SOFTWARE was excluded as Platforms-overlap.` : ''}`}
           totalLabel="True CPA"
           totalDisplay={fmt2(scopedTrueCpa)}
