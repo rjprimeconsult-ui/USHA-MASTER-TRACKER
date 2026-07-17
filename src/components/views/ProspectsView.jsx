@@ -124,7 +124,10 @@ function FollowupDot({ prospect }) {
   if (!m) return null; // 'none' / 'done'
   return (
     <Tooltip label={m.t}>
-      <span className={`inline-block w-2 h-2 rounded-full ${m.c} flex-shrink-0`} />
+      {/* role+aria-label: the dot is the only signal of follow-up status, and
+          the CSS tooltip is hover-only — without an accessible name, screen
+          readers can't tell which prospects are overdue (title= used to do this). */}
+      <span role="img" aria-label={m.t} className={`inline-block w-2 h-2 rounded-full ${m.c} flex-shrink-0`} />
     </Tooltip>
   );
 }
