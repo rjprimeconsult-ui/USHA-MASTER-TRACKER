@@ -389,7 +389,9 @@ export async function POST(req) {
     return Response.json({ error: e?.message || 'network error' }, { status: 502 });
   }
 
-  console.log(`[email/send] userId=${userId} leadId=${leadId} recipient=${recipient} testMode=${testMode} messageId=${resendResult?.id || '?'}`);
+  // No recipient email in logs (customer PII) — leadId + Resend messageId
+  // give full correlation for debugging without it.
+  console.log(`[email/send] userId=${userId} leadId=${leadId} testMode=${testMode} messageId=${resendResult?.id || '?'}`);
 
   return Response.json({
     ok: true,

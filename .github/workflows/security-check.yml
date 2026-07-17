@@ -19,9 +19,9 @@ jobs:
   audit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '24'
 
@@ -30,12 +30,17 @@ jobs:
           echo "=== PRIM dependency security check — $(date -u) ==="
           npm audit --json > audit.json 2>/dev/null || true
 
-          read CRIT HIGH MOD LOW < <(node -e '
+          # Here-string (NOT `< <(...)` process substitution): the node script
+          # prints no trailing newline, so `read` from a process substitution
+          # exits 1 at EOF and GitHub's `bash -e` kills the whole step — this
+          # is why run #1 (2026-07-17) failed. `<<<` appends a newline, so
+          # read succeeds. Verified locally under `bash -e` before shipping.
+          read CRIT HIGH MOD LOW <<< "$(node -e '
             let a = {};
             try { a = require("./audit.json"); } catch (e) {}
             const v = (a.metadata && a.metadata.vulnerabilities) || {};
             process.stdout.write([v.critical||0, v.high||0, v.moderate||0, v.low||0].join(" "));
-          ')
+          ')"
 
           echo ""
           echo "Summary:  Critical=$CRIT  High=$HIGH  Moderate=$MOD  Low=$LOW"
