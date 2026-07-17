@@ -151,6 +151,13 @@ live on the app host.
    `https://app.primtracker.com`; "Start free trial" (`:89,135,921,1065,1169`) →
    `https://app.primtracker.com/pricing`. Build from a marketing-side
    `NEXT_PUBLIC_APP_URL` constant (not scattered literals).
+   - **Pricing-page → sign-up CTA (owner-confirmed funnel):** `app.primtracker.com/pricing`
+     must carry a clear "Get started / Sign up" button that opens the app in
+     **sign-up mode**. Target: the app root with a sign-up hint (`/?signup=1`) —
+     the existing paywall path already uses `/?signup=1` (`PaywallGate.jsx`), so
+     `SignInScreen`/`AuthGate` should honor that param to default `mode='signup'`
+     (add the param read if not already present). Full funnel: marketing "Start
+     free trial" → `app./pricing` → "Get started" → `app./?signup=1` (sign-up).
 6. **Logout** → app sign-in screen (`app.primtracker.com/`), owner-confirmed.
 7. **`noindex` the app subdomain** — emit `X-Robots-Tag: noindex` from middleware
    when host = app; marketing stays indexable. **New (greenfield):** add
@@ -227,10 +234,11 @@ live on the app host.
 - `/api` + static email assets served on both hosts (owner-confirmed).
 - **`/pricing` stays on the app host** (checkout needs the app-origin session).
 
-## 10. Open questions for the plan phase
+## 10. Resolved / plan-phase notes
 
-- "Start free trial" → `app.primtracker.com/pricing` (adopted, per §3.3) vs a
-  dedicated signup deep-link — confirm the exact target with owner in the plan.
+- **RESOLVED (owner):** "Start free trial" → `app.primtracker.com/pricing`, and the
+  pricing page carries a "Get started / Sign up" button → app sign-up (`/?signup=1`).
+  Full funnel locked in §4.5.
 - `noindex` mechanism: `X-Robots-Tag` header via middleware (host-aware, simplest)
   — adopted; confirm no conflict with existing `layout.js` metadata.
 - robots/sitemap/canonical are net-new files — keep minimal (crawler → marketing host).
