@@ -16,12 +16,12 @@ import MigrationPrompt from './MigrationPrompt';
  * (landing, pricing, legal) skip the gate entirely so unauth visitors can
  * see them.
  */
-export default function AuthGate({ children }) {
+export default function AuthGate({ children, isMarketingHost = false }) {
   const { user, loading } = useAuth();
   const pathname = usePathname();
 
   // Public marketing/legal pages bypass auth completely.
-  if (isPublicRoute(pathname)) return children;
+  if (isPublicRoute(pathname, { isMarketingHost })) return children;
 
   if (!supabaseConfigured()) {
     // Dev fallback — show a banner but let the app run on localStorage
