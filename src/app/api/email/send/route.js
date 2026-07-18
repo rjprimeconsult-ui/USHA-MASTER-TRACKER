@@ -244,7 +244,10 @@ export async function POST(req) {
   // (physical address + working unsubscribe + honor opt-outs). Welcome is a
   // transactional message (and locked to the caller's own address above), so it
   // is not gated by the suppression list.
-  const isCommercial = kind === 'outreach' || kind === 'post-sale';
+  // Default-commercial: anything that ISN'T the self-locked transactional
+  // 'welcome' is treated as commercial, so no future/unknown kind can ever slip
+  // out without suppression checking + the CAN-SPAM unsubscribe footer/headers.
+  const isCommercial = kind !== 'welcome';
 
   // Honor opt-outs BEFORE doing any send work: if this recipient has
   // unsubscribed from this agent, skip the Resend call entirely and report it
