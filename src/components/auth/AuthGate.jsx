@@ -4,19 +4,10 @@ import { usePathname } from 'next/navigation';
 import { Mail, Lock, AlertCircle, Loader2 } from 'lucide-react';
 import { PrimAppIcon } from '@/components/PrimLogo';
 import { supabase, supabaseConfigured } from '@/lib/supabase';
+import { isPublicRoute } from '@/lib/routeAccess';
 import { useAuth } from './AuthProvider';
 import ConstellationBackground from '../motion/ConstellationBackground';
 import MigrationPrompt from './MigrationPrompt';
-
-// Routes that render fully WITHOUT authentication — marketing /
-// pricing / legal pages. Everything else stays gated. Match by
-// prefix so nested routes inherit (e.g. /landing/* ).
-const PUBLIC_ROUTE_PREFIXES = ['/landing', '/pricing', '/privacy', '/terms'];
-
-function isPublicRoute(pathname) {
-  if (!pathname) return false;
-  return PUBLIC_ROUTE_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
-}
 
 /**
  * AuthGate — wraps the app and shows the sign-in / sign-up screen until the
