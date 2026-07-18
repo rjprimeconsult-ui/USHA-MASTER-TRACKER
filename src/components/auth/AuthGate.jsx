@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { Mail, Lock, AlertCircle, Loader2 } from 'lucide-react';
 import { PrimAppIcon } from '@/components/PrimLogo';
 import { supabase, supabaseConfigured } from '@/lib/supabase';
@@ -54,7 +54,8 @@ export default function AuthGate({ children, isMarketingHost = false }) {
 }
 
 function SignInScreen() {
-  const [mode, setMode] = useState('signin'); // 'signin' | 'signup'
+  const searchParams = useSearchParams();
+  const [mode, setMode] = useState(searchParams.get('signup') === '1' ? 'signup' : 'signin'); // 'signin' | 'signup'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
