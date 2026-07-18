@@ -26,6 +26,17 @@ export function middleware(request) {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set('x-prim-role', role);
 
+  // Inert until cutover: while the split flag is OFF, www/apex IS the current
+  // COMBINED production host (not the app subdomain), so it must behave exactly
+  // as today — a pure pass-through. Skip the app-role `/landing`→marketing 308
+  // and the `noindex` header, both of which are only correct for the real
+  // app.primtracker.com subdomain. (app.primtracker.com is never www/apex, so it
+  // always keeps full app-role behavior regardless of the flag.)
+  const isApexOrWww = bareHost === 'www.primtracker.com' || bareHost === 'primtracker.com';
+  if (isApexOrWww && !marketingSplitEnabled) {
+    return NextResponse.next({ request: { headers: requestHeaders } });
+  }
+
   let res;
   if (decision.type === 'rewrite') {
     const to = url.clone();
