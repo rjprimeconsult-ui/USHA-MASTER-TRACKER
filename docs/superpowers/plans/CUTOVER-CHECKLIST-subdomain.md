@@ -15,6 +15,10 @@ flag flip. Spec: `docs/superpowers/specs/2026-07-17-marketing-app-subdomain-spli
 - [ ] Confirm the PR is merged and the production deploy is **READY** (Vercel dashboard).
 - [ ] With `MARKETING_SPLIT_ENABLED` still unset, sanity-check `www.primtracker.com`
       works exactly as today (agents sign in, app loads). It must — the flag is off.
+- [ ] Note: while `NEXT_PUBLIC_SITE_URL` is unset (pre-cutover), all "Open PRIM" links
+      in emails/Slack/tickets safely default to `www.primtracker.com` (the current app
+      origin), so nothing breaks in the merge→cutover window. Step 2 sets the var to the
+      app subdomain, which flips those links to `app.primtracker.com` at go-live.
 
 ## Step 1 — DNS (at your domain registrar)
 - [ ] Add the record Vercel shows when you add the domain in Step 2 — it is typically:
