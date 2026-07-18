@@ -18,6 +18,7 @@ import webpush from 'web-push';
 import { computePaymentAlerts } from '@/lib/paymentAlerts';
 import { TAKEN_STAGES, PENDING_STAGES, NOT_TAKEN_STAGES, PLATFORM_EXPENSE_CATEGORIES } from '@/lib/constants';
 import { dueStatus } from '@/lib/followupEngine.mjs';
+import { appUrl } from '@/lib/appUrl.mjs';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -206,7 +207,7 @@ function htmlBody({ name, todayAppts, overdueFollowups, paymentAlerts = [], dige
       <table width="100%" style="border-collapse:collapse;">${overdueRows}</table>
       ${paymentRowsHtml(paymentAlerts)}
       <div style="margin-top:24px;text-align:center;">
-        <a href="https://primtracker.com" style="display:inline-block;background:#4f46e5;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">Open PRIM</a>
+        <a href="${appUrl()}" style="display:inline-block;background:#4f46e5;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">Open PRIM</a>
       </div>
     </td></tr>
     <tr><td style="border-top:1px solid #e2e8f0;padding:16px 24px;text-align:center;font-size:11px;color:#94a3b8;">
@@ -372,7 +373,7 @@ export async function GET(req) {
           const { dead } = await sendPush(subs, {
             title: 'PRIM',
             body: pushBody,
-            url: 'https://www.primtracker.com',
+            url: appUrl(),
             urgent: paymentAlerts.some(a => a.tier === 'urgent'),
           });
           // Prune expired subscriptions so we don't keep pushing to dead endpoints.

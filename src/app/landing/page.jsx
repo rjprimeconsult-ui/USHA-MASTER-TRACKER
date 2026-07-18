@@ -20,6 +20,7 @@ import {
   Volume2, VolumeX,
 } from 'lucide-react';
 import { PrimMark } from '@/components/PrimLogo';
+import { appUrl } from '@/lib/appUrl.mjs';
 
 // ----------------------------------------------------------------
 // Brand tokens — matched to PRIM's app accent palette so the
@@ -85,8 +86,8 @@ function Hero() {
           <a href="#faq" className="hover:text-white transition-colors">FAQ</a>
         </div>
         <div className="flex items-center gap-3">
-          <a href="/" className="text-sm font-medium" style={{ color: BRAND.textMuted }}>Sign in</a>
-          <a href="/pricing"
+          <a href={appUrl()} className="text-sm font-medium" style={{ color: BRAND.textMuted }}>Sign in</a>
+          <a href={`${appUrl()}/pricing`}
             className="bg-white text-slate-900 text-sm font-semibold px-4 py-2 rounded-lg hover:bg-slate-100 transition">
             Start free trial
           </a>
@@ -132,7 +133,7 @@ function Hero() {
           </p>
 
           <div className="mt-9 flex flex-wrap items-center gap-3">
-            <a href="/pricing"
+            <a href={`${appUrl()}/pricing`}
               className="inline-flex items-center gap-2 text-white font-semibold px-6 py-3.5 rounded-xl shadow-2xl transition-transform hover:scale-[1.02]"
               style={{
                 background: `linear-gradient(135deg, ${BRAND.accent} 0%, ${BRAND.accent2} 100%)`,
@@ -918,7 +919,7 @@ function SeeItInAction() {
             </div>
 
             <a
-              href="/pricing"
+              href={`${appUrl()}/pricing`}
               className="inline-flex items-center gap-2 rounded-xl px-6 py-3 font-bold text-sm transition hover:scale-[1.02]"
               style={{
                 background: `linear-gradient(135deg, ${BRAND.accent}, ${BRAND.accent2})`,
@@ -1062,7 +1063,7 @@ function PricingTeaser() {
                   </li>
                 ))}
               </ul>
-              <a href="/pricing"
+              <a href={`${appUrl()}/pricing`}
                 className="mt-8 inline-flex items-center justify-center gap-2 font-semibold py-3 rounded-xl transition-transform hover:scale-[1.02]"
                 style={t.highlight ? {
                   background: `linear-gradient(135deg, ${BRAND.accent}, ${BRAND.accent2})`,
@@ -1166,7 +1167,7 @@ function FinalCta() {
           7 days free. Cancel anytime. Built by an agent who got tired of guessing.
         </p>
         <div className="mt-9">
-          <a href="/pricing"
+          <a href={`${appUrl()}/pricing`}
             className="inline-flex items-center gap-2 text-white font-semibold px-7 py-4 rounded-xl transition-transform hover:scale-[1.02]"
             style={{
               background: `linear-gradient(135deg, ${BRAND.accent} 0%, ${BRAND.accent2} 100%)`,

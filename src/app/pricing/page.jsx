@@ -168,6 +168,20 @@ export default function PricingPage() {
           })}
         </div>
 
+        {/* Explicit sign-up path. The plan buttons above route a logged-out
+            visitor into checkout (startCheckout bounces them to /?signup=1),
+            but new visitors also get a clear, always-visible way to create an
+            account first. Relative link — stays on the app host, where
+            ?signup=1 opens sign-up mode. */}
+        <div className="text-center mt-10">
+          <a
+            href="/?signup=1"
+            className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 px-5 py-2.5 text-sm font-semibold transition"
+          >
+            New here? Create your account →
+          </a>
+        </div>
+
         {/* Footer copy */}
         <div className="text-center mt-12 text-sm text-slate-500 max-w-2xl mx-auto">
           <p className="mb-2">

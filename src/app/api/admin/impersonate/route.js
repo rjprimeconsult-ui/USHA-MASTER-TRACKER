@@ -19,6 +19,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
+import { appUrl } from '@/lib/appUrl.mjs';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -93,7 +94,7 @@ export async function POST(req) {
 
     // 5. Generate a magic-link for the target. type=magiclink requires the
     //    user to already exist — we don't want silent account creation here.
-    const origin = req.headers.get('origin') || `https://primtracker.com`;
+    const origin = req.headers.get('origin') || appUrl();
     let linkData, linkErr;
     try {
       const result = await admin.auth.admin.generateLink({

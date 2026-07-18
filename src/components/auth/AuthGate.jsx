@@ -1,22 +1,13 @@
 'use client';
 import { useState } from 'react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { Mail, Lock, AlertCircle, Loader2 } from 'lucide-react';
 import { PrimAppIcon } from '@/components/PrimLogo';
 import { supabase, supabaseConfigured } from '@/lib/supabase';
+import { isPublicRoute } from '@/lib/routeAccess.mjs';
 import { useAuth } from './AuthProvider';
 import ConstellationBackground from '../motion/ConstellationBackground';
 import MigrationPrompt from './MigrationPrompt';
-
-// Routes that render fully WITHOUT authentication — marketing /
-// pricing / legal pages. Everything else stays gated. Match by
-// prefix so nested routes inherit (e.g. /landing/* ).
-const PUBLIC_ROUTE_PREFIXES = ['/landing', '/pricing', '/privacy', '/terms'];
-
-function isPublicRoute(pathname) {
-  if (!pathname) return false;
-  return PUBLIC_ROUTE_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
-}
 
 /**
  * AuthGate — wraps the app and shows the sign-in / sign-up screen until the
@@ -25,12 +16,12 @@ function isPublicRoute(pathname) {
  * (landing, pricing, legal) skip the gate entirely so unauth visitors can
  * see them.
  */
-export default function AuthGate({ children }) {
+export default function AuthGate({ children, isMarketingHost = false }) {
   const { user, loading } = useAuth();
   const pathname = usePathname();
 
   // Public marketing/legal pages bypass auth completely.
-  if (isPublicRoute(pathname)) return children;
+  if (isPublicRoute(pathname, { isMarketingHost })) return children;
 
   if (!supabaseConfigured()) {
     // Dev fallback — show a banner but let the app run on localStorage
@@ -63,7 +54,8 @@ export default function AuthGate({ children }) {
 }
 
 function SignInScreen() {
-  const [mode, setMode] = useState('signin'); // 'signin' | 'signup'
+  const searchParams = useSearchParams();
+  const [mode, setMode] = useState(searchParams.get('signup') === '1' ? 'signup' : 'signin'); // 'signin' | 'signup'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);

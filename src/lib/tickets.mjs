@@ -5,9 +5,11 @@
 // admin queue) and is never placed in an outbound email. `description` is not
 // even a parameter of buildSubmitEmail — it structurally can't leak.
 
+import { appUrl } from './appUrl.mjs';
+
 export const TICKET_CATEGORIES = ['Upload', 'Import', 'Login', 'Data looks wrong', 'Billing', 'Other', 'Custom'];
 
-const SITE = 'https://www.primtracker.com';
+const SITE = appUrl();
 
 export function validateTicketInput({ category, custom_category, description, context } = {}) {
   if (!TICKET_CATEGORIES.includes(category)) return { ok: false, error: 'Invalid category' };

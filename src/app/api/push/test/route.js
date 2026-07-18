@@ -6,6 +6,7 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import webpush from 'web-push';
+import { appUrl } from '@/lib/appUrl.mjs';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -47,7 +48,7 @@ export async function POST(req) {
   const payload = JSON.stringify({
     title: 'PRIM — test notification',
     body: '🔔 Push is working! You\'ll get alerts here for payments drafting, follow-ups, and your weekly snapshot.',
-    url: 'https://www.primtracker.com',
+    url: appUrl(),
   });
 
   let sent = 0;

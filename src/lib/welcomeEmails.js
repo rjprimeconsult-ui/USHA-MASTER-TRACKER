@@ -15,13 +15,14 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
+import { appUrl } from '@/lib/appUrl.mjs';
 
 // ---------- Brand constants ----------
 
 const PRIM_REPLY_TO   = 'juantrejo9082@gmail.com';
 const PRIM_FROM_EMAIL = 'welcome@contact.primtracker.com';
 const PRIM_FROM_NAME  = 'Juan @ PRIM';
-const APP_URL         = 'https://www.primtracker.com';
+const APP_URL         = appUrl();
 
 // ---------- Token replacement ----------
 

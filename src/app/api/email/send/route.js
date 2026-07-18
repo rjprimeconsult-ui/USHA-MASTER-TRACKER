@@ -27,6 +27,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { canAccessBetaFeature } from '@/lib/featureFlags';
+import { appUrl } from '@/lib/appUrl.mjs';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -297,7 +298,7 @@ export async function POST(req) {
       console.warn('[email/send] agent profile load failed (using defaults):', e?.message);
     }
     const { renderPostSaleHtml, dearDoctorPdfPath } = await import('@/lib/postSaleHtml');
-    const appOrigin = req.headers.get('origin') || 'https://www.primtracker.com';
+    const appOrigin = req.headers.get('origin') || appUrl();
     htmlBody = renderPostSaleHtml({
       template: {
         subject: safeSubject,
@@ -329,7 +330,7 @@ export async function POST(req) {
     if (templateExtras?.attachDearDoctorPdf !== false) {
       const pdfPath = dearDoctorPdfPath(leadSnapshot?.mainProduct);
       if (pdfPath) {
-        const origin = req.headers.get('origin') || 'https://www.primtracker.com';
+        const origin = req.headers.get('origin') || appUrl();
         dearDoctorAttachment = {
           filename: pdfPath.split('/').pop(),
           path: `${origin}${pdfPath}`,
