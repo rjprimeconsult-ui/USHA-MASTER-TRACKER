@@ -12,6 +12,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { postToSlack, announcementBlocks, slackConfigured } from '@/lib/slack';
+import { appUrl } from '@/lib/appUrl.mjs';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -56,7 +57,7 @@ export async function POST(req) {
   // 3. Post to Slack
   const result = await postToSlack({
     text: `${emoji} ${title}${message ? ` — ${message}` : ''}`,
-    blocks: announcementBlocks({ emoji, title, body: message, url: 'https://www.primtracker.com' }),
+    blocks: announcementBlocks({ emoji, title, body: message, url: appUrl() }),
   });
   if (!result.ok) {
     return json(502, { error: `Slack post failed (${result.reason}${result.detail ? `: ${result.detail}` : ''})` });

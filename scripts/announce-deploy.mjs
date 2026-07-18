@@ -44,7 +44,7 @@ async function main() {
   if (body) blocks.push({ type: 'section', text: { type: 'mrkdwn', text: body } });
   blocks.push({
     type: 'context',
-    elements: [{ type: 'mrkdwn', text: '🔄 Refresh PRIM to get it · <https://www.primtracker.com|Open PRIM>' }],
+    elements: [{ type: 'mrkdwn', text: `🔄 Refresh PRIM to get it · <${process.env.NEXT_PUBLIC_SITE_URL || 'https://app.primtracker.com'}|Open PRIM>` }],
   });
 
   const payload = {

@@ -13,6 +13,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { getStripe, ensureStripeCustomer } from '@/lib/stripe-server';
 import { TRIAL_DAYS, STRIPE_PRICES } from '@/lib/stripe-prices';
+import { appUrl } from '@/lib/appUrl.mjs';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -82,7 +83,7 @@ export async function POST(req) {
       console.warn('[create-checkout-session] existing-sub check failed:', e?.message);
     }
 
-    const origin = req.headers.get('origin') || 'https://www.primtracker.com';
+    const origin = req.headers.get('origin') || appUrl();
     // Include the session_id in the success URL so the client can call
     // /api/stripe/sync-after-checkout synchronously instead of waiting
     // for the webhook. {CHECKOUT_SESSION_ID} is a Stripe template var.

@@ -10,6 +10,8 @@
  * Do NOT import this into client components — the webhook URL is a secret.
  */
 
+import { appUrl } from '@/lib/appUrl.mjs';
+
 const WEBHOOK = (process.env.SLACK_WEBHOOK_URL || '').trim();
 
 // Branding for the message author — overrides the Slack app's default avatar
@@ -62,7 +64,7 @@ export function announcementBlocks({ emoji = '📣', title, body, url }) {
   if (body) blocks.push({ type: 'section', text: { type: 'mrkdwn', text: body } });
   blocks.push({
     type: 'context',
-    elements: [{ type: 'mrkdwn', text: `🔄 Refresh PRIM to get it · <${url || 'https://www.primtracker.com'}|Open PRIM>` }],
+    elements: [{ type: 'mrkdwn', text: `🔄 Refresh PRIM to get it · <${url || appUrl()}|Open PRIM>` }],
   });
   return blocks;
 }

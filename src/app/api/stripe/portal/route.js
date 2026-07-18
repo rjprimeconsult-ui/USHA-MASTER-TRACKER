@@ -8,6 +8,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { getStripe, ensureStripeCustomer } from '@/lib/stripe-server';
+import { appUrl } from '@/lib/appUrl.mjs';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -37,7 +38,7 @@ export async function POST(req) {
       email: userData.user.email,
     });
 
-    const origin = req.headers.get('origin') || 'https://primtracker.com';
+    const origin = req.headers.get('origin') || appUrl();
     const stripe = getStripe();
     const session = await stripe.billingPortal.sessions.create({
       customer: customerId,
