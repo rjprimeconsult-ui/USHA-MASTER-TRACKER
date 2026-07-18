@@ -13,9 +13,13 @@ const StageBadge = ({ stage }) => {
 };
 
 const CategoryBadge = ({ id }) => {
+  if (!id) return <span className="text-xs text-slate-400">—</span>;
   const c = LEAD_CATEGORIES.find(x => x.id === id);
-  if (!c) return <span className="text-xs text-slate-400">—</span>;
-  return <span className={`inline-block px-2 py-0.5 rounded text-xs font-bold tracking-wide ${c.badge}`}>{id}</span>;
+  // Custom (agent-created) lead categories live in custom_lead_options_v1 and
+  // are NOT in the built-in LEAD_CATEGORIES list — render them as a neutral
+  // badge showing the label instead of a "—" (mirrors ProductBadge's fallback).
+  const cls = c ? c.badge : 'bg-slate-100 text-slate-700 border border-slate-200';
+  return <span className={`inline-block px-2 py-0.5 rounded text-xs font-bold tracking-wide ${cls}`}>{id}</span>;
 };
 
 // Small color-coded badge for Main Product (grouped by family for quick scanning)
