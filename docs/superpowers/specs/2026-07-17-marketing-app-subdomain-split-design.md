@@ -172,9 +172,11 @@ live on the app host.
 1. **DNS** (registrar): add the record Vercel shows — typically
    `CNAME  app  →  cname.vercel-dns.com`.
 2. **Vercel:** add `app.primtracker.com` to the `primtracker` project; set env
-   `NEXT_PUBLIC_SITE_URL` + `NEXT_PUBLIC_APP_URL` = `https://app.primtracker.com`
-   (Production). Confirm the existing **apex→www** redirect targets the apex only
-   and does not capture `app.primtracker.com`.
+   `NEXT_PUBLIC_SITE_URL=https://app.primtracker.com` +
+   `NEXT_PUBLIC_MARKETING_URL=https://www.primtracker.com` (Production). Leave
+   `MARKETING_SPLIT_ENABLED` UNSET for now — it is the **final** flip (§6 step 5).
+   Confirm the existing **apex→www** redirect targets the apex only and does not
+   capture `app.primtracker.com`.
 3. **Supabase → Authentication → URL Configuration:** Site URL =
    `https://app.primtracker.com`; add `https://app.primtracker.com/**` to Redirect
    URLs (covers signup-confirmation email — verified there is **no** `emailRedirectTo`
@@ -184,15 +186,24 @@ live on the app host.
 
 ## 6. Rollout sequence (no lock-outs)
 
-1. Merge code (middleware + host-aware AuthGate support both hosts; until `app.` DNS
-   exists the app still answers on `www`, so the app-host branch is simply not hit).
-2. Owner adds DNS `app` + Vercel domain + env → `app.primtracker.com` live.
+The whole sequence is gated by a **master flag `MARKETING_SPLIT_ENABLED`** (default
+OFF). While OFF, `www`/apex classify as the **app** host — so merging changes nothing
+in production and `www` keeps serving the app exactly as today. **This flag is the
+only thing that prevents a merge from prematurely flipping `www` (the current app
+host) to marketing.**
+
+1. Merge code + deploy — **inert**: `MARKETING_SPLIT_ENABLED` OFF → `www` still serves
+   the app; the marketing branch is never hit.
+2. Owner adds DNS `app` + Vercel domain + `NEXT_PUBLIC_SITE_URL` /
+   `NEXT_PUBLIC_MARKETING_URL` → `app.primtracker.com` live (independent of the flag).
 3. Verify on `app.` BEFORE touching Supabase: sign-in, an `app.` webhook POST 200,
    an old `www.` webhook POST 200, in-app upgrade → Stripe checkout → return.
 4. Owner flips Supabase Site URL / Redirect URLs to the app host; verify
    signup-confirmation email lands on `app.`.
-5. Flip marketing host root to landing (rewrite + host-aware AuthGate) so `www/`
-   shows marketing; verify logged-out `www/` = landing (not sign-in wall).
+5. **FINAL STEP — set `MARKETING_SPLIT_ENABLED=1` in Vercel Production.** `www/` now
+   rewrites to the landing page (host-aware AuthGate makes root public). Verify
+   logged-out `www/` = landing (not sign-in wall) and the app is reachable at `app./`.
+   **Rollback = unset the flag** → `www` instantly reverts to the app, no code redeploy.
 6. Announce (What's-New + email): "the app moved to app.primtracker.com — sign in
    again."
 
