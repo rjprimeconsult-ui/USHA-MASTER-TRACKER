@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation';
 import { Mail, Lock, AlertCircle, Loader2 } from 'lucide-react';
 import { PrimAppIcon } from '@/components/PrimLogo';
 import { supabase, supabaseConfigured } from '@/lib/supabase';
-import { isPublicRoute } from '@/lib/routeAccess';
+import { isPublicRoute } from '@/lib/routeAccess.mjs';
 import { useAuth } from './AuthProvider';
 import ConstellationBackground from '../motion/ConstellationBackground';
 import MigrationPrompt from './MigrationPrompt';
