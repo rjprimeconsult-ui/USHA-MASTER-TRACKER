@@ -15,6 +15,7 @@
  */
 
 import { getPalette } from './agentProfile';
+import { canSpamFooterHtml } from './legalConfig.mjs';
 
 // ---------- Product → "Dear Doctor Letter" PDF ----------
 //
@@ -221,10 +222,13 @@ function renderSignature({ agentName, agentPhone, agentEmail }) {
  *   resolvedBody    — body text AFTER {token} substitution (caller does
  *                     the token pass since the existing render pipeline
  *                     already handles them)
+ *   unsubscribeUrl  — per-recipient signed CAN-SPAM opt-out URL (built by the
+ *                     send route). When present, the footer shows a working
+ *                     unsubscribe link; when absent it falls back to a mailto.
  *
  * Output: string of complete HTML email.
  */
-export function renderPostSaleHtml({ template, lead, profile, agentProfile, resolvedBody, resolvedSubject, userId, appOrigin }) {
+export function renderPostSaleHtml({ template, lead, profile, agentProfile, resolvedBody, resolvedSubject, userId, appOrigin, unsubscribeUrl }) {
   const agentName  = template?.fromName || agentProfile?.displayName || (profile?.email || '').split('@')[0] || '';
   const agentPhone = agentProfile?.phone || '';
   const agentEmail = profile?.email || '';
@@ -278,11 +282,11 @@ ${verificationHtml}
 ${referralHtml}
 ${renderSignature({ agentName, agentPhone, agentEmail })}
         <tr>
-          <td style="background:#F8FAFC; padding:18px 36px 22px 36px; color:#64748B; font-size:11px; line-height:1.6; text-align:center; border-top:1px solid #E2E8F0;">
-            This email is from ${escapeHtml(agentName)} regarding your new policy.<br/>
-            If you no longer wish to receive these messages, <a href="mailto:${escapeHtml(agentEmail)}?subject=${encodeURIComponent('Unsubscribe')}" style="color:#64748B; text-decoration:underline;">reply with "Unsubscribe"</a>.
+          <td style="background:#F8FAFC; padding:18px 36px 8px 36px; color:#64748B; font-size:11px; line-height:1.6; text-align:center; border-top:1px solid #E2E8F0;">
+            This email is from ${escapeHtml(agentName)} regarding your new policy.
           </td>
         </tr>
+${canSpamFooterHtml({ unsubscribeUrl })}
       </table>
     </td></tr>
   </table>

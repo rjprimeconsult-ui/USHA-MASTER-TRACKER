@@ -19,6 +19,7 @@
  */
 
 import { storage } from './storage';
+import { OUTREACH_UNSUBSCRIBE_PLACEHOLDER } from './legalConfig.mjs';
 
 // ---------- Shared HTML shell ----------
 
@@ -35,13 +36,15 @@ const NPN        = '19153319';
 // info cards). `ctaLabel` + `ctaSubject` build the primary action
 // button. `pillLabel` shows a small "QUICK FOLLOW-UP" / "READY TO
 // FINALIZE" badge above the body when set.
-function renderShell({ subject, previewText, pillLabel, bodyInner, ctaLabel, ctaSubject }) {
+function renderShell({ subject, previewText, pillLabel, bodyInner, ctaLabel, ctaSubject, unsubscribeUrl }) {
   const ctaSubjectEnc = encodeURIComponent(ctaSubject || `Re: ${subject}`);
-  // Mailto-based unsubscribe is the simplest CAN-SPAM-compliant
-  // mechanism until we wire up Resend's list management. Customer
-  // replies with "Unsubscribe" land in Julio's inbox; he can drop
-  // them from the prospect list manually.
-  const unsubscribeUrl = `mailto:${REPLY_TO}?subject=${encodeURIComponent('Unsubscribe')}`;
+  // Functional one-click unsubscribe. The email is rendered here (client-side),
+  // but the signed opt-out token can only be minted server-side, so we emit a
+  // sentinel that /api/email/send replaces with the real per-recipient link
+  // before sending. Callers may pass an explicit `unsubscribeUrl` (e.g. a
+  // server-side render) to skip the sentinel. Either way this is a real
+  // unsubscribe link, honored by the suppression list — not just a mailto.
+  const unsubHref = unsubscribeUrl || OUTREACH_UNSUBSCRIBE_PLACEHOLDER;
   const pillHtml = pillLabel ? `
           <tr>
             <td style="padding:24px 36px 0 36px;">
@@ -101,7 +104,7 @@ function renderShell({ subject, previewText, pillLabel, bodyInner, ctaLabel, cta
             Licensed Independent Insurance Agency &middot; NPN: ${NPN}<br/>
             ${ADDRESS}<br/><br/>
             You received this email because you submitted a request for health insurance quotes online.<br/>
-            <a href="${unsubscribeUrl}" style="color:#64748B; text-decoration:underline;">Unsubscribe</a>
+            <a href="${unsubHref}" style="color:#64748B; text-decoration:underline;">Unsubscribe</a>
           </td>
         </tr>
       </table>
@@ -314,8 +317,13 @@ export function getOutreachTemplate(id) {
 /**
  * Render a template into the final shape the /api/email/send route
  * accepts. Adds the prospect's email as recipient.
+ *
+ * `opts.unsubscribeUrl` is optional: when omitted (the normal client path)
+ * the footer emits the unsubscribe sentinel that the send route swaps for a
+ * signed per-recipient link. A server-side caller that already has the link
+ * can pass it here to render it directly.
  */
-export function renderOutreachTemplate(template, prospect) {
+export function renderOutreachTemplate(template, prospect, opts = {}) {
   if (!template) return null;
   // Personalize the inner body + text fallback with the prospect's
   // first name. The shell (banner/signature/footer) doesn't reference
@@ -328,6 +336,7 @@ export function renderOutreachTemplate(template, prospect) {
     bodyInner: bodyInnerPersonal,
     ctaLabel: template.ctaLabel,
     ctaSubject: template.ctaSubject,
+    unsubscribeUrl: opts.unsubscribeUrl,
   });
   return {
     templateId: template.id,

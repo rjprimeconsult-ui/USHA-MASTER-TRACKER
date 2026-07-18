@@ -28,6 +28,13 @@
 import { createClient } from '@supabase/supabase-js';
 import { canAccessBetaFeature } from '@/lib/featureFlags';
 import { appUrl } from '@/lib/appUrl.mjs';
+import { isSuppressed } from '@/lib/emailSuppression.mjs';
+import { makeUnsubscribeToken } from '@/lib/unsubscribeToken.mjs';
+import {
+  LEGAL,
+  OUTREACH_UNSUBSCRIBE_PLACEHOLDER,
+  canSpamFooterStandaloneHtml,
+} from '@/lib/legalConfig.mjs';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -92,6 +99,29 @@ function getServiceClient() {
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) return null;
   return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
+}
+
+// Ensure a commercial email carries a working CAN-SPAM unsubscribe link.
+//   1. Outreach HTML is rendered client-side with a sentinel in place of the
+//      unsubscribe URL (the signing secret is server-only) — swap it for the
+//      real per-recipient signed link.
+//   2. Any commercial HTML that ends up WITHOUT our footer (the legacy
+//      plain-text post-sale wrap, or a caller-supplied html) gets a standalone
+//      compliance footer appended before </body>.
+// The post-sale useHtmlRender path already renders the footer via
+// renderPostSaleHtml({ unsubscribeUrl }), so it needs neither.
+function ensureUnsubscribeFooter(html, unsubscribeUrl, { alreadyHasFooter }) {
+  let out = String(html || '');
+  if (out.includes(OUTREACH_UNSUBSCRIBE_PLACEHOLDER)) {
+    return out.split(OUTREACH_UNSUBSCRIBE_PLACEHOLDER).join(unsubscribeUrl);
+  }
+  if (alreadyHasFooter) return out;
+  const footer = canSpamFooterStandaloneHtml({ unsubscribeUrl });
+  // Function replacer so any `$` in the footer/address isn't treated as a
+  // replacement pattern ($&, $1, ...).
+  return out.includes('</body>')
+    ? out.replace('</body>', () => `${footer}</body>`)
+    : out + footer;
 }
 
 export async function POST(req) {
@@ -209,6 +239,35 @@ export async function POST(req) {
     }
   }
 
+  // ---- CAN-SPAM: commercial-only compliance (suppression + unsubscribe) ----
+  // Outreach and post-sale are commercial/outreach messages subject to CAN-SPAM
+  // (physical address + working unsubscribe + honor opt-outs). Welcome is a
+  // transactional message (and locked to the caller's own address above), so it
+  // is not gated by the suppression list.
+  // Default-commercial: anything that ISN'T the self-locked transactional
+  // 'welcome' is treated as commercial, so no future/unknown kind can ever slip
+  // out without suppression checking + the CAN-SPAM unsubscribe footer/headers.
+  const isCommercial = kind !== 'welcome';
+
+  // Honor opt-outs BEFORE doing any send work: if this recipient has
+  // unsubscribed from this agent, skip the Resend call entirely and report it
+  // as a successful no-op so the caller's audit trail can record the skip.
+  if (isCommercial) {
+    const suppressed = await isSuppressed(supabase, userId, recipient);
+    if (suppressed) {
+      console.log(`[email/send] suppressed userId=${userId} kind=${kind} (recipient on opt-out list)`);
+      return Response.json({ ok: true, suppressed: true, messageId: null, recipient, intendedRecipient });
+    }
+  }
+
+  // Per-recipient signed unsubscribe link (owner = the sending agent). Built for
+  // commercial sends only; used in the in-body footer AND the List-Unsubscribe
+  // headers. Origin mirrors how the rest of the route resolves the app origin.
+  const appOriginForUnsub = (req.headers.get('origin') || appUrl()).replace(/\/$/, '');
+  const unsubscribeUrl = isCommercial
+    ? `${appOriginForUnsub}/api/email/unsubscribe/${makeUnsubscribeToken(userId, recipient)}`
+    : null;
+
   // Truncate to safe lengths so a runaway template doesn't blow the API.
   // HTML allowance is bigger because banner-heavy templates run ~10-20KB.
   const safeSubject = String(subject).slice(0, 200);
@@ -321,6 +380,7 @@ export async function POST(req) {
       resolvedSubject: safeSubject,
       userId,
       appOrigin,
+      unsubscribeUrl,
     });
 
     // Attach the matching "Dear Doctor Letter" PDF when the template
@@ -345,6 +405,15 @@ export async function POST(req) {
       .replace(/\n/g, '<br>')}</div>`;
   }
 
+  // CAN-SPAM footer / unsubscribe link for commercial sends. The post-sale
+  // useHtmlRender path already embeds the footer (renderPostSaleHtml receives
+  // unsubscribeUrl); every other commercial path gets the sentinel swapped or a
+  // standalone footer appended here.
+  if (isCommercial && unsubscribeUrl) {
+    const alreadyHasFooter = !safeHtml && kind === 'post-sale' && useHtmlRender;
+    htmlBody = ensureUnsubscribeFooter(htmlBody, unsubscribeUrl, { alreadyHasFooter });
+  }
+
   let resendResult;
   try {
     const r = await fetch('https://api.resend.com/emails', {
@@ -361,6 +430,15 @@ export async function POST(req) {
         text: safeBody || stripHtmlForText(safeHtml),
         html: htmlBody,
         ...(dearDoctorAttachment ? { attachments: [dearDoctorAttachment] } : {}),
+        // CAN-SPAM / one-click unsubscribe. Gmail + Yahoo surface a native
+        // "Unsubscribe" control from these headers and POST the link for
+        // List-Unsubscribe=One-Click. Commercial sends only.
+        ...(isCommercial && unsubscribeUrl ? {
+          headers: {
+            'List-Unsubscribe': `<${unsubscribeUrl}>, <mailto:${LEGAL.contactEmail}?subject=unsubscribe>`,
+            'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+          },
+        } : {}),
         // Tags double as analytics in Resend's dashboard AND as the
         // identity bridge for webhook events — the /api/email/webhook
         // handler reads user_id + lead_id / prospect_id back to find
