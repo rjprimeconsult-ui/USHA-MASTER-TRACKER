@@ -61,6 +61,7 @@ function purgeLocalMirror() {
   // Legacy keys not in the canonical APP_KEYS list.
   for (const key of ['leads_v4']) { try { window.localStorage.removeItem(key); } catch { /* ignore */ } }
   sessionBaseline.clear(); // drop any prior user's merge baseline
+  prefetchCache.clear();   // drop any prior user's batched prefetch (same isolation guarantee as the mirror)
 }
 
 function ensureLocalOwner() {
