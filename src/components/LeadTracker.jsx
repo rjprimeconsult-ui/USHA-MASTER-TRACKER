@@ -360,6 +360,11 @@ export default function LeadTracker() {
   // load on mount
   useEffect(() => {
     (async () => {
+      // Batch-load every app key in ONE query up front, so the ~12 getItem()
+      // reads below are cache hits instead of ~12 serial round-trips. This is
+      // the fix for the 2026-07 DB-connection pileup on load. Fails soft — if
+      // the batch errors, each getItem() just does its original per-key read.
+      await storage.prefetch();
       let leadsRaw = await storage.getItem(LEADS_KEY);
       if (!leadsRaw) {
         const v4 = await storage.getItem(LEADS_KEY_V4);
