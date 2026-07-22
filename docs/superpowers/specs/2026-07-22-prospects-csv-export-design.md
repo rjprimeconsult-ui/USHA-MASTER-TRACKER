@@ -20,7 +20,7 @@ Prospects have nothing.
 | D2 | Row selection | **Picker modal** — filter by Source + Stage + free-text search, tick rows, multi-select, "Select all matching". NOT export-what's-on-screen and NOT always-everything. |
 | D3 | "Grab everything" path | Both filters default to **All sources / All stages**; open → Select all → Export. |
 | D4 | Columns | **Demographics + contact essentials ONLY** (9 columns, §4). Explicitly NO meds, NO situation/notes, NO quotes, NO stage/source columns — "a CSV must be simple to load into any other CRM." |
-| D5 | Name handling | Split stored single `name` on **first space** → First Name + Last Name; also keep Full Name column (3 columns, zero information loss). |
+| D5 | Name handling | **Trim** the stored single `name`, then split on the **first space of the trimmed value** → First Name + Last Name; also keep Full Name column (as stored, untrimmed — 3 columns, zero information loss). |
 | D6 | Street address | **Omitted** — PRIM has no address field (verified: no address/street/city on the prospect model or form). State + ZIP only. |
 | D7 | Leads export | Fix **only the missing-BOM bug** (accented names garble in Excel) as part of this work. The Leads formula-injection fix is **deferred** to a separate change (Juan's call: don't disturb working code beyond one line). |
 | D8 | Architecture | **Approach A** — pure logic module + modal component, client-side download. No server route. |
@@ -85,8 +85,11 @@ imports; same lesson as webforms.mjs).
 ## 5. Picker modal — behavior
 
 **Entry:** an **Export** button (Download icon) in the Prospects header,
-next to the existing action buttons. Opens `ExportProspectsModal` (use
-`GlassModal` like the app's other modals).
+next to the existing action buttons, **inside the `!readOnly` block**
+(ProspectsView.jsx ~1652-1677) — the team-leader mirror renders ProspectsView
+with `readOnly` and ANOTHER agent's data, and bulk-exporting another agent's
+client demographics must not be possible from that surface. Opens
+`ExportProspectsModal` (use `GlassModal` like the app's other modals).
 
 **Data scope:** ACTIVE prospects only (`!archivedAt`). Archived prospects
 are not in the working pipeline and are excluded entirely.
@@ -94,20 +97,30 @@ are not in the working pipeline and are excluded entirely.
 **Controls (top to bottom):**
 
 1. **Source dropdown** — options: `All sources` (default) + the distinct
-   non-empty `source` values present in the agent's own prospects, sorted
-   alphabetically. Derived, not hardcoded — an agent only sees sources they
-   actually have (Benepath, Ringy, TextDrip, Web Lead, Referral, …).
-   Prospects with an empty `source` are covered by an `(No source)` option
-   appended when any exist.
+   `source` values present in the agent's own prospects (values **trimmed**
+   before the emptiness test and dedup), sorted alphabetically. Derived, not
+   hardcoded — an agent only sees sources they actually have (Benepath,
+   Ringy, TextDrip, Web Lead, Referral, …). If any prospect has an
+   empty/whitespace-only `source`, append a `(No source)` option using the
+   sentinel value `'__none__'` (repo precedent: LeadsView.jsx:228) so it
+   can't collide with a real source string; it matches prospects whose
+   trimmed `source` is `''`.
 2. **Stage dropdown** — `All stages` (default) + the agent's configured
-   stages (from prospect settings, which may include custom stages), in
-   pipeline order, using stage labels.
-3. **Search box** — case-insensitive substring match against name, phone
-   (digits-only compare so "(954) 555" matches "9545550132"), and email.
-   Filters combine with AND.
+   stages from `cfg.stages` (prospect settings; may include custom
+   `STAGE_<ts>` stages), in **array order** (which IS the pipeline order —
+   SettingsModal reorders that array), using stage labels.
+3. **Search box** — case-insensitive substring match against name and
+   email; phone is compared digits-only ("(954) 555" matches "9545550132")
+   **and the phone comparison applies only when the query contains at least
+   one digit** (an all-alphabetic query must never match every row via the
+   empty-digits substring). Filters combine with AND.
 4. **Select-all row** — checkbox + "Select all N matching" where N = rows
    passing current filters. Checking selects all matching; unchecking
-   deselects all matching. A count pill shows `X of TOTAL selected`.
+   deselects all matching (scoped to matching rows only — out-of-filter
+   selections are untouched). Display state: **checked** iff N > 0 and every
+   matching row is selected; **indeterminate** when some but not all matching
+   rows are selected; **unchecked** otherwise (including N = 0). A count
+   pill shows `X of TOTAL selected`.
 5. **Row list** — scrollable (the ONE permitted internal scroll region);
    each row: checkbox · name · phone · state · source badge · stage label.
    Clicking anywhere on the row toggles its checkbox.
@@ -119,7 +132,10 @@ filter changes — filter to Benepath, select all, then filter to Ringy and
 select all: both groups stay selected (this is the "multiple selections"
 Juan asked for). The count pill always reflects the true total selected.
 Changing a filter never silently drops prior selections; Export exports the
-full selection Set regardless of what's currently visible.
+full selection Set regardless of what's currently visible. **The selection
+Set resets to empty every time the modal opens** — no selection state
+persists across close/reopen (this is also the escape hatch for clearing
+out-of-filter selections: close and reopen).
 
 **Export click:** build CSV via `prospectExport.mjs` → Blob →
 `URL.createObjectURL` → temp `<a download>` click → revoke URL (same
@@ -159,15 +175,19 @@ download is its own confirmation.
 
 **Unit (`prospectExport.test.mjs`, node --test):**
 - name split: "Maria Gonzalez" → Maria/Gonzalez; "Cher" → Cher/'' ;
-  "Maria Elena Gonzalez Ruiz" → Maria/"Elena Gonzalez Ruiz"; '' and
-  '   ' → ''/'' .
-- escaping: embedded quotes doubled; embedded commas/newlines survive
-  round-trip; null/undefined → ''.
+  "Maria Elena Gonzalez Ruiz" → Maria/"Elena Gonzalez Ruiz";
+  " Maria Gonzalez" (leading space) → Maria/Gonzalez (trim-then-split);
+  '' and '   ' → ''/'' .
+- escaping: embedded quotes doubled; embedded commas survive round-trip;
+  a cell containing a literal `\r\n` survives round-trip inside its quotes
+  (distinguished from the `\r\n` row delimiter); null/undefined → ''.
 - injection guard: leading `=`, `+`, `-`, `@` gain `\t`; leading space/digit
-  do not; guard applies AFTER trimming nothing (raw value inspected).
+  do not; guard applies to the raw cell value (no trimming first).
 - BOM present exactly once at position 0; `\r\n` line endings.
 - row filtering helper: archived excluded; source/stage/search AND-combine;
-  digits-only phone match.
+  digits-only phone match; an all-alphabetic query does NOT match rows via
+  phone (empty-digits guard); `'__none__'` source matches only
+  trimmed-empty sources.
 - full-file golden test: 2 prospects → exact expected string.
 
 **Manual (live, local-only mode):**
