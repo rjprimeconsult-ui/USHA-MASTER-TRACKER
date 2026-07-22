@@ -79,13 +79,13 @@ function ExportPickerBody({ onClose, prospects, stages }) {
   return (
     <div className="flex flex-col max-h-[80vh]">
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200/70">
+      <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200">
         <h2 className="font-semibold text-slate-900">Export prospects to CSV</h2>
         <button onClick={onClose} aria-label="Close" className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-2 px-5 py-3 border-b border-slate-200/70">
+      <div className="flex flex-wrap gap-2 px-5 py-3 border-b border-slate-200">
         <select value={source} onChange={e => setSource(e.target.value)}
           className="border border-slate-200 rounded-lg px-2 py-1.5 text-sm bg-white">
           <option value="">All sources</option>
@@ -107,7 +107,7 @@ function ExportPickerBody({ onClose, prospects, stages }) {
       </div>
 
       {/* Select-all row */}
-      <div className="flex items-center gap-2 px-5 py-2 border-b border-slate-200/70 bg-slate-50/60">
+      <div className="flex items-center gap-2 px-5 py-2 border-b border-slate-200 bg-slate-50/60">
         <input ref={selectAllRef} type="checkbox" checked={allMatchingSelected}
           onChange={toggleAllMatching} className="w-4 h-4"
           aria-label={`Select all ${matching.length} matching`} />
@@ -124,7 +124,7 @@ function ExportPickerBody({ onClose, prospects, stages }) {
         )}
         {matching.map(p => (
           <label key={p.id}
-            className="flex items-center gap-2.5 px-5 py-2 border-b border-slate-100 cursor-pointer hover:bg-slate-50/70">
+            className="flex items-center gap-2.5 px-5 py-2 border-b border-slate-100 cursor-pointer hover:bg-slate-50">
             <input type="checkbox" checked={selected.has(p.id)} onChange={() => toggleOne(p.id)} className="w-4 h-4" />
             <span className="flex-1 min-w-0">
               <span className="block text-sm text-slate-900 truncate">{p.name || '(no name)'}</span>
@@ -141,7 +141,7 @@ function ExportPickerBody({ onClose, prospects, stages }) {
       </div>
 
       {/* Footer */}
-      <div className="flex items-center justify-between gap-3 px-5 py-3.5 border-t border-slate-200/70">
+      <div className="flex items-center justify-between gap-3 px-5 py-3.5 border-t border-slate-200">
         <span className="text-[11px] text-slate-400">
           9 columns: First, Last, Full name, Phone, Email, DOB, State, ZIP, Income
         </span>
