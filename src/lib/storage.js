@@ -61,6 +61,7 @@ function purgeLocalMirror() {
   // Legacy keys not in the canonical APP_KEYS list.
   for (const key of ['leads_v4']) { try { window.localStorage.removeItem(key); } catch { /* ignore */ } }
   sessionBaseline.clear(); // drop any prior user's merge baseline
+  prefetchCache.clear();   // drop any prior user's batched prefetch (same isolation guarantee as the mirror)
 }
 
 function ensureLocalOwner() {
@@ -223,6 +224,16 @@ async function mergeOnSave(key, value) {
   return merged;
 }
 
+// ---------- Batched prefetch cache ----------
+// The app reads ~12 keys via getItem() the instant it mounts. Each was a
+// SEPARATE, serially-awaited Supabase query — ~12 round-trips + connections
+// per user per load, which (with many agents refreshing) pooled up and caused
+// the 2026-07 DB-connection outage. prefetch() loads them all in ONE
+// `.in('key',[...])` query and stashes them here; the getItem() calls below
+// become cache hits. Consume-once: the first read for a key takes AND clears
+// it, so any later read goes live and can never serve a stale prefetched value.
+const prefetchCache = new Map(); // key -> stringified value | null (null = checked, cloud row absent)
+
 // ---------- Public API ----------
 export const storage = {
   async getItem(key) {
@@ -230,7 +241,12 @@ export const storage = {
     // return it (cross-account isolation — race-safe vs the auth listener).
     ensureLocalOwner();
     let result = null;
-    if (cloudActive()) {
+    if (prefetchCache.has(key)) {
+      // Served by the batched prefetch — consume once so later reads go live.
+      const cached = prefetchCache.get(key);
+      prefetchCache.delete(key);
+      if (cached != null) result = cached; // null = cloud row absent → fall to local mirror below
+    } else if (cloudActive()) {
       try {
         const value = await cloudGet(key);
         if (value !== undefined && value !== null) {
@@ -248,6 +264,38 @@ export const storage = {
       try { recordBaseline(key, JSON.parse(result)); } catch {}
     }
     return result;
+  },
+
+  // Batch-load many keys in ONE query and stash them for the getItem() burst
+  // on app load. Turns ~12 serial round-trips into 1. No-op in local-only mode
+  // (getItem already reads localStorage with no network). Fails soft: on any
+  // error the cache stays empty and getItem() transparently falls back to its
+  // original per-key cloud reads, so this can only speed things up, never break.
+  async prefetch(keys = APP_KEYS) {
+    ensureLocalOwner();
+    if (!cloudActive()) return;
+    const list = (Array.isArray(keys) ? keys : []).filter(Boolean);
+    if (list.length === 0) return;
+    try {
+      const { data, error } = await supabase
+        .from('user_kv')
+        .select('key,value')
+        .eq('user_id', cachedUserId)
+        .in('key', list);
+      if (error) { console.warn('storage.prefetch failed, falling back to per-key reads', error); return; }
+      const seen = new Set();
+      for (const row of (data || [])) {
+        const str = (row.value !== undefined && row.value !== null) ? JSON.stringify(row.value) : null;
+        prefetchCache.set(row.key, str);
+        seen.add(row.key);
+        if (str != null) { try { localSet(row.key, str); } catch {} } // mirror for offline reads
+      }
+      // Keys with no row → cache an explicit null so getItem() knows "checked,
+      // absent in cloud" and falls to the local mirror (matches cloudGet→null).
+      for (const k of list) if (!seen.has(k)) prefetchCache.set(k, null);
+    } catch (e) {
+      console.warn('storage.prefetch error, falling back to per-key reads', e);
+    }
   },
   async setItem(key, value) {
     // Claim/verify mirror ownership before writing (cross-account isolation).
