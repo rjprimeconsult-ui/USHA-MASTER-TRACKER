@@ -101,7 +101,7 @@ test('buildProspectsCsv: golden file - BOM, CRLF, quoted cells, exact string', (
     P(),
     P({ id: 'y', name: 'Cher', phone: '', email: '', dobs: '', state: '', zip: '', income: '' }),
   ]);
-  const expected = '﻿'
+  const expected = '\uFEFF'
     + '"First Name","Last Name","Full Name","Phone","Email","Date of Birth","State","ZIP","Income"\r\n'
     + '"Maria","Gonzalez","Maria Gonzalez","(954) 555-0132","mg@x.com","01/02/1985","FL","33073","$45,000"\r\n'
     + '"Cher","","Cher","","","","","",""';
@@ -109,8 +109,8 @@ test('buildProspectsCsv: golden file - BOM, CRLF, quoted cells, exact string', (
 });
 test('buildProspectsCsv: BOM exactly once at position 0', () => {
   const csv = buildProspectsCsv([P()]);
-  assert.equal(csv.indexOf('﻿'), 0);
-  assert.equal(csv.lastIndexOf('﻿'), 0);
+  assert.equal(csv.indexOf('\uFEFF'), 0);
+  assert.equal(csv.lastIndexOf('\uFEFF'), 0);
 });
 test('buildProspectsCsv: comma inside dobs survives inside its quotes', () => {
   const csv = buildProspectsCsv([P({ dobs: '01/02/1985, 03/04/1990' })]);
@@ -232,7 +232,7 @@ export function buildProspectsCsv(prospects) {
       p?.dobs, p?.state, p?.zip, p?.income,
     ].map(csvCell).join(','));
   }
-  return '﻿' + rows.join('\r\n');
+  return '\uFEFF' + rows.join('\r\n');
 }
 
 // Picker row filter. source: '' = all | NO_SOURCE = trimmed-empty | exact
@@ -292,7 +292,7 @@ export function exportFilename(d = new Date()) {
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `npm test 2>&1 | tail -5`
-Expected: `pass` count = 448 + 23 new = **471, fail 0**. (If the count differs, count YOUR tests — all must pass and none of the original 448 may break.)
+Expected: `pass` count = 448 + 26 new = **474, fail 0**. (If the count differs, count YOUR tests — all must pass and none of the original 448 may break.)
 
 - [ ] **Step 5: Add tests for `deriveSourceOptions` + `exportFilename`** (they're exported; they get covered)
 
@@ -319,7 +319,7 @@ Also add `deriveSourceOptions, exportFilename` to the test file's import list.
 - [ ] **Step 6: Run tests**
 
 Run: `npm test 2>&1 | tail -5`
-Expected: **474 pass, 0 fail**.
+Expected: **477 pass, 0 fail**.
 
 - [ ] **Step 7: Commit**
 
@@ -502,10 +502,10 @@ export default function ExportProspectsModal({ open, onClose, prospects = [], st
 }
 ```
 
-- [ ] **Step 2: Verify build**
+- [ ] **Step 2: Verify syntax with eslint** (the component isn't imported anywhere yet, so `next build` would NOT compile it — Turbopack only compiles reachable modules)
 
-Run: `npm run build 2>&1 | tail -5`
-Expected: clean build (component is not yet imported anywhere; this catches syntax errors).
+Run: `npx eslint src/components/ExportProspectsModal.jsx`
+Expected: no errors from this file (repo has a pre-existing lint-debt baseline in OTHER files; this file itself must be clean). The real compile check lands in Task 3 Step 5 once the component is imported.
 
 - [ ] **Step 3: Commit**
 
@@ -544,7 +544,7 @@ const [showExport, setShowExport] = useState(false);
 </Tooltip>
 ```
 
-Add `Download` to the existing `lucide-react` import list (line ~11-16) if not already imported.
+Add `Download` to the existing `lucide-react` import list at lines 11-16 (verified: it is NOT currently imported there).
 
 - [ ] **Step 4: Mount the modal** next to the other modals (immediately before `<SmartProspectImportWizard` ~line 1967), ALSO gated:
 
@@ -561,7 +561,7 @@ Add `Download` to the existing `lucide-react` import list (line ~11-16) if not a
 
 - [ ] **Step 5: Tests + build**
 
-Run: `npm test 2>&1 | tail -3` → 474 pass.
+Run: `npm test 2>&1 | tail -3` → 477 pass.
 Run: `npm run build 2>&1 | tail -5` → clean.
 
 - [ ] **Step 6: Commit**
@@ -584,14 +584,14 @@ git commit -m "feat: Export button + modal in Prospects header (owner-only, hidd
 // BEFORE
 const blob = new Blob([csv], { type: 'text/csv' });
 // AFTER — UTF-8 BOM so Excel renders accented names (José, Nuñez) correctly
-const blob = new Blob(['﻿' + csv], { type: 'text/csv' });
+const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv' });
 ```
 
 Do NOT add the injection guard here (deferred per spec D7). No other LeadsView changes.
 
 - [ ] **Step 2: Tests + build**
 
-Run: `npm test 2>&1 | tail -3` → 474 pass. `npm run build 2>&1 | tail -5` → clean.
+Run: `npm test 2>&1 | tail -3` → 477 pass. `npm run build 2>&1 | tail -5` → clean.
 
 - [ ] **Step 3: Commit**
 
@@ -608,19 +608,19 @@ git commit -m "fix: UTF-8 BOM on Leads CSV export so Excel renders accented name
 
 - [ ] **Step 1: Full gates**
 
-Run: `npm test 2>&1 | tail -5` → **474 pass, 0 fail**.
+Run: `npm test 2>&1 | tail -5` → **477 pass, 0 fail**.
 Run: `npm run build 2>&1 | tail -5` → clean.
 Run: `git diff main --stat` → ONLY the 5 planned files (2 new lib, 1 new component, ProspectsView, LeadsView + this plan/spec if committed here). Confirm NO files under `src/app/api/`.
 
 - [ ] **Step 2: Live browser check (local-only mode, `npm run dev` via the preview tool)**
 
-1. Open Prospects → Export button visible next to Settings.
+1. Open Prospects → Export button visible next to Settings. Toggle dark mode → button and (opened) modal render legibly in BOTH themes.
 2. Click Export → modal opens; both dropdowns show "All sources"/"All stages"; count pill reads "0 of N selected"; Export disabled.
 3. Pick a source → list narrows; "Select all N matching" checks all; pill updates; switch source and select-all again → pill = sum of both groups (cross-filter multi-select held).
 4. Type an all-letters query ("zz") → list narrows correctly (must NOT show all rows).
 5. Export → file `prospects-YYYY-MM-DD.csv` downloads; open it: 9 headers, BOM intact (é renders), a seeded `=2+2` name imports as text not formula.
 6. Close/reopen modal → selection reset to 0.
-7. Leads → Export CSV still downloads and opens.
+7. Leads → Export CSV still downloads; open it and confirm an accented seeded name (José) renders CORRECTLY (this is the one thing Task 4 changed — verify the fix, not just the download).
 (If local-only mode has no prospects: seed 3-4 via New Prospect first, incl. one accented name and one `=2+2` name, then delete after.)
 
 - [ ] **Step 3: Update What's New** (OPTIONAL — only if trivially done): skip per YAGNI; announcement is Juan's call at merge.
