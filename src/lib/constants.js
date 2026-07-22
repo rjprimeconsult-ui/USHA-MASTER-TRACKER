@@ -220,11 +220,14 @@ export const NAV_TABS = [
   { id: 'closed',       label: 'Closed Deals',  icon: 'CheckSquare' },
   { id: 'dashboard',    label: 'Overview',      icon: 'LayoutDashboard' },
   { id: 'associations', label: 'Associations',  icon: 'Repeat' },
+  // Middle-block order per Juan (2026-07-22): Portal Clients → Prospects →
+  // Pipeline → Blasts → Platforms → Books. Consumers navigate by id, so
+  // reordering here is purely visual.
   { id: 'leads',        label: 'Portal Clients', icon: 'Users' },
-  { id: 'pipeline',     label: 'Pipeline',      icon: 'Columns' },
   { id: 'prospects',    label: 'Prospects',     icon: 'UserPlus' },
-  { id: 'platforms',    label: 'Platforms',     icon: 'DollarSign' },
+  { id: 'pipeline',     label: 'Pipeline',      icon: 'Columns' },
   { id: 'blasts',       label: 'Blasts',        icon: 'Send' },
+  { id: 'platforms',    label: 'Platforms',     icon: 'DollarSign' },
   { id: 'books',        label: 'Books',         icon: 'BookOpen' },
   { id: 'reports',      label: 'Reports',       icon: 'FileText' },
   { id: 'calculator',   label: 'Calculator',    icon: 'Calculator' },
