@@ -104,7 +104,9 @@ are not in the working pipeline and are excluded entirely.
    empty/whitespace-only `source`, append a `(No source)` option using the
    sentinel value `'__none__'` (repo precedent: LeadsView.jsx:228) so it
    can't collide with a real source string; it matches prospects whose
-   trimmed `source` is `''`.
+   trimmed `source` is `''`. Named-source filter comparisons are
+   **trim-both-sides** (a stored `" Benepath"` matches the `Benepath`
+   option).
 2. **Stage dropdown** — `All stages` (default) + the agent's configured
    stages from `cfg.stages` (prospect settings; may include custom
    `STAGE_<ts>` stages), in **array order** (which IS the pipeline order —
