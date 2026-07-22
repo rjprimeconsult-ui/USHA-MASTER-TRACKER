@@ -49,6 +49,9 @@ test('csvCell: injection guard inspects the RAW value - leading space/digit unto
   assert.equal(csvCell(' =2+2'), '" =2+2"'); // leading space, not =, no guard
   assert.equal(csvCell('55'), '"55"');
 });
+test('csvCell: zero is a real value, not empty (guards against a future value||"" refactor)', () => {
+  assert.equal(csvCell(0), '"0"');
+});
 
 // ---------- buildProspectsCsv ----------
 const P = (over = {}) => ({
@@ -93,6 +96,12 @@ test('buildProspectsCsv: a cell containing a literal CRLF stays inside its quote
 test('buildProspectsCsv: Full Name is as stored (untrimmed), First/Last from trimmed', () => {
   const csv = buildProspectsCsv([P({ name: ' Maria Gonzalez' })]);
   assert.ok(csv.includes('"Maria","Gonzalez"," Maria Gonzalez"'));
+});
+test('buildProspectsCsv: empty array -> header-only file with BOM, no trailing newline', () => {
+  const csv = buildProspectsCsv([]);
+  assert.equal(csv.indexOf('\uFEFF'), 0);
+  assert.ok(csv.endsWith('"Income"'));
+  assert.equal(csv.split('\r\n').length, 1);
 });
 
 // ---------- prospectMatchesFilters ----------
