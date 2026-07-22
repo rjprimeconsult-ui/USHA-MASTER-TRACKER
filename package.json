@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",
-    "@supabase/supabase-js": "^2.105.0",
+    "@supabase/supabase-js": "^2.110.8",
     "canvas-confetti": "^1.9.4",
     "framer-motion": "^12.38.0",
     "idb-keyval": "^6.2.2",
