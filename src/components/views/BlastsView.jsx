@@ -1,6 +1,7 @@
 'use client';
 /**
- * BlastsView — the "Blasts" tab. Plain Today / last-7-day totals + a table of
+ * BlastsView — the "Blasts" tab. A period selector (Today / This week / last 30
+ * days / YTD / custom) drives one rollup total + filters a table of
  * every Ringy / TextDrip blast, a "Log a blast" form (manual TextDrip entries),
  * per-row edit/delete, and a collapsible setup panel with the step-by-step for
  * getting Ringy blasts to auto-log. Ringy rows come from the blast_counters
@@ -26,9 +27,9 @@ const PLATFORM_STYLE = {
 };
 
 // Bucket a blast by its run date (lenient), falling back to when PRIM received
-// it. A date-only run date is parsed as LOCAL midnight so the Today / Last-7-day
-// buckets line up with the agent's calendar — new Date('YYYY-MM-DD') is UTC
-// midnight, which mis-buckets in western timezones.
+// it. A date-only run date is parsed as LOCAL midnight so the period buckets
+// line up with the agent's calendar — new Date('YYYY-MM-DD') is UTC midnight,
+// which mis-buckets in western timezones.
 function blastDate(b) {
   const raw = String(b?.runDate || '').trim();
   let m = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
