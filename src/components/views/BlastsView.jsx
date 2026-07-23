@@ -10,6 +10,7 @@ import { useState, useMemo, useRef } from 'react';
 import { Send, Trash2, Pencil, ChevronDown, ChevronUp, Plus } from 'lucide-react';
 import { splitLeadRange, joinLeadRange } from '@/lib/blastRange.mjs';
 import { blastTagOptions } from '@/lib/blastTags.mjs';
+import { BLAST_PERIODS, DEFAULT_BLAST_PERIOD, BLAST_PERIOD_LABELS, blastPeriodRange } from '@/lib/blastPeriod.mjs';
 
 // Local-time YYYY-MM-DD for the manual form's default date.
 function todayStr() {
@@ -41,9 +42,35 @@ function blastDate(b) {
 }
 const num = (n) => (Number(n) || 0).toLocaleString();
 
+// True when a blast's run date falls within the selected period range (inclusive).
+// range is { start, end } from blastPeriodRange, or null (incomplete custom) -> no match.
+function inBlastRange(b, range) {
+  if (!range) return false;
+  const d = blastDate(b);
+  return !!d && d >= range.start && d <= range.end;
+}
+
+// Period rollup card: total contacts + blast count + Ringy/TextDrip split.
+function RollupCard({ label, t }) {
+  return (
+    <div className="premium-card p-4">
+      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{label}</div>
+      <div className="mt-1 text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">{num(t.contacts)}</div>
+      <div className="text-[11px] text-slate-500 dark:text-slate-400">contacts · {t.count} {t.count === 1 ? 'blast' : 'blasts'}</div>
+      <div className="mt-2 flex gap-3 text-[11px] text-slate-500 dark:text-slate-400">
+        <span><span className="inline-block w-2 h-2 rounded-full bg-rose-500 mr-1 align-middle" />Ringy {num(t.ringy.contacts)}</span>
+        <span><span className="inline-block w-2 h-2 rounded-full bg-violet-500 mr-1 align-middle" />TextDrip {num(t.textdrip.contacts)}</span>
+      </div>
+    </div>
+  );
+}
+
 export default function BlastsView({ blasts = [], onDelete, onAdd, onEdit, readOnly = false }) {
   const [showSetup, setShowSetup] = useState(false);
   const [platformFilter, setPlatformFilter] = useState('all');
+  const [period, setPeriod] = useState(DEFAULT_BLAST_PERIOD);   // 'today'|'week'|'30d'|'ytd'|'custom'
+  const [customStart, setCustomStart] = useState('');           // 'YYYY-MM-DD'
+  const [customEnd, setCustomEnd] = useState('');               // 'YYYY-MM-DD'
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState(null);  // null = new; else the row id being edited
@@ -144,39 +171,32 @@ export default function BlastsView({ blasts = [], onDelete, onAdd, onEdit, readO
     closeForm();
   };
 
-  const { todayTotals, weekTotals } = useMemo(() => {
-    const now = new Date();
-    const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const start7 = new Date(startToday); start7.setDate(start7.getDate() - 6);
-    const tally = (since) => {
-      const rows = blasts.filter(b => { const d = blastDate(b); return d && d >= since; });
-      const by = (plat) => rows.filter(b => !plat || b.platform === plat);
-      const sum = (rs) => rs.reduce((s, b) => s + (Number(b.contacts) || 0), 0);
-      return {
-        contacts: sum(rows), count: rows.length,
-        ringy: { contacts: sum(by('Ringy')), count: by('Ringy').length },
-        textdrip: { contacts: sum(by('Textdrip')), count: by('Textdrip').length },
-      };
-    };
-    return { todayTotals: tally(startToday), weekTotals: tally(start7) };
-  }, [blasts]);
-
-  const sorted = useMemo(() => {
-    const rows = platformFilter === 'all' ? blasts : blasts.filter(b => b.platform === platformFilter);
-    return [...rows].sort((a, b) => (blastDate(b)?.getTime() || 0) - (blastDate(a)?.getTime() || 0));
-  }, [blasts, platformFilter]);
-
-  const RollupCard = ({ label, t }) => (
-    <div className="premium-card p-4">
-      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{label}</div>
-      <div className="mt-1 text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">{num(t.contacts)}</div>
-      <div className="text-[11px] text-slate-500 dark:text-slate-400">contacts · {t.count} {t.count === 1 ? 'blast' : 'blasts'}</div>
-      <div className="mt-2 flex gap-3 text-[11px] text-slate-500 dark:text-slate-400">
-        <span><span className="inline-block w-2 h-2 rounded-full bg-rose-500 mr-1 align-middle" />Ringy {num(t.ringy.contacts)}</span>
-        <span><span className="inline-block w-2 h-2 rounded-full bg-violet-500 mr-1 align-middle" />TextDrip {num(t.textdrip.contacts)}</span>
-      </div>
-    </div>
+  // The selected period's concrete { start, end } window (null while a custom
+  // range is incomplete/invalid).
+  const range = useMemo(
+    () => blastPeriodRange(period, { customStart, customEnd }),
+    [period, customStart, customEnd]
   );
+
+  // Rollup total for the selected period (all zeros when range is null).
+  const periodTotals = useMemo(() => {
+    const rows = blasts.filter(b => inBlastRange(b, range));
+    const by = (plat) => rows.filter(b => !plat || b.platform === plat);
+    const sum = (rs) => rs.reduce((s, b) => s + (Number(b.contacts) || 0), 0);
+    return {
+      contacts: sum(rows), count: rows.length,
+      ringy: { contacts: sum(by('Ringy')), count: by('Ringy').length },
+      textdrip: { contacts: sum(by('Textdrip')), count: by('Textdrip').length },
+    };
+  }, [blasts, range]);
+
+  // Blast list: filtered by BOTH the platform pill and the selected period.
+  const sorted = useMemo(() => {
+    const rows = blasts.filter(b =>
+      (platformFilter === 'all' || b.platform === platformFilter) && inBlastRange(b, range)
+    );
+    return [...rows].sort((a, b) => (blastDate(b)?.getTime() || 0) - (blastDate(a)?.getTime() || 0));
+  }, [blasts, platformFilter, range]);
 
   return (
     <div className="max-w-screen-2xl mx-auto px-4 py-4 space-y-4">
@@ -305,10 +325,32 @@ export default function BlastsView({ blasts = [], onDelete, onAdd, onEdit, readO
         </div>
       )}
 
-      {/* Roll-up */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <RollupCard label="Today" t={todayTotals} />
-        <RollupCard label="Last 7 days" t={weekTotals} />
+      {/* Period selector + roll-up */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-1 text-xs flex-wrap">
+          {BLAST_PERIODS.map(p => (
+            <button key={p} onClick={() => setPeriod(p)}
+              className={`px-2.5 py-1 rounded-lg font-semibold ${period === p ? 'bg-indigo-600 text-white' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'}`}>
+              {BLAST_PERIOD_LABELS[p]}
+            </button>
+          ))}
+          {period === 'custom' && (
+            <div className="flex items-center gap-1.5 ml-1">
+              <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} aria-label="Custom range start"
+                className="border border-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-lg px-2 py-1 text-xs" />
+              <span className="text-slate-400" aria-hidden="true">→</span>
+              <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} aria-label="Custom range end"
+                className="border border-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-lg px-2 py-1 text-xs" />
+            </div>
+          )}
+        </div>
+        {period === 'custom' && !range ? (
+          <div className="premium-card p-4 text-sm text-slate-400 dark:text-slate-500">Pick a start and end date to see the total.</div>
+        ) : (
+          <div className="max-w-sm">
+            <RollupCard label={BLAST_PERIOD_LABELS[period]} t={periodTotals} />
+          </div>
+        )}
       </div>
 
       {/* Table */}
@@ -325,7 +367,9 @@ export default function BlastsView({ blasts = [], onDelete, onAdd, onEdit, readO
         </div>
         {sorted.length === 0 ? (
           <div className="p-10 text-center text-sm text-slate-400 dark:text-slate-500">
-            No blasts logged yet. {!readOnly && 'Ringy repurpose tags log here automatically — use “Log a blast” above for TextDrip or anything else.'}
+            {blasts.length === 0
+              ? <>No blasts logged yet. {!readOnly && 'Ringy repurpose tags log here automatically — use “Log a blast” above for TextDrip or anything else.'}</>
+              : 'No blasts in this period.'}
           </div>
         ) : (
           <div className="overflow-auto scroll-fade-x">
