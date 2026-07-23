@@ -12,7 +12,7 @@ import {
   Plus, Search, LayoutGrid, List as ListIcon, Settings as SettingsIcon, Upload,
   Calendar, CalendarDays, Phone, Mail, MapPin, ArrowRight, Trash2, X, AlertCircle, Clock, GripVertical,
   User, Home, Briefcase, FileText, Pencil, Pill, Activity, DollarSign, Tag, Palette,
-  ChevronLeft, ChevronRight, Sparkles, Loader2,
+  ChevronLeft, ChevronRight, Sparkles, Loader2, Download,
 } from 'lucide-react';
 import { TiltCard, FadeIn, Stagger, StaggerItem } from '../motion/MotionPrimitives';
 import { fmt2, today, formatDob } from '@/lib/utils';
@@ -22,6 +22,7 @@ import { useIsDark } from '@/lib/useIsDark';
 import * as XLSX from 'xlsx';
 import ProspectForm from '../ProspectForm';
 import SmartProspectImportWizard from '../SmartProspectImportWizard';
+import ExportProspectsModal from '../ExportProspectsModal';
 import SourceColorManager from '../SourceColorManager';
 import { useSourceColors, colorForSource } from '@/lib/sourceColors';
 import { dueStatus } from '@/lib/followupEngine.mjs';
@@ -1418,6 +1419,7 @@ export default function ProspectsView({
   const [showSourceColors, setShowSourceColors] = useState(false);
   const [importFile, setImportFile] = useState(null);
   const [showSmartImport, setShowSmartImport] = useState(false);
+  const [showExport, setShowExport] = useState(false);
   const [tdSyncing, setTdSyncing] = useState(false); // header Sync TextDrip busy state
   const [selected, setSelected] = useState(() => new Set());
 
@@ -1664,6 +1666,12 @@ export default function ProspectsView({
             <button onClick={() => setShowSourceColors(true)}
               className="border border-violet-200 hover:border-violet-400 hover:bg-violet-50 text-violet-700 rounded-lg px-3 py-2 text-sm font-semibold flex items-center gap-1.5">
               <Palette size={14} /> Color sources
+            </button>
+          </Tooltip>
+          <Tooltip label="Download selected prospects as a CSV for any other CRM" side="bottom">
+            <button onClick={() => setShowExport(true)}
+              className="border border-slate-200 hover:bg-slate-50 rounded-lg px-3 py-2 text-sm font-semibold flex items-center gap-1.5">
+              <Download size={14} /> Export
             </button>
           </Tooltip>
           <button onClick={() => setShowSettings(true)}
@@ -1964,6 +1972,14 @@ export default function ProspectsView({
       <SettingsModal open={showSettings} settings={cfg} onSave={onSaveSettings} onClose={() => setShowSettings(false)} onSyncTextDrip={onSyncTextDrip} />
       <ImportWizard open={!!importFile} file={importFile} settings={cfg} prospects={prospects}
         onImport={onImportDone} onClose={() => setImportFile(null)} />
+      {!readOnly && (
+        <ExportProspectsModal
+          open={showExport}
+          onClose={() => setShowExport(false)}
+          prospects={prospects}
+          stages={cfg.stages}
+        />
+      )}
       <SmartProspectImportWizard
         open={showSmartImport}
         onClose={() => setShowSmartImport(false)}

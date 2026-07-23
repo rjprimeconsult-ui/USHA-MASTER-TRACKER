@@ -516,6 +516,20 @@ git commit -m "feat: ExportProspectsModal — source/stage/search picker with cr
 
 ---
 
+**ADDENDUM (execution, 2026-07-22):** the Step 1 code as originally written
+violated this repo's `react-hooks/set-state-in-effect` lint ERROR
+(eslint-plugin-react-hooks 7.1.1 via eslint-config-next 16.2.6) — the
+reset-on-open `useEffect` called setState unconditionally. Authorized fix
+(controller decision, behavior identical to spec §5): restructure into an
+outer `ExportProspectsModal` (renders GlassModal) + inner `ExportPickerBody`
+holding ALL picker state. GlassModal returns `null` when closed, so the body
+UNMOUNTS on close and REMOUNTS on open — reset-on-open comes free from the
+`useState` initializers; the reset `useEffect` is deleted entirely. The
+`indeterminate` effect stays (DOM-property mutation, not setState — lint-ok).
+The committed file is the source of truth for the final structure.
+
+---
+
 ### Task 3: Mount in ProspectsView (inside `!readOnly`)
 
 **Files:**

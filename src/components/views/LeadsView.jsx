@@ -197,7 +197,8 @@ function LeadsView({ leads, onNew, onEdit, onDelete, onBulkDelete, onBulkStage, 
       l.dateAdded, l.closedDate || '', l.notes,
     ]);
     const csv = [headers, ...rows].map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
+    // UTF-8 BOM so Excel renders accented names (José, Nuñez) correctly
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url; a.download = `leads-${new Date().toISOString().slice(0, 10)}.csv`;
