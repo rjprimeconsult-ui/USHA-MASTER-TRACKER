@@ -53,9 +53,9 @@ const TAB_LABEL = { cpa: 'CPA Dashboard', deals: 'Closed Deals', prospects: 'Pro
 const NAV_ORDER = [
   { id: 'cpa', label: 'CPA Dashboard' }, { id: 'deals', label: 'Closed Deals' },
   { m: 'Overview' }, { m: 'Associations' }, { id: 'portal', label: 'Portal Clients' },
-  { m: 'Pipeline' }, { id: 'prospects', label: 'Prospects' }, { m: 'Platforms' },
-  { id: 'books', label: 'Books' }, { m: 'Reports' }, { m: 'Calculator' },
-  { id: 'uploads', label: 'Upload' },
+  { id: 'prospects', label: 'Prospects' }, { m: 'Pipeline' }, { m: 'Blasts' },
+  { m: 'Platforms' }, { id: 'books', label: 'Books' }, { m: 'Reports' },
+  { m: 'Calculator' }, { id: 'uploads', label: 'Upload' },
 ];
 
 /* ------------------------------------------------------------------ keyframes (inject once) */
