@@ -526,6 +526,15 @@ export default function TakenRateCalculator({
           onChange={e => setTarget(parseInt(e.target.value))}
           className="w-full accent-indigo-600"
         />
+        {/* The sentence that stops the two boxes below from reading as
+            contradictory: an average only climbs if NEW deals beat the target,
+            and the better they issue the fewer it takes (100% -> few deals,
+            exactly target -> never arrives). Only shown while below target. */}
+        {total > 0 && rate < target && (
+          <div className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2">
+            You&apos;re at <b>{rate.toFixed(1)}%</b>. To lift that to <b>{target}%</b>, your next deals have to issue <i>above</i> {target}% — holding your current pace never gets there. The better they issue, the fewer you need:
+          </div>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 shadow-sm">
             <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-800 mb-1 uppercase tracking-wide">
@@ -537,13 +546,18 @@ export default function TakenRateCalculator({
               <div className="text-sm text-emerald-700 font-medium">Already at or above target. Keep it up.</div>
             ) : (
               <div className="text-sm text-slate-700">
-                Need <span className="text-lg font-bold text-emerald-700">{issuedNeeded}</span> more deal{issuedNeeded !== 1 ? 's' : ''} to <b>all issue</b> to hit {target}%.
+                Need <span className="text-lg font-bold text-emerald-700">{issuedNeeded}</span> more deal{issuedNeeded !== 1 ? 's' : ''} — and <b>every one must issue</b> — to hit {target}%.
+                <div className="text-xs text-slate-500 mt-1">Best case, fewest deals. Nothing declines or falls out.</div>
               </div>
             )}
           </div>
           <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3.5 shadow-sm">
             <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-800 mb-1 uppercase tracking-wide">
-              <Info size={12} /> Realistic path to {target}%
+              {/* Named for what it IS (a fixed 10-deal window), not "realistic" —
+                  that word implied it was modelled on the agent's own issue rate,
+                  which it isn't, and it reads as achievable when the ask is often
+                  well above their current pace. */}
+              <Info size={12} /> Your next 10 deals
             </div>
             {total === 0 ? (
               <div className="text-sm text-slate-500 italic">Need history to project.</div>
@@ -558,6 +572,9 @@ export default function TakenRateCalculator({
               <div className="text-sm text-slate-700">
                 Issue <span className="text-lg font-bold text-indigo-700">{issuesNeededInNext}</span> of your next <span className="text-lg font-bold text-slate-900">10</span> submitted deals and you&apos;ll hit <b>{projectedRate.toFixed(1)}%</b>.
                 <div className="text-xs text-slate-500 mt-1">
+                  {HORIZON - issuesNeededInNext > 0
+                    ? `You can afford ${HORIZON - issuesNeededInNext} to fall out. `
+                    : 'All 10 must issue. '}
                   New totals: {issued + issuesNeededInNext} issued of {total + HORIZON} submitted (you&apos;re at {issued} of {total} now).
                 </div>
               </div>
