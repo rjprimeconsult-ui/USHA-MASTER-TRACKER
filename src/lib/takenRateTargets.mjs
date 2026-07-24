@@ -5,14 +5,20 @@
  * SELF-CONTAINED (no imports): unit-tested under `node --test`, where sibling app
  * modules are unimportable (extensionless imports). Keep it dependency-free.
  *
- * Extracted from TakenRateCalculator.jsx 2026-07-23 because the clean-issue
- * formula carried a floating-point off-by-one that shipped unnoticed: at targets
- * where the exact answer lands on a whole number (68/76/80/90% for a 43-of-67
- * agent) `Math.ceil` saw 173.00000000000009 and demanded 174. It only ever
- * OVER-asked, so nobody was told they were finished early — but 80% and 90% are
- * targets agents really set. EPSILON absorbs that representation error; the
- * accompanying test sweeps every target against a brute-force count so the class
- * of bug cannot come back.
+ * Extracted from TakenRateCalculator.jsx 2026-07-23 because BOTH formulas
+ * carried a floating-point off-by-one that shipped unnoticed. Wherever the exact
+ * answer lands on a whole number, `Math.ceil` saw 173.00000000000009 and
+ * demanded 174:
+ *   - clean-issue, 43-of-67 agent: targets 68/76/80/90% each over-asked by one.
+ *   - next-N, same class: e.g. 4 issued of 15 at 56% needs exactly 10 of the
+ *     next 10, but the old code returned 11 — over the horizon — so the panel
+ *     announced "even 10 of your next 10 wouldn't reach 56%" about a target that
+ *     was reachable. (A first pass at this fix wrongly claimed next-N was
+ *     unaffected; it changed in thousands of cases. Do not repeat that claim.)
+ * It only ever OVER-asked, so nobody was told they were finished early — but 80%
+ * and 90% are targets agents really set. EPSILON absorbs that representation
+ * error; the accompanying tests sweep every target against an exact-integer
+ * oracle so the class of bug cannot come back.
  */
 
 // Slack for IEEE-754 representation error (0.9*67 is 60.300000000000004, not 60.3).

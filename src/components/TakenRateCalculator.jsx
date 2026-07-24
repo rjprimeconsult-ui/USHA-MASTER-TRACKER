@@ -265,8 +265,9 @@ export default function TakenRateCalculator({
   ];
 
   // Target math. Both formulas live in lib/takenRateTargets.mjs so they can be
-  // unit-tested — a floating-point off-by-one hid in the clean-issue one until
-  // 2026-07-23 (it over-asked by a deal at 68/76/80/90% targets).
+  // unit-tested — a floating-point off-by-one hid in BOTH of them until
+  // 2026-07-23 (clean-issue over-asked by a deal at 68/76/80/90% targets; next-N
+  // had the same bug and could call a reachable target impossible).
   //
   // 1) Clean-issue: fewest ADDITIONAL deals that, all issuing, reach the target.
   const issuedNeeded = cleanIssueDealsNeeded(issued, total, target);
