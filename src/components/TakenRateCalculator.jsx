@@ -3,6 +3,12 @@ import { useId, useMemo, useState, useEffect } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { Target, TrendingUp, Info, ChevronLeft, ChevronRight, Plus, Trash2 } from 'lucide-react';
 import { TAKEN_STAGES, PENDING_STAGES, NOT_TAKEN_STAGES } from '@/lib/constants';
+import {
+  TAKEN_RATE_HORIZON,
+  cleanIssueDealsNeeded,
+  issuesNeededInNext as calcIssuesNeededInNext,
+  isAtOrAboveTarget,
+} from '@/lib/takenRateTargets.mjs';
 import { storage } from '@/lib/storage';
 
 const BASE_PERIODS = [
@@ -258,27 +264,29 @@ export default function TakenRateCalculator({
     { name: 'Gap',  value: Math.max(100 - rate, 0.01), color: '#e2e8f0' },
   ];
 
-  // Target math
-  // 1) Clean-issue scenario: how many new deals must ALL issue to reach R?
-  //    (issued + X) / (total + X) >= R  →  X >= (R*total - issued) / (1 - R)
-  const R = target / 100;
-  const issuedNeeded = total === 0
-    ? null
-    : Math.max(0, Math.ceil((R * total - issued) / Math.max(1 - R, 0.0001)));
-
-  // 2) Gap analysis: if your issue rate holds, can you reach R?
-  //    Only reachable when currentRate > R. Otherwise — at same rate — the
-  //    aggregate asymptotes to currentRate and can never climb to R.
+  // Target math. Both formulas live in lib/takenRateTargets.mjs so they can be
+  // unit-tested — a floating-point off-by-one hid in BOTH of them until
+  // 2026-07-23 (clean-issue over-asked by a deal at 68/76/80/90% targets; next-N
+  // had the same bug and could call a reachable target impossible).
   //
-  //    Expressed as an absolute ratio: "out of your next N submitted deals,
-  //    M need to issue". Use a 10-deal horizon — a familiar, actionable frame.
-  //    Solve: (issued + M) / (total + N) >= R  →  M >= R*(total+N) - issued
+  // 1) Clean-issue: fewest ADDITIONAL deals that, all issuing, reach the target.
+  const issuedNeeded = cleanIssueDealsNeeded(issued, total, target);
+
+  // 2) Of the next HORIZON submitted deals, how many must issue — an absolute
+  //    ratio ("8 of your next 10") is a more actionable frame than a rate.
+  //    Note the aggregate only asymptotes toward the CURRENT rate, so a target
+  //    above it is never reached by holding pace; the UI says so explicitly.
   const currentIssueRate = total > 0 ? issued / total : 0;
-  const HORIZON = 10;
-  const issuesNeededInNext = total === 0
-    ? null
-    : Math.max(0, Math.ceil(R * (total + HORIZON) - issued));
+  const HORIZON = TAKEN_RATE_HORIZON;
+  const issuesNeededInNext = calcIssuesNeededInNext(issued, total, target);
   const unreachableInHorizon = issuesNeededInNext !== null && issuesNeededInNext > HORIZON;
+
+  // Every "are we there yet?" branch below must use the SAME float tolerance as
+  // the formulas. A raw `rate >= target` disagrees at the boundary — 29 of 50 is
+  // exactly 58%, but (29/50)*100 is 57.99999999999999 — which rendered the
+  // below-target copy over a formula answer of 0 ("you're at 58.0%… need 0 more
+  // deals to hit 58%").
+  const atOrAboveTarget = isAtOrAboveTarget(rate, target);
   // Projected rate if user hits M out of N
   const projectedRate = issuesNeededInNext !== null && !unreachableInHorizon
     ? ((issued + issuesNeededInNext) / (total + HORIZON)) * 100
@@ -526,6 +534,15 @@ export default function TakenRateCalculator({
           onChange={e => setTarget(parseInt(e.target.value))}
           className="w-full accent-indigo-600"
         />
+        {/* The sentence that stops the two boxes below from reading as
+            contradictory: an average only climbs if NEW deals beat the target,
+            and the better they issue the fewer it takes (100% -> few deals,
+            exactly target -> never arrives). Only shown while below target. */}
+        {total > 0 && !atOrAboveTarget && (
+          <div className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2">
+            You&apos;re at <b>{rate.toFixed(1)}%</b>. To lift that to <b>{target}%</b>, your next deals have to issue <i>above</i> {target}% — holding your current pace never gets there. The better they issue, the fewer you need:
+          </div>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 shadow-sm">
             <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-800 mb-1 uppercase tracking-wide">
@@ -533,31 +550,44 @@ export default function TakenRateCalculator({
             </div>
             {total === 0 ? (
               <div className="text-sm text-slate-500 italic">Submit a deal first to see projections.</div>
-            ) : rate >= target ? (
+            ) : atOrAboveTarget ? (
               <div className="text-sm text-emerald-700 font-medium">Already at or above target. Keep it up.</div>
             ) : (
               <div className="text-sm text-slate-700">
-                Need <span className="text-lg font-bold text-emerald-700">{issuedNeeded}</span> more deal{issuedNeeded !== 1 ? 's' : ''} to <b>all issue</b> to hit {target}%.
+                Need <span className="text-lg font-bold text-emerald-700">{issuedNeeded}</span> more deal{issuedNeeded !== 1 ? 's' : ''} — and <b>every one must issue</b> — to hit {target}%.
+                <div className="text-xs text-slate-500 mt-1">Best case, fewest deals. Nothing declines or falls out.</div>
               </div>
             )}
           </div>
           <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3.5 shadow-sm">
             <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-800 mb-1 uppercase tracking-wide">
-              <Info size={12} /> Realistic path to {target}%
+              {/* Named for what it IS (a fixed 10-deal window), not "realistic" —
+                  that word implied it was modelled on the agent's own issue rate,
+                  which it isn't, and it reads as achievable when the ask is often
+                  well above their current pace. */}
+              <Info size={12} /> Your next 10 deals
             </div>
             {total === 0 ? (
               <div className="text-sm text-slate-500 italic">Need history to project.</div>
-            ) : rate >= target ? (
+            ) : atOrAboveTarget ? (
               <div className="text-sm text-indigo-700 font-medium">Already above target — maintain your {(currentIssueRate * 100).toFixed(1)}% pace.</div>
             ) : unreachableInHorizon ? (
               <div className="text-sm text-slate-700">
+                {/* Must quote issuedNeeded, NOT issuesNeededInNext: "issue N of
+                    the next N" IS the clean-issue scenario. Using the 10-deal
+                    number here told a 43-of-67 agent to issue 27 of 27 for 90%
+                    — that yields 74.5%, and it contradicted the panel beside it
+                    by 146 deals. */}
                 Even <b>10 of your next 10</b> being issued wouldn&apos;t reach {target}%.
-                Submit more volume and reassess — or aim to issue <b>{issuesNeededInNext}</b> out of the next <b>{issuesNeededInNext}</b> deals.
+                It would take <b>{issuedNeeded}</b> straight issues at this volume — build more volume first, or set a nearer target.
               </div>
             ) : (
               <div className="text-sm text-slate-700">
                 Issue <span className="text-lg font-bold text-indigo-700">{issuesNeededInNext}</span> of your next <span className="text-lg font-bold text-slate-900">10</span> submitted deals and you&apos;ll hit <b>{projectedRate.toFixed(1)}%</b>.
                 <div className="text-xs text-slate-500 mt-1">
+                  {HORIZON - issuesNeededInNext > 0
+                    ? `You can afford ${HORIZON - issuesNeededInNext} to fall out. `
+                    : 'All 10 must issue. '}
                   New totals: {issued + issuesNeededInNext} issued of {total + HORIZON} submitted (you&apos;re at {issued} of {total} now).
                 </div>
               </div>
