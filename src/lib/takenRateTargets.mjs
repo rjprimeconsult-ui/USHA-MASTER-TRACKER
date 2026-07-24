@@ -35,6 +35,21 @@ export function cleanIssueDealsNeeded(issued, total, targetPct) {
 }
 
 /**
+ * Is the agent already at or above the target, tolerating float error?
+ *
+ * A plain `rate >= targetPct` disagrees with the formulas above at the exact
+ * boundary: 29 issued of 50 IS 58%, but (29/50)*100 evaluates to
+ * 57.99999999999999, so a naive compare sends the agent down the "below target"
+ * path where cleanIssueDealsNeeded correctly answers 0 — rendering the nonsense
+ * "you're at 58.0%, to lift it to 58% you need 0 more deals". Both sides must
+ * use the same tolerance or the UI contradicts itself.
+ * @param {number} ratePct current taken rate as a percentage (e.g. 58.0)
+ */
+export function isAtOrAboveTarget(ratePct, targetPct) {
+  return ratePct >= targetPct - EPSILON;
+}
+
+/**
  * Of the next `horizon` SUBMITTED deals, how many must issue to reach targetPct.
  * Solves (issued + M) / (total + horizon) >= R  ->  M >= R*(total+horizon) - issued.
  * A result greater than `horizon` means the target is unreachable in that window.

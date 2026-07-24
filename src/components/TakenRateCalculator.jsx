@@ -7,6 +7,7 @@ import {
   TAKEN_RATE_HORIZON,
   cleanIssueDealsNeeded,
   issuesNeededInNext as calcIssuesNeededInNext,
+  isAtOrAboveTarget,
 } from '@/lib/takenRateTargets.mjs';
 import { storage } from '@/lib/storage';
 
@@ -278,6 +279,13 @@ export default function TakenRateCalculator({
   const HORIZON = TAKEN_RATE_HORIZON;
   const issuesNeededInNext = calcIssuesNeededInNext(issued, total, target);
   const unreachableInHorizon = issuesNeededInNext !== null && issuesNeededInNext > HORIZON;
+
+  // Every "are we there yet?" branch below must use the SAME float tolerance as
+  // the formulas. A raw `rate >= target` disagrees at the boundary — 29 of 50 is
+  // exactly 58%, but (29/50)*100 is 57.99999999999999 — which rendered the
+  // below-target copy over a formula answer of 0 ("you're at 58.0%… need 0 more
+  // deals to hit 58%").
+  const atOrAboveTarget = isAtOrAboveTarget(rate, target);
   // Projected rate if user hits M out of N
   const projectedRate = issuesNeededInNext !== null && !unreachableInHorizon
     ? ((issued + issuesNeededInNext) / (total + HORIZON)) * 100
@@ -529,7 +537,7 @@ export default function TakenRateCalculator({
             contradictory: an average only climbs if NEW deals beat the target,
             and the better they issue the fewer it takes (100% -> few deals,
             exactly target -> never arrives). Only shown while below target. */}
-        {total > 0 && rate < target && (
+        {total > 0 && !atOrAboveTarget && (
           <div className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2">
             You&apos;re at <b>{rate.toFixed(1)}%</b>. To lift that to <b>{target}%</b>, your next deals have to issue <i>above</i> {target}% — holding your current pace never gets there. The better they issue, the fewer you need:
           </div>
@@ -541,7 +549,7 @@ export default function TakenRateCalculator({
             </div>
             {total === 0 ? (
               <div className="text-sm text-slate-500 italic">Submit a deal first to see projections.</div>
-            ) : rate >= target ? (
+            ) : atOrAboveTarget ? (
               <div className="text-sm text-emerald-700 font-medium">Already at or above target. Keep it up.</div>
             ) : (
               <div className="text-sm text-slate-700">
@@ -560,12 +568,17 @@ export default function TakenRateCalculator({
             </div>
             {total === 0 ? (
               <div className="text-sm text-slate-500 italic">Need history to project.</div>
-            ) : rate >= target ? (
+            ) : atOrAboveTarget ? (
               <div className="text-sm text-indigo-700 font-medium">Already above target — maintain your {(currentIssueRate * 100).toFixed(1)}% pace.</div>
             ) : unreachableInHorizon ? (
               <div className="text-sm text-slate-700">
+                {/* Must quote issuedNeeded, NOT issuesNeededInNext: "issue N of
+                    the next N" IS the clean-issue scenario. Using the 10-deal
+                    number here told a 43-of-67 agent to issue 27 of 27 for 90%
+                    — that yields 74.5%, and it contradicted the panel beside it
+                    by 146 deals. */}
                 Even <b>10 of your next 10</b> being issued wouldn&apos;t reach {target}%.
-                Submit more volume and reassess — or aim to issue <b>{issuesNeededInNext}</b> out of the next <b>{issuesNeededInNext}</b> deals.
+                It would take <b>{issuedNeeded}</b> straight issues at this volume — build more volume first, or set a nearer target.
               </div>
             ) : (
               <div className="text-sm text-slate-700">
