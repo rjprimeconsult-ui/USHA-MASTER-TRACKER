@@ -3,6 +3,11 @@ import { useId, useMemo, useState, useEffect } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { Target, TrendingUp, Info, ChevronLeft, ChevronRight, Plus, Trash2 } from 'lucide-react';
 import { TAKEN_STAGES, PENDING_STAGES, NOT_TAKEN_STAGES } from '@/lib/constants';
+import {
+  TAKEN_RATE_HORIZON,
+  cleanIssueDealsNeeded,
+  issuesNeededInNext as calcIssuesNeededInNext,
+} from '@/lib/takenRateTargets.mjs';
 import { storage } from '@/lib/storage';
 
 const BASE_PERIODS = [
@@ -258,26 +263,20 @@ export default function TakenRateCalculator({
     { name: 'Gap',  value: Math.max(100 - rate, 0.01), color: '#e2e8f0' },
   ];
 
-  // Target math
-  // 1) Clean-issue scenario: how many new deals must ALL issue to reach R?
-  //    (issued + X) / (total + X) >= R  →  X >= (R*total - issued) / (1 - R)
-  const R = target / 100;
-  const issuedNeeded = total === 0
-    ? null
-    : Math.max(0, Math.ceil((R * total - issued) / Math.max(1 - R, 0.0001)));
-
-  // 2) Gap analysis: if your issue rate holds, can you reach R?
-  //    Only reachable when currentRate > R. Otherwise — at same rate — the
-  //    aggregate asymptotes to currentRate and can never climb to R.
+  // Target math. Both formulas live in lib/takenRateTargets.mjs so they can be
+  // unit-tested — a floating-point off-by-one hid in the clean-issue one until
+  // 2026-07-23 (it over-asked by a deal at 68/76/80/90% targets).
   //
-  //    Expressed as an absolute ratio: "out of your next N submitted deals,
-  //    M need to issue". Use a 10-deal horizon — a familiar, actionable frame.
-  //    Solve: (issued + M) / (total + N) >= R  →  M >= R*(total+N) - issued
+  // 1) Clean-issue: fewest ADDITIONAL deals that, all issuing, reach the target.
+  const issuedNeeded = cleanIssueDealsNeeded(issued, total, target);
+
+  // 2) Of the next HORIZON submitted deals, how many must issue — an absolute
+  //    ratio ("8 of your next 10") is a more actionable frame than a rate.
+  //    Note the aggregate only asymptotes toward the CURRENT rate, so a target
+  //    above it is never reached by holding pace; the UI says so explicitly.
   const currentIssueRate = total > 0 ? issued / total : 0;
-  const HORIZON = 10;
-  const issuesNeededInNext = total === 0
-    ? null
-    : Math.max(0, Math.ceil(R * (total + HORIZON) - issued));
+  const HORIZON = TAKEN_RATE_HORIZON;
+  const issuesNeededInNext = calcIssuesNeededInNext(issued, total, target);
   const unreachableInHorizon = issuesNeededInNext !== null && issuesNeededInNext > HORIZON;
   // Projected rate if user hits M out of N
   const projectedRate = issuesNeededInNext !== null && !unreachableInHorizon
