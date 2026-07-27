@@ -1,7 +1,7 @@
 # Personalized Follow-up Drafts + Appointment Reminders — Design Spec
 
 **Date:** 2026-07-27
-**Status:** Approved by Juan (verbal, via brainstorming) — "All right sounds good write the spec and let's execute."
+**Status:** Approved by Juan (verbal, via brainstorming) — "All right sounds good write the spec and let's execute." **Revision 2** after adversarial review (see §14).
 **Request:** A field agent suggested PRIM's sample follow-up text should be written from each prospect's own notes rather than being the same script for everyone. Juan: *"the whole purpose of this is to create a way that Prim acts intelligently and is able to adapt to each situation properly."*
 
 ## 1. Problem
@@ -10,8 +10,8 @@ PRIM's follow-up scripts are a fixed playbook: stage → `steps[]`, each `{ afte
 
 Two structural gaps sit behind this:
 
-1. **Three of the six stages Juan named have no follow-up sequence at all.** The playbook covers only `MISSED_APPT`, `PENDING_DECISION`, `FOLLOWUP_LATER`, `GHOSTED`. For `WEBBY_SET` / `WEBBY_CONFIRMED` / `APPOINTMENT_SET`, `playbookForStage` returns `[]`, so `FollowupNextStep` renders nothing ([line 24](../../../src/components/FollowupNextStep.jsx)) and no cadence is ever armed ([followupEngine.mjs:107](../../../src/lib/followupEngine.mjs)). PRIM has a 5-step sequence for chasing someone *after* they no-show and **nothing that helps prevent the no-show**.
-2. **The cadence engine cannot schedule relative to an appointment.** Every step is `afterDays`, counted forward from stage entry or the last touch via `addDaysIso` ([followupEngine.mjs:89](../../../src/lib/followupEngine.mjs)). The string `appointmentTime` does not appear in the engine. A naive `afterDays: 1` confirmation fires 1 day after stage entry — possibly nine days early, possibly after the appointment already happened.
+1. **Three of the six stages Juan named have no follow-up sequence at all.** The playbook covers only `MISSED_APPT`, `PENDING_DECISION`, `FOLLOWUP_LATER`, `GHOSTED`. For `WEBBY_SET` / `WEBBY_CONFIRMED` / `APPOINTMENT_SET`, `playbookForStage` returns `[]`, so `FollowupNextStep` renders nothing ([line 24](../../../src/components/FollowupNextStep.jsx)) and no cadence is armed ([followupEngine.mjs:108](../../../src/lib/followupEngine.mjs)). PRIM has a 5-step sequence for chasing someone *after* they no-show and **nothing that helps prevent the no-show**.
+2. **The cadence engine cannot schedule relative to an appointment.** Every step is `afterDays`, counted forward from stage entry or the last touch via `addDaysIso` ([followupEngine.mjs:89](../../../src/lib/followupEngine.mjs)). The string `appointmentTime` does not appear in the engine.
 
 ## 2. Decisions (locked with Juan)
 
@@ -21,124 +21,135 @@ Two structural gaps sit behind this:
 | D2 | Stages in scope (6): `WEBBY_SET`, `WEBBY_CONFIRMED`, `APPOINTMENT_SET`, `MISSED_APPT`, `PENDING_DECISION`, `FOLLOWUP_LATER`. **`GHOSTED`, `SOLD`, `LOST` get nothing.** |
 | D3 | The three appointment stages get **new two-touch sequences**: evening before + ~2h before, both **anchored on `appointmentTime`**. |
 | D4 | **Unconfirmed** (`WEBBY_SET`, `APPOINTMENT_SET`) → ask to confirm. **Confirmed** (`WEBBY_CONFIRMED`) → remind and add value, **ask nothing**. Re-asking a confirmed prospect hands back a booking already won. |
-| D5 | The **morning-of message is assumptive in all three** appointment stages, including unconfirmed ones. Two hours out, "are we still on?" invites a cancellation rather than gathering information. |
-| D6 | **No valid `appointmentTime` → PRIM stays silent.** No cadence, no card, no draft. |
-| D7 | Drafts are generated **on first open of an eligible due prospect**, then **cached on the prospect**. Not on every render, not batch-prepared. |
-| D8 | **Eligibility gate = evidence of a real conversation**: an agent-logged touch with a note, **or** a genuine TextDrip SMS thread. Nothing else opens the door. |
-| D9 | `situation` is **supporting detail only** — it may supply a fact the draft leans on, but it can **never** be the reason personalisation is offered. There is no provenance on that field (six writers, none recorded), so it cannot be trusted as evidence of a conversation. |
-| D10 | **`meds` is never sent to the model.** `situation` is health-scanned before it leaves the browser. TextDrip threads are summarised and health-scrubbed before use. |
-| D11 | The AI **always drafts fresh** for eligible prospects. The stock script is a **brief** (purpose + register), *not* raw material to paraphrase. Prompt framing is "write the message this moment calls for", not "rewrite this". |
+| D5 | The **morning-of message is assumptive in all three** appointment stages, including unconfirmed ones. |
+| D6 | **No usable `appointmentTime` → PRIM stays silent.** No cadence, no card, no draft. See §4.2 — "usable" excludes date-only values. |
+| D7 | Drafts are generated **on first open of an eligible due prospect**, then cached. Not on every render, not batch-prepared. |
+| D8 | **Eligibility gate = evidence of a real conversation**: an agent-logged touch with a note, **or** a genuine TextDrip SMS thread with an inbound message. Nothing else. |
+| D9 | `situation` is **supporting detail only** — never the reason personalisation is offered. Six writers, no recorded provenance. |
+| D10 | **`meds` is never sent to the model.** `situation` is health-scanned before leaving the browser. TextDrip threads are summarised and scrubbed, never sent raw. |
+| D11 | The AI **always drafts fresh** for eligible prospects. The stock script is a **brief** (purpose + register), *not* raw material to paraphrase. |
 | D12 | The drafting call receives **what was already sent earlier in this sequence** and must not repeat it. |
-| D13 | The model may return **"insufficient context"**. When it does, PRIM shows the stock script and offers no Personalize affordance — identical to having no notes. |
-| D14 | Every draft is **editable** before sending. PRIM proposes; the agent owns what goes out. **Nothing auto-sends.** |
-| D15 | Appointment-anchored steps **advance on time, not on logged touches** (see §4.3). The appointment does not wait for paperwork. |
+| D13 | The model may return **"insufficient context"** → stock script, no affordance. |
+| D14 | Every draft is **editable**. PRIM proposes; the agent owns what goes out. **Nothing auto-sends.** |
+| D15 | Appointment steps **advance on time, not on logged touches** — implemented via reconciliation (§4.4), not read-time derivation. |
+| D16 | **Cadence state is STORED in the existing `cadence` fields, anchored on `appointmentTime`.** Superseded revision 1's read-time derivation. See §14.1. |
+| D17 | Drafts are stored in a **separate `followup_drafts_v1` key**, never on the prospect record. See §14.2. |
 
-### 2.1 Decision changed during spec-writing — REVIEW REQUIRED
+### 2.1 Open decision for Juan — model tier
 
-**D16 — Appointment cadence state is *derived*, not stored. The one-time forward-arming migration described in the verbal design is no longer needed and is dropped.**
+Defaulting to **Haiku 4.5**, consistent with all 8 existing PRIM Claude routes, switchable via `FOLLOWUP_DRAFT_MODEL`.
 
-In the verbal design (Part 2) the plan was to arm cadences for the three new stages, plus a one-time migration arming forward from *today* so agents would not inherit a backdated overdue pile from `stageEnteredAt`.
+| Model | Est. monthly cost¹ |
+|---|---|
+| **Haiku 4.5** (default) | ~$4 |
+| Sonnet | ~$47 |
 
-Deriving the schedule from `appointmentTime` + `touchLog` at read time removes that problem at the source:
-
-- Appointment in the **past** → sequence complete → never due, never shown.
-- Appointment in the **future** → first becomes due the evening before.
-- **No valid** `appointmentTime` → no cadence at all (D6).
-
-There is no window in which a stale or backdated due date can exist, because no due date is persisted. **The "47 fake overdues on deploy day" risk is eliminated rather than mitigated**, no migration runs, no new fields are written to `prospects_v1`, and the staleness class of bug (a step going stale while the app sits open) cannot occur.
-
-Net effect on what Juan approved: strictly better. The due list still grows — prospects appear the evening before their appointment — but it grows *forward* only.
-
-### 2.2 Open decision for Juan — model tier
-
-Defaulting to **Haiku 4.5**, consistent with all 8 existing PRIM Claude routes, switchable by one env var.
-
-| Model | Est. monthly cost¹ | Note |
-|---|---|---|
-| **Haiku 4.5** (default) | ~$4 | Consistent with the rest of PRIM |
-| Sonnet | ~$47 | Better prose; this is text agents send to clients |
-
-¹ Assumes 23 agents × ~10 drafted follow-ups/day × ~1.5k in / ~150 out tokens. Cheap-and-reversible first: if agents report drafts reading flat, flip `FOLLOWUP_DRAFT_MODEL`. **Flagged for Juan — not blocking the build.**
+¹ 23 agents × ~10 drafted follow-ups/day × ~1.5k in / ~150 out tokens. Cheap-and-reversible first. **Not blocking the build.**
 
 ## 3. Architecture
 
 ```
-src/lib/apptCadence.mjs            NEW   appointment-anchored scheduling (pure, node --test)
-src/lib/apptCadence.test.mjs       NEW   anchor math, DST, past-appt, ordering
-src/lib/followupDraftGate.mjs      NEW   eligibility + PHI scrub + source assembly (pure)
-src/lib/followupDraftGate.test.mjs NEW   agent-vs-machine touch, TextDrip, scrubber
-src/lib/followupEngine.mjs         EDIT  new stages + appt-aware dueStatus/logTouch + playbook v2 merge
-src/lib/followupEngine.test.mjs    EDIT  regression + new-stage coverage
-src/app/api/followup-draft/route.js NEW  Claude drafting route
-src/components/FollowupNextStep.jsx EDIT draft display, Redo, editable box
-src/components/LeadTracker.jsx     EDIT  re-arm on appointmentTime change; playbook merge; thread playbook to stats
-src/lib/followupStats.mjs          EDIT  accept playbook (dueStatus signature)
+src/lib/apptCadence.mjs             NEW   appointment anchoring + reconciliation (pure, node --test)
+src/lib/apptCadence.test.mjs        NEW   validator, anchor math, DST, reconcile, ordering
+src/lib/followupDraftGate.mjs       NEW   eligibility + PHI scrub + source assembly (pure)
+src/lib/followupDraftGate.test.mjs  NEW   agent-vs-machine touch, TextDrip, scrubber
+src/lib/followupDraftStore.js       NEW   followup_drafts_v1 read/write/prune
+src/lib/followupEngine.mjs          EDIT  3 new stages; appt-aware arm/logTouch; unconditional playbook merge
+src/lib/followupEngine.test.mjs     EDIT  regression + new-stage coverage
+src/app/api/followup-draft/route.js NEW   Claude drafting route
+src/components/FollowupNextStep.jsx EDIT  early-return on 'none'; draft display; Redo; editable box
+src/components/views/ProspectsView.jsx EDIT import the canonical appointment validator (§4.2)
+src/components/views/CpaDashboard.jsx  EDIT pass `playbook` to FollowupDueWidget
+src/components/views/Dashboard.jsx     EDIT pass `playbook` to FollowupDueWidget
+src/components/LeadTracker.jsx      EDIT  reconcile on load/sync/update; playbook merge
 ```
 
-Two new pure `.mjs` modules because `npm test` = `node --test src/lib/*.test.mjs` and only dependency-free `.mjs` is importable there. All fragile logic lives in them.
+Two new pure `.mjs` modules because `npm test` = `node --test src/lib/*.test.mjs` and only dependency-free `.mjs` is importable there.
+
+**`dueStatus` keeps its current signature.** Revision 1 proposed adding a `playbook` parameter; review found six call sites, not three — including [reminders/route.js:320](../../../src/app/api/reminders/route.js), a server-side nightly job that never loads `followup_playbook_v1` and structurally could not supply one. Storing real due dates in `cadence` (D16) means every existing consumer keeps working untouched.
 
 ## 4. Appointment-anchored cadence
 
 ### 4.1 Step shape
 
-Existing steps are unchanged. Appointment steps use a new, mutually-exclusive anchor:
+A step has **either** `afterDays` (existing) **or** `anchor` (new). Never both.
 
 ```js
 { anchor: 'evening_before', atHour: 18, channel: 'Text', script: '...' }
 { anchor: 'hours_before',   hours: 2,   channel: 'Text', script: '...' }
 ```
 
-A step has **either** `afterDays` (existing behaviour) **or** `anchor` (new). Never both.
+`atHour` must stay outside 02:00–03:59: a local wall-clock time inside a spring-forward gap does not exist and is silently shifted. Enforced by a unit test over the shipped playbook, not left to reviewer memory.
 
-### 4.2 Anchor math — local time, following `reminderPresetAt`
+### 4.2 What counts as a usable appointment time (D6)
 
-Timezone is the sharpest edge in this spec. "6 PM the day before" must mean 6 PM in the **agent's local evening**, not UTC; a UTC implementation fires reminders at 2 AM for half the country. The engine already solves this correctly in `reminderPresetAt` ([followupEngine.mjs:243](../../../src/lib/followupEngine.mjs)) by constructing dates from local components. **Follow that pattern; do not introduce a second approach.**
+**Canonical validator lives in `apptCadence.mjs` and is exported.** `ProspectsView`'s two private copies (`formatAppt` [:50](../../../src/components/views/ProspectsView.jsx), `apptDate` [:66](../../../src/components/views/ProspectsView.jsx)) are replaced by imports so display and scheduling cannot drift. Revision 1 claimed they shared a validator; they could not — both are unexported, in a `'use client'` file that imports lucide-react.
+
+Two distinct verdicts:
+
+- **`displayable`** — current behaviour: contains a digit, contains one of `[-/T:]`, parses, year ≥ 2000. Used for the appointment column. Unchanged.
+- **`schedulable`** — displayable **AND carries an explicit time-of-day**.
+
+The second is new and load-bearing. Date-only values are an explicitly supported shape ([import-prospects-ai/route.js:153](../../../src/app/api/import-prospects-ai/route.js) — *"ISO 8601 datetime or YYYY-MM-DD or empty"*). `new Date('2026-08-14')` parses as **UTC midnight**, which is `Aug 13, 8:00 PM` in Eastern. Scheduling off that would mark the sequence complete a day early, anchor `evening_before` to Aug 12, and render `{apptTime}` as **"8:00 PM"** — which §7.2 bar 7 instructs the model to copy verbatim. The agent would send a client a confirmation for the wrong day at the wrong time.
+
+**Date-only is `displayable` but not `schedulable`.** No cadence, no card, no draft.
+
+### 4.3 Anchor math — local time
+
+Timezone is the sharpest edge in this spec. "6 PM the day before" must mean 6 PM in the **agent's local evening**. The engine already solves this in `reminderPresetAt` ([followupEngine.mjs:243](../../../src/lib/followupEngine.mjs)) by constructing from local components. **Follow that pattern; do not add a second approach.**
 
 ```
 evening_before: new Date(apptY, apptMo, apptD - 1, atHour, 0, 0, 0)
 hours_before:   new Date(apptMs - hours * 3600000)
 ```
 
-`new Date(y, mo, d - 1, ...)` handles month/year rollover natively. DST is handled because the components are local.
+`new Date(y, mo, d-1, …)` handles month/year rollover natively and resolves local wall-clock through the zone's rules for that date. Implementations must **sort computed due times ascending** rather than trusting array order.
 
-### 4.3 Derived schedule (D15, D16)
+### 4.4 Reconciliation — `reconcileApptCadence(prospect, steps, now)`
 
-For a prospect in an appointment stage, given `appointmentTime` and the stage's steps:
+Pure. Returns the `cadence` object to store, or `null` when the stage is not appointment-anchored.
 
-1. **Invalid or missing `appointmentTime`** → `{ state: 'none' }`. Validity uses the same hard validator as the appointment column ([ProspectsView.jsx:49](../../../src/components/views/ProspectsView.jsx)) — must contain a digit and a date separator, parse to a real date, and have year ≥ 2000 — so the scheduler and the display never disagree about what counts as an appointment.
-2. **`now >= appointmentTime`** → `{ state: 'done' }`. The sequence closes when the appointment arrives. No "confirming tomorrow" sitting at 12 days overdue.
-3. Otherwise compute each step's absolute due time; the **current step is the last one whose due time has passed**. If none has passed, the sequence is `ontrack` with `nextDueAt` = the first step's due time.
-4. **Step satisfaction:** a step is satisfied if `touchLog` contains an agent touch with `at` inside that step's window `[stepDue, nextStepDue)`. A satisfied current step renders as handled with the next due time shown, so the agent is not nagged for work already done.
+1. Not `schedulable` (§4.2) → `{ stepIndex: 0, nextDueAt: null, snoozedUntil: preserved, completedAt: null }` → `dueStatus` reports `'none'`.
+2. `now >= appointmentTime` → `completedAt = appointmentTime` → `'done'`. The sequence closes when the appointment arrives.
+3. Otherwise compute all step due times (§4.3), sort ascending. A step is **satisfied** when `touchLog` contains an agent touch (§6.1) with `at` inside `[stepDue, nextStepDue)`. `stepIndex` = the first unsatisfied step; `nextDueAt` = its due time. All satisfied → `completedAt = now`.
 
-Step ordering is guaranteed for all realistic appointment times: for an appointment at 00:30, `evening_before` is the prior day 18:00 and `hours_before(2)` is 22:30 the prior day — still ordered. Implementations must **sort computed due times ascending** rather than trusting array order, and tests must cover the midnight-adjacent case.
+Because `nextDueAt` is written as a real absolute timestamp, **every existing consumer works unchanged** — `dueStatus`, `FollowupDueWidget`, `computeFollowupStats`, `ProspectsView`'s `isOverdueFollowup`/`FollowupDot`, and the nightly `reminders` route. `snoozedUntil` is preserved, so the Snooze buttons ([FollowupNextStep.jsx:65](../../../src/components/FollowupNextStep.jsx)) keep working. `completedAt` is genuinely set, so the `onComplete` handoff to `MISSED_APPT` via `suggestStageAfterTouch` ([followupEngine.mjs:339](../../../src/lib/followupEngine.mjs)) actually fires.
 
-### 4.4 `dueStatus` signature change
+**No fake-overdue pile:** the first armed `nextDueAt` for a future appointment is the evening before — in the future. Past appointments reconcile straight to `done`. Nothing is ever backdated, so revision 1's one-time migration is unnecessary for the reason it was proposed.
 
-`dueStatus(prospect, now)` → `dueStatus(prospect, now, playbook)`. `playbook` is **optional**; when absent the function behaves exactly as today, so no call site breaks silently. Appointment-stage derivation requires it (the anchors live in the steps).
+### 4.5 The `afterDays: undefined` foot-gun — all three sites
 
-Call sites to update: [FollowupNextStep.jsx:26](../../../src/components/FollowupNextStep.jsx), [FollowupDueWidget.jsx:28](../../../src/components/FollowupDueWidget.jsx) (both already receive `playbook` as a prop), and `computeFollowupStats(prospects, now)` ([followupStats.mjs:11](../../../src/lib/followupStats.mjs)), which must gain a `playbook` param threaded from its caller.
+`addDaysIso(iso, undefined)` returns `iso` unchanged, because `Number(undefined || 0)` is `0` and `setUTCDate(+0)` is a no-op ([followupEngine.mjs:89](../../../src/lib/followupEngine.mjs)). Three functions compute due dates from `steps[i].afterDays`, each guarded by `if (steps.length === 0) return …` — **a guard that stops firing the moment the new stages have steps**:
 
-### 4.5 `logTouch` must not compute day-based due dates for appointment steps
+| Site | Line | Currently yields | Consequence if unfixed |
+|---|---|---|---|
+| `armIfNeeded` | [:115](../../../src/lib/followupEngine.mjs) | `nextDueAt = stageEnteredAt` | Backdated overdue on every load, persisted |
+| `armCadence` | [:131](../../../src/lib/followupEngine.mjs) | `nextDueAt = now` | See §4.6 |
+| `logTouch` | [:192](../../../src/lib/followupEngine.mjs) | `nextDueAt = now` | Reminder re-fires immediately |
 
-`logTouch` currently sets `nextDueAt = addDaysIso(now, steps[nextIndex].afterDays)` ([followupEngine.mjs:192](../../../src/lib/followupEngine.mjs)). For an appointment step `afterDays` is `undefined`, and `Number(undefined || 0)` is `0` — silently producing `nextDueAt = now`. **This is a live foot-gun the moment the new stages exist.**
+**All three must route appointment stages through `reconcileApptCadence` instead.** Revision 1 addressed only `logTouch` and then asserted no backdated date could exist — false, and the exact failure mode that shipped in the taken-rate work: one site checked, the class declared handled.
 
-For appointment stages, `logTouch` records the touch and clears `snoozedUntil` but **does not write `nextDueAt` or `stepIndex`** — the schedule is derived (§4.3). Everything else is unchanged.
+### 4.6 Regression this prevents: "Booked appt → Appointment Set"
 
-### 4.6 Reschedule re-arms
+`suggestStageAfterTouch` suggests `APPOINTMENT_SET` on outcome `'Booked appt'` ([followupEngine.mjs:332](../../../src/lib/followupEngine.mjs)). Accepting it calls `armCadence` ([LeadTracker.jsx:1589](../../../src/components/LeadTracker.jsx)). Today `APPOINTMENT_SET` has no steps, so `nextDueAt` is `null` and the prospect leaves the due list. With steps but without §4.5, `armCadence` would set `nextDueAt = now` — an agent books an appointment for next Tuesday and the prospect **immediately** shows "Due today", a coloured `FollowupDot`, and a line in that night's reminder email. Reconciliation gives the correct answer: the evening before next Tuesday.
 
-`applyProspectUpdate` re-arms only when the **stage** changes ([LeadTracker.jsx:1579](../../../src/components/LeadTracker.jsx)). Because appointment scheduling is derived, a rescheduled appointment self-corrects on the next render with no re-arm needed — but the **cached draft must be invalidated** (§7), since it quotes the old time.
+### 4.7 When reconciliation runs
 
-### 4.7 Playbook v2 merge
+[LeadTracker.jsx:646](../../../src/components/LeadTracker.jsx) (load), [:754](../../../src/components/LeadTracker.jsx) (cloud sync), `onAddProspect`, `applyStageSuggestion`, after `logTouch`, and — **new** — `applyProspectUpdate` for **any** change to an appointment-stage prospect, not only stage changes ([LeadTracker.jsx:1579](../../../src/components/LeadTracker.jsx)). That last one is what makes a reschedule re-anchor.
 
-Saved playbooks load in preference to the default: `rawPlaybook ? JSON.parse(rawPlaybook) : DEFAULT_PLAYBOOK` ([LeadTracker.jsx:642](../../../src/components/LeadTracker.jsx)). Any user with a stored `followup_playbook_v1` would therefore **never receive the three new stages**. (No playbook-editor UI exists in the repo, so saved playbooks are expected to be rare or absent — but the merge is required for correctness regardless.)
+Once written, a future `nextDueAt` needs no further reconciliation: `dueStatus` compares it to `now` on every render. Reconciliation exists to *set* correct dates, not to keep time.
 
-Bump `DEFAULT_PLAYBOOK.version` to `2`. On load, merge: for every stage in `DEFAULT_PLAYBOOK.stages` absent from the saved playbook, add it. Never overwrite a stage the user already has.
+**Honest limit:** `FollowupDueWidget` memoizes on `[prospects]` and computes `now` inside the memo ([FollowupDueWidget.jsx:24](../../../src/components/FollowupDueWidget.jsx)). A step coming due at 18:00 while the tab sits open appears on the next re-render, not at the stroke of 18:00. This is pre-existing for all stages and is **not** fixed here; revision 1 wrongly claimed the staleness class was eliminated.
+
+### 4.8 Playbook merge
+
+Saved playbooks load in preference to the default ([LeadTracker.jsx:642](../../../src/components/LeadTracker.jsx)), so a stored `followup_playbook_v1` would never receive the new stages. **Merge unconditionally on every load**: for each stage in `DEFAULT_PLAYBOOK.stages` absent from the saved playbook, add it; never overwrite an existing stage. No version gate — nothing reads `DEFAULT_PLAYBOOK.version`, so a bump would be inert and misleading.
 
 ## 5. The six new stock scripts
 
-New token **`{apptTime}`** → time only, e.g. `2:00 PM`. The existing `{time}` renders `Thu, 2:00 PM` ([FollowupNextStep.jsx:16](../../../src/components/FollowupNextStep.jsx)), which reads as machine output inside "tomorrow at …". **`{time}` is unchanged** so none of the 18 existing scripts shift.
+New token **`{apptTime}`** → time only, e.g. `2:00 PM`. Existing `{time}` renders `Thu, 2:00 PM` ([FollowupNextStep.jsx:16](../../../src/components/FollowupNextStep.jsx)) and is **unchanged**, so none of the 18 existing scripts shift.
 
-**`WEBBY_SET`** — scheduled, not yet confirmed. `onComplete: 'MISSED_APPT'`.
+**`WEBBY_SET`** — scheduled, not confirmed. `onComplete: 'MISSED_APPT'`.
 
 | Step | Message |
 |---|---|
@@ -159,7 +170,7 @@ New token **`{apptTime}`** → time only, e.g. `2:00 PM`. The existing `{time}` 
 | `evening_before` 18:00 · Text | Hi {first}! Just confirming our call tomorrow at {apptTime} — still good on your end? |
 | `hours_before` 2 · Text | Hi {first}, looking forward to our call at {apptTime} today. Talk soon! |
 
-Note none of these contain a question in the morning-of slot (D5), and `WEBBY_CONFIRMED` contains no question at all (D4).
+No question appears in any morning-of slot (D5); `WEBBY_CONFIRMED` contains no question at all (D4).
 
 ## 6. Eligibility gate — `followupDraftGate.mjs`
 
@@ -168,147 +179,183 @@ Note none of these contain a question in the morning-of slot (D5), and `WEBBY_CO
 | Writer | Signature | Verdict |
 |---|---|---|
 | `LogTouchSheet` (the agent) | `channel` ∈ `CHANNELS`, `outcome` ∈ `OUTCOMES` (capitalised) | ✅ **agent** |
-| `applyOutreachEmail` ([followupEngine.mjs:206](../../../src/lib/followupEngine.mjs)) | `channel: 'email'` (lowercase), `outcome: 'sent'` | ❌ machine — neither value exists in the constant lists, so this is an unambiguous fingerprint |
-| Website-form re-submit ([webforms.mjs:448](../../../src/lib/webforms.mjs)) | `channel: 'Other'`, `outcome: 'Other'`, note begins `Submitted your website form again` | ❌ machine — channel/outcome are legitimate human values, so **only the note prefix distinguishes it** |
+| `applyOutreachEmail` ([followupEngine.mjs:206](../../../src/lib/followupEngine.mjs)) | `channel: 'email'` (lowercase), `outcome: 'sent'` | ❌ machine — neither value exists in the constant lists |
+| Website-form re-submit ([webforms.mjs:450](../../../src/lib/webforms.mjs)) | `channel: 'Other'`, `outcome: 'Other'`, note begins `Submitted your website form again` | ❌ machine — **only the note prefix distinguishes it** |
 
-**Going forward**, stamp new touches with `by: 'agent' | 'system'` at creation so future code does not depend on fingerprinting. Fingerprints remain for historical rows and must stay.
+Confirmed complete by review: these are the only writers of touch entries in `src/`.
+
+**Going forward**, stamp new touches with `by: 'agent' | 'system'` at creation. Fingerprints remain for historical rows.
 
 ### 6.2 The gate
 
-A prospect is eligible when **both** hold:
+Eligible when **both** hold:
 
 1. `stage` ∈ the six (D2); and
-2. **either** at least one agent touch (§6.1) with a non-empty `note`, **or** a genuine TextDrip thread — `textdripChat.messages` non-empty ([textdrip.mjs:328](../../../src/lib/textdrip.mjs)) — containing at least one inbound message.
+2. **either** ≥1 agent touch (§6.1) with a non-empty `note`, **or** `textdripChat.messages` ([textdrip.mjs:329](../../../src/lib/textdrip.mjs)) containing ≥1 message with `direction: 'in'` ([textdrip.mjs:95](../../../src/lib/textdrip.mjs)).
 
-A `situation` alone **never** qualifies (D9), which permanently kills the "BENEPATH LEAD" class of filler ([import-prospects-ai/route.js:112](../../../src/app/api/import-prospects-ai/route.js)) without needing a length heuristic. Requiring an *inbound* TextDrip message means an outbound-only blast is not mistaken for a conversation.
+`situation` alone **never** qualifies (D9), permanently killing the "BENEPATH LEAD" filler class ([import-prospects-ai/route.js:112](../../../src/app/api/import-prospects-ai/route.js)) without a length heuristic. Requiring an *inbound* message means an outbound-only blast is not mistaken for a conversation.
 
 ### 6.3 PHI scrub (D10)
 
 Applied **in the browser, before the request leaves**:
 
-- `meds` — never included. Not scrubbed, not summarised: absent from the payload entirely.
-- `situation` — health-language scan; matched spans are dropped rather than the whole field, so non-health context survives.
-- TextDrip messages — reduced to a short context summary with the same scan applied, never sent raw. Raw threads are prospect-written and unfiltered, and prospects volunteer clinical detail freely.
+- `meds` — absent from the payload entirely. Not scrubbed, not summarised.
+- `situation` — health-language scan; matched spans dropped, surrounding context preserved.
+- TextDrip messages — reduced to a short summary with the same scan, never sent raw.
 
-The scrubber is pure and unit-tested against the actual patterns PRIM's importers produce. It is a **defence-in-depth layer, not the only one** — the prompt also forbids health references (§7.2), and a human reads every message before it sends (D14).
+Defence in depth, not the only layer: the prompt also forbids health references (§7.2), and a human reads every message (D14).
 
-## 7. Drafting route and caching
+## 7. Drafting route, storage, caching
 
 ### 7.1 `POST /api/followup-draft`
 
-Follows the established pattern of PRIM's 8 Claude routes: Supabase bearer → `requireUserId`, JSON-schema tool call, `runtime = 'nodejs'`, `dynamic = 'force-dynamic'`. **Prospect content is never logged** — no notes, no drafts, no message bodies, in success or error paths.
+Established pattern: Supabase bearer → `requireUserId`, JSON-schema tool call, `runtime = 'nodejs'`, `dynamic = 'force-dynamic'`. **Prospect content is never logged**, in success or error paths.
 
-Request carries the stock script (the brief), stage, confirmed/unconfirmed flag, step purpose, scrubbed context, prior messages already sent this sequence (D12), first name, and `{apptTime}`.
-
+Request: stock script (the brief), stage, confirmed flag, step purpose, scrubbed context, already-sent messages this sequence (D12), first name, `{apptTime}`.
 Response: `{ text }` **or** `{ insufficient: true }` (D13).
 
 ### 7.2 Prompt contract
 
-Framed as **"write the message this moment calls for"** (D11) — never "rewrite the following". The stock script is supplied as *purpose and register*. Rewrite framing yields paraphrase: the same sentence with one bolted-on clause, which is precisely the templated feel this feature exists to remove.
+Framed as **"write the message this moment calls for"** (D11) — never "rewrite the following". Rewrite framing yields paraphrase: the same sentence with one bolted-on clause, precisely the templated feel this feature exists to remove.
 
 Hard bars:
 
 1. Keep the step's purpose — a confirm stays a confirm, a breakup stays a breakup.
-2. Never re-open a confirmed appointment — no question that can be answered "can we move it?"
-3. **Only facts present in the supplied notes.** No inference, no extrapolation, no plausible gap-filling. This is the rule that prevents "hope the new job's going well" reaching someone who never mentioned a job.
+2. Never re-open a confirmed appointment.
+3. **Only facts present in the supplied notes.** No inference, no gap-filling. This prevents "hope the new job's going well" reaching someone who never mentioned a job.
 4. No health references, ever.
-5. **No claims** — no savings, rates, or approval promises. An unconstrained model drifts into promises, and those are a compliance exposure in R&J Prime's name.
+5. **No claims** — no savings, rates, or approval promises. A compliance exposure in R&J Prime's name.
 6. Texting length — within a sentence of the stock script.
-7. Copy `{apptTime}` exactly; never restate or round it.
+7. Copy `{apptTime}` exactly.
 8. Do not repeat anything in the already-sent list (D12).
 9. Nothing specific worth saying → return `insufficient` rather than padding.
 
-### 7.3 Cache
+### 7.3 Draft storage — separate key (D17)
 
-One draft per prospect, **overwritten** — never a history. All prospects live in a single `prospects_v1` key ([storage.js:178](../../../src/lib/storage.js)) read on every app load, so a per-prospect draft log would inflate the hot path.
+**Drafts are NOT stored on the prospect record.** `prospects_v1` is in `MERGEABLE_KEYS` ([storage.js:176](../../../src/lib/storage.js)) and `mergeArrayStores` resolves same-id conflicts by **whole-record newest-wins** on `updatedAt` ([mergeStore.mjs:56](../../../src/lib/mergeStore.mjs)), stamped whenever a record's object reference changes ([mergeStore.mjs:70](../../../src/lib/mergeStore.mjs)).
+
+Caching on the prospect would turn *opening* one into a full-record write. Concrete data loss: an agent edits a phone number on their phone at 10:00; at 10:01 opens the same prospect on their laptop, drafting fires and caches, the laptop record wins on `updatedAt`, **the phone edit is gone**. Today, opening a prospect is a pure read.
+
+Instead, `followup_drafts_v1` — a standalone key, id-keyed:
 
 ```js
-draft: { text, stepKey, sourceHash, at }
+{ [prospectId]: { text, stepKey, sourceHash, at } }
 ```
 
-`sourceHash` covers the agent notes, scrubbed situation, `appointmentTime`, and `stepKey`. A draft is stale when the recomputed hash differs — which covers a new touch, an edited note, a reschedule, and a step advance in one mechanism rather than four separate invalidation paths that can each be missed. **Stale ⇒ regenerate on next open.**
+One entry per prospect, overwritten — never a history. Not added to `MERGEABLE_KEYS`: drafts are cheap to regenerate, so last-write-wins across devices is acceptable, whereas prospect records are not. Entries for archived or deleted prospects are pruned on load.
+
+`sourceHash` covers the agent notes, scrubbed situation, `appointmentTime`, and `stepKey`. Stale when the recomputed hash differs — one mechanism covering a new touch, an edited note, a reschedule, and a step advance, rather than four invalidation paths that can each be missed.
 
 ## 8. UI — `FollowupNextStep.jsx`
 
-The existing card keeps its structure. Changes:
+- **Early return on `state === 'none'`** (before the `STATE_STYLE` lookup). `'none'` is not a key in `STATE_STYLE` ([FollowupNextStep.jsx:6](../../../src/components/FollowupNextStep.jsx)), so today it would silently fall back to `ontrack` styling and render the stock script with no due label — violating D6's "no card". The existing `steps.length === 0` early return ([:24](../../../src/components/FollowupNextStep.jsx)) stops firing once the new stages have steps.
+- Step index comes from the reconciled `cadence.stepIndex`, so both this card and `FollowupDueWidget`'s "Next: {channel}" line ([FollowupDueWidget.jsx:78](../../../src/components/FollowupDueWidget.jsx)) show the right step. Revision 1 computed the current step and never delivered it to the render path, which would have pinned every card at "Step 1 of 2" — showing *"Confirming our online review tomorrow"* two hours before the appointment.
+- Eligible + due + no fresh cached draft → generate on open (D7), brief inline loading state.
+- Draft renders in an **editable** textarea (D14); edits persist to the cache.
+- Footer: provenance (*"Personalized from your note on Tue, Jul 21"*), **Redo**, **Copy**, **Log touch**.
+- Ineligible or `insufficient` → stock script, no affordance, **no AI call ever made**.
 
-- Eligible + due + no fresh cached draft → generate on open (D7), with a brief inline loading state.
-- Draft renders in an **editable** textarea (D14); edits persist to the cache so they survive a re-open.
-- Footer: provenance line (*"Personalized from your note on Tue, Jul 21"*), **Redo**, **Copy**, **Log touch**.
-- Ineligible, or `insufficient` → today's stock script, **no Personalize affordance, no AI call ever made**.
-- Failure → stock script plus a quiet retry (§10).
+**Dark mode:** the remap table in `globals.css` ([:74-112](../../../src/app/globals.css)) keys on literal escaped class names and covers only `bg-slate-50\/60` and `bg-slate-50\/80`. **Any** opacity variant outside that table is unremapped — not just `/70`. Both files edited here already carry unremapped ones (`bg-indigo-50/40` [FollowupNextStep.jsx:9](../../../src/components/FollowupNextStep.jsx), `hover:bg-rose-50/40` [FollowupDueWidget.jsx:88](../../../src/components/FollowupDueWidget.jsx)). New markup must either use a listed utility or add the variant to the table, and be verified in both themes.
 
-**Dark mode:** the remap table in `globals.css` keys on exact class names, so `/70`-suffixed opacity variants (`hover:bg-slate-50/70`, `border-slate-200/70`) are **not** remapped — the trap that produced an invisible hover state on the CSV export modal. New markup must avoid `/70` suffixes and be verified in both themes.
+**Team-leader mirror:** `FollowupNextStep` already sits inside `{!readOnly && (` ([ProspectsView.jsx:1166](../../../src/components/views/ProspectsView.jsx)) — the guard is pre-satisfied. It must not be widened.
 
-**Team-leader mirror:** `ProspectsView` renders another agent's data in read-only mode. The draft affordance must sit behind the same `!readOnly` guard used for the CSV export button, so a team leader never triggers drafting against an agent's prospects.
+**`FollowupDueWidget` playbook prop:** passed from `ProspectsView` ([:1693](../../../src/components/views/ProspectsView.jsx)) but **not** from `CpaDashboard` ([:514](../../../src/components/views/CpaDashboard.jsx)) or `Dashboard` ([:183](../../../src/components/views/Dashboard.jsx)) — the default landing views. Without it the widget lists the prospect but omits the channel line. Both must pass it.
 
 ## 9. Explicitly out of scope
 
-- Auto-sending. Nothing sends; the agent copies (D14).
+- Auto-sending. Nothing sends (D14).
 - Personalisation for `GHOSTED` / `SOLD` / `LOST` (D2).
 - A playbook-editor UI.
-- Backfilling provenance onto historical `situation` values — impossible, the information was never recorded (D9).
+- Backfilling provenance onto historical `situation` values — the information was never recorded (D9).
 - Batch/overnight pre-generation (D7).
 - Changing the 18 existing scripts or the `{time}` token.
-- **Any change to the blast capture path** — untouched, as always.
+- Fixing the pre-existing `useMemo` staleness in `FollowupDueWidget` (§4.7).
+- Threading a per-agent playbook into `teamMath` (§11 note).
+- **Any change to the blast capture path.**
 
 ## 10. Error handling
 
 | Failure | Behaviour |
 |---|---|
-| Route 5xx / network | Stock script shown; one quiet retry on next open; never a blocking error |
+| Route 5xx / network | Stock script; one quiet retry on next open; never blocking |
 | Model returns `insufficient` | Stock script; no affordance; cached so it is not re-attempted until inputs change |
 | Malformed model output | Treated as failure; stock script; **never rendered raw** |
-| `ANTHROPIC_API_KEY` missing | Feature silently absent; PRIM behaves exactly as today |
-| Invalid `appointmentTime` | No cadence, no card (D6) |
+| `ANTHROPIC_API_KEY` missing | Feature silently absent |
+| Not `schedulable` (§4.2) | No cadence, no card (D6) |
 | Auth failure | 401; client falls back to stock script |
 
-The invariant: **every failure path degrades to today's behaviour.** The feature can be entirely broken and PRIM's follow-up system still works exactly as it does now.
+Invariant: **every failure path degrades to today's behaviour.**
 
 ## 11. Testing
 
-`npm test` (`node --test src/lib/*.test.mjs`) — dependency-free `.mjs` only.
+`npm test` (`node --test src/lib/*.test.mjs`). Baseline before any change: **506 pass, 0 fail**.
 
-**`apptCadence.test.mjs`** — heaviest coverage, since timezone is the top risk:
-- `evening_before` across month and year rollover; across a **DST boundary in both directions**; midnight-adjacent appointments (00:30) where the two steps land on the same prior day and ordering must hold.
-- `hours_before` ordering vs `evening_before` for early-morning appointments.
-- Past appointment → `done`. Appointment exactly `now` → `done`.
-- Invalid `appointmentTime` shapes → `none`, using the same rejects as `formatAppt` (empty, no digits, no separator, unparseable, pre-2000 epoch fallback).
-- Step satisfaction from a touch inside the window; a touch outside it does not satisfy.
+**`apptCadence.test.mjs`** — heaviest coverage:
+- `schedulable` vs `displayable`: `2026-08-14` (date-only) is displayable, **not** schedulable; `2026-08-14T14:00` is both. Plus the existing reject set (empty, no digits, no separator, unparseable, pre-2000).
+- `evening_before` across month and year rollover, and a **DST boundary in both directions**; midnight-adjacent appointments (00:30) where both steps land on the prior day and ordering must hold.
+- Shipped playbook assertion: no `atHour` in 02:00–03:59 (§4.1).
+- Past appointment → `done`; appointment exactly `now` → `done`.
+- Reconcile: unsatisfied step 0 → `stepIndex 0`; agent touch inside step 0's window → `stepIndex 1`; touch outside the window → no advance; all satisfied → `completedAt`; `snoozedUntil` preserved across reconciliation.
 
 **`followupDraftGate.test.mjs`**:
-- Agent touch with a note → eligible.
+- Agent touch with a note → eligible. Empty note → not.
 - Lowercase `email`/`sent` outreach touch → **not** eligible.
-- Website-form re-submit touch (`Other`/`Other` + note prefix) → **not** eligible.
-- Agent touch with an empty note → not eligible.
+- Website-form re-submit (`Other`/`Other` + note prefix) → **not** eligible.
 - TextDrip thread with an inbound message → eligible; outbound-only → not.
 - Benepath-written `situation` alone → not eligible.
 - Out-of-scope stage with a valid agent touch → not eligible.
-- Scrubber: `meds` never present in output; health spans removed from `situation` with surrounding context preserved.
+- Scrubber: `meds` never present in output; health spans removed with surrounding context preserved.
 
 **`followupEngine.test.mjs`** — regression:
-- All existing tests still pass (`afterDays` behaviour untouched).
-- `dueStatus` without `playbook` behaves exactly as before.
-- `logTouch` on an appointment stage does **not** write `nextDueAt` (§4.5 foot-gun).
-- Playbook v2 merge adds missing stages and never overwrites existing ones.
+- All 506 existing tests still pass; `afterDays` behaviour untouched.
+- **`armIfNeeded` on an appointment stage does not write a backdated `nextDueAt`** (§4.5).
+- **`armCadence` on `APPOINTMENT_SET` does not yield `nextDueAt = now`** — the §4.6 "Booked appt" regression, asserted directly.
+- `logTouch` on an appointment stage produces a reconciled, not day-based, `nextDueAt`.
+- `completedAt` is set when the final appointment step is satisfied, so `suggestStageAfterTouch` reaches its `onComplete` branch.
+- Playbook merge adds missing stages unconditionally and never overwrites.
 
-**Not unit-testable here:** the route and the JSX. PRIM has no component-test infrastructure — the same structural gap flagged during the taken-rate work. Covered by live browser verification in **both themes** before merge, plus code review.
+**Not unit-testable here:** the route and the JSX — PRIM has no component-test infrastructure. Covered by live browser verification in **both themes** before merge, plus code review.
+
+**Note (out of scope, §9):** `computeFollowupStats` is also called by `teamMath.mjs:83` over another agent's prospects, where the leader's playbook is the wrong one. Because `dueStatus` keeps its signature (§3), this path is unaffected by this change — recorded so it is not mistaken for a new defect.
 
 ## 12. Security & compliance
 
 - **No PHI** (D10): `meds` never leaves the browser; `situation` and TextDrip threads scrubbed; the prompt forbids health references; a human reads every message. PRIM's no-PHI posture ([NoPhiBanner.jsx](../../../src/components/NoPhiBanner.jsx)) is preserved.
-- **No auto-send** (D14) — the standing hard gate on actions that reach a real person is respected: drafting is not gated, sending is, and PRIM never sends.
+- **No auto-send** (D14): drafting is not gated, sending is, and PRIM never sends.
 - **No claims** in generated text (§7.2 bar 5).
-- Prospect content is **never logged** server-side.
-- Auth via `requireUserId`, consistent with every other AI route.
-- Team-leader mirror is read-only (§8).
-- The blast capture path is untouched.
+- Prospect content **never logged** server-side.
+- Auth via `requireUserId`.
+- Team-leader mirror read-only (§8).
+- **No prospect-record writes on open** (§7.3) — no merge-clobber risk.
+- Blast capture path untouched.
 
 ## 13. Rollout
 
 1. Branch `followup-personalized-drafts`; TDD the two pure modules first.
-2. `npm test` + `npm run lint` + `npm run build` green.
-3. Live verification in both themes: eligible prospect, ineligible prospect, `insufficient`, route failure, reschedule invalidation, team-leader mirror.
+2. `npm test` (≥506 pass) + `npm run lint` + `npm run build` green.
+3. Live verification in both themes: eligible prospect, ineligible prospect, `insufficient`, route failure, reschedule invalidation, date-only appointment, "Booked appt → Appointment Set", team-leader mirror.
 4. Fresh-context adversarial review against this spec.
-5. Juan merges; `/api/version` polled to confirm the deploy.
-6. Announcement (`src/lib/announcements.js`) — including that **the feature rewards logging touches**: agents who log their conversations get messages that sound like they remember; agents who don't, get the template.
+5. Juan merges; `/api/version` polled to confirm.
+6. Announcement ([announcements.js](../../../src/lib/announcements.js)) — including that **the feature rewards logging touches**: agents who log their conversations get messages that sound like they remember; agents who don't, get the template.
+
+## 14. Revision history
+
+### 14.1 Revision 2 — stored cadence replaces read-time derivation
+
+Revision 1 derived appointment schedules at read time and stored nothing. Adversarial review found the approach fought the existing engine in five places:
+
+- `dueStatus` has **six** call sites, not three — including [reminders/route.js:320](../../../src/app/api/reminders/route.js), a server-side nightly job with no access to the playbook. The nightly anti-no-show email could not have worked.
+- `armIfNeeded` [:115](../../../src/lib/followupEngine.mjs) and `armCadence` [:131](../../../src/lib/followupEngine.mjs) carry the same `afterDays: undefined` foot-gun as `logTouch`. Revision 1 fixed one and asserted no backdated date could be persisted — **false**.
+- `snoozedUntil` was never read, silently killing the Snooze buttons.
+- `completedAt` was never set, making every new stage's `onComplete: 'MISSED_APPT'` handoff dead config.
+- The computed step index never reached the render path; every card would have been pinned at step 1.
+
+Storing reconciled dates in the existing `cadence` fields resolves all five, requires no `dueStatus` signature change, and still avoids the fake-overdue pile — because the anchor is the appointment (future), not `stageEnteredAt` (past).
+
+### 14.2 Revision 2 — drafts moved off the prospect record
+
+Revision 1 cached the draft on the prospect. `prospects_v1` merges whole-record newest-wins ([mergeStore.mjs:56](../../../src/lib/mergeStore.mjs)), so opening a prospect on a second device would have overwritten unsynced edits made on the first. Drafts now live in `followup_drafts_v1` (§7.3).
+
+### 14.3 Revision 2 — other corrections
+
+Date-only `appointmentTime` (§4.2); the `'none'` state rendering a card (§8); the canonical validator being unexportable from `ProspectsView` (§4.2); `FollowupDueWidget` missing its `playbook` prop on both dashboards (§8); the inert `version` bump (§4.8); the dark-mode rule being narrower than the actual trap (§8); and citation drift throughout.
