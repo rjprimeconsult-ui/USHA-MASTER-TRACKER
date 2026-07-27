@@ -1,7 +1,15 @@
 # Personalized Follow-up Drafts + Appointment Reminders — Design Spec
 
+> **⚠️ WITHDRAWN — DO NOT BUILD FROM THIS DOCUMENT.**
+>
+> Two adversarial review rounds found **27 defects (7 critical)** across revisions 1 and 2, all of them in the appointment-anchored *scheduling* half. Root cause: an appointment reminder ("at 6 PM tomorrow, show this once") is not a follow-up cadence ("chase until they respond, advancing on each touch"), and forcing it into `stepIndex` / `completedAt` / `onComplete` / `snoozedUntil` produced a new defect class every revision.
+>
+> **Superseded by** [`2026-07-27-personalized-followup-drafts-phase1-design.md`](./2026-07-27-personalized-followup-drafts-phase1-design.md), which ships the personalisation engine on the three stages that already have working cadences and changes no scheduling behaviour at all.
+>
+> Appointment reminders are deferred to Phase 2 and will be designed as a standalone time-triggered surface, not a cadence. **Retained for the review findings in §14 and as the record of why the split happened.**
+
 **Date:** 2026-07-27
-**Status:** Approved by Juan (verbal, via brainstorming) — "All right sounds good write the spec and let's execute." **Revision 2** after adversarial review (see §14).
+**Status:** **WITHDRAWN** 2026-07-27 after two failed spec reviews. Was: approved by Juan (verbal, via brainstorming) — "All right sounds good write the spec and let's execute." **Revision 2** after adversarial review (see §14).
 **Request:** A field agent suggested PRIM's sample follow-up text should be written from each prospect's own notes rather than being the same script for everyone. Juan: *"the whole purpose of this is to create a way that Prim acts intelligently and is able to adapt to each situation properly."*
 
 ## 1. Problem
