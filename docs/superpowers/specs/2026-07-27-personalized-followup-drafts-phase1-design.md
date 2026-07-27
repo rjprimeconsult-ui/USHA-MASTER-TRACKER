@@ -1,283 +1,369 @@
 # Personalized Follow-up Drafts — Phase 1 Design Spec
 
 **Date:** 2026-07-27
-**Status:** Approved by Juan — "Yes, spec Phase 1 only"
-**Supersedes:** `2026-07-27-personalized-followup-drafts-design.md` (revisions 1 and 2), withdrawn after two adversarial reviews found 27 defects. See §12.
+**Status:** Approved by Juan — "Yes, spec Phase 1 only". **Revision 2** after adversarial review (see §15).
+**Supersedes:** `2026-07-27-personalized-followup-drafts-design.md` (withdrawn — see §14).
 
 **Request:** A field agent suggested PRIM's sample follow-up text should be written from each prospect's own notes rather than being the same script for everyone. Juan: *"the whole purpose of this is to create a way that Prim acts intelligently and is able to adapt to each situation properly."*
 
 ## 1. Scope
 
-**Phase 1 personalises the follow-up script for the three stages that already have working cadences.** Nothing else.
-
 **In scope:** `PENDING_DECISION`, `FOLLOWUP_LATER`, `MISSED_APPT`.
 
-**Out of scope — deferred to Phase 2:** `WEBBY_SET`, `WEBBY_CONFIRMED`, `APPOINTMENT_SET` and appointment-anchored reminders of any kind. Two review rounds established that an appointment reminder ("at 6 PM tomorrow, show this once") is not a follow-up cadence ("chase until they respond, advancing on each touch"), and that forcing it into `stepIndex` / `completedAt` / `onComplete` / `snoozedUntil` generates a new defect class every revision. Phase 2 will design it as its own surface.
+Four stages have working cadences — those three plus `GHOSTED` ([followupEngine.mjs:54](../../../src/lib/followupEngine.mjs)). **`GHOSTED` is excluded by Juan's decision**, not by capability: it did not appear in the stages he named, and a prospect who has stopped responding is a re-engagement problem worth designing separately.
 
-**`GHOSTED`, `SOLD`, `LOST` get nothing**, in either phase.
+**Out of scope — Phase 2:** `WEBBY_SET`, `WEBBY_CONFIRMED`, `APPOINTMENT_SET` and appointment-anchored reminders of any kind. Two review rounds established that an appointment reminder ("at 6 PM tomorrow, show this once") is not a follow-up cadence ("chase until they respond, advancing on each touch"). Phase 2 will design it as its own surface.
+
+**`SOLD` / `LOST`:** never.
 
 ### 1.1 The hard boundary
 
-**This spec changes no scheduling behaviour whatsoever.** `followupEngine.mjs` gains no new stage, no new step shape, and no edit to `armIfNeeded`, `armCadence`, `logTouch`, `dueStatus`, or `snooze`. The playbook is not merged or versioned. `dueStatus` keeps its signature, so all six of its call sites — including the server-side nightly job at [reminders/route.js:320](../../../src/app/api/reminders/route.js) — are untouched.
+**This spec changes no scheduling behaviour.** `followupEngine.mjs` gains no new stage, no new step shape, and **no edit of any kind** — not `armIfNeeded`, `armCadence`, `logTouch`, `dueStatus`, `snooze`, or `DEFAULT_PLAYBOOK`. The playbook is not merged or versioned. `dueStatus` keeps its signature, so all six call sites — including the server-side nightly job at [reminders/route.js:320](../../../src/app/api/reminders/route.js) — are untouched.
 
-Every defect in both withdrawn revisions lived in scheduling. Phase 1 does not go there.
+Revision 1 breached this with a "stamp new touches with `by: 'agent' | 'system'`" line. Touch creation lives inside `logTouch` ([followupEngine.mjs:157](../../../src/lib/followupEngine.mjs)), and `applyOutreachEmail` routes its machine touch through the same function ([:206](../../../src/lib/followupEngine.mjs)) — so the stamp would require a `logTouch` signature change. **The stamp is removed from Phase 1.** Provenance is determined by fingerprint (§5.1), which two reviews confirmed is unambiguous.
 
 ## 2. Problem
 
-`FollowupNextStep` substitutes `{first}`, `{time}`, `{agent}` into a fixed per-stage script ([FollowupNextStep.jsx:13](../../../src/components/FollowupNextStep.jsx)) and nothing else. Every prospect in the same stage at the same step gets **byte-identical text**. Prospects recognise a template.
+`FollowupNextStep` substitutes `{first}`, `{time}`, `{agent}` into a fixed per-stage script ([FollowupNextStep.jsx:13](../../../src/components/FollowupNextStep.jsx)) and nothing else. Every prospect in the same stage at the same step gets **byte-identical text**.
 
-The material to fix this already exists and agents already produce it — the notes they type when logging a touch, and the SMS threads TextDrip syncs in.
+The material to fix this already exists and agents already produce it: the notes they type when logging a touch, and the SMS threads TextDrip syncs in.
 
 ## 3. Decisions (locked with Juan)
 
 | # | Decision |
 |---|----------|
-| D1 | **Augment, never replace.** The stock script stays. It is never what an *eligible* prospect sees. |
+| D1 | **Augment, never replace.** The stock script stays as the fallback. |
 | D2 | Stages: `PENDING_DECISION`, `FOLLOWUP_LATER`, `MISSED_APPT` (§1). |
-| D3 | **Eligibility = evidence of a real conversation**: an agent-logged touch with a note, **or** a TextDrip thread with an inbound message. Nothing else. |
-| D4 | `situation` is **supporting detail only** — never the reason personalisation is offered. Six writers, no recorded provenance, and importers write filler like `"BENEPATH LEAD"` into it ([import-prospects-ai/route.js:112](../../../src/app/api/import-prospects-ai/route.js)). |
-| D5 | **`meds` is never sent.** `situation` is health-scrubbed before leaving the browser; TextDrip threads are summarised and scrubbed, never sent raw. |
-| D6 | The AI **always drafts fresh** for eligible prospects. The stock script is a **brief** (purpose + register), not raw material to paraphrase. |
-| D7 | **Auto-generate when the follow-up is due** (`overdue` / `due_today`), cached thereafter. For a not-yet-due prospect the agent gets a manual **Personalize** button. This is the "mix of B and C" Juan asked for and it bounds cost to work actually being done. |
-| D8 | The drafting call receives **earlier drafts in this sequence** and must not repeat them (§7.4). |
+| D3 | **Eligibility = evidence of a real conversation**: an agent-logged touch with a note, **or** a TextDrip thread with a genuine inbound reply. |
+| D4 | `situation` is **supporting detail only** — never the reason personalisation is offered. |
+| D5 | **`meds` is never read.** All free text that leaves the browser — agent notes, `situation`, TextDrip — passes through `redactHealth` first (§5.3). |
+| D6 | The AI **always drafts fresh**. The stock script is a **brief** (purpose + register), not raw material to paraphrase. |
+| D7 | **Auto-generate when due** (`overdue` / `due_today`), cached thereafter. Not-yet-due → manual **Personalize** button. |
+| D8 | The drafting call receives **earlier drafts in this sequence** and must not repeat them. |
 | D9 | The model may return **"insufficient context"** → stock script, no affordance, no retry until inputs change. |
-| D10 | Every draft is **editable**. PRIM proposes; the agent owns what goes out. **Nothing auto-sends.** |
-| D11 | Drafts live in their own registered storage key, never on the prospect record (§7.1). |
+| D10 | Every draft is **editable**, and **Copy copies what is on screen** (§9.1). Nothing auto-sends. |
+| D11 | Drafts live in their own **registered** storage key, never on the prospect record (§7.1). |
+| D12 | **Opted-out prospects are never drafted for** (§5.5). |
 
 ### 3.1 Open decision for Juan — model tier
 
-Default **Haiku 4.5**, consistent with all 8 existing PRIM Claude routes, switchable via `FOLLOWUP_DRAFT_MODEL`. Phase 1 estimate: **~$2–3/month** (23 agents × ~6 drafted follow-ups/day × ~1.2k in / ~150 out). Sonnet would be ~10×. Cheap-and-reversible first. **Not blocking.**
+Default **Haiku 4.5** (all 8 existing PRIM Claude routes use `claude-haiku-4-5`), switchable via `FOLLOWUP_DRAFT_MODEL`. Estimate **~$3–5/month** including Redo and re-open retries (§8.3 caps both). Sonnet ≈10×. **Not blocking.**
 
 ## 4. Architecture
 
 ```
-src/lib/followupDraftGate.mjs       NEW   eligibility + PHI scrub + source assembly (pure)
+src/lib/followupDraftGate.mjs       NEW   eligibility + redaction + source assembly (pure)
 src/lib/followupDraftGate.test.mjs  NEW
-src/lib/followupDraftCache.mjs      NEW   stepKey, sourceHash, prune (pure)
+src/lib/followupDraftCache.mjs      NEW   stepKey, sourceHash, rotation, prune (pure)
 src/lib/followupDraftCache.test.mjs NEW
 src/lib/storage.js                  EDIT  register 'followup_drafts_v1' in APP_KEYS (one line)
 src/app/api/followup-draft/route.js NEW   Claude drafting route
-src/components/FollowupNextStep.jsx EDIT  draft display, editable box, Personalize/Redo
-src/components/views/ProspectsView.jsx EDIT load/save the drafts map, pass down
+src/components/FollowupNextStep.jsx EDIT  hook-safe restructure; draft UI; Copy fix
+src/components/LeadTracker.jsx      EDIT  load/prune/save the drafts map; pass down
+src/components/views/ProspectsView.jsx EDIT thread drafts props through to the card
 ```
 
-Two pure `.mjs` modules because `npm test` = `node --test src/lib/*.test.mjs` and only dependency-free `.mjs` is importable there. All logic that can be wrong lives in them.
+**`LeadTracker.jsx` owns the drafts map, not `ProspectsView`.** `ProspectsView` contains **zero** references to `storage` — `prospects` arrives as a prop ([ProspectsView.jsx:1388](../../../src/components/views/ProspectsView.jsx)). `LeadTracker` is where `prospects_v1` is read ([:145](../../../src/components/LeadTracker.jsx)), where the playbook loads ([:641](../../../src/components/LeadTracker.jsx)), and where `storage.prefetch()` is called ([:367](../../../src/components/LeadTracker.jsx)) — so it is the only place the §7.5 prune can be sequenced against a `prospects_v1` load. Revision 1 assigned this to `ProspectsView` and would have stranded the builder.
 
-**Baseline:** `npm test` → **506 pass, 0 fail** (verified 2026-07-27). No existing test may change.
+Two pure `.mjs` modules because `npm test` = `node --test src/lib/*.test.mjs` and only dependency-free `.mjs` is importable there.
 
-## 5. Eligibility gate — `followupDraftGate.mjs`
+**Baseline:** `npm test` → **506 pass, 0 fail** (verified 2026-07-27, twice). No existing test may change.
+
+## 5. Eligibility and source assembly — `followupDraftGate.mjs`
 
 ### 5.1 Touch provenance
 
 | Writer | Signature | Verdict |
 |---|---|---|
 | `LogTouchSheet` (the agent) | `channel` ∈ `CHANNELS`, `outcome` ∈ `OUTCOMES` (capitalised, [LogTouchSheet.jsx:4](../../../src/components/LogTouchSheet.jsx)) | ✅ **agent** |
-| `applyOutreachEmail` ([followupEngine.mjs:206](../../../src/lib/followupEngine.mjs)) | `channel: 'email'` (lowercase), `outcome: 'sent'` | ❌ machine — neither value exists in the constant lists, so this is unambiguous |
-| Website-form re-submit ([webforms.mjs:450](../../../src/lib/webforms.mjs)) | `channel: 'Other'`, `outcome: 'Other'`, note begins `Submitted your website form again` | ❌ machine — channel/outcome are legitimate human values, so **only the note prefix distinguishes it** |
+| `applyOutreachEmail` ([followupEngine.mjs:206](../../../src/lib/followupEngine.mjs)) | `channel: 'email'` (lowercase), `outcome: 'sent'` | ❌ machine — neither value exists in the constant lists |
+| Website-form re-submit ([webforms.mjs:450](../../../src/lib/webforms.mjs)) | `channel: 'Other'`, `outcome: 'Other'`, note begins `Submitted your website form again` | ❌ machine — **only the note prefix distinguishes it** |
 
-Two independent reviews confirmed these are the **only** writers of touch entries in `src/`.
+Three independent reviews confirmed these are the **only** writers of touch entries in `src/`.
 
-`isAgentTouch(touch)` returns true when `channel` ∈ `CHANNELS` **and** `outcome` ∈ `OUTCOMES` **and** the note does not start with `Submitted your website form again`.
+`isAgentTouch(t)` = `CHANNELS.includes(t.channel) && OUTCOMES.includes(t.outcome) && !String(t.note||'').startsWith('Submitted your website form again')`.
 
-**Going forward**, stamp new touches with `by: 'agent' | 'system'` at creation so future code need not fingerprint. Fingerprints stay for historical rows.
+**Known, accepted false negative:** the website-form re-submit note embeds the prospect's own fresh message ([webforms.mjs:445](../../../src/lib/webforms.mjs)) — genuinely useful material that this rule discards. Accepted for Phase 1 because the prefix is the only available discriminator and a form submission is not a conversation with the agent. Recorded so it is not rediscovered as a bug.
 
 ### 5.2 The gate
 
-`isEligible(prospect)` — true when **both**:
+`isEligible(prospect)` — true when **all** of:
 
-1. `prospect.stage` ∈ `{ PENDING_DECISION, FOLLOWUP_LATER, MISSED_APPT }`; and
-2. **either** ≥1 agent touch (§5.1) with a non-empty trimmed `note`, **or** `textdripChat.messages` ([textdrip.mjs:329](../../../src/lib/textdrip.mjs)) containing ≥1 message with `direction: 'in'` ([textdrip.mjs:99](../../../src/lib/textdrip.mjs)).
+1. `stage` ∈ `{ PENDING_DECISION, FOLLOWUP_LATER, MISSED_APPT }`;
+2. not opted out (§5.5); and
+3. **either** ≥1 agent touch (§5.1) with a non-empty trimmed `note`, **or** a genuine inbound TextDrip reply (§5.4).
 
-`situation` alone **never** qualifies (D4). This kills the filler class without a length heuristic. Requiring an *inbound* TextDrip message means an outbound-only blast is not mistaken for a conversation.
+`situation` alone **never** qualifies (D4) — this kills the `"BENEPATH LEAD"` filler class ([import-prospects-ai/route.js:112](../../../src/app/api/import-prospects-ai/route.js)) without a length heuristic.
 
-### 5.3 PHI scrub — `scrubHealth(text)`
+### 5.3 `redactHealth(text)` — span redaction, not clause deletion
 
-Concrete algorithm, because "scan for health language" is not a specification and two engineers would ship two different compliance surfaces.
+Applied to **every** free-text field that leaves the browser: agent notes, `situation`, and TextDrip bodies. Revision 1 applied it only to `situation` and TextDrip, leaving the *primary eligibility field* — the agent's note — unfiltered. That was the most serious defect in revision 1 and this is its fix.
 
-1. Split `text` into clauses on `/[.;!?\n]+/` and on ` — ` / ` · ` (the separator `buildSituation` uses, [benepath.mjs:150](../../../src/lib/benepath.mjs)).
-2. Drop any clause matching `HEALTH_MARKERS` case-insensitively at a word boundary.
-3. Re-join the survivors with `'. '`.
-4. **If more than half the clauses were dropped, return `''`** — a field that is mostly health has lost its meaning, and the remainder is more likely to mislead than help.
+**Design constraint that drove the rewrite:** revision 1 deleted whole clauses and returned `''` when more than half were dropped. Run against this codebase's own extractor output — *"Wants family coverage starting Sept 1, budget around $400/mo, worried about keeping her current doctor, husband is self-employed"* ([extract-conversation/route.js:32](../../../src/app/api/textdrip/extract-conversation/route.js) produces exactly this comma-joined shape) — the word `doctor` destroyed the entire field. In health insurance, *"wants to keep her current doctor"* is a **network objection**, the single most useful personalization fact an agent can have. A filter that deletes it makes the feature worse than the template it replaces.
 
-`HEALTH_MARKERS` — three groups, all word-boundary matched:
+**Algorithm:** replace matched spans with `[health detail removed]`. Never delete a clause. Never return `''` for a field that had non-health content.
 
-- **Conditions:** diabetes, diabetic, cancer, asthma, COPD, arthritis, depression, anxiety, pregnant, pregnancy, surgery, chemo, dialysis, HIV, hepatitis, thyroid, blood pressure, cholesterol, heart condition, stroke, seizure, disability, disabled
-- **Medication:** mg, mcg, prescription, Rx, medication, medications, meds, pills, insulin, inhaler
-- **Care:** doctor, physician, specialist, hospital, diagnosis, diagnosed, treatment, therapy, procedure, biopsy, MRI, oncologist, cardiologist
+Patterns, all case-insensitive and word-boundary anchored:
 
-Applied to `situation` and to the TextDrip summary. **`meds` is not scrubbed — it is never read** (D5).
+- **Dosages:** `/\b\d+\s?(mg|mcg|ml|iu)\b/` and the 1–3 words preceding them (catches *"takes Metformin 500mg"*).
+- **Diagnosis phrasing:** `/\b(diagnosed with|suffers from|being treated for|history of)\s+[^,.;!?]{1,40}/`
+- **Named conditions:** diabetes, diabetic, cancer, chemo, dialysis, HIV, hepatitis, COPD, asthma, seizure, stroke, `heart (condition|attack|disease)`, thyroid, `blood pressure`, cholesterol, insulin, inhaler, oncologist, cardiologist, biopsy, `lab results`, prescription, `Rx`
+- **PRIM's own health fields:** `/\bExpectant:\s*\w+/` and `/\bTobacco:\s*\w+/` — `buildSituation` writes both into `situation` ([benepath.mjs:167](../../../src/lib/benepath.mjs)), so PRIM's own importer is a PHI source.
 
-**This is defence in depth, not the only layer.** A term list cannot be complete. The prompt also bars health references (§7.3 bar 4), and a human reads every message before it sends (D10). Stated plainly so nobody mistakes the scrubber for a compliance guarantee.
+**Deliberately NOT matched**, because in this domain they are sales context, not clinical detail: `doctor`, `physician`, `specialist`, `hospital` (network questions), `procedure` (enrollment), `anxiety`/`depression` used about cost, `disability` (income source), `treatment`, `therapy`, `medication`/`meds` as a bare category word.
 
-### 5.4 Source assembly
+**Honest limit, stated in the spec so nobody mistakes it for a guarantee:** a pattern list cannot be complete, and this one is deliberately tuned to preserve sales context. The real controls are PRIM's no-PHI policy ([NoPhiBanner.jsx](../../../src/components/NoPhiBanner.jsx)) telling agents not to type clinical detail, the total exclusion of `meds`, the prompt bar (§8.2 bar 3), and a human reading every message before it sends. `redactHealth` is a backstop, not the control.
 
-`buildDraftSource(prospect)` returns, in this order:
+### 5.4 TextDrip inbound test
+
+`normalizeMessage` sets `direction: chat.type === 'receiver' ? 'out' : 'in'` ([textdrip.mjs:99](../../../src/lib/textdrip.mjs)) — **`'in'` is the fall-through**, so a renamed API field, a malformed row, or a new message type all read as inbound. Testing `direction === 'in'` alone would make every synced prospect eligible on a TextDrip schema change.
+
+**Require `m.direction === 'in' && m.isDrip !== true` AND a non-empty trimmed body.** `isDrip` ([textdrip.mjs:104](../../../src/lib/textdrip.mjs)) marks automated campaign sends; drip copy is not a conversation.
+
+### 5.5 Opt-out gate (D12)
+
+An inbound `STOP` is still an inbound message, so §5.2's TextDrip branch would otherwise make an opted-out prospect eligible — and D7 would auto-draft a personalized solicitation for them and present a Copy button. **Ineligible when** any inbound TextDrip body, trimmed and uppercased, equals one of `STOP`, `STOPALL`, `UNSUBSCRIBE`, `CANCEL`, `END`, `QUIT`, or when a touch outcome is `Not interested`.
+
+Informational compliance flag, not legal advice — flagged for human review per the standing rule.
+
+### 5.6 `buildDraftSource(prospect)`
+
+Returns, in this fixed order — **every text field already passed through `redactHealth`**:
 
 - `firstName`
-- `agentNotes` — up to the **3 most recent** agent touches with notes, oldest→newest, each `{ at, outcome, note }`. Three because more dilutes the recent conversation, and the newest note is what the message should hinge on.
-- `situation` — `scrubHealth(prospect.situation)`, omitted when empty
-- `textdripSummary` — only when there are no agent notes at all. The **6 most recent** messages, `direction` + body, each `scrubHealth`'d, truncated to 800 chars total. Never the raw thread.
+- `agentNotes` — the **3 most recent** agent touches with notes, oldest→newest, each `{ at, outcome, note: redactHealth(note) }`
+- `situation` — `redactHealth(prospect.situation)`, omitted when empty
+- `missedApptTime` — **only** for `MISSED_APPT`, whose steps 0–1 reference `{time}` ([followupEngine.mjs:28](../../../src/lib/followupEngine.mjs)). Supplied explicitly so §8.2 bar 2 ("only facts present in the supplied notes") is not violated by a fact the merged script already carries.
+- `textdripSummary` — **only when `agentNotes` is empty.** The 6 most recent qualifying messages (§5.4), `direction` + `redactHealth(body)`, truncated to 800 chars total. Never the raw thread.
 
-## 6. When drafting is triggered (D7)
+`meds` is never read.
 
-Inside `FollowupNextStep`, which already receives everything needed:
+## 6. When drafting fires (D7)
 
-| `dueStatus` state | Behaviour |
-|---|---|
-| `overdue`, `due_today` | Eligible → **auto-generate** on mount if no fresh cached draft. Ineligible → stock script, no affordance. |
-| `ontrack`, `snoozed` | Eligible → stock script **plus a "Personalize" button**. Ineligible → stock script, no affordance. |
-| `done`, `none` | Existing behaviour, unchanged. No draft, no affordance. |
+| `dueStatus` state | Eligible | Ineligible |
+|---|---|---|
+| `overdue`, `due_today` | **Auto-generate** if no fresh cache entry | Stock script, no affordance |
+| `ontrack`, `snoozed` | Stock script + **Personalize** button | Stock script, no affordance |
+| `done`, `none` | Existing behaviour, unchanged | Unchanged |
 
-**One in-flight request per prospect**, guarded by a ref so a re-render cannot refire it.
+### 6.1 Firing must be bounded by `sourceHash`, not by "in flight"
 
-**Lint hazard:** `react-hooks/set-state-in-effect` blocked the CSV export modal build. State must be set from the promise continuation, never synchronously inside the effect body. If the rule still trips, restructure — do **not** disable it.
+`FollowupNextStep` declares `now = new Date().toISOString()` as a **default parameter** ([FollowupNextStep.jsx:21](../../../src/components/FollowupNextStep.jsx)) and its only mount site does not pass one ([ProspectsView.jsx:1168](../../../src/components/views/ProspectsView.jsx)) — so `now`, and therefore `status`, is a **fresh object on every render**. An effect keyed on either re-runs continuously; an in-flight-only guard clears the moment the promise settles, so the next render fires again and the resulting `setState` re-renders. That is an unbounded billed loop.
+
+**Required:** a module-level `Map` keyed `` `${prospectId}:${sourceHash}` `` recording `pending | done | failed`, **persisting after completion**. The effect must depend on `sourceHash` and `prospect.id` only — never on `now` or `status` identity. The parent passes a `now` that is stable for the mount.
+
+### 6.2 Hooks must sit above the existing early returns
+
+Two early returns already sit between render start and the point where `status` exists: `if (steps.length === 0) return null` ([:24](../../../src/components/FollowupNextStep.jsx)) and the `done` branch ([:27](../../../src/components/FollowupNextStep.jsx)) — and `status` is only computed at [:26](../../../src/components/FollowupNextStep.jsx), *after* the first one.
+
+A `useEffect`/`useRef` placed where `status` is available sits after a conditional return. That fails `react-hooks/rules-of-hooks` at build; if it slipped through, an agent logging the final touch would flip `status.state` to `'done'`, drop the hook count, and React would throw *"Rendered fewer hooks than expected"* — taking down the whole prospect drawer.
+
+**Required structure:** split the component — an outer shell that computes `steps`/`status` and keeps the existing early returns, and an inner component holding all draft state and hooks, rendered only on the paths that need it. This is the same restructure that unblocked `ExportProspectsModal`; it also gives reset-on-open for free via unmount/remount. **Do not disable the lint rule.**
 
 ## 7. Storage, caching, invalidation
 
 ### 7.1 `followup_drafts_v1` — a registered key (D11)
 
-**Add `'followup_drafts_v1'` to `APP_KEYS`** ([storage.js:353](../../../src/lib/storage.js)). This is one line and it is not optional:
+**Add `'followup_drafts_v1'` to `APP_KEYS`** ([storage.js:353](../../../src/lib/storage.js)). One line, not optional:
 
-- `purgeLocalMirror` iterates `APP_KEYS` ([storage.js:59](../../../src/lib/storage.js)). **An unregistered key survives sign-out**, so on a shared browser user B's `cloudGet` returns null, `getItem` falls back to localStorage ([storage.js:261](../../../src/lib/storage.js)), and B is served **A's drafts** — text derived from A's prospect notes and SMS threads — then persists them into B's cloud row. This is the exact incident class documented at [storage.js:43](../../../src/lib/storage.js): *"a new agent's account showed the founder's earned commissions."*
-- `prefetch` defaults to `APP_KEYS` ([storage.js:274](../../../src/lib/storage.js)) and batches via a single `.in(list)` query, so registering costs **no extra round-trip**. Leaving it out would cost one serial read per load — the pattern behind the July DB-connection outage.
-- `migrateLocalToCloud` ([storage.js:352](../../../src/lib/storage.js)) also iterates `APP_KEYS`.
+- `purgeLocalMirror` iterates `APP_KEYS` ([storage.js:59](../../../src/lib/storage.js)), fired from `ensureLocalOwner` on the **next user's sign-in** ([storage.js:67](../../../src/lib/storage.js)). An unregistered key survives; user B's `cloudGet` returns null, `getItem` falls back to localStorage ([storage.js:261](../../../src/lib/storage.js)), and **B is served A's drafts** — then persists them into B's cloud row. Exactly the incident class documented at [storage.js:43](../../../src/lib/storage.js): *"a new agent's account showed the founder's earned commissions."*
+- `prefetch` defaults to `APP_KEYS` ([storage.js:274](../../../src/lib/storage.js)) and batches via one `.in(list)` query, so registration costs **no extra round-trip**.
+- `migrateLocalToCloud` ([storage.js:379](../../../src/lib/storage.js)) also iterates `APP_KEYS`.
+- `inspectStorage` ([storage.js:403](../../../src/lib/storage.js)) iterates it too but gates on `Array.isArray(parsed) && parsed.length > 0`, so an object map is invisible to the "upload your local data" prompt. Harmless — drafts are regenerable and should not drive a migration prompt. Recorded so it is not filed as a bug.
 
-**Not added to `MERGEABLE_KEYS`.** That set is for arrays of id'd records ([storage.js:176](../../../src/lib/storage.js)); this key holds a plain object map. Last-write-wins is correct here — a draft lost across devices is regenerated on next open, whereas a prospect edit is not recoverable.
+**Not added to `MERGEABLE_KEYS`** ([storage.js:176](../../../src/lib/storage.js)) — that set is for arrays of id'd records; this is a plain object map. Last-write-wins is correct: a lost draft regenerates, a lost prospect edit does not.
 
-**Drafts are never written to the prospect record.** `prospects_v1` merges whole-record newest-wins ([mergeStore.mjs:90](../../../src/lib/mergeStore.mjs)), so caching there would turn *opening* a prospect into a full-record write: edit a phone number on your phone at 10:00, open the same prospect on the laptop at 10:01, and the laptop's draft-write wins on `updatedAt` — **the phone edit is silently gone**.
+**Never written to the prospect record.** `prospects_v1` merges whole-record newest-wins ([mergeStore.mjs:59](../../../src/lib/mergeStore.mjs)), so caching there would turn *opening* a prospect into a full-record write — edit a phone number on your phone at 10:00, open the same prospect on the laptop at 10:01, and the laptop write wins on `updatedAt`; **the phone edit is gone**.
+
+**Write amplification:** the whole map is rewritten on every draft save. Draft generation is bounded by §6.1, but the editable textarea (§9) must **debounce persistence at 800 ms** and flush on blur/unmount — otherwise every keystroke rewrites the map to Supabase.
 
 ### 7.2 Shape
 
 ```js
 // followup_drafts_v1
-{ [prospectId]: { text, stepKey, sourceHash, at, previous: [] } }
+{ [prospectId]: { status, text, edited, stepKey, sourceHash, at, attempts, previous: [] } }
 ```
 
-One live draft per prospect. `previous` is capped at **2** entries and exists only to serve D8 (§7.4).
-
-**`stepKey`** = `` `${stage}:${stepIndex}` `` — e.g. `PENDING_DECISION:2`. `stepIndex` is `prospect.cadence.stepIndex`, exactly as `FollowupNextStep` already reads it ([FollowupNextStep.jsx:35](../../../src/components/FollowupNextStep.jsx)).
+- **`status`**: `'ok' | 'insufficient' | 'failed'`. Revision 1 had no such field, so `insufficient` was indistinguishable from "never tried" — and because the drawer unmounts and remounts on every open ([ProspectsView.jsx:1108](../../../src/components/views/ProspectsView.jsx)), a prospect the model declines would have been re-billed on **every single open, forever**.
+- **`edited`**: `true` once the agent modifies the textarea. Suppresses regeneration so an agent's own wording is never overwritten.
+- **`attempts`**: increments on `failed`; **cap 2** per `sourceHash` (§8.3).
+- **`stepKey`** = `` `${stage}:${clampedStepIndex}` ``, where `clampedStepIndex` is `Math.min(cadence?.stepIndex || 0, steps.length - 1)` — **the clamped value the card actually renders** ([FollowupNextStep.jsx:35](../../../src/components/FollowupNextStep.jsx)). Raw and clamped agree today but diverge if a user shortens a stage in the customisable playbook ([LeadTracker.jsx:641](../../../src/components/LeadTracker.jsx)), which would key the draft to a step the card is not showing.
+- **`previous`**: cap 2, newest first (§7.4).
 
 ### 7.3 `sourceHash`
 
-Deterministic, no `JSON.stringify` of an object (key order is not guaranteed). Join with ` `, in this fixed order:
+Join with `' '` (a separator that cannot occur in the inputs — a space join makes `["a","b c"]` and `["a b","c"]` collide), in this fixed order:
 
 ```
-stepKey, scrubbedSituation, ...agentNoteTexts(oldest→newest), textdripSummary
+stepKey, redactedSituation, ...agentNotes.map(n => `${n.at}|${n.outcome}|${n.note}`), textdripSummary
 ```
 
-Hash with **FNV-1a 32-bit**, rendered as 8 hex chars. A draft is stale when the recomputed hash differs — one mechanism covering a new touch, an edited note, and a step advance, rather than three invalidation paths that can each be missed.
+`at` and `outcome` are included because both are **sent to the model** (§5.6): two touches with identical note text but different outcomes produce different prompts and must produce different hashes. Hash with **FNV-1a 32-bit**, 8 hex chars.
 
-A hash collision leaves a stale draft in place. Harmless: the agent sees a slightly dated message, can edit it, and **Redo** forces regeneration unconditionally.
+A collision leaves a stale draft in place — harmless; the agent can edit, and **Redo** forces regeneration.
 
-### 7.4 `previous` — the D8 source
+### 7.4 `previous` — rotate BEFORE the request
 
-When generating for a `stepKey` different from the stored entry's, push the stored `text` onto `previous` (newest first, cap 2) before overwriting. `previous` is what §7.5 sends as "already drafted earlier in this sequence."
+When generating for a `stepKey` different from the stored entry's, push the stored `text` onto `previous` (newest first, cap 2) **and send the updated `previous` in that same request.**
 
-This is an honest proxy, not a send log — PRIM does not send, so it cannot know what actually went out. It prevents the common case: step 3's message opening with the same detail step 2's did.
+Revision 1 rotated on write-back, so at step 3 the model was shown step 1's draft and never step 2's — the most recent and by far the likeliest to be echoed. That inverted D8's stated purpose.
+
+An agent-`edited` draft rotates in as-is. That is correct — it is what the agent actually intended to send — and it is safe, because `redactHealth` already ran on the inputs and the model is instructed not to repeat it, not to mine it.
 
 ### 7.5 Prune
 
-On load, after both `prospects_v1` and `followup_drafts_v1` are read, drop entries whose prospect id is absent from the loaded list or whose prospect is archived. **Write back only if something was dropped**, so a normal load stays read-only. Prune runs **before** the first draft write, so a stale map can never be re-persisted.
+In `LeadTracker`, after both `prospects_v1` and `followup_drafts_v1` are read, drop entries whose prospect id is absent from the loaded list or whose prospect is archived. **Write back only if something was dropped.** Prune runs **before** any draft write, so a stale map is never re-persisted.
 
 ## 8. Drafting route — `POST /api/followup-draft`
 
 Established pattern: Supabase bearer → `requireUserId`, JSON-schema tool call, `runtime = 'nodejs'`, `dynamic = 'force-dynamic'`, `maxDuration = 30`. **Prospect content is never logged**, on success or error.
 
-**Request:** stock script (the brief), stage, step purpose (`nudge` | `urgency` | `breakup`, derived from step position), `buildDraftSource` output (§5.4), and `previous` (§7.4).
+**Request:** `brief` (§8.1), `stepPurpose` (§8.1), `buildDraftSource` output (§5.6), `previous` (§7.4), and `rejected` (§8.3).
+**Response:** `{ text }` **or** `{ insufficient: true }`.
 
-**Response:** `{ text }` **or** `{ insufficient: true }` (D9).
+### 8.1 The brief and the step purpose
 
-### 8.1 Prompt contract
+**The brief is the `mergeScript`-rendered script**, not the raw one — `{first}`/`{agent}`/`{time}` already substituted ([FollowupNextStep.jsx:13](../../../src/components/FollowupNextStep.jsx)). Sending raw tokens invites the model to echo `Hi {first}` into a draft that renders straight into the textarea, and the agent copies a literal placeholder.
 
-Framed as **"write the message this moment calls for"** (D6) — never "rewrite the following". Rewrite framing produces paraphrase: the same sentence with one bolted-on clause, which is exactly the templated feel this feature exists to remove.
+**The route must reject any draft containing `/\{[a-z]+\}/i`** and treat it as a malformed response (§10).
+
+Note `agentName` is currently `''` at the mount site ([ProspectsView.jsx:1956](../../../src/components/views/ProspectsView.jsx)), so `{agent}` merges to *"your agent"*. Phase 1 does not change this; the model is told not to invent a signature.
+
+**`stepPurpose` — explicit per-stage mapping.** Revision 1 said "derived from step position" without giving the derivation, and asserted every stage's final step is a breakup. **False for `FOLLOWUP_LATER`**, whose final step is *"monthly check-in! Any change in your situation…"* with `onComplete: 'FOLLOWUP_LATER'` ([followupEngine.mjs:46](../../../src/lib/followupEngine.mjs)) — it loops to itself. Labelling it `breakup` would tell the model never to re-open a conversation whose entire job is to re-open it.
+
+| Stage | Steps | Purpose by index |
+|---|---|---|
+| `MISSED_APPT` | 5 | 0–1 `reschedule_urgent` · 2–3 `reschedule` · 4 `breakup` |
+| `PENDING_DECISION` | 5 | 0–1 `clarify` · 2–3 `urgency` · 4 `breakup` |
+| `FOLLOWUP_LATER` | 4 | 0–2 `check_in` · 3 `check_in` |
+
+`FOLLOWUP_LATER` has **no breakup step**. The mapping is data in `followupDraftGate.mjs`, asserted against the live playbook by a test so a playbook edit cannot silently desynchronise it.
+
+### 8.2 Prompt contract
+
+Framed as **"write the message this moment calls for"** (D6) — never "rewrite the following". Rewrite framing produces paraphrase: the same sentence with one bolted-on clause, exactly the templated feel this feature exists to remove.
 
 Hard bars:
 
-1. Keep the step's purpose — a nudge stays a nudge, a breakup stays a breakup. The final step in each stage is a breakup ([followupEngine.mjs:32](../../../src/lib/followupEngine.mjs), [:42](../../../src/lib/followupEngine.mjs), [:60](../../../src/lib/followupEngine.mjs)) and must never come back as a pitch.
-2. **Only facts present in the supplied notes.** No inference, no gap-filling. This is the rule that prevents *"hope the new job's going well"* reaching someone who never mentioned a job — the single failure that would destroy an agent's trust in one text.
-3. No health references, ever, even if something slipped past the scrubber.
+1. Keep the step's purpose (§8.1). A `breakup` never comes back as a pitch; a `check_in` never comes back as a goodbye.
+2. **Only facts present in the supplied source.** No inference, no gap-filling. This prevents *"hope the new job's going well"* reaching someone who never mentioned a job — the single failure that would destroy an agent's trust in one text.
+3. No health references, ever, even if something passed the redactor.
 4. **No claims** — no savings, rates, or approval promises. A compliance exposure in R&J Prime's name.
-5. Texting length — within one sentence of the stock script.
-6. Do not repeat anything in `previous` (D8).
-7. Nothing specific worth saying → return `insufficient` rather than padding.
+5. Texting length — within one sentence of the brief.
+6. Do not repeat anything in `previous` (D8) or `rejected` (§8.3).
+7. No `{placeholder}` tokens; no invented signature.
+8. Nothing specific worth saying → return `insufficient` rather than padding.
+
+### 8.3 Redo and retry caps
+
+**Redo** sends the displayed draft as `rejected` — otherwise the model gets byte-identical inputs and returns a near-identical message to an agent who clicked Redo *because* they disliked it. `rejected` accumulates within a `sourceHash`, **capped at 3**; beyond that Redo is disabled with *"Try editing it directly."*
+
+**Failure retry** is capped at `attempts: 2` per `sourceHash` (§7.2). Together these bound the worst case to 5 calls per prospect per step, which is what §3.1 costs.
 
 ## 9. UI — `FollowupNextStep.jsx`
 
-The card keeps its structure. Additions only; no early returns are added and no existing render path changes, so the four existing stages are unaffected.
+Restructured per §6.2. Additions only on the draft path; the ineligible path renders exactly today's card.
 
-- Draft renders in an **editable** textarea (D10) in place of the read-only script block ([FollowupNextStep.jsx:56](../../../src/components/FollowupNextStep.jsx)). Edits persist to the cache and survive re-open.
-- Footer gains a provenance line — *"Personalized from your note on Tue, Jul 21"* — plus **Redo**. **Copy** and **Log touch** are unchanged.
-- Not-yet-due + eligible → **Personalize** button (D7).
-- Ineligible, `insufficient`, or any failure → today's card, unchanged, **no AI call ever made**.
+### 9.1 Copy must copy what is on screen (D10)
 
-**Dark mode:** the remap table in `globals.css` ([:74-115](../../../src/app/globals.css)) keys on literal escaped class names. **Any** opacity variant absent from it renders unremapped — the trap that produced an invisible hover state on the CSV export modal. It covers `bg-slate-50\/60`, `bg-slate-50\/80`, `bg-slate-900\/40`, `bg-slate-900\/50`, `bg-white\/80|85|90` and no others; this file already carries an unlisted `bg-indigo-50/40` at [:9](../../../src/components/FollowupNextStep.jsx). New markup must use a listed utility or add the variant to the table, and be verified in both themes.
+`copy()` writes `text` ([:45](../../../src/components/FollowupNextStep.jsx)), which is `mergeScript(step.script, …)` ([:37](../../../src/components/FollowupNextStep.jsx)) — **the stock template**. Left unchanged, PRIM would render a personalized draft, the agent would click **Copy script**, and paste the byte-identical template this feature exists to eliminate. Every draft silently discarded at the moment of use.
 
-**Team-leader mirror:** `FollowupNextStep` already sits inside `{!readOnly && (` ([ProspectsView.jsx:1166](../../../src/components/views/ProspectsView.jsx)). The guard is pre-satisfied and **must not be widened** — that view renders another agent's prospects.
+**Copy must write the current textarea value when a draft is displayed**, and the stock script otherwise. Verified explicitly in §13.
+
+### 9.2 Rest of the card
+
+- Draft renders in an **editable** textarea replacing the read-only block ([:56](../../../src/components/FollowupNextStep.jsx)). Edits set `edited: true` and persist debounced (§7.1).
+- Provenance line: **`Personalized from your note on <date of the newest agent note>`**, or **`Personalized from the SMS conversation`** when the source was the TextDrip branch (§5.6). Nothing else.
+- **Redo** next to Copy, subject to §8.3.
+- Not-yet-due + eligible → **Personalize** button in place of auto-generation.
+- Ineligible, `insufficient`, or failure → today's card, unchanged, **no AI call**.
+
+**Dark mode:** the remap table in `globals.css` ([:74-115](../../../src/app/globals.css)) keys on literal escaped class names and covers only `bg-slate-50\/60|80`, `bg-slate-900\/40|50`, `bg-white\/80|85|90`. **Any** other opacity variant renders unremapped — the trap behind the invisible hover state on the CSV export modal. This file already carries an unlisted `bg-indigo-50/40` ([:9](../../../src/components/FollowupNextStep.jsx)). New markup uses a listed utility or adds the variant, and is verified in both themes.
+
+**Team-leader mirror:** `FollowupNextStep` is mounted at exactly one site ([ProspectsView.jsx:1168](../../../src/components/views/ProspectsView.jsx)) inside `{!readOnly && (` ([:1166](../../../src/components/views/ProspectsView.jsx)); the other `ProspectsView` mount ([TeamView.jsx:301](../../../src/components/views/TeamView.jsx)) passes `readOnly`. The guard is pre-satisfied and **must not be widened**.
 
 ## 10. Error handling
 
 | Failure | Behaviour |
 |---|---|
-| Route 5xx / network | Stock script; one quiet retry on next open; never blocking |
-| `insufficient` | Stock script; no affordance; cached so it is not re-attempted until `sourceHash` changes |
-| Malformed model output | Treated as failure; stock script; **never rendered raw** |
+| Route 5xx / network | Stock script; `status: 'failed'`, `attempts++`; retry on next open until `attempts` hits 2 |
+| `insufficient` | Stock script; `status: 'insufficient'`; **never re-attempted** until `sourceHash` changes |
+| Draft contains a `{token}` or is empty | Malformed → treated as failure; **never rendered raw** |
 | `ANTHROPIC_API_KEY` missing | Feature silently absent |
-| Drafts key unreadable | Stock script; drafting still works, just uncached |
-| Auth failure | 401; client falls back to stock script |
+| Drafts key unreadable | Drafting still works, uncached |
+| Auth failure | 401; stock script |
 
-Invariant: **every failure path degrades to today's behaviour.** The feature can be entirely broken and PRIM's follow-up system still works exactly as it does now.
+Invariant: **every failure path degrades to today's behaviour.**
 
 ## 11. Testing
 
-`npm test` (`node --test src/lib/*.test.mjs`). Baseline **506 pass, 0 fail** — no existing test may change.
+`npm test`. Baseline **506 pass, 0 fail** — no existing test may change.
 
 **`followupDraftGate.test.mjs`**
-- Agent touch with a note → eligible. Empty/whitespace note → not.
-- Lowercase `email`/`sent` outreach touch → **not** eligible.
-- Website-form re-submit (`Other`/`Other` + note prefix) → **not** eligible.
-- TextDrip thread with an inbound message → eligible; outbound-only → not.
-- Benepath-written `situation` alone → not eligible.
-- `WEBBY_SET` / `APPOINTMENT_SET` / `GHOSTED` / `SOLD` / `LOST` with a valid agent touch → **not** eligible (Phase 1 boundary, asserted directly).
-- `scrubHealth`: drops a health clause and keeps its neighbours; returns `''` when >half the clauses are health; leaves clean text byte-identical; `meds` never appears anywhere in `buildDraftSource` output.
-- `buildDraftSource`: caps agent notes at 3, oldest→newest; uses TextDrip only when there are no agent notes; truncates the summary.
+- Agent touch with a note → eligible; empty/whitespace note → not.
+- Lowercase `email`/`sent` outreach touch → not eligible.
+- Website-form re-submit → not eligible.
+- TextDrip: genuine inbound → eligible; outbound-only → not; **`isDrip: true` inbound only → not**; empty bodies → not.
+- **Opt-out:** inbound `STOP` / `stop ` / `UNSUBSCRIBE` → not eligible; `Not interested` outcome → not eligible.
+- `WEBBY_SET`, `APPOINTMENT_SET`, `GHOSTED`, `SOLD`, `LOST` with a valid agent touch → **not eligible** (Phase 1 boundary, asserted directly).
+- `redactHealth`: `"takes Metformin 500mg"` redacted; `"wants to keep her current doctor"` **preserved verbatim**; `"Expectant: Yes"` and `"Tobacco: Yes"` redacted; the full comma-joined extractor sentence from §5.3 keeps all four non-health facts; clean text returned byte-identical; **never returns `''` for input with non-health content**.
+- `buildDraftSource`: `meds` never appears in the output for any input; agent notes capped at 3, oldest→newest, each redacted; TextDrip used only when there are no agent notes; `missedApptTime` present only for `MISSED_APPT`.
+- `stepPurpose` mapping matches the live `DEFAULT_PLAYBOOK` step counts, and `FOLLOWUP_LATER` has no `breakup`.
 
 **`followupDraftCache.test.mjs`**
-- `stepKey` format; changes when stage or stepIndex changes.
-- `sourceHash` is deterministic across calls and stable under re-ordered object construction; changes when a note is added, a note is edited, situation changes, or stepKey changes.
-- `previous` caps at 2, newest first, and only rotates on a stepKey change.
-- Prune drops entries for missing and archived prospects, keeps the rest, and reports whether anything was dropped.
+- `stepKey` uses the **clamped** index; changes with stage or index.
+- `sourceHash` deterministic across calls; `["a","b c"]` vs `["a b","c"]` hash **differently**; changes when a note is added, edited, its outcome changes, situation changes, or stepKey changes.
+- `previous` rotates **before** the request, caps at 2, newest first, and does **not** rotate on same-stepKey Redo.
+- `attempts` cap and `rejected` cap enforced.
+- Prune drops missing and archived prospects, keeps the rest, reports whether anything changed.
 
-**Not unit-testable here:** the route and the JSX — PRIM has no component-test infrastructure. Covered by live browser verification in **both themes** plus code review before merge.
+**Not unit-testable here:** the route and the JSX — PRIM has no component-test infrastructure. Covered by live verification (§13) and code review.
 
 ## 12. Security & compliance
 
-- **No PHI** (D5): `meds` never read; `situation` and TextDrip summaries scrubbed (§5.3); the prompt bars health references; a human reads every message. PRIM's no-PHI posture ([NoPhiBanner.jsx](../../../src/components/NoPhiBanner.jsx)) is preserved. The scrubber is explicitly **not** presented as a guarantee.
+- **No PHI** (D5): `meds` never read; **every** free-text field redacted before the network call, including agent notes; prompt bar 3; a human reads every message. `redactHealth` is explicitly a backstop, not the control (§5.3).
 - **No cross-account leakage** — `followup_drafts_v1` registered in `APP_KEYS` (§7.1).
-- **No prospect-record writes on open** (§7.1) — no merge-clobber risk.
+- **No opted-out contact** (§5.5) — informational compliance flag, for human review.
+- **No prospect-record writes on open** (§7.1).
 - **No auto-send** (D10): drafting is not gated, sending is, and PRIM never sends.
-- **No claims** in generated text (§8.1 bar 4).
+- **No claims** in generated text (§8.2 bar 4).
 - Prospect content **never logged** server-side.
-- Auth via `requireUserId`.
-- Team-leader mirror read-only (§9).
+- Auth via `requireUserId`. Team-leader mirror read-only (§9.2).
 - **Blast capture path untouched.**
 
 ## 13. Rollout
 
-1. Branch `followup-personalized-drafts` (already created). TDD the two pure modules first.
+1. Branch `followup-personalized-drafts` (created). TDD the two pure modules first.
 2. `npm test` ≥506 pass · `npm run lint` · `npm run build` all green.
-3. Live verification in both themes: eligible + due (auto-draft), eligible + not due (Personalize button), ineligible (no affordance), `insufficient`, route failure, edit-persists-on-reopen, Redo, sign-out/sign-in with a second account (drafts must not survive), team-leader mirror.
+3. Live verification, **both themes**: eligible+due auto-draft · eligible+not-due Personalize · ineligible (no affordance) · **Copy returns the draft, not the template** · edit persists across close/reopen · Redo differs from the original · `insufficient` not re-billed on reopen · route failure stops after 2 attempts · sign out, sign in as a second account, **confirm no drafts carry over** · team-leader mirror shows no affordance.
 4. Fresh-context adversarial review against this spec.
 5. Juan merges; `/api/version` polled to confirm.
-6. Announcement ([announcements.js](../../../src/lib/announcements.js)) — including that **the feature rewards logging touches**: agents who log their conversations get messages that sound like they remember; agents who don't, get the template.
+6. Announcement ([announcements.js](../../../src/lib/announcements.js)) — including that **the feature rewards logging touches**.
 
 ## 14. Why Phase 1 exists
 
-The original spec covered six stages and added appointment-anchored scheduling. Two adversarial reviews found 27 defects across two revisions — 7 critical. Representative:
+The original spec covered six stages and added appointment-anchored scheduling. Two adversarial reviews found 27 defects across two revisions, 7 critical — the morning-of reminder could never render; PRIM would suggest *Missed Appointment* after appointments that went well; revision 1 fixed the `afterDays: undefined` foot-gun in one of three sites and declared the class handled.
 
-- The morning-of reminder could never render: once the night-before step went unlogged it pinned permanently, so at 1:30 PM the card read *"confirming our call tomorrow at 2:00 PM"* for a 2 PM appointment.
-- PRIM would suggest **Missed Appointment** after appointments that went well, then hand the agent *"we just missed our call — calling now in case you're free!"* to send to someone they had spoken with an hour earlier.
-- Revision 1 fixed the `afterDays: undefined` foot-gun in `logTouch` and declared the class handled; `armIfNeeded` and `armCadence` carried it too, and would have persisted backdated overdue dates.
+Every one lived in scheduling. Phase 1 removes that surface entirely (§1.1).
 
-Every one lived in scheduling. Splitting the work removes that surface from Phase 1 entirely (§1.1) and lets the personalisation engine — which none of the 27 defects touched — ship on its own.
+## 15. Revision 2 — what the third review changed
 
-Phase 2 will design appointment reminders as what they are: a standalone, time-triggered surface, not a cadence.
+| Defect | Fix |
+|---|---|
+| Agent notes — the primary eligibility field — sent **unscrubbed**; §12's "No PHI" was false | `redactHealth` applied to every free-text field (§5.3, §5.6) |
+| **Copy copied the stock template**, silently discarding every draft at the moment of use | §9.1 |
+| Storage assigned to `ProspectsView`, which has no storage layer | `LeadTracker` owns it (§4) |
+| "One in-flight request" guard could not bound firing; `now` is a fresh object every render | `sourceHash`-keyed persistent guard (§6.1) |
+| No cache slot for `insufficient`/`failed`; drawer remounts on every open → re-billed forever | `status` + `attempts` (§7.2) |
+| `by:` touch stamp required a `logTouch` signature change, breaching §1.1 | Removed (§1.1) |
+| `FOLLOWUP_LATER`'s final step called a breakup (it is a check-in that loops); step-purpose derivation undefined | Explicit mapping table (§8.1) |
+| `previous` rotated after the request → the most recent draft never sent | Rotate before (§7.4) |
+| Clause-deletion scrubber destroyed *"wants to keep her current doctor"* — a network objection, not PHI | Span redaction, no clause deletion, no `''` (§5.3) |
+| `Expectant:` / `Tobacco:` from PRIM's own importer passed through | Added to patterns (§5.3) |
+| `direction: 'in'` is the fall-through default; drip blasts counted as conversation | Strict test + `isDrip` filter (§5.4) |
+| Inbound `STOP` made an opted-out prospect eligible | Opt-out gate (§5.5) |
+| Hooks would land after two existing early returns → build failure or a drawer crash | Outer/inner split (§6.2) |
+| Redo unbounded and specified to return the same output | `rejected` list + caps (§8.3) |
+| Raw-vs-merged brief undefined; model could emit `{first}` | Merged brief + token rejection (§8.1) |
+| "Three stages have working cadences" — four do; §9 said "four existing stages" | Corrected (§1) |
+| Citation drift: `storage.js:352`, `mergeStore.mjs:90`, `benepath.mjs:150` | Corrected to `:379`, `:59`, `:167` |
