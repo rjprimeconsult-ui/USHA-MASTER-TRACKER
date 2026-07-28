@@ -11,8 +11,9 @@
  *      at exactly 58% targeting 58% read "you're at 58.0%… need 0 more",
  *   3. the clean-issue panel over-asked by one deal at exact-integer
  *      targets (68/76/80/90 for a 43-of-67 book).
- * Every test here pins WHICH NUMBER each panel renders — the exact gap the
- * incident review flagged as "resting on code review alone."
+ * Tests pin the number AND, where two numbers share a panel, the SLOT it
+ * renders in (a mutation review proved a location-blind getByText let the
+ * incident pattern — "Issue 10 of your next 8" — survive green).
  *
  * Fixtures use closedDate = now, so the default Monthly period always
  * includes them — no time mocking, no timezone fragility.
@@ -55,9 +56,22 @@ function gauge(counts) { return within(screen.getByText(counts).parentElement); 
 
 // ---- 1. the gauge shows the real book ----
 
-test('gauge renders the true rate and counts (43 of 67 = 64.2%)', () => {
-  render(<TakenRateCalculator leads={mkLeads(43, 67)} />);
+test('gauge, badge and breakdown agree — and open or out-of-month leads never count', () => {
+  const leads = [
+    ...mkLeads(43, 67),
+    // X15: an open-pipeline lead (no closedDate) must never enter the book
+    { id: 'open1', stage: 'Pending', age: 30 },
+    // X14: a lead closed years ago is not in the default Monthly period
+    { id: 'old1', stage: 'Issued', closedDate: '2020-01-15T12:00:00Z', age: 30 },
+  ];
+  render(<TakenRateCalculator leads={leads} />);
   expect(gauge('43 of 67').getByText('64.2%')).toBeTruthy();
+  // X40/X18: 64.2% is >= the 60% bonus threshold -> the badge must say so
+  expect(screen.getByText('On target')).toBeTruthy();
+  // X13/X39: the breakdown row must agree with the gauge
+  const row = screen.getByText('Issued').closest('div');
+  expect(within(row).getByText('43')).toBeTruthy();
+  expect(within(row).getByText('64.2%')).toBeTruthy();
 });
 
 // ---- 2. incident defect #3: exact-integer targets are not over-asked ----
@@ -66,8 +80,10 @@ test('clean-issue panel: 43/67 @66% needs exactly 4; @68% exactly 8 (the shipped
   render(<TakenRateCalculator leads={mkLeads(43, 67)} />);
   setTarget(66);
   expect(cleanPanel().getByText('4')).toBeTruthy();
+  expect(cleanPanel().getByText(/to hit 66%/)).toBeTruthy(); // X32: the number must be labeled with ITS target
   setTarget(68);
   expect(cleanPanel().getByText('8')).toBeTruthy();
+  expect(cleanPanel().getByText(/to hit 68%/)).toBeTruthy();
   expect(cleanPanel().queryByText('9')).toBeNull(); // the pre-fix over-ask
 });
 
@@ -77,10 +93,13 @@ test('next-10 panel: 43/67 @66% says issue 8 of 10 and projects 66.2%', () => {
   render(<TakenRateCalculator leads={mkLeads(43, 67)} />);
   setTarget(66);
   const panel = nextTenPanel();
-  expect(panel.getByText('8')).toBeTruthy();
+  // X20: SLOT-pinned — a location-blind getByText('8') let the spans swap
+  // ("Issue 10 of your next 8") survive a green suite.
+  expect(panel.getByText('8', { selector: '.text-indigo-700' })).toBeTruthy();
+  expect(panel.getByText('10', { selector: '.text-slate-900' })).toBeTruthy();
   expect(panel.getByText(/66\.2%/)).toBeTruthy();          // (43+8)/(67+10)
   expect(panel.getByText(/You can afford 2 to fall out/)).toBeTruthy();
-  expect(panel.getByText(/51 issued of 77 submitted/)).toBeTruthy();
+  expect(panel.getByText(/51 issued of 77 submitted \(you.re at 43 of 67 now\)/)).toBeTruthy();
 });
 
 test('next-10 panel: 4/15 @56% is REACHABLE at exactly 10 of 10 (pre-fix called it impossible)', () => {
@@ -114,9 +133,12 @@ test('exactly at target (29/50 @58%): both panels say at-or-above, never "need 0
   setTarget(58);
   expect(gauge('29 of 50').getByText('58.0%')).toBeTruthy();
   expect(cleanPanel().getByText(/Already at or above target/)).toBeTruthy();
-  expect(nextTenPanel().getByText(/Already above target/)).toBeTruthy();
-  // the self-contradiction the epsilon fix removed:
-  expect(screen.queryByText(/Need 0 more/i)).toBeNull();
+  expect(nextTenPanel().getByText(/maintain your 58.0% pace/)).toBeTruthy(); // X19: pace is a %, not 0.58
+  // The self-contradiction the epsilon fix removed. NOT /Need 0 more/ — the
+  // count sits in a child span, so that string never exists as any single
+  // element's text and the assertion could never fail (proven by probe).
+  // The real guard: the clean panel contains no lone '0' count node.
+  expect(cleanPanel().queryByText('0')).toBeNull();
   expect(screen.queryByText(/your next deals have to issue/)).toBeNull(); // below-target explainer hidden
 });
 
@@ -140,6 +162,32 @@ test('over-50 applicants are excluded entirely when the rule applies', () => {
   expect(gauge('2 of 3').getByText('66.7%')).toBeTruthy(); // over-50s absent from both sides
   const note = screen.getByText(/over-50 applicants excluded/);
   expect(within(note).getByText('2')).toBeTruthy();
+});
+
+test('age EXACTLY 50 counts — the rule is OVER 50, not 50-and-up', () => {
+  // X9: a regression to `age >= 50` silently drops a 50-year-old's deal from
+  // both sides of the bonus-qualifying rate. Pin the boundary.
+  const leads = [
+    ...mkLeads(2, 3),
+    { id: 'b50', stage: 'Issued', closedDate: NOW_ISO, age: 50 },
+  ];
+  render(<TakenRateCalculator leads={leads} />);
+  expect(gauge('3 of 4').getByText('75.0%')).toBeTruthy();
+  expect(screen.queryByText(/over-50 applicant/)).toBeNull();
+});
+
+test('productFilter scopes the book — UW and GI cards must not bleed into each other', () => {
+  // X23: both production call sites pass productFilter (CpaDashboard renders
+  // a UW card and a GI card side by side with different bonus thresholds).
+  const leads = [
+    { id: 'a1', stage: 'Issued', closedDate: NOW_ISO, age: 30, mainProduct: 'UW_PLAN' },
+    { id: 'a2', stage: 'Issued', closedDate: NOW_ISO, age: 30, mainProduct: 'UW_PLAN' },
+    { id: 'a3', stage: 'Not taken', closedDate: NOW_ISO, age: 30, mainProduct: 'UW_PLAN' },
+    { id: 'g1', stage: 'Issued', closedDate: NOW_ISO, age: 30, mainProduct: 'GI_PLAN' },
+    { id: 'g2', stage: 'Issued', closedDate: NOW_ISO, age: 30, mainProduct: 'GI_PLAN' },
+  ];
+  render(<TakenRateCalculator leads={leads} productFilter={['UW_PLAN']} />);
+  expect(gauge('2 of 3').getByText('66.7%')).toBeTruthy(); // GI deals excluded
 });
 
 test('the over-50 rule is OFF for GI (applyOver50Rule=false): everyone counts', () => {
