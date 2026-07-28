@@ -206,10 +206,16 @@ test('double-clicking Redo fires exactly one request', async () => {
   expect(authedFetch).toHaveBeenCalledTimes(1);
 });
 
-test('double-clicking Personalize fires exactly one request', async () => {
+test('double-clicking Personalize fires exactly one request — and ontrack does NOT auto-fire', async () => {
   // ontrack (due in the future) + eligible + no cache -> Personalize shows
   const p = mkProspect({ cadence: { stepIndex: 0, nextDueAt: '2026-08-15T15:00:00Z', snoozedUntil: null, completedAt: null } });
   render(card(p));
+  // The due-state gate: a NOT-due prospect must never auto-generate. Without
+  // this pre-click assertion, deleting the overdue/due_today check passes —
+  // the auto-fire consumes the in-flight key and the click count stays 1 by
+  // coincidence (mutation M20).
+  await flush();
+  expect(authedFetch).not.toHaveBeenCalled();
   const btn = screen.getByRole('button', { name: /Personalize/ });
   await act(async () => { fireEvent.click(btn); fireEvent.click(btn); });
   expect(authedFetch).toHaveBeenCalledTimes(1);
@@ -324,14 +330,50 @@ test('503 unavailable writes nothing and burns no attempts', async () => {
   expect(onSaveDraft).not.toHaveBeenCalled();
 });
 
-test('a 5xx failure writes status:failed with attempts incremented', async () => {
+test('a 5xx failure writes a FULL failed entry with attempts incremented', async () => {
   const p = mkProspect();
   const onSaveDraft = vi.fn();
   authedFetch.mockImplementation(async () => errResponse(500));
   render(card(p, { onSaveDraft }));
   await flush();
+  // Full shape on purpose (mutation M33): a corrupt stepKey on the FAILED
+  // path is worse than on the ok path — shouldRegenerate rule 2 never
+  // matches it, rule 3 resets the counters, and the attempts cap becomes
+  // unreachable: the prospect is re-billed on every open, forever.
+  const { stepKey, srcHash } = realKeys(p);
   expect(onSaveDraft).toHaveBeenCalledTimes(1);
-  expect(onSaveDraft.mock.calls[0][0]).toMatchObject({ status: 'failed', text: '', attempts: 1 });
+  expect(onSaveDraft.mock.calls[0][0]).toEqual({
+    status: 'failed', text: '', edited: false,
+    stepKey, sourceHash: srcHash, at: expect.any(String),
+    attempts: 1, previous: [], rejected: [],
+  });
+});
+
+test('403 upgradeRequired (mid-session downgrade) writes nothing and burns no attempts', async () => {
+  const p = mkProspect();
+  const onSaveDraft = vi.fn();
+  authedFetch.mockImplementation(async () => errResponse(403, { upgradeRequired: true }));
+  render(card(p, { onSaveDraft }));
+  await flush();
+  expect(authedFetch).toHaveBeenCalledTimes(1);
+  expect(onSaveDraft).not.toHaveBeenCalled();
+  expect(screen.getByText(new RegExp(STOCK_STEP0))).toBeTruthy();
+});
+
+test('a stepKey advance ROTATES the prior draft into previous and sends it', async () => {
+  // Rule 3: the model must see the immediately-preceding draft so the next
+  // step's message can't repeat it (mutation M28 — rotation lost on the
+  // request path survived the first two passes).
+  const p = mkProspect();
+  const onSaveDraft = vi.fn();
+  const stale = mkOkDraft(p, DRAFT_TEXT, { stepKey: 'PENDING_DECISION:3' });
+  authedFetch.mockImplementation(async () => okResponse({ text: 'NEXT-STEP DRAFT' }));
+  render(card(p, { draft: stale, onSaveDraft }));
+  await flush();
+  expect(authedFetch).toHaveBeenCalledTimes(1);
+  const body = JSON.parse(authedFetch.mock.calls[0][1].body);
+  expect(body.previous).toEqual([DRAFT_TEXT]);
+  expect(onSaveDraft.mock.calls[0][0]).toMatchObject({ status: 'ok', text: 'NEXT-STEP DRAFT', previous: [DRAFT_TEXT] });
 });
 
 test('a failed Redo PRESERVES the current draft (never clobbered by an error)', async () => {
