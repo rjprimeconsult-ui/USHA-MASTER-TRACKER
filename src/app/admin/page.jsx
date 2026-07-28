@@ -297,7 +297,7 @@ export default function AdminPage() {
           <Shield size={32} className="mx-auto text-red-500 mb-3" />
           <h1 className="text-xl font-bold text-slate-900 mb-2">403 — Admin only</h1>
           <p className="text-sm text-slate-500 mb-4">
-            This page is restricted to PRIM administrators. You're signed in as <b>{user.email}</b>.
+            This page is restricted to PRIM administrators. You&apos;re signed in as <b>{user.email}</b>.
           </p>
           <Link href="/" className="text-indigo-600 hover:text-indigo-700 text-sm font-semibold">
             ← Back to your tracker

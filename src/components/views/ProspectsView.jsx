@@ -660,7 +660,7 @@ function SettingsModal({ open, settings, onSave, onClose, onSyncTextDrip }) {
               <h3 className="text-sm font-bold text-slate-900">Pipeline Stages</h3>
               <button onClick={addStage} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 flex items-center gap-1"><Plus size={12} /> Add stage</button>
             </div>
-            <p className="text-[11px] text-slate-500 mb-2">Drag to reorder, rename freely. Renaming or deleting a stage will keep prospects on it but they'll show as "{`<stage id>`}" until you rename to match.</p>
+            <p className="text-[11px] text-slate-500 mb-2">Drag to reorder, rename freely. Renaming or deleting a stage will keep prospects on it but they&apos;ll show as &quot;{`<stage id>`}&quot; until you rename to match.</p>
             <div className="space-y-1.5">
               {draft.stages.map((s, i) => (
                 <div key={s.id} className="flex items-center gap-2 bg-slate-50 rounded-lg p-2">
@@ -682,7 +682,7 @@ function SettingsModal({ open, settings, onSave, onClose, onSyncTextDrip }) {
               <h3 className="text-sm font-bold text-slate-900">Custom Fields</h3>
               <button onClick={addField} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 flex items-center gap-1"><Plus size={12} /> Add field</button>
             </div>
-            <p className="text-[11px] text-slate-500 mb-2">Add fields specific to your workflow. They'll appear on every prospect form.</p>
+            <p className="text-[11px] text-slate-500 mb-2">Add fields specific to your workflow. They&apos;ll appear on every prospect form.</p>
             {draft.customFields.length === 0 && (
               <div className="text-xs text-slate-400 italic">No custom fields yet.</div>
             )}
@@ -940,7 +940,7 @@ function ImportWizard({ open, file, settings, prospects, onImport, onClose }) {
           {step === 'mapping' && (
             <>
               <p className="text-sm text-slate-700 mb-3">
-                Map your columns to prospect fields. We auto-matched what we recognized — adjust anything that's wrong.
+                Map your columns to prospect fields. We auto-matched what we recognized — adjust anything that&apos;s wrong.
               </p>
               <div className="space-y-1.5 max-h-96 overflow-y-auto">
                 {headers.map((h, i) => (

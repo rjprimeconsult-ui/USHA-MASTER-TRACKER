@@ -101,8 +101,8 @@ export default function AgentSettingsPanel({ open, onClose }) {
           {tab === 'rubric' && (
             <div className="space-y-4">
               <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 text-sm text-slate-700">
-                <p className="font-semibold text-slate-900 mb-1">What is "My Rubric"?</p>
-                <p>Free-form notes (1-3 sentences each) that get added to the AI's instructions for every Smart Import. Use them to teach the AI your specific habits — vendor names it doesn't know yet, categories you always prefer, edge cases it tends to miss.</p>
+                <p className="font-semibold text-slate-900 mb-1">What is &quot;My Rubric&quot;?</p>
+                <p>Free-form notes (1-3 sentences each) that get added to the AI&apos;s instructions for every Smart Import. Use them to teach the AI your specific habits — vendor names it doesn&apos;t know yet, categories you always prefer, edge cases it tends to miss.</p>
               </div>
               <RubricField
                 label="Expense / Income imports"

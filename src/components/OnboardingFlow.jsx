@@ -558,7 +558,7 @@ function StepImport({ D, importState, runImport }) {
                 <div key={i} style={{ display: 'grid', gridTemplateColumns: '1.5fr 1.3fr .8fr 1fr', padding: '11px 14px', fontSize: 13, color: LIGHT.text, borderTop: `1px solid ${LIGHT.border}`, animation: `pof-rowIn .45s ${i * .09}s ease both` }}>{r[0]}<span style={{ color: LIGHT.text2 }}>{r[1]}</span><span style={{ textAlign: 'right', fontWeight: 700 }}>{r[2]}</span><span style={{ textAlign: 'right', color: 'var(--pof-accent)', fontWeight: 600 }}>{r[3]}</span></div>
               ))}
             </div>
-            <div style={{ fontSize: 12.5, color: LIGHT.text2, marginTop: 12, textAlign: 'center' }}>It even caught the deal USHA paid under a spouse's name. Confirm to file them all.</div>
+            <div style={{ fontSize: 12.5, color: LIGHT.text2, marginTop: 12, textAlign: 'center' }}>It even caught the deal USHA paid under a spouse&apos;s name. Confirm to file them all.</div>
           </div>
         )}
       </div>
@@ -577,8 +577,8 @@ function StepUnlock({ firstName, confetti, finish, restart }) {
         <div style={{ position: 'absolute', inset: -30, borderRadius: '50%', background: `radial-gradient(circle, var(--pof-glow), transparent 65%)`, animation: 'pof-glow 4s ease-in-out infinite' }} />
         <div style={{ position: 'relative', width: 96, height: 96, borderRadius: 26, boxShadow: `0 24px 50px -16px var(--pof-glow)`, lineHeight: 0 }}><Prism size={96} /></div>
       </div>
-      <h2 style={{ fontWeight: 700, fontSize: 42, letterSpacing: '-.02em', color: LIGHT.text, margin: '0 0 12px' }}>You're ready, {firstName}.</h2>
-      <p style={{ fontSize: 17, lineHeight: 1.6, color: LIGHT.text2, margin: '0 auto 28px', maxWidth: 460 }}>You've set up your profile, toured every tab, and seen Smart Import in action. The app is unlocked — go close some deals.</p>
+      <h2 style={{ fontWeight: 700, fontSize: 42, letterSpacing: '-.02em', color: LIGHT.text, margin: '0 0 12px' }}>You&apos;re ready, {firstName}.</h2>
+      <p style={{ fontSize: 17, lineHeight: 1.6, color: LIGHT.text2, margin: '0 auto 28px', maxWidth: 460 }}>You&apos;ve set up your profile, toured every tab, and seen Smart Import in action. The app is unlocked — go close some deals.</p>
       <div style={{ display: 'flex', gap: 14, justifyContent: 'center', flexWrap: 'wrap' }}>
         <button onClick={finish} style={{ background: `linear-gradient(135deg, var(--pof-from), var(--pof-to))`, color: '#fff', border: 'none', padding: '16px 38px', borderRadius: 14, fontWeight: 700, fontSize: 16, cursor: 'pointer', boxShadow: `0 16px 38px -14px var(--pof-glow)`, display: 'inline-flex', alignItems: 'center', gap: 10 }}>Enter PRIM <Arrow /></button>
         <button onClick={restart} style={{ background: '#fff', color: LIGHT.text2, border: `1px solid ${LIGHT.border}`, padding: '16px 26px', borderRadius: 14, fontWeight: 600, fontSize: 15, cursor: 'pointer' }}>Replay tour</button>
@@ -723,7 +723,7 @@ function TourBooks({ D }) {
 }
 function TourUploads({ D }) {
   return <Panel><H3 D={D}>Upload</H3>
-    <div style={{ fontSize: 11.5, color: D.t3, marginBottom: 16 }}>Drop USHA weekly advance + monthly payout statements. PRIM auto-matches every commission row to the right closed deal — even when USHA pays under a spouse's name.</div>
+    <div style={{ fontSize: 11.5, color: D.t3, marginBottom: 16 }}>Drop USHA weekly advance + monthly payout statements. PRIM auto-matches every commission row to the right closed deal — even when USHA pays under a spouse&apos;s name.</div>
     <div style={{ border: `2px dashed rgba(124,134,176,.3)`, borderRadius: 14, padding: 28, textAlign: 'center', background: 'rgba(124,134,176,.05)', marginBottom: 14 }}>
       <svg width="30" height="30" viewBox="0 0 24 24" fill="none" style={{ marginBottom: 8 }}><path d="M12 16V5M8 9l4-4 4 4" stroke="var(--pof-accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /><path d="M5 19h14" stroke="var(--pof-accent)" strokeWidth="2" strokeLinecap="round" /></svg>
       <div style={{ fontSize: 13, color: D.t2 }}>Drag a statement here — PDF, CSV or Excel</div>

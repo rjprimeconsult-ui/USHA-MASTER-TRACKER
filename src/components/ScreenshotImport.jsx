@@ -335,7 +335,7 @@ export default function ScreenshotImport({ open, onClose, onCreateLead }) {
                     </button>
                   </div>
                   {(edits.dependents || []).length === 0 ? (
-                    <div className="text-[11px] text-amber-700/70 italic">None detected. Click "Add" to add manually.</div>
+                    <div className="text-[11px] text-amber-700/70 italic">None detected. Click &quot;Add&quot; to add manually.</div>
                   ) : (
                     <div className="space-y-1">
                       {(edits.dependents || []).map((dep, i) => (

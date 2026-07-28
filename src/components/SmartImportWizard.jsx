@@ -806,7 +806,7 @@ export default function SmartImportWizard({ open, onClose, onImport, defaultAcco
           <button onClick={onClose} className="border border-slate-200 hover:bg-slate-100 bg-white px-4 py-2 rounded-lg text-sm font-semibold">Cancel</button>
           {result && previewMode && (
             <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5 flex items-center gap-1.5">
-              <Eye size={13} /> <b>Preview mode</b> — extraction looks good? Click "Re-run as final" to import.
+              <Eye size={13} /> <b>Preview mode</b> — extraction looks good? Click &quot;Re-run as final&quot; to import.
             </div>
           )}
           {result && previewMode && (

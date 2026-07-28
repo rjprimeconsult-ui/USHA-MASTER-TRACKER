@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import Link from 'next/link';
 import { Check, Sparkles, Zap, Users } from 'lucide-react';
 import { STRIPE_PRICES, PLAN_DISPLAY, TRIAL_DAYS } from '@/lib/stripe-prices';
 import { startCheckout } from '@/lib/subscription';
@@ -174,12 +175,12 @@ export default function PricingPage() {
             account first. Relative link — stays on the app host, where
             ?signup=1 opens sign-up mode. */}
         <div className="text-center mt-10">
-          <a
+          <Link
             href="/?signup=1"
             className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 px-5 py-2.5 text-sm font-semibold transition"
           >
             New here? Create your account →
-          </a>
+          </Link>
         </div>
 
         {/* Footer copy */}
