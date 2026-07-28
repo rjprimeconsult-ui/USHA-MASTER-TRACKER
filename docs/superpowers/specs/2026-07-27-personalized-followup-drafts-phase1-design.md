@@ -76,7 +76,7 @@ Two pure `.mjs` modules because `npm test` = `node --test src/lib/*.test.mjs` an
 | Writer | Signature | Verdict |
 |---|---|---|
 | `LogTouchSheet` (the agent) | `channel` ∈ `CHANNELS`, `outcome` ∈ `OUTCOMES` (capitalised, [LogTouchSheet.jsx:4](../../../src/components/LogTouchSheet.jsx)) | ✅ **agent** |
-| `applyOutreachEmail` ([followupEngine.mjs:206](../../../src/lib/followupEngine.mjs)) | `channel: 'email'` (lowercase), `outcome: 'sent'` | ❌ machine — neither value exists in the constant lists |
+| `applyOutreachEmail` ([followupEngine.mjs:203](../../../src/lib/followupEngine.mjs)) | `channel: 'email'` (lowercase), `outcome: 'sent'` | ❌ machine — neither value exists in the constant lists |
 | Website-form re-submit ([webforms.mjs:445](../../../src/lib/webforms.mjs)) | `channel: 'Other'`, `outcome: 'Other'`, note begins `Submitted your website form again` | ❌ machine — **only the note prefix distinguishes it** |
 
 Four independent reviews confirmed these are the only writers of touch entries in `src/`.
@@ -89,7 +89,7 @@ export const isAgentTouch = (t) =>
   !String(t?.note || '').startsWith(WEBFORM_TOUCH_PREFIX);
 ```
 
-`WEBFORM_TOUCH_PREFIX` is exported so the literal exists once. It is duplicated from [webforms.mjs:445-446](../../../src/lib/webforms.mjs) rather than imported, because `webforms.mjs` is server-side; a test asserts the two strings match so a rename cannot silently reclassify machine touches as agent touches.
+`WEBFORM_TOUCH_PREFIX` is exported so the literal exists once. It is duplicated from [webforms.mjs:445-446](../../../src/lib/webforms.mjs) rather than imported, to keep this module's dependency surface at zero. (`webforms.mjs` is itself dependency-free and importable, so a direct import would also work — the duplication is a style choice, not a necessity.) **A test asserts the two strings match**, so a rename cannot silently reclassify machine touches as agent touches.
 
 **Known, accepted false negative:** the website-form note embeds the prospect's own fresh message — useful material this rule discards. Accepted for Phase 1; the prefix is the only discriminator, and a form submission is not a conversation with the agent.
 
@@ -113,21 +113,33 @@ The source field is `prospect.textdripChat.messages`, populated by the TextDrip 
 
 **All other prospect free text — touch notes, `situation`, TextDrip bodies — is sent to the model as-is.** No redaction pass.
 
-This is a deliberate reversal of revisions 1 and 2, made by Juan, and it aligns Phase 1 with what PRIM already does. [`/api/textdrip/extract-conversation`](../../../src/app/api/textdrip/extract-conversation/route.js) has been posting **entire raw SMS threads** to Anthropic in production for months. Its PHI control is a prompt instruction telling the model to keep health notes general ([route.js:32](../../../src/app/api/textdrip/extract-conversation/route.js)) — not a filter on the way in.
+This is a deliberate reversal of revisions 1 and 2, made by Juan, and it aligns Phase 1 with what PRIM already does. [`/api/textdrip/extract-conversation`](../../../src/app/api/textdrip/extract-conversation/route.js) has been posting **entire raw SMS threads** to Anthropic in production for months. Its PHI control is a prompt instruction telling the model to keep health notes general ([route.js:33](../../../src/app/api/textdrip/extract-conversation/route.js) and the PHI GUIDANCE block at [:39-41](../../../src/app/api/textdrip/extract-conversation/route.js)) — not a filter on the way in.
 
 Two review rounds established that a regex filter cannot work here anyway. Run against real strings, it destroyed *"history of shopping around every year"*, *"the prescription drug rider"*, and *"wants to run it by his cardiologist first"* — all sales context — while passing *"She takes Metformin daily"*, *"she is pregnant, due in March"*, and *"wife has MS"* untouched. In health insurance the clinical vocabulary **is** the sales vocabulary, so any filter strong enough to catch PHI shreds the material that makes a draft worth reading.
 
 **The health constraint therefore governs the output** (§8.2 bar 3), which is the only place the exposure is real: the outbound message reaching a client's phone. Combined with `meds` exclusion, PRIM's no-PHI policy telling agents not to type clinical detail ([NoPhiBanner.jsx](../../../src/components/NoPhiBanner.jsx)), and a human reading every message before sending.
 
-**Stated plainly so it is not mistaken for something stronger:** prospect free text leaves the browser unfiltered. This is the same posture PRIM operates under today, applied consistently — not a new exposure, and not a guarantee that no health text ever reaches the API.
+**Stated plainly so it is not mistaken for something stronger.** Prospect free text leaves the browser unfiltered. The *filtering posture* is the one PRIM already operates under — but the **scope is genuinely wider**, and calling it "no new exposure" would be false:
+
+| | `extract-conversation` (today) | This route |
+|---|---|---|
+| Frequency | **Once per prospect**, on first import only — never on updates or re-syncs ([route.js:5-6](../../../src/app/api/textdrip/extract-conversation/route.js)) | Per prospect **per cadence step**, plus Redo |
+| Fields | SMS bodies only | SMS bodies **plus agent-typed touch notes and `situation`** — a field class that has never left the browser |
+
+So: same posture, broader surface. Not a guarantee that no health text reaches the API. Juan made this call knowingly after a filter was shown to destroy sales context while passing real PHI; it is recorded here as a decision, not as a property of the system.
 
 ### 5.4 Opt-out gate (D12)
 
 An inbound `STOP` is still an inbound message, so §5.2's TextDrip branch would otherwise make an opted-out prospect eligible — and D7 would auto-draft a solicitation for them with a Copy button.
 
 **Ineligible when either:**
-- any inbound TextDrip body, uppercased and stripped of surrounding punctuation and whitespace, **starts with** one of `STOP`, `STOPALL`, `UNSUBSCRIBE`, `CANCEL`, `END`, `QUIT`, `OPT OUT`, `OPTOUT` — prefix matching, not equality, so `STOP.`, `Stop please`, and `stop texting me` are all caught; **or**
+
+- any inbound TextDrip body, uppercased and stripped of surrounding punctuation and whitespace, matches an opt-out **keyword** — `STOP`, `STOPALL`, `UNSUBSCRIBE`, `CANCEL`, `END`, `QUIT`, `OPT OUT`, `OPTOUT` — under this rule: the body **equals** the keyword, **or** the body starts with the keyword followed by a non-letter **and is ≤ 20 characters long**; **or**
 - any touch outcome is `Not interested`.
+
+**Why the length bound.** Bare prefix matching over-fires on ordinary replies that happen to start with a keyword, and these are exactly the messages a hot prospect sends: *"End of the month works for me"*, *"Cancel my appointment Tuesday, can we move it?"*, *"Quit my job so I need my own plan now"*, *"Stopped by your office today, call me"*. Each would silently and permanently disable the feature for that prospect, with nothing in the UI explaining why. Real opt-outs are short and terse — `STOP`, `Stop please`, `stop texting me` all clear 20 characters; sentences do not. The `-ed`/`-all` case is handled by requiring a non-letter after the keyword, so `Stopped` is not `STOP`.
+
+Direction of error is deliberate: an unrecognised opt-out is a compliance risk, but a false positive is silent feature death on the agent's best leads, and the length bound is what keeps the two apart.
 
 **Known limit:** `normalizeConversation` keeps only the 50 most recent messages ([textdrip.mjs:128](../../../src/lib/textdrip.mjs)), so an older opt-out is invisible to this check. PRIM has no SMS suppression store — `emailSuppression.mjs` is email-only, server-side, and needs an admin client, and all three in-scope stages are Call/Text only ([followupEngine.mjs:28-51](../../../src/lib/followupEngine.mjs) contains zero Email steps). This gate is the only available signal, not a bypass of a better one.
 
@@ -140,16 +152,18 @@ Returns, in this fixed order:
 - `firstName`
 - `agentNotes` — the **3 most recent** agent touches with notes, oldest→newest, each `{ at, outcome, note }`
 - `situation` — omitted when empty
-- `missedApptTime` — **only** for `MISSED_APPT`, whose steps 0–1 reference `{time}` ([followupEngine.mjs:28](../../../src/lib/followupEngine.mjs)). Supplied explicitly so §8.2 bar 2 is not violated by a fact the merged brief already carries.
-- `textdripSummary` — **only when `agentNotes` is empty.** The 6 most recent qualifying messages (§5.2), `direction` + `body`, truncated to 800 chars total.
+- `missedApptTime` — **only** for `MISSED_APPT`, whose steps 0–1 reference `{time}` ([followupEngine.mjs:28](../../../src/lib/followupEngine.mjs)). Supplied explicitly so §8.2 bar 2 is not violated by a fact the merged brief already carries. **Value:** the same string `mergeScript` produces for `{time}` ([FollowupNextStep.jsx:15-17](../../../src/components/FollowupNextStep.jsx)) — `toLocaleString` with `{ weekday: 'short', hour: 'numeric', minute: '2-digit' }` — so the brief and the source can never disagree. When `appointmentTime` is absent `mergeScript` yields `"our scheduled time"`; in that case **omit the field entirely** rather than sending that placeholder as if it were a fact.
+- `textdripSummary` — **only when `agentNotes` is empty.** The 6 most recent qualifying messages (§5.2), each rendered `direction` + `body`.
+  - **Order: oldest→newest**, matching `agentNotes`. `normalizeConversation` stores **newest-first** ([textdrip.mjs:118-128](../../../src/lib/textdrip.mjs) sorts descending then slices), so the array must be reversed. `extract-conversation` has to do the same ([route.js:63-64](../../../src/app/api/textdrip/extract-conversation/route.js)); a reversed transcript reads as a backwards conversation.
+  - **Truncation: 800 chars of the joined string, dropping whole messages from the OLDEST end** until it fits. Never a mid-word cut — a half-sentence is worse than one fewer message, and this string feeds `sourceHash`, so the rule must be deterministic.
 
-`meds` is never read.
+`meds` is never read. On an ineligible prospect (no agent notes, no qualifying TextDrip messages) the function returns `firstName` and `situation` only; callers never reach it, but it must not throw.
 
 ## 6. When drafting fires (D7)
 
 | `dueStatus` state | Eligible | Ineligible |
 |---|---|---|
-| `overdue`, `due_today` | **Auto-generate** if no terminal cache entry | Stock script, no affordance |
+| `overdue`, `due_today` | **Auto-generate** when `shouldRegenerate` (§7.4) says so | Stock script, no affordance |
 | `ontrack`, `snoozed` | Stock script + **Personalize** button | Stock script, no affordance |
 | `done`, `none` | Existing behaviour, unchanged | Unchanged |
 
@@ -160,11 +174,15 @@ Returns, in this fixed order:
 **Two separate mechanisms, deliberately:**
 
 - **Terminal state is the persisted cache** (§7.2 `status` + `attempts`). It survives unmount, reload, and device change, and it is what §10's retry policy reads. A module-level Map cannot hold this — it would make `attempts` unreachable, because a `failed` key would short-circuit the effect before the retry counter was ever consulted.
-- **In-flight de-duplication is a module-level `Set`** of `` `${prospectId}:${sourceHash}` ``, added before the request and **removed in a `finally`**, so a settled request always clears. It exists only to stop two simultaneous mounts issuing the same call.
+- **In-flight de-duplication is a module-level `Set`** of `` `${prospectId}:${sourceHash}` ``, added before the request. Its real job is **re-entrancy**, not concurrent mounts — §9.2 establishes there is exactly one mount site, so two simultaneous mounts of one prospect are unreachable in a single tab.
 
 The effect depends on `[prospect.id, sourceHash]` only — **never** on `now` or `status` identity.
 
-**Abort:** the drawer closes on a single overlay click ([ProspectsView.jsx:1111](../../../src/components/views/ProspectsView.jsx)) and its children unmount ([:1087](../../../src/components/views/ProspectsView.jsx)). The request must carry an `AbortController` aborted in the effect cleanup, and the `finally` must clear the in-flight `Set` entry. An aborted request writes **nothing** to the cache — the prospect is simply un-drafted and will generate on next open. It must never leave a `pending` marker, because nothing would clear it.
+**Abort — and the ordering that makes or breaks it.** The drawer closes on a single overlay click ([ProspectsView.jsx:1111](../../../src/components/views/ProspectsView.jsx)) and its children unmount ([:1087](../../../src/components/views/ProspectsView.jsx)). The request carries an `AbortController` aborted in the effect cleanup.
+
+The `Set` entry **must be deleted synchronously in the cleanup**, not only in the request's `finally`. A `finally` runs on a later microtask, so under React StrictMode — on by default for App Router in dev, and this repo sets no `reactStrictMode` override in `next.config.mjs` — the sequence is: effect runs and adds the key → cleanup fires synchronously and aborts → effect re-runs *in the same commit*, sees the key still present, and **skips** → the `finally` clears the key with nothing left to trigger a retry, because the deps did not change. Result: **auto-generation never fires at all in development**, and in production the same hole opens on a `h1 → h2 → h1` hash round-trip inside one in-flight window. Delete in the cleanup; the `finally` is a backstop for the non-unmount path.
+
+An aborted request writes **nothing** to the cache — the prospect is simply un-drafted and generates on next open. It must never leave a `pending` marker, because nothing would clear it.
 
 **`now` must be memoised** as `useMemo(() => new Date().toISOString(), [prospect?.id, open])` in the parent. A bare `[]` freezes it for the whole session — `ProspectDetail` itself never unmounts ([:1083](../../../src/components/views/ProspectsView.jsx)) — which would stale the due chip and the trigger until a page reload.
 
@@ -181,13 +199,36 @@ Two early returns already sit between render start and the point where `status` 
 
 **Do not disable the lint rule.**
 
+`style` is computed in the outer component alongside `status` — `STATE_STYLE[status.state] || STATE_STYLE.ontrack` ([FollowupNextStep.jsx:38](../../../src/components/FollowupNextStep.jsx)) — and passed down; the card body consumes it at [:49](../../../src/components/FollowupNextStep.jsx) and [:54](../../../src/components/FollowupNextStep.jsx).
+
+**One accepted lint warning.** The effect's deps are `[prospect.id, sourceHash]` while the §6 table gates firing on `status.state` — a deliberate stale-closure read, since depending on `status` identity is the loop this section exists to prevent. `react-hooks/exhaustive-deps` will warn. `eslint.config.mjs` inherits `eslint-config-next/core-web-vitals`, which sets that rule to **warn**, so `npm run lint` still exits 0. Leave the warning; do not silence it with a disable comment, and do not "fix" it by adding `status` to the deps.
+
+### 6.3 Prop contract
+
+The drafts map lives in `LeadTracker` (§4) and the textarea lives in `FollowupCard`, so writes travel up through `ProspectsView` → `ProspectDetail`. Named here because "thread props through" is not a specification:
+
+```
+LeadTracker
+  state:  followupDrafts            // the whole map
+  passes: followupDrafts            (object, may be {})
+          onSaveDraft(prospectId, entry)   // merges one entry, persists the map
+
+ProspectsView -> ProspectDetail -> FollowupNextStep -> FollowupCard
+  draft        = followupDrafts[prospect.id] ?? null
+  onSaveDraft  = (entry) => onSaveDraft(prospect.id, entry)
+```
+
+`onSaveDraft` performs the whole-map write, so §7.2's persist policy is enforced in one place rather than at every call site.
+
+**Persisting the edit on unmount requires a ref.** A naive `useEffect(() => () => onSaveDraft({ ...entry, text }), [])` captures `text` from the first render and writes the *pre-edit* value, silently discarding the agent's changes. Hold the live value in a ref updated on every change and read the ref in the cleanup.
+
 ## 7. Storage, caching, invalidation
 
 ### 7.1 `followup_drafts_v1` — a registered key (D11)
 
 **Add `'followup_drafts_v1'` to `APP_KEYS`** ([storage.js:353](../../../src/lib/storage.js)). One line, not optional:
 
-- `purgeLocalMirror` iterates `APP_KEYS` ([storage.js:59](../../../src/lib/storage.js)), fired from `ensureLocalOwner` on the **next user's sign-in** ([storage.js:67](../../../src/lib/storage.js)). An unregistered key survives; user B's `cloudGet` returns null, `getItem` falls back to localStorage ([storage.js:261](../../../src/lib/storage.js)), and **B is served A's drafts**, then persists them into B's cloud row. Exactly the incident documented at [storage.js:43](../../../src/lib/storage.js): *"a new agent's account showed the founder's earned commissions."*
+- `purgeLocalMirror` iterates `APP_KEYS` ([storage.js:60](../../../src/lib/storage.js)), fired from `ensureLocalOwner` on the **next user's sign-in** ([storage.js:67](../../../src/lib/storage.js)). An unregistered key survives; user B's `cloudGet` returns null, `getItem` falls back to localStorage ([storage.js:261](../../../src/lib/storage.js)), and **B is served A's drafts**, then persists them into B's cloud row. Exactly the incident documented at [storage.js:43](../../../src/lib/storage.js): *"a new agent's account showed the founder's earned commissions."*
 - `prefetch` defaults to `APP_KEYS` ([storage.js:274](../../../src/lib/storage.js)) and batches via one `.in(list)` query — registration costs **no extra round-trip**.
 - `migrateLocalToCloud` ([storage.js:379](../../../src/lib/storage.js)) also iterates it.
 - `inspectStorage` ([storage.js:403](../../../src/lib/storage.js)) iterates it but gates on `Array.isArray(parsed)`, so an object map is invisible to the "upload your local data" prompt. Harmless and correct — drafts should not drive a migration prompt. Recorded so it is not filed as a bug.
@@ -214,7 +255,7 @@ Two early returns already sit between render start and the point where `status` 
 | `previous` | Cap **2**, newest first (§7.4). |
 | `rejected` | Cap **3**, drafts the agent hit Redo on (§8.3). **Persisted**, not component state — otherwise the cap resets on every drawer close and Redo is unbounded across opens. |
 
-**Write policy — persist on blur and unmount, never per keystroke.** The key is non-mergeable, so `setItem` takes the plain path ([storage.js:322](../../../src/lib/storage.js)): a full `localSet` plus a full JSONB upsert of the **entire map**. At ~870 B per entry, an agent with 300 prospects carries ~175 KB; debouncing keystrokes would still upload that repeatedly through an editing session. Hold in-progress text in component state; write once when the textarea blurs or the component unmounts.
+**Write policy — persist on blur and unmount, never per keystroke.** The key is non-mergeable, so `setItem` takes the plain path ([storage.js:322](../../../src/lib/storage.js)): a full `localSet` plus a full JSONB upsert of the **entire map**. At full occupancy of this section's own caps — `text` ~200 B + `previous` 2x + `rejected` 3x + keys and JSON overhead — an entry is **~1.3-1.5 KB**, so an agent with 300 prospects carries **~400 KB**. Debouncing keystrokes would upload that whole map repeatedly through an editing session; debouncing changes frequency, not payload. Hold in-progress text in component state; write once when the textarea blurs or the component unmounts.
 
 **Two-tab caveat:** last-write-wins means tab B's map write can erase drafts tab A created, and neither tab regenerates them because both hold a terminal cache entry in memory. Accepted for Phase 1 — the loss is a stock script until reload, and multi-tab use of the same prospect is rare. Recorded rather than silently assumed.
 
@@ -225,24 +266,35 @@ Join with the **NUL separator, written in source as String.fromCharCode(0), i.e.
 Order:
 
 ```
-stepKey, situation, ...agentNotes.map(n => `${n.at}|${n.outcome}|${n.note}`), textdripSummary
+stepKey, firstName, situation, missedApptTime,
+...agentNotes.map(n => `${n.at}|${n.outcome}|${n.note}`), textdripSummary
 ```
 
-`at` and `outcome` are included because both are **sent to the model** (§5.5): two touches with identical note text but different outcomes produce different prompts and must produce different hashes. Hash with **FNV-1a 32-bit**, 8 hex chars.
+**The rule is: everything `buildDraftSource` sends is hashed.** Anything sent but unhashed produces a stale draft that survives a change the agent can see. `at` and `outcome` are hashed because both reach the model. `firstName` and `missedApptTime` were omitted in an earlier draft of this spec — the consequence is that correcting a misspelled name, or fixing the appointment time on a `MISSED_APPT` prospect, would leave the cached draft in place and the agent would copy a message addressed to *"Jonh"* citing the old slot. That is exactly what §8.2 bar 2 exists to prevent, arriving through the cache instead of the model.
+
+Hash with **FNV-1a 32-bit**, 8 hex chars.
 
 A collision leaves a stale draft in place — harmless; the agent can edit, and Redo forces regeneration.
 
 ### 7.4 Regeneration, `edited`, and `previous`
 
-**The rule, stated explicitly because this is the feature's most-travelled path.** Logging a touch always advances `stepIndex` ([followupEngine.mjs:191](../../../src/lib/followupEngine.mjs)), so the normal cycle is draft → edit → log touch → new `stepKey` **and** new `sourceHash`.
+**This section is NORMATIVE.** It defines a single function, `shouldRegenerate(cached, stepKey, sourceHash)`, living in `followupDraftCache.mjs`. §6's trigger table and §10's retry policy both defer to it — a builder must not re-derive the firing condition from either. Earlier revisions stated the condition three different ways in three sections, which left `attempts` unreachable from the one that called itself the rule.
 
-- **`stepKey` changed** → always regenerate, **even when `edited` is true**. The agent's edit belonged to the previous step; carrying it forward would show step 2's heading above step 1's message. Before the request, push the stored `text` onto `previous` (newest first, cap 2) and **send the updated `previous` in that same request** — revision 1 rotated on write-back, so at step 3 the model saw step 1's draft and never step 2's, inverting D8's purpose.
-- **`sourceHash` changed but `stepKey` did not** (e.g. `situation` edited) → regenerate **only when `edited` is false**. An agent's own wording is never overwritten in place. `previous` does **not** rotate.
-- **Neither changed** → serve the cache.
+Logging a touch advances `stepIndex` ([followupEngine.mjs:191](../../../src/lib/followupEngine.mjs)) on every step **except the last**, where `completedAt` is set and `stepIndex` is left alone ([:185-189](../../../src/lib/followupEngine.mjs)). The normal cycle is draft → edit → log touch → new `stepKey` **and** new `sourceHash`.
+
+In precedence order:
+
+1. **`status === 'insufficient'` and `sourceHash` unchanged** → never regenerate. This is the branch that stops a declined prospect being re-billed on every drawer open (D9).
+2. **`status === 'failed'` and `sourceHash` unchanged** → regenerate **iff `attempts < 2`**. This is the only path that consumes `attempts`; without it the counter increments once and is never read.
+3. **`stepKey` changed** → regenerate, **even when `edited` is true**. The agent's edit belonged to the previous step; carrying it forward would show step 2's heading above step 1's message. Before the request, push the stored `text` onto `previous` (newest first, cap 2) and **send the updated `previous` in that same request** — an earlier revision rotated on write-back, so at step 3 the model saw step 1's draft and never step 2's, inverting D8's purpose. Reset `attempts` and `rejected` to empty.
+4. **`sourceHash` changed, `stepKey` did not** (e.g. `situation` edited) → regenerate **only when `edited` is false**. An agent's own wording is never overwritten in place. `previous` does **not** rotate. Reset `attempts` and `rejected`.
+5. **Otherwise** → serve the cache.
+
+*(Rule 3's condition is strictly narrower than rule 4's — `stepKey` is the first segment of `sourceHash`, so a `stepKey` change always changes the hash. The ordering is what distinguishes them; rule 3 is not unreachable.)*
 
 ### 7.5 Prune
 
-In `LeadTracker`, after both `prospects_v1` and `followup_drafts_v1` are read, drop entries whose prospect id is absent from the loaded list or whose prospect is archived. **Write back only if something was dropped.** Prune runs **before** any draft write.
+In `LeadTracker`, after both `prospects_v1` and `followup_drafts_v1` are read, drop entries whose prospect id is absent from the loaded list, whose prospect has a non-null `archivedAt` ([LeadTracker.jsx:1966](../../../src/components/LeadTracker.jsx)), or whose prospect is in `SOLD` / `LOST` (§1 — never drafted for, so a leftover entry is dead weight). **Write back only if something was dropped.** Prune runs **before** any draft write.
 
 ## 8. Drafting route — `POST /api/followup-draft`
 
@@ -322,7 +374,7 @@ Review confirmed this is the only such path: `mergeScript` exists only in this f
 
 | Failure | Behaviour |
 |---|---|
-| Route 5xx / network | Stock script; `status: 'failed'`, `attempts++`; retried on next open until `attempts` reaches 2 |
+| Route 5xx / network | Stock script; `status: 'failed'`, `attempts++`; retried per §7.4 rule 2 (until `attempts` reaches 2) |
 | Aborted (drawer closed mid-request) | **Nothing written**; in-flight entry cleared in `finally`; regenerates on next open (§6.1) |
 | `insufficient` | Stock script; `status: 'insufficient'`; **never re-attempted** until `sourceHash` changes |
 | Draft contains a `{token}` or is empty | Malformed → treated as failure; **never rendered raw** |
@@ -341,7 +393,7 @@ Invariant: **every failure path degrades to today's behaviour.**
 - Lowercase `email`/`sent` outreach touch → not eligible.
 - Website-form re-submit → not eligible; `WEBFORM_TOUCH_PREFIX` matches the literal in `webforms.mjs`.
 - TextDrip: genuine inbound → eligible; outbound-only → not; `isDrip: true` only → not; empty bodies → not; missing `textdripChat` → not (no throw).
-- **Opt-out:** `STOP`, `STOP.`, `Stop please`, `stop texting me`, `UNSUBSCRIBE ME`, `opt out` → not eligible; `Not interested` outcome → not eligible; the word `stopped` mid-sentence → **still eligible** (prefix, not substring).
+- **Opt-out — both directions.** Not eligible: `STOP`, `STOP.`, `Stop please`, `stop texting me`, `UNSUBSCRIBE`, `opt out`, and a `Not interested` outcome. **Still eligible** (the over-match cases §5.4's length bound exists to protect): `"End of the month works for me"`, `"Cancel my appointment Tuesday, can we move it?"`, `"Quit my job so I need my own plan now"`, `"Stopped by your office today, call me"`. A test that only checks a keyword mid-sentence does not cover this — the failure is sentence-*initial*.
 - `WEBBY_SET`, `APPOINTMENT_SET`, `GHOSTED`, `SOLD`, `LOST` with a valid agent touch → **not eligible** (Phase 1 boundary).
 - `buildDraftSource`: `meds` never appears in the output for any input; notes capped at 3, oldest→newest; TextDrip used only when there are no agent notes; `missedApptTime` present only for `MISSED_APPT`.
 - `stepPurpose`: matches the live `DEFAULT_PLAYBOOK` step counts; `FOLLOWUP_LATER` has no `breakup`; out-of-range index returns the stage's last purpose.
@@ -349,8 +401,9 @@ Invariant: **every failure path degrades to today's behaviour.**
 **`followupDraftCache.test.mjs`**
 - `stepKey` uses the **clamped** index; changes with stage or index.
 - `sourceHash` deterministic; `["a","b c"]` vs `["a b","c"]` hash **differently**; changes when a note is added, edited, its outcome changes, situation changes, or stepKey changes. **No literal NUL byte in the source file** — asserted by reading the module's own bytes.
-- Regeneration matrix (§7.4): stepKey changed + `edited` → regenerates and rotates; sourceHash changed + `edited` → does **not** regenerate; sourceHash changed + not edited → regenerates, no rotation; neither changed → cache served.
-- `previous` caps at 2 newest-first; `rejected` caps at 3; `attempts` caps at 2.
+- **`sourceHash` covers everything `buildDraftSource` sends** — asserted structurally, not case-by-case: mutate each field of a source object in turn and require the hash to change every time. This is the check that would have caught `firstName` and `missedApptTime` being sent but not hashed, and it stays correct if a field is added later.
+- `shouldRegenerate` (§7.4), all five rules: `insufficient` + same hash → **no** call; `failed` + same hash + `attempts < 2` → regenerates; `failed` + same hash + `attempts === 2` → **no** call; stepKey changed + `edited: true` → regenerates **and** rotates `previous`, resetting `attempts`/`rejected`; sourceHash changed + `edited: true` → does **not** regenerate; sourceHash changed + not edited → regenerates without rotating; nothing changed → cache served.
+- `previous` caps at 2 newest-first; `rejected` caps at 3; `attempts` caps at 2; all three reset on a stepKey or sourceHash change.
 - Prune drops missing and archived prospects, keeps the rest, reports whether anything changed.
 
 **Not unit-testable here:** the route and the JSX — PRIM has no component-test infrastructure. Covered by live verification (§13) and code review.
