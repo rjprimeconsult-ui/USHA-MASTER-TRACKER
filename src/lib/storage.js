@@ -375,6 +375,7 @@ const APP_KEYS = [
   'pending_email_queue_v1',
   // Setup checklist dismiss flag (Dashboard widget)
   'setup_checklist_v1',
+  'followup_drafts_v1', // personalized follow-up drafts cache — registered so purgeLocalMirror clears it on account switch
 ];
 export async function migrateLocalToCloud() {
   if (!cloudActive()) throw new Error('Not signed in');

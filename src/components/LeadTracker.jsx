@@ -45,6 +45,7 @@ import {
   ensureFollowupFields, armIfNeeded, armCadence, logTouch as engineLogTouch, snooze as engineSnooze, suggestStageAfterTouch, applyOutreachEmail,
   resolveTouchReminder,
 } from '@/lib/followupEngine.mjs';
+import { pruneDrafts } from '@/lib/followupDraftCache.mjs';
 import LeadForm from './LeadForm';
 import InvestmentForm from './InvestmentForm';
 import ActivityForm from './ActivityForm';
@@ -144,6 +145,11 @@ const BE_KEY   = 'business_expenses_v1';
 const BI_KEY   = 'business_income_v1';
 const PROSPECTS_KEY = 'prospects_v1';
 const PROSPECT_SETTINGS_KEY = 'prospect_settings_v1';
+// Personalized follow-up drafts cache — an OBJECT MAP keyed by prospect id
+// (draft spec §7.1/§7.2). Its own registered key, never on the prospect
+// record: prospects_v1 merges whole-record newest-wins, so caching there
+// would turn merely OPENING a prospect into a full-record write.
+const FOLLOWUP_DRAFTS_KEY = 'followup_drafts_v1';
 // Association Bonus residual book — populated by uploading USHA's
 // CommissionDetail.csv. Kept in isolated keys so it never affects
 // leads, advances, or Books P&L.
@@ -297,6 +303,13 @@ export default function LeadTracker() {
   const skipNextLeadsSaveRef = useRef(false);
   const skipNextProspectsSaveRef = useRef(false);
   const [followupPlaybook, setFollowupPlaybook] = useState(DEFAULT_PLAYBOOK);
+  // Personalized follow-up drafts: the whole followup_drafts_v1 map lives
+  // here (draft spec §4) — ProspectsView only threads it through. The ref
+  // mirrors state so saveFollowupDraft can merge + persist against the
+  // latest map without side effects inside a setState updater (StrictMode
+  // double-invokes updaters).
+  const [followupDrafts, setFollowupDrafts] = useState({});
+  const followupDraftsRef = useRef({});
   const [tier, setTier] = useState('WA');
   // Association Bonus residual data — loaded from cloud, isolated from leads.
   const [abDetail, setAbDetail] = useState([]);
@@ -647,6 +660,23 @@ export default function LeadTracker() {
       setProspects(armedProspects);
       prevProspectsRef.current = armedProspects; // seed newest-wins baseline (see leads above)
 
+      // Personalized follow-up drafts (draft spec §7.5): prune AFTER both
+      // prospects_v1 and followup_drafts_v1 are read and BEFORE any draft
+      // write — drop entries whose prospect is gone, archived, or SOLD/LOST,
+      // writing back only if something was actually dropped. An unreadable
+      // drafts key never blocks load: drafting still works, uncached (§10).
+      try {
+        const fdRaw = await storage.getItem(FOLLOWUP_DRAFTS_KEY);
+        const fdParsed = fdRaw ? JSON.parse(fdRaw) : {};
+        const fdMap = (fdParsed && typeof fdParsed === 'object' && !Array.isArray(fdParsed)) ? fdParsed : {};
+        const prunedDrafts = pruneDrafts(fdMap, armedProspects);
+        if (prunedDrafts.changed) {
+          await storage.setItem(FOLLOWUP_DRAFTS_KEY, JSON.stringify(prunedDrafts.map));
+        }
+        followupDraftsRef.current = prunedDrafts.map;
+        setFollowupDrafts(prunedDrafts.map);
+      } catch { /* corrupt drafts cache — feature degrades to stock scripts */ }
+
       const psRaw = await storage.getItem(PROSPECT_SETTINGS_KEY);
       let psInitial = psRaw ? JSON.parse(psRaw) : null;
       // Strip the retired NEW stage from saved settings (idempotent)
@@ -726,6 +756,24 @@ export default function LeadTracker() {
     prevProspectsRef.current = prospects;
     storage.setItem(PROSPECTS_KEY, JSON.stringify(stamped));
   }, [prospects, loaded]);
+
+  // Personalized follow-up drafts writer (draft spec §6.4): merge ONE entry
+  // and persist the WHOLE map — the single place the §7.2 write policy is
+  // enforced. The merge is FIELD-level (a blur patch of { text, edited } must
+  // not wipe status/stepKey/sourceHash/attempts/previous/rejected), and the
+  // write is skipped entirely when the merge changes nothing, so a plain
+  // drawer close never fires a full localSet + JSONB upsert of the map.
+  const saveFollowupDraft = useCallback((prospectId, patch) => {
+    if (!prospectId || !patch || typeof patch !== 'object') return;
+    const map = followupDraftsRef.current || {};
+    const existing = map[prospectId];
+    const merged = { ...(existing ?? {}), ...patch };
+    if (existing && JSON.stringify(existing) === JSON.stringify(merged)) return;
+    const next = { ...map, [prospectId]: merged };
+    followupDraftsRef.current = next;
+    setFollowupDrafts(next);
+    storage.setItem(FOLLOWUP_DRAFTS_KEY, JSON.stringify(next));
+  }, []);
 
   // Live multi-session sync: when another browser on this account saves, pull
   // the change in and newest-wins-merge it (no manual refresh). Debounced;
@@ -2335,6 +2383,8 @@ export default function LeadTracker() {
             onResolveReminder={resolveProspectReminder}
             onSyncTextDrip={syncTextDrip}
             onExtractFromTexts={extractProspectFromTexts}
+            followupDrafts={followupDrafts}
+            onSaveDraft={saveFollowupDraft}
           />
         </ViewMount>
         <ViewMount visible={view === 'books'} viewKey="books">

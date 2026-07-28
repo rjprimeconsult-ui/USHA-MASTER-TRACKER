@@ -1077,13 +1077,23 @@ function OutreachLogList({ log }) {
   );
 }
 
-function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, onConvertToLead, onProspectUpdate, playbook, onLogTouch, onOutreachEmailSent, agentName, onApplyStageSuggestion, onSnooze, onResolveReminder, onExtractFromTexts, readOnly = false }) {
+function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, onConvertToLead, onProspectUpdate, playbook, onLogTouch, onOutreachEmailSent, agentName, onApplyStageSuggestion, onSnooze, onResolveReminder, onExtractFromTexts, followupDrafts, onSaveDraft, readOnly = false }) {
   const [logOpen, setLogOpen] = useState(false);
   const [suggestion, setSuggestion] = useState(null);
   // ProspectDetail stays mounted across prospects — clear any pending
   // suggestion when the viewed prospect changes or the modal closes, so a
   // suggestion from one prospect can never be applied to another.
   useEffect(() => { setSuggestion(null); }, [prospect?.id, open]);
+  // `now` MUST be memoised (draft spec §6.1): a fresh ISO string every render
+  // would make FollowupNextStep's status a new object each time. Keyed on the
+  // viewed prospect + open so each open recomputes it — a bare [] would
+  // freeze it for the whole session, since ProspectDetail itself never
+  // unmounts, staling the due chip and the auto-draft trigger until reload.
+  // The two void reads reference the cache keys so the dep list is exact.
+  const now = useMemo(
+    () => { void prospect?.id; void open; return new Date().toISOString(); },
+    [prospect?.id, open]
+  );
   if (!open || !prospect) return null;
   const stage = settings.stages.find(s => s.id === prospect.stage);
   const stageColor = stage?.color || '#64748b';
@@ -1169,6 +1179,9 @@ function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, o
                 prospect={prospect}
                 playbook={playbook}
                 agentName={agentName}
+                now={now}
+                draft={followupDrafts?.[prospect.id] ?? null}
+                onSaveDraft={onSaveDraft ? (entry) => onSaveDraft(prospect.id, entry) : undefined}
                 onLogTouch={() => setLogOpen(true)}
                 onSnooze={(days) => onSnooze?.(prospect.id, days)}
               />
@@ -1401,6 +1414,11 @@ export default function ProspectsView({
   onResolveReminder,
   onSyncTextDrip,
   onExtractFromTexts,
+  // Personalized follow-up drafts (draft spec §6.4): the whole map plus the
+  // merge-and-persist writer, both owned by LeadTracker — this view contains
+  // zero storage references and only threads them through to ProspectDetail.
+  followupDrafts = {},
+  onSaveDraft,
   // readOnly: rendered inside the Team leader mirror with ANOTHER user's
   // data — hide every mutate affordance; viewing client records stays.
   readOnly = false,
@@ -1958,6 +1976,8 @@ export default function ProspectsView({
         onSnooze={onSnoozeProspect}
         onResolveReminder={onResolveReminder}
         onExtractFromTexts={onExtractFromTexts}
+        followupDrafts={followupDrafts}
+        onSaveDraft={onSaveDraft}
       />
       <ProspectForm
         open={!!editing}
