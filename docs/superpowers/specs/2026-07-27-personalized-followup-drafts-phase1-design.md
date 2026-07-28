@@ -134,14 +134,28 @@ An inbound `STOP` is still an inbound message, so §5.2's TextDrip branch would 
 
 **Ineligible when either:**
 
-- any inbound TextDrip body, uppercased and stripped of surrounding punctuation and whitespace, matches an opt-out **keyword** — `STOP`, `STOPALL`, `UNSUBSCRIBE`, `CANCEL`, `END`, `QUIT`, `OPT OUT`, `OPTOUT` — under this rule: the body **equals** the keyword, **or** the body starts with the keyword followed by a non-letter **and is ≤ 20 characters long**; **or**
+- any inbound TextDrip body matches an opt-out **keyword** — `STOP`, `STOPALL`, `UNSUBSCRIBE`, `CANCEL`, `END`, `QUIT`, `OPT OUT`, `OPTOUT` — under the rule below; **or**
 - any touch outcome is `Not interested`.
 
-**Why the length bound.** Bare prefix matching over-fires on ordinary replies that happen to start with a keyword, and these are exactly the messages a hot prospect sends: *"End of the month works for me"*, *"Cancel my appointment Tuesday, can we move it?"*, *"Quit my job so I need my own plan now"*, *"Stopped by your office today, call me"*. Each would silently and permanently disable the feature for that prospect, with nothing in the UI explaining why. Real opt-outs are short and terse — `STOP`, `Stop please`, `stop texting me` all clear 20 characters; sentences do not. The `-ed`/`-all` case is handled by requiring a non-letter after the keyword, so `Stopped` is not `STOP`.
+**Normalisation, stated exactly** — a compliance gate cannot rest on "stripped of punctuation":
+
+```js
+const norm = String(body).toUpperCase().replace(/^[^A-Z0-9]+|[^A-Z0-9]+$/g, '');
+```
+
+Leading and trailing non-alphanumerics only; interior characters and spaces are preserved. **The ≤ 25-character bound is measured on `norm`**, after stripping.
+
+**The rule:** `norm` **equals** a keyword, **or** `norm` starts with a keyword followed by a non-letter **and** `norm.length <= 25`.
+
+**Why the bound, and why 25.** Bare prefix matching over-fires on ordinary replies that happen to open with a keyword — *"End of the month works for me"*, *"Cancel my appointment Tuesday, can we move it?"*, *"Quit my job so I need my own plan now"*, *"Stopped by your office today, call me"*. Each would silently and permanently disable the feature for that prospect, with nothing in the UI explaining why, on exactly the leads it matters most for.
+
+The bound has to clear real opt-outs on one side and those sentences on the other. Measured on `norm`: `STOP PLEASE` is 11, `STOP TEXTING ME` is 15, `STOP SENDING ME TEXTS` is 21, `STOP CALLING ME PLEASE` is 22 — while the shortest false positive above, `END OF THE MONTH WORKS FOR ME`, is 29. **25 sits in that gap.** A 20-char bound (an earlier draft) missed the 21- and 22-character opt-outs by a character or two.
+
+The `-ed` / `-all` case is handled by requiring a non-letter after the keyword, so `STOPPED` is not `STOP`.
 
 Direction of error is deliberate: an unrecognised opt-out is a compliance risk, but a false positive is silent feature death on the agent's best leads, and the length bound is what keeps the two apart.
 
-**Known limit:** `normalizeConversation` keeps only the 50 most recent messages ([textdrip.mjs:128](../../../src/lib/textdrip.mjs)), so an older opt-out is invisible to this check. PRIM has no SMS suppression store — `emailSuppression.mjs` is email-only, server-side, and needs an admin client, and all three in-scope stages are Call/Text only ([followupEngine.mjs:28-51](../../../src/lib/followupEngine.mjs) contains zero Email steps). This gate is the only available signal, not a bypass of a better one.
+**Known limit:** `normalizeConversation` keeps only the 50 most recent messages ([textdrip.mjs:129](../../../src/lib/textdrip.mjs)), so an older opt-out is invisible to this check. PRIM has no SMS suppression store — `emailSuppression.mjs` is email-only, server-side, and needs an admin client, and all three in-scope stages are Call/Text only ([followupEngine.mjs:28-51](../../../src/lib/followupEngine.mjs) contains zero Email steps). This gate is the only available signal, not a bypass of a better one.
 
 Informational compliance flag, not legal advice — flagged for human review per the standing rule.
 
@@ -153,8 +167,10 @@ Returns, in this fixed order:
 - `agentNotes` — the **3 most recent** agent touches with notes, oldest→newest, each `{ at, outcome, note }`
 - `situation` — omitted when empty
 - `missedApptTime` — **only** for `MISSED_APPT`, whose steps 0–1 reference `{time}` ([followupEngine.mjs:28](../../../src/lib/followupEngine.mjs)). Supplied explicitly so §8.2 bar 2 is not violated by a fact the merged brief already carries. **Value:** the same string `mergeScript` produces for `{time}` ([FollowupNextStep.jsx:15-17](../../../src/components/FollowupNextStep.jsx)) — `toLocaleString` with `{ weekday: 'short', hour: 'numeric', minute: '2-digit' }` — so the brief and the source can never disagree. When `appointmentTime` is absent `mergeScript` yields `"our scheduled time"`; in that case **omit the field entirely** rather than sending that placeholder as if it were a fact.
-- `textdripSummary` — **only when `agentNotes` is empty.** The 6 most recent qualifying messages (§5.2), each rendered `direction` + `body`.
-  - **Order: oldest→newest**, matching `agentNotes`. `normalizeConversation` stores **newest-first** ([textdrip.mjs:118-128](../../../src/lib/textdrip.mjs) sorts descending then slices), so the array must be reversed. `extract-conversation` has to do the same ([route.js:63-64](../../../src/app/api/textdrip/extract-conversation/route.js)); a reversed transcript reads as a backwards conversation.
+- `textdripSummary` — **only when `agentNotes` is empty.** A transcript of the 6 most recent messages.
+  - **Both sides, not inbound-only.** §5.2's inbound-and-not-drip test decides *eligibility*; it does not filter the transcript. A one-sided list of the prospect's replies with the agent's questions removed is close to unreadable, and it would make the `direction` label a constant. `extract-conversation` renders both sides for the same reason ([route.js:66](../../../src/app/api/textdrip/extract-conversation/route.js)) and filters nothing. Drip sends **are** excluded (`isDrip !== true`) — automated campaign copy is not conversation.
+  - **Rendering:** one message per line, `` `${m.direction === 'out' ? 'Agent' : 'Contact'}: ${m.body}` ``, joined with `\n` — the same speaker labels `extract-conversation` uses, so the two routes read alike.
+  - **Order: oldest→newest**, matching `agentNotes`. `normalizeConversation` stores **newest-first** ([textdrip.mjs:119-129](../../../src/lib/textdrip.mjs) sorts descending, then `.slice(0, 50)`), so the selected window must be reversed. `extract-conversation` does the same ([route.js:65](../../../src/app/api/textdrip/extract-conversation/route.js)); a reversed transcript reads as a backwards conversation.
   - **Truncation: 800 chars of the joined string, dropping whole messages from the OLDEST end** until it fits. Never a mid-word cut — a half-sentence is worse than one fewer message, and this string feeds `sourceHash`, so the rule must be deterministic.
 
 `meds` is never read. On an ineligible prospect (no agent notes, no qualifying TextDrip messages) the function returns `firstName` and `situation` only; callers never reach it, but it must not throw.
@@ -203,7 +219,16 @@ Two early returns already sit between render start and the point where `status` 
 
 **One accepted lint warning.** The effect's deps are `[prospect.id, sourceHash]` while the §6 table gates firing on `status.state` — a deliberate stale-closure read, since depending on `status` identity is the loop this section exists to prevent. `react-hooks/exhaustive-deps` will warn. `eslint.config.mjs` inherits `eslint-config-next/core-web-vitals`, which sets that rule to **warn**, so `npm run lint` still exits 0. Leave the warning; do not silence it with a disable comment, and do not "fix" it by adding `status` to the deps.
 
-### 6.3 Prop contract
+### 6.3 Personalize (not-yet-due)
+
+**Personalize is the manual trigger for the same generation path, not a separate one.** It runs `shouldRegenerate` (§7.4) exactly as the auto path does, so the caps apply unchanged.
+
+- **No usable cache entry** → generates, and the card then behaves as it would for a due prospect.
+- **A `status: 'ok'` entry already exists** (agent clicked Personalize, closed the drawer, reopened) → rule 5 serves the cache, so the **draft renders immediately and the Personalize button is not shown**. It is replaced by the normal draft footer, Redo included. Without this, the button would sit there as a visible no-op.
+
+Personalize therefore has **no independent budget**: a second opinion goes through Redo, which is capped at 3 (§8.3). This keeps §8.3's five-calls-per-prospect-per-step bound true — an uncapped Personalize would break it.
+
+### 6.4 Prop contract
 
 The drafts map lives in `LeadTracker` (§4) and the textarea lives in `FollowupCard`, so writes travel up through `ProspectsView` → `ProspectDetail`. Named here because "thread props through" is not a specification:
 
@@ -214,11 +239,22 @@ LeadTracker
           onSaveDraft(prospectId, entry)   // merges one entry, persists the map
 
 ProspectsView -> ProspectDetail -> FollowupNextStep -> FollowupCard
+  now          = useMemo(() => new Date().toISOString(), [prospect?.id, open])  // §6.1
   draft        = followupDrafts[prospect.id] ?? null
   onSaveDraft  = (entry) => onSaveDraft(prospect.id, entry)
 ```
 
 `onSaveDraft` performs the whole-map write, so §7.2's persist policy is enforced in one place rather than at every call site.
+
+**Merge semantics — field-level, not entry-level.** `onSaveDraft` must merge into the existing entry:
+
+```js
+map[id] = { ...(map[id] ?? {}), ...patch }
+```
+
+A blur handler passes `{ text, edited: true }`. Under an entry-level replace that would wipe `status`, `stepKey`, `sourceHash`, `attempts`, `previous` and `rejected` — and on the next open `shouldRegenerate` would see `stepKey === undefined`, fire rule 3, **regenerate over the agent's own edit**, and rotate a garbage `previous`.
+
+**Write only when something changed.** Skip the persist entirely if the merged entry is deep-equal to the stored one. Otherwise every drawer close on every prospect — including ones the agent never typed in — fires a full `localSet` plus a full JSONB upsert of the ~400 KB map, and widens the two-tab clobber window from "editing sessions" to "every close". §7.5 already applies this guard for prune; §7.2 needs the same.
 
 **Persisting the edit on unmount requires a ref.** A naive `useEffect(() => () => onSaveDraft({ ...entry, text }), [])` captures `text` from the first render and writes the *pre-edit* value, silently discarding the agent's changes. Hold the live value in a ref updated on every change and read the ref in the cleanup.
 
@@ -228,7 +264,7 @@ ProspectsView -> ProspectDetail -> FollowupNextStep -> FollowupCard
 
 **Add `'followup_drafts_v1'` to `APP_KEYS`** ([storage.js:353](../../../src/lib/storage.js)). One line, not optional:
 
-- `purgeLocalMirror` iterates `APP_KEYS` ([storage.js:60](../../../src/lib/storage.js)), fired from `ensureLocalOwner` on the **next user's sign-in** ([storage.js:67](../../../src/lib/storage.js)). An unregistered key survives; user B's `cloudGet` returns null, `getItem` falls back to localStorage ([storage.js:261](../../../src/lib/storage.js)), and **B is served A's drafts**, then persists them into B's cloud row. Exactly the incident documented at [storage.js:43](../../../src/lib/storage.js): *"a new agent's account showed the founder's earned commissions."*
+- `purgeLocalMirror` iterates `APP_KEYS` ([storage.js:60](../../../src/lib/storage.js)), fired from `ensureLocalOwner` on the **next user's sign-in** ([storage.js:67](../../../src/lib/storage.js)). An unregistered key survives; user B's `cloudGet` returns null, `getItem` falls back to localStorage ([storage.js:261](../../../src/lib/storage.js)), and **B is served A's drafts**, then persists them into B's cloud row. Exactly the incident documented at [storage.js:48](../../../src/lib/storage.js): *"a new agent's account showed the founder's earned commissions."*
 - `prefetch` defaults to `APP_KEYS` ([storage.js:274](../../../src/lib/storage.js)) and batches via one `.in(list)` query — registration costs **no extra round-trip**.
 - `migrateLocalToCloud` ([storage.js:379](../../../src/lib/storage.js)) also iterates it.
 - `inspectStorage` ([storage.js:403](../../../src/lib/storage.js)) iterates it but gates on `Array.isArray(parsed)`, so an object map is invisible to the "upload your local data" prompt. Harmless and correct — drafts should not drive a migration prompt. Recorded so it is not filed as a bug.
@@ -270,6 +306,8 @@ stepKey, firstName, situation, missedApptTime,
 ...agentNotes.map(n => `${n.at}|${n.outcome}|${n.note}`), textdripSummary
 ```
 
+**Positions are fixed.** `situation` and `missedApptTime` are omitted from the *payload* when absent (§5.5), but the hash input always carries their slot — an empty string, never a dropped element. Otherwise positions shift, and a prospect with `situation` set and no appointment hashes identically to the same prospect with `situation` cleared and an appointment set: a stale draft surviving a change the agent can see, which is the exact failure this hash exists to prevent.
+
 **The rule is: everything `buildDraftSource` sends is hashed.** Anything sent but unhashed produces a stale draft that survives a change the agent can see. `at` and `outcome` are hashed because both reach the model. `firstName` and `missedApptTime` were omitted in an earlier draft of this spec — the consequence is that correcting a misspelled name, or fixing the appointment time on a `MISSED_APPT` prospect, would leave the cached draft in place and the agent would copy a message addressed to *"Jonh"* citing the old slot. That is exactly what §8.2 bar 2 exists to prevent, arriving through the cache instead of the model.
 
 Hash with **FNV-1a 32-bit**, 8 hex chars.
@@ -284,6 +322,7 @@ Logging a touch advances `stepIndex` ([followupEngine.mjs:191](../../../src/lib/
 
 In precedence order:
 
+0. **No cache entry at all** (`cached == null` — the first-ever draft for this prospect) → regenerate. **Nothing is pushed onto `previous`**; it starts `[]`. Without this rule the null case falls through to rule 3, which would push a non-existent `text` and send `previous: [null]` to a model instructed not to repeat it. The same applies when the stored entry has no usable `text` (`status` of `'failed'` or `'insufficient'`): regenerate, push nothing.
 1. **`status === 'insufficient'` and `sourceHash` unchanged** → never regenerate. This is the branch that stops a declined prospect being re-billed on every drawer open (D9).
 2. **`status === 'failed'` and `sourceHash` unchanged** → regenerate **iff `attempts < 2`**. This is the only path that consumes `attempts`; without it the counter increments once and is never read.
 3. **`stepKey` changed** → regenerate, **even when `edited` is true**. The agent's edit belonged to the previous step; carrying it forward would show step 2's heading above step 1's message. Before the request, push the stored `text` onto `previous` (newest first, cap 2) and **send the updated `previous` in that same request** — an earlier revision rotated on write-back, so at step 3 the model saw step 1's draft and never step 2's, inverting D8's purpose. Reset `attempts` and `rejected` to empty.
@@ -363,10 +402,10 @@ Review confirmed this is the only such path: `mergeScript` exists only in this f
 - Draft renders in an **editable** textarea replacing the read-only block ([:56](../../../src/components/FollowupNextStep.jsx)). Edits set `edited: true` and persist on blur/unmount (§7.2).
 - Provenance line: **`Personalized from your note on <date of the newest agent note>`**, or **`Personalized from the SMS conversation`** when the source was the TextDrip branch (§5.5).
 - **Redo** next to Copy, subject to §8.3.
-- Not-yet-due + eligible → **Personalize** button in place of auto-generation.
+- Not-yet-due + eligible → **Personalize** button in place of auto-generation (§6.4).
 - Ineligible, `insufficient`, or failure → today's card, unchanged, **no AI call**.
 
-**Dark mode:** the remap table in `globals.css` ([:105-115](../../../src/app/globals.css)) keys on literal escaped class names and covers only `bg-slate-50\/60|80`, `bg-slate-900\/40|50`, `bg-white\/80|85|90`. **Any** other opacity variant renders unremapped — the trap behind the invisible hover state on the CSV export modal. This file already carries an unlisted `bg-indigo-50/40` ([:9](../../../src/components/FollowupNextStep.jsx)). New markup uses a listed utility or adds the variant, and is verified in both themes.
+**Dark mode:** the remap table in `globals.css` ([:105-115](../../../src/app/globals.css)) keys on literal escaped class names and covers (within the cited window) `bg-slate-50\/60|80`, `bg-slate-900\/40|50`, `bg-white\/80|85|90`. **Any** opacity variant absent from the table renders unremapped. The table is not confined to that window — [:152](../../../src/app/globals.css) and [:154](../../../src/app/globals.css) remap `bg-indigo-50/60` and `bg-amber-50/60` — so check the whole file before assuming a variant is missing — the trap behind the invisible hover state on the CSV export modal. This file already carries an unlisted `bg-indigo-50/40` ([:9](../../../src/components/FollowupNextStep.jsx)). New markup uses a listed utility or adds the variant, and is verified in both themes.
 
 **Team-leader mirror:** `FollowupNextStep` is mounted at exactly one site ([ProspectsView.jsx:1168](../../../src/components/views/ProspectsView.jsx)) inside `{!readOnly && (` ([:1166](../../../src/components/views/ProspectsView.jsx)); the other `ProspectsView` mount ([TeamView.jsx:301](../../../src/components/views/TeamView.jsx)) passes `readOnly`. Pre-satisfied; **must not be widened**.
 
@@ -375,10 +414,10 @@ Review confirmed this is the only such path: `mergeScript` exists only in this f
 | Failure | Behaviour |
 |---|---|
 | Route 5xx / network | Stock script; `status: 'failed'`, `attempts++`; retried per §7.4 rule 2 (until `attempts` reaches 2) |
-| Aborted (drawer closed mid-request) | **Nothing written**; in-flight entry cleared in `finally`; regenerates on next open (§6.1) |
+| Aborted (drawer closed mid-request) | **Nothing written**; in-flight entry deleted **synchronously in the effect cleanup** per §6.1 — *not* in the request's `finally`, which runs a microtask too late and deadlocks StrictMode; regenerates on next open |
 | `insufficient` | Stock script; `status: 'insufficient'`; **never re-attempted** until `sourceHash` changes |
 | Draft contains a `{token}` or is empty | Malformed → treated as failure; **never rendered raw** |
-| `ANTHROPIC_API_KEY` missing | Feature silently absent |
+| `ANTHROPIC_API_KEY` missing | Route returns **503 with `{ unavailable: true }`** — distinct from a 5xx failure. Client writes **no** cache entry and does **not** increment `attempts`; the feature is simply absent. Without a distinguishable signal a missing key would burn 2 attempts on every eligible prospect and then look like a model failure. |
 | Drafts key unreadable | Drafting still works, uncached |
 | Auth failure | 401; stock script |
 
@@ -393,7 +432,8 @@ Invariant: **every failure path degrades to today's behaviour.**
 - Lowercase `email`/`sent` outreach touch → not eligible.
 - Website-form re-submit → not eligible; `WEBFORM_TOUCH_PREFIX` matches the literal in `webforms.mjs`.
 - TextDrip: genuine inbound → eligible; outbound-only → not; `isDrip: true` only → not; empty bodies → not; missing `textdripChat` → not (no throw).
-- **Opt-out — both directions.** Not eligible: `STOP`, `STOP.`, `Stop please`, `stop texting me`, `UNSUBSCRIBE`, `opt out`, and a `Not interested` outcome. **Still eligible** (the over-match cases §5.4's length bound exists to protect): `"End of the month works for me"`, `"Cancel my appointment Tuesday, can we move it?"`, `"Quit my job so I need my own plan now"`, `"Stopped by your office today, call me"`. A test that only checks a keyword mid-sentence does not cover this — the failure is sentence-*initial*.
+- **Opt-out — both directions, including the boundary.** Not eligible: `STOP`, `STOP.`, `Stop please`, `stop texting me`, **`Stop sending me texts` (21)**, **`Stop calling me please` (22)**, `UNSUBSCRIBE`, `opt out`, `stop texting me!!!!!!!!!` (24 raw / 15 normalised — asserts the bound is measured after stripping), and a `Not interested` outcome. **Still eligible** (the over-match cases the bound exists to protect): `"End of the month works for me"` (29), `"Cancel my appointment Tuesday, can we move it?"`, `"Quit my job so I need my own plan now"`, `"Stopped by your office today, call me"`. A test that only checks a keyword mid-sentence does not cover this — the failure is sentence-*initial*.
+- **`textdripSummary` renders both sides** with `Agent:` / `Contact:` labels, oldest→newest, drip messages excluded; truncation drops whole messages from the oldest end and never cuts mid-message.
 - `WEBBY_SET`, `APPOINTMENT_SET`, `GHOSTED`, `SOLD`, `LOST` with a valid agent touch → **not eligible** (Phase 1 boundary).
 - `buildDraftSource`: `meds` never appears in the output for any input; notes capped at 3, oldest→newest; TextDrip used only when there are no agent notes; `missedApptTime` present only for `MISSED_APPT`.
 - `stepPurpose`: matches the live `DEFAULT_PLAYBOOK` step counts; `FOLLOWUP_LATER` has no `breakup`; out-of-range index returns the stage's last purpose.
@@ -403,7 +443,8 @@ Invariant: **every failure path degrades to today's behaviour.**
 - `sourceHash` deterministic; `["a","b c"]` vs `["a b","c"]` hash **differently**; changes when a note is added, edited, its outcome changes, situation changes, or stepKey changes. **No literal NUL byte in the source file** — asserted by reading the module's own bytes.
 - **`sourceHash` covers everything `buildDraftSource` sends** — asserted structurally, not case-by-case: mutate each field of a source object in turn and require the hash to change every time. This is the check that would have caught `firstName` and `missedApptTime` being sent but not hashed, and it stays correct if a field is added later.
 - `shouldRegenerate` (§7.4), all five rules: `insufficient` + same hash → **no** call; `failed` + same hash + `attempts < 2` → regenerates; `failed` + same hash + `attempts === 2` → **no** call; stepKey changed + `edited: true` → regenerates **and** rotates `previous`, resetting `attempts`/`rejected`; sourceHash changed + `edited: true` → does **not** regenerate; sourceHash changed + not edited → regenerates without rotating; nothing changed → cache served.
-- `previous` caps at 2 newest-first; `rejected` caps at 3; `attempts` caps at 2; all three reset on a stepKey or sourceHash change.
+- `previous` caps at 2 newest-first. **`previous` is never reset** — it *gains* an entry on a stepKey change (§7.4 rule 3) and is untouched otherwise. Only `attempts` and `rejected` reset. (An earlier draft of this list said all three reset; that would empty `previous` at every step transition, leaving the model blind to earlier drafts and killing D8 with a green suite.)
+- `rejected` caps at 3, `attempts` at 2; both reset on a stepKey or sourceHash change.
 - Prune drops missing and archived prospects, keeps the rest, reports whether anything changed.
 
 **Not unit-testable here:** the route and the JSX — PRIM has no component-test infrastructure. Covered by live verification (§13) and code review.
