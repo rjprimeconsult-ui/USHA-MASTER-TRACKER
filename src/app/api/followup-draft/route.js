@@ -67,6 +67,7 @@ HARD RULES:
 6. Do not repeat anything from the earlier drafts or the rejected drafts supplied.
 7. No {placeholder} tokens of any kind, and do not invent a signature or a name for the agent.
 8. If nothing specific to this prospect is worth saying, set insufficient to true rather than padding out a generic message.
+9. NEVER name a specific date, time, or appointment slot. You cannot see the agent's calendar, so any slot you name may already be booked — and a prospect who accepts it creates a conflict the agent has to walk back. Ask when they are free, or offer to send times, but never state one. This holds even when the brief invites times ("want me to text you 2 times to pick from?") — mirror the offer, do not fill it in.
 
 OUTPUT: JSON matching the schema. When insufficient is true, text is the empty string. Otherwise text is the message and insufficient is false.
 `.trim();

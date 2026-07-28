@@ -378,6 +378,7 @@ Hard bars:
 6. Do not repeat anything in `previous` (D8) or `rejected` (§8.3).
 7. No `{placeholder}` tokens; no invented signature.
 8. Nothing specific worth saying → return `insufficient` rather than padding.
+9. **Never name a specific date, time, or appointment slot.** Added after live verification found the model writing *"Would Tuesday at 2 PM or Wednesday at 10 AM work better?"* for a real `MISSED_APPT` prospect — slots that appear nowhere in her record. The model cannot see the agent's calendar, so a prospect who accepts an invented slot creates a conflict the agent has to walk back. The bar must survive a brief that invites times (`MISSED_APPT` step 3 is *"Want me to text you 2 times to pick from?"*): mirror the offer, never fill it in.
 
 ### 8.3 Redo and retry caps
 
