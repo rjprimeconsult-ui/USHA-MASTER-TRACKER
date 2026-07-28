@@ -79,6 +79,7 @@ import { supabase, supabaseConfigured } from '@/lib/supabase';
 import { classifyImport, mapToProspect, mergeConversationIntoProspect } from '@/lib/textdrip.mjs';
 import AppSkeleton from './AppSkeleton';
 import { useSubscription } from '@/lib/subscription';
+import { canAccessBetaFeature } from '@/lib/featureFlags';
 import { TeamInviteBanner } from './TeamMembership';
 import nextDynamic from 'next/dynamic';
 
@@ -259,8 +260,22 @@ export default function LeadTracker() {
   const [view, setView] = useState('cpa');
   // Team-tier gate for the "View My Team" tab. Client-side filter only — the
   // /api/team/* endpoints enforce the real entitlement server-side.
-  const { profile: subProfile } = useSubscription();
+  const { profile: subProfile, loading: subLoading } = useSubscription();
   const teamEntitled = !!(subProfile?.is_admin || subProfile?.subscription_tier === 'team');
+  // Pro-tier gate for personalized follow-up drafts. Client-side display
+  // filter only — /api/followup-draft enforces the real entitlement
+  // server-side with the same canAccessBetaFeature check.
+  //
+  // TRI-STATE on purpose (review must-fix #2/#3): `null` = unknown — while
+  // the profile is loading, AND when a profile refresh errors mid-session
+  // (useSubscription sets profile=null on any select error, and refresh()
+  // re-runs on every onAuthStateChange incl. hourly token refreshes). Unknown
+  // means the card shows neither drafts NOR the upgrade hint, so a paying
+  // agent is never flashed the Pro pitch during a round-trip, and a transient
+  // DB blip doesn't yank a rendered draft out from under an edit.
+  const draftsEntitled = (subLoading || !subProfile)
+    ? null
+    : canAccessBetaFeature('followup_drafts', subProfile).canAccess;
   const [showScreenshotImport, setShowScreenshotImport] = useState(false);
   // Onboarding walkthrough — auto-launches on first sign-in for genuinely
   // new agents (no progress record). Re-launchable from Settings.
@@ -2385,6 +2400,7 @@ export default function LeadTracker() {
             onExtractFromTexts={extractProspectFromTexts}
             followupDrafts={followupDrafts}
             onSaveDraft={saveFollowupDraft}
+            draftsEntitled={draftsEntitled}
           />
         </ViewMount>
         <ViewMount visible={view === 'books'} viewKey="books">
