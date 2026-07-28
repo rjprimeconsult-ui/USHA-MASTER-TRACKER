@@ -10,7 +10,8 @@
     "lint": "eslint",
     "test": "node --test src/lib/*.test.mjs",
     "test:ui": "vitest run",
-    "test:ui:watch": "vitest"
+    "test:ui:watch": "vitest",
+    "test:all": "npm test && npm run test:ui"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",
