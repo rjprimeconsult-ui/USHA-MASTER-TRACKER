@@ -6,7 +6,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { to24, to12, parseDateTimeLocal, composeDateTimeLocal, clampIndex, parseTypedTime } from './datetimeField.mjs';
+import { to24, to12, parseDateTimeLocal, composeDateTimeLocal, clampIndex, parseTypedTime, toDateTimeLocalInput } from './datetimeField.mjs';
 
 test('to24 — 12 AM is midnight (00), 12 PM is noon (12)', () => {
   assert.equal(to24(12, 'AM'), 0);
@@ -101,4 +101,78 @@ test('parseTypedTime — garbage / out-of-range returns null', () => {
   assert.equal(parseTypedTime('6:60'), null);   // minute out of range
   assert.equal(parseTypedTime('99'), null);     // hour out of range
   assert.equal(parseTypedTime('2500'), null);   // hour 25 invalid
+});
+
+// ---------------------------------------------------------------------------
+// toDateTimeLocalInput — the date-only day-shift bug (fixed 2026-07-28)
+// ---------------------------------------------------------------------------
+// A date-only ISO value is parsed by `new Date()` as UTC midnight; formatting
+// it back from LOCAL components then lands on the previous day everywhere west
+// of UTC. ProspectForm normalizes on open, so merely opening and saving a
+// prospect silently moved its appointment back a day. These run under whatever
+// TZ the machine has; the ones that would regress are written so they FAIL in
+// any negative-offset zone (which is every US zone) rather than passing by luck.
+
+test('REGRESSION: date-only ISO keeps its calendar day (was: shifted back one)', () => {
+  assert.equal(toDateTimeLocalInput('2026-08-14'), '2026-08-14T00:00');
+  assert.equal(toDateTimeLocalInput('2026-01-01'), '2026-01-01T00:00'); // year boundary
+  assert.equal(toDateTimeLocalInput('2026-03-01'), '2026-03-01T00:00'); // month boundary
+  assert.equal(toDateTimeLocalInput('2026-12-31'), '2026-12-31T00:00');
+  // The day must survive verbatim — this is the assertion that fails under the bug.
+  for (const d of ['2026-08-14', '2026-11-02', '2026-07-04']) {
+    assert.equal(toDateTimeLocalInput(d).slice(0, 10), d, `${d} must not shift`);
+  }
+});
+
+test('date-only ISO is TZ-independent — the day never depends on the machine zone', () => {
+  // Belt and braces: run the same input under a handful of zones via the
+  // process TZ. Node reads TZ lazily per Date construction, so this exercises
+  // the fixed path (which never constructs a Date) against zones on both
+  // sides of UTC.
+  const original = process.env.TZ;
+  try {
+    for (const tz of ['America/New_York', 'America/Los_Angeles', 'UTC', 'Asia/Tokyo', 'Pacific/Kiritimati']) {
+      process.env.TZ = tz;
+      assert.equal(toDateTimeLocalInput('2026-08-14'), '2026-08-14T00:00', `shifted under TZ=${tz}`);
+    }
+  } finally {
+    if (original === undefined) delete process.env.TZ; else process.env.TZ = original;
+  }
+});
+
+test('non-ISO date-only shapes still resolve to local midnight (unchanged behavior)', () => {
+  assert.equal(toDateTimeLocalInput('8/14/2026'), '2026-08-14T00:00');
+  assert.equal(toDateTimeLocalInput('2026-8-14'), '2026-08-14T00:00');  // unpadded ISO
+});
+
+test('values that already carry a time are passed through untouched', () => {
+  assert.equal(toDateTimeLocalInput('2026-08-14T14:30'), '2026-08-14T14:30');
+  assert.equal(toDateTimeLocalInput('2026-08-14 14:30'), '2026-08-14T14:30'); // space separator
+  assert.equal(toDateTimeLocalInput('2026-08-14T14:30:59'), '2026-08-14T14:30'); // seconds dropped
+  assert.equal(toDateTimeLocalInput('2026-08-14T14:30:00Z'), '2026-08-14T14:30'); // zone dropped, no shift
+  assert.equal(toDateTimeLocalInput('2026-08-14T00:00'), '2026-08-14T00:00'); // real midnight survives
+});
+
+test('unusable values return empty string', () => {
+  for (const v of ['', null, undefined, '   ', 'garbage', 'next Tuesday']) {
+    assert.equal(toDateTimeLocalInput(v), '', `${JSON.stringify(v)} should be ''`);
+  }
+  // Epoch-fallback guard: pre-2000 is treated as bad parsing, both branches.
+  assert.equal(toDateTimeLocalInput('1970-01-01'), '');
+  assert.equal(toDateTimeLocalInput('1999-12-31'), '');
+  // Impossible date-only components are rejected rather than normalized.
+  assert.equal(toDateTimeLocalInput('2026-13-01'), '');
+  assert.equal(toDateTimeLocalInput('2026-00-10'), '');
+  assert.equal(toDateTimeLocalInput('2026-08-00'), '');
+  assert.equal(toDateTimeLocalInput('2026-08-32'), '');
+});
+
+test('idempotent — normalizing an already-normalized value is a no-op', () => {
+  // This is the property the bug violated: ProspectForm normalizes on EVERY
+  // open, so a non-idempotent transform compounds (a day lost per open).
+  for (const v of ['2026-08-14', '8/14/2026', '2026-08-14T14:30', '2026-08-14T00:00']) {
+    const once = toDateTimeLocalInput(v);
+    assert.equal(toDateTimeLocalInput(once), once, `${v} is not idempotent`);
+    assert.equal(toDateTimeLocalInput(toDateTimeLocalInput(once)), once, `${v} drifts on the 3rd pass`);
+  }
 });
