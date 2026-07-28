@@ -1,0 +1,77 @@
+name: Tests
+
+# The safety net for PRIM's two test lanes. Until this existed, both lanes
+# ran only when a human remembered the command — a suite nobody runs is a
+# suite that silently rots.
+#
+#   node lane      — `npm test`      pure logic, 577 tests, dependency-free .mjs
+#   component lane — `npm run test:ui` React behavior in jsdom (Vitest + RTL)
+#   build          — `next build` catches what neither lane can (module
+#                    resolution, server/client boundary violations, bad imports)
+#
+# Runs on every push to main and every PR. A red run blocks nothing
+# automatically — branch protection is a repo setting, not a workflow one —
+# but it emails the owner and marks the commit, which is the point.
+#
+# LINT IS DEPRECATED-NON-BLOCKING on purpose: `npm run lint` currently exits 1
+# with ~101 PRE-EXISTING errors from the 2026-07-23 eslint-plugin-react-hooks
+# bump (set-state-in-effect / purity / set-state-in-render became errors).
+# They flag real bug classes and are being triaged separately. Gating on lint
+# today would make every run red and train everyone to ignore CI. The step
+# below reports the count without failing; flip `continue-on-error` to false
+# the day the triage lands.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+# A newer push to the same branch cancels the older run — no point burning
+# minutes on a commit that's already superseded.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'       # matches local dev (v24.x)
+          cache: 'npm'
+
+      # `npm ci` (not install): installs exactly the lockfile, and FAILS if
+      # package.json and package-lock.json have drifted — which is itself a
+      # check worth having.
+      - name: Install
+        run: npm ci
+
+      - name: Logic tests (node --test)
+        run: npm test
+
+      - name: Component tests (vitest + jsdom)
+        run: npm run test:ui
+
+      - name: Production build
+        # The build's postbuild step runs announce-deploy.mjs, which no-ops
+        # off Vercel (it requires VERCEL_ENV=production) — so CI can never
+        # post to Slack. Verified in the script's own guard.
+        run: npm run build
+
+      - name: Lint (reported, not enforced — see header)
+        continue-on-error: true
+        run: |
+          npm run lint || true
+          echo ""
+          echo "Lint is non-blocking while the ~101 pre-existing react-hooks"
+          echo "errors are triaged. New code should still lint clean — check"
+          echo "your own files with: npx eslint <path>"
