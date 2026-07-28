@@ -8,7 +8,9 @@
     "postbuild": "node scripts/announce-deploy.mjs",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --test src/lib/*.test.mjs"
+    "test": "node --test src/lib/*.test.mjs",
+    "test:ui": "vitest run",
+    "test:ui:watch": "vitest"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",
@@ -31,8 +33,13 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.2",
+    "@vitejs/plugin-react": "^6.0.4",
     "eslint": "^9",
     "eslint-config-next": "^16.2.6",
-    "tailwindcss": "^4"
+    "jsdom": "^29.1.1",
+    "tailwindcss": "^4",
+    "vitest": "^4.1.10"
   }
 }
