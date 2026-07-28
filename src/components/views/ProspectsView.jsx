@@ -1077,7 +1077,7 @@ function OutreachLogList({ log }) {
   );
 }
 
-function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, onConvertToLead, onProspectUpdate, playbook, onLogTouch, onOutreachEmailSent, agentName, onApplyStageSuggestion, onSnooze, onResolveReminder, onExtractFromTexts, followupDrafts, onSaveDraft, readOnly = false }) {
+function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, onConvertToLead, onProspectUpdate, playbook, onLogTouch, onOutreachEmailSent, agentName, onApplyStageSuggestion, onSnooze, onResolveReminder, onExtractFromTexts, followupDrafts, onSaveDraft, draftsEntitled = null, readOnly = false }) {
   const [logOpen, setLogOpen] = useState(false);
   const [suggestion, setSuggestion] = useState(null);
   // ProspectDetail stays mounted across prospects — clear any pending
@@ -1182,6 +1182,7 @@ function ProspectDetail({ open, prospect, settings, onClose, onEdit, onDelete, o
                 now={now}
                 draft={followupDrafts?.[prospect.id] ?? null}
                 onSaveDraft={onSaveDraft ? (entry) => onSaveDraft(prospect.id, entry) : undefined}
+                draftsEntitled={draftsEntitled}
                 onLogTouch={() => setLogOpen(true)}
                 onSnooze={(days) => onSnooze?.(prospect.id, days)}
               />
@@ -1419,6 +1420,7 @@ export default function ProspectsView({
   // zero storage references and only threads them through to ProspectDetail.
   followupDrafts = {},
   onSaveDraft,
+  draftsEntitled = null,
   // readOnly: rendered inside the Team leader mirror with ANOTHER user's
   // data — hide every mutate affordance; viewing client records stays.
   readOnly = false,
@@ -1978,6 +1980,7 @@ export default function ProspectsView({
         onExtractFromTexts={onExtractFromTexts}
         followupDrafts={followupDrafts}
         onSaveDraft={onSaveDraft}
+        draftsEntitled={draftsEntitled}
       />
       <ProspectForm
         open={!!editing}

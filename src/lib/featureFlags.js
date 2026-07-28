@@ -9,12 +9,15 @@
  * importing `featureFlags` from a server route doesn't pull in React
  * hooks at module scope (Next.js RSC builds reject that).
  *
- * Three-layer access check (in order):
+ * Four-layer access check (in order):
  *   1. Admin override  — admins always see beta features (for testing on prod).
- *   2. Beta allowlist  — specific email addresses get early access.
- *   3. Tier + GA flag  — when a feature is flipped to publicGA=true, anyone
- *      meeting the tier requirement gets it. Until then, only the allowlist
- *      and admins have access.
+ *   2. Complimentary   — comp users get EVERYTHING, including publicGA=false
+ *      betas (operator decision 2026-07-28: ~3 hand-picked partners/testers
+ *      with full access — same rationale as the admin override).
+ *   3. Beta allowlist  — specific email addresses get early access.
+ *   4. Tier + GA flag  — when a feature is flipped to publicGA=true, anyone
+ *      meeting the tier requirement gets it. Until then, only the layers
+ *      above have access.
  */
 
 // ---------- Tier helpers ----------
@@ -54,9 +57,25 @@ function hasActiveSubscription(profile) {
  *   requiredTier    — minimum tier when feature goes public ('starter'|'pro'|'team')
  *   betaAllowlist   — lowercase emails that get access in beta (before GA)
  *   publicGA        — when true, anyone meeting requiredTier gets it.
- *                     Keep false during beta — only allowlist + admins see it.
+ *                     Keep false during beta — only admins, complimentary
+ *                     users, and the allowlist see it.
  */
 export const BETA_FEATURES = {
+  followup_drafts: {
+    name: 'Personalized Follow-up Drafts',
+    requiredTier: 'pro',
+    betaAllowlist: [
+      'juantrejo9082@gmail.com',
+      'rjprimeconsult@gmail.com',
+    ],
+    // GA: Pro + Team get AI-personalized follow-up drafts; Starter sees the
+    // stock scripts plus an upgrade hint on eligible prospects. Trials count
+    // AT THE TRIALED TIER: an unexpired trial passes hasActiveSubscription,
+    // but the tier check still runs — a Pro-price trialist gets drafts, a
+    // Starter-price trialist does not. Complimentary users bypass everything
+    // (see canAccessBetaFeature).
+    publicGA: true,
+  },
   post_sale_emails: {
     name: 'Post-Sale Email Automation',
     requiredTier: 'pro',
@@ -96,6 +115,12 @@ export function canAccessBetaFeature(featureKey, profile) {
   if (!profile) return { canAccess: false, reason: 'not_signed_in' };
 
   if (profile.is_admin === true) return { canAccess: true, reason: 'admin' };
+
+  // Complimentary users get EVERYTHING in PRIM — operator decision
+  // 2026-07-28 (a handful of hand-picked partners/testers; ~3 total).
+  // Bypasses BOTH the GA flag and the tier requirement, so a comp user
+  // never needs subscription_tier set in SQL to see gated features.
+  if (profile.is_complimentary === true) return { canAccess: true, reason: 'complimentary' };
 
   const email = (profile.email || '').toLowerCase();
   if (email && feature.betaAllowlist?.some(a => a.toLowerCase() === email)) {

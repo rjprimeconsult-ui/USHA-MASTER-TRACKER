@@ -92,6 +92,10 @@ async function generateFollowupDraft({
     if (res.status === 503 && data?.unavailable === true) return;
     // Auth failure — stock script, nothing written (§10).
     if (res.status === 401) return;
+    // 403 { upgradeRequired } — tier gate (server-side, defense in depth).
+    // Only reachable when the client gate is bypassed or the plan changed
+    // mid-session: stock script, nothing written, no attempts burned.
+    if (res.status === 403) return;
     if (res.ok && data?.insufficient === true) {
       saveEntry({ status: 'insufficient', text: '', edited: false, stepKey, sourceHash: srcHash, at: new Date().toISOString(), attempts: baseAttempts, previous, rejected });
       return;
@@ -112,7 +116,7 @@ async function generateFollowupDraft({
  * count, and take down the prospect drawer. All hooks live in FollowupCard;
  * key={prospect.id} guarantees card state resets between prospects.
  */
-export default function FollowupNextStep({ prospect, playbook, agentName, onLogTouch, onSnooze, now = new Date().toISOString(), draft = null, onSaveDraft }) {
+export default function FollowupNextStep({ prospect, playbook, agentName, onLogTouch, onSnooze, now = new Date().toISOString(), draft = null, onSaveDraft, draftsEntitled = null }) {
   const steps = playbookForStage(playbook, prospect.stage);
   if (steps.length === 0) return null;
 
@@ -147,6 +151,7 @@ export default function FollowupNextStep({ prospect, playbook, agentName, onLogT
       stockText={stockText}
       draft={draft}
       onSaveDraft={onSaveDraft}
+      draftsEntitled={draftsEntitled}
       onLogTouch={onLogTouch}
       onSnooze={onSnooze}
     />
@@ -162,7 +167,7 @@ export default function FollowupNextStep({ prospect, playbook, agentName, onLogT
  * "show the cached entry's text", so a regeneration (or a draft arriving
  * after a remount) flows straight through from the prop.
  */
-function FollowupCard({ prospect, steps, idx, step, status, style, dueLabel, stockText, draft, onSaveDraft, onLogTouch, onSnooze }) {
+function FollowupCard({ prospect, steps, idx, step, status, style, dueLabel, stockText, draft, onSaveDraft, draftsEntitled, onLogTouch, onSnooze }) {
   const [copied, setCopied] = useState(false);
   const [localText, setLocalText] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -172,7 +177,18 @@ function FollowupCard({ prospect, steps, idx, step, status, style, dueLabel, sto
   const source = eligible ? buildDraftSource(prospect) : null;
   const stepKey = makeStepKey(prospect.stage, prospect.cadence?.stepIndex, steps.length);
   const srcHash = eligible ? sourceHash(stepKey, source) : null;
-  const canDraft = eligible && typeof onSaveDraft === 'function';
+  // Tier gate: drafts are Pro+ (featureFlags `followup_drafts`). Entitlement
+  // is TRI-STATE: true / false / null(unknown — profile loading or errored).
+  // It rides through canDraft, so EVERY path — auto-generate, Personalize,
+  // Redo, and even displaying a previously cached draft — shuts off together
+  // and a Starter agent sees exactly the pre-feature card.
+  const canDraft = draftsEntitled === true && eligible && typeof onSaveDraft === 'function';
+  // Upgrade hint (Pro lever): ONLY when a real profile says not entitled —
+  // never on null, so a paying agent is never flashed the pitch while the
+  // profile loads (review must-fix #2). Shown only where the feature WOULD
+  // have fired — an eligible prospect with a real conversation — so the
+  // pitch is concrete, never a blanket banner.
+  const showProHint = draftsEntitled === false && eligible && typeof onSaveDraft === 'function';
 
   // Only a usable entry for the step the card is RENDERING is displayed — a
   // draft cached for a previous step never shows under this step's heading.
@@ -201,9 +217,22 @@ function FollowupCard({ prospect, steps, idx, step, status, style, dueLabel, sto
   // after every render, so the [] cleanup below always reads current values.
   const liveRef = useRef({ save: null });
   useEffect(() => {
-    liveRef.current.save = (showDraft && localText != null && localText !== draft.text)
-      ? () => onSaveDraft({ text: localText, edited: true })
-      : null;
+    if (showDraft) {
+      liveRef.current.save = (localText != null && localText !== draft.text)
+        ? () => onSaveDraft({ text: localText, edited: true })
+        : null;
+    } else if (localText == null) {
+      // localText only returns to null via a successful regeneration
+      // (setLocalTextState(null) in the runner) or by never being edited —
+      // either way the kept closure is stale, so drop it before the unmount
+      // write can resurrect an older edit over the newer draft (review N1;
+      // reachable because Redo carries no abort controller).
+      liveRef.current.save = null;
+    }
+    // Otherwise (showDraft false, localText still holding an edit): KEEP the
+    // last closure. When showDraft flips false mid-session — entitlement flap
+    // on a profile error, or a stepKey advance — the unmount write preserves
+    // the agent's in-progress edit instead of destroying it (must-fix #3).
   });
   useEffect(() => () => { liveRef.current.save?.(); }, []);
 
@@ -229,12 +258,17 @@ function FollowupCard({ prospect, steps, idx, step, status, style, dueLabel, sto
       setLocalTextState: setLocalText,
     });
 
-  // Auto-generate when due (§6). Deps are [prospect.id, srcHash] ONLY —
-  // firing is bounded by the persisted cache (shouldRegenerate, §7.4) plus
-  // the module-level in-flight Set; depending on `status` or `now` identity
-  // is the unbounded billed loop §6.1 exists to prevent. The stale-closure
-  // reads of status/draft are deliberate: do NOT add them to the deps, and do
-  // NOT silence the exhaustive-deps warning (§6.2 — one accepted warning).
+  // Auto-generate when due (§6). Deps are [prospect.id, srcHash,
+  // draftsEntitled] ONLY — firing is bounded by the persisted cache
+  // (shouldRegenerate, §7.4) plus the module-level in-flight Set; depending
+  // on `status` or `now` identity is the unbounded billed loop §6.1 exists
+  // to prevent. `draftsEntitled` IS a dep (review must-fix #2): entitlement
+  // resolves null→true AFTER mount when the profile round-trip finishes, and
+  // without the dep an entitled agent's overdue prospect would never draft
+  // until a full drawer remount. It settles to a stable boolean, so it can't
+  // loop. The stale-closure reads of status/draft are deliberate: do NOT add
+  // them, and do NOT silence the exhaustive-deps warning (§6.2 — one
+  // accepted warning).
   useEffect(() => {
     if (!canDraft) return undefined;
     if (status.state !== 'overdue' && status.state !== 'due_today') return undefined;
@@ -253,7 +287,7 @@ function FollowupCard({ prospect, steps, idx, step, status, style, dueLabel, sto
       inFlightDrafts.delete(key);
       controller.abort();
     };
-  }, [prospect.id, srcHash]);
+  }, [prospect.id, srcHash, draftsEntitled]);
 
   // Manual trigger, same generation path and caps as the auto route (§6.3).
   const personalize = () => {
@@ -324,6 +358,12 @@ function FollowupCard({ prospect, steps, idx, step, status, style, dueLabel, sto
       {busy && !showDraft && (
         <div className="flex items-center gap-1.5 mt-1.5 text-[11px] font-semibold text-slate-500">
           <Loader2 size={12} className="animate-spin" /> Personalizing…
+        </div>
+      )}
+      {showProHint && (
+        <div className="flex items-center gap-1 mt-1.5 text-[11px] text-slate-500">
+          <Sparkles size={11} className="text-violet-600 flex-shrink-0" />
+          <span>PRIM can write this follow-up from your own notes — a <span className="font-semibold text-slate-600">Pro</span> feature. Upgrade in Profile → Subscription.</span>
         </div>
       )}
       <div className="flex items-center gap-2 mt-2">

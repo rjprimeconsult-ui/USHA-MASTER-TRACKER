@@ -19,15 +19,25 @@
  *
  * Returns: { text } or { insufficient: true }
  * Errors:  503 { unavailable: true }  — ANTHROPIC_API_KEY missing (checked
- *                                       BEFORE auth; §10 — client writes no
- *                                       cache entry, burns no attempts)
+ *                                       BEFORE auth), service env missing,
+ *                                       or the profile load failed (DB blip
+ *                                       is not a tier denial). §10 — client
+ *                                       writes no cache entry, burns no
+ *                                       attempts.
  *          401                        — auth failure
+ *          403 { upgradeRequired }    — tier gate: drafts are Pro+ (feature
+ *                                       flag `followup_drafts`); client
+ *                                       writes nothing
  *          400                        — malformed request body
  *          502 { malformed: true }    — model output unusable ({token} or
  *                                       empty text; never passed through)
  *          502 { error }              — Anthropic call failed
  *
- * Auth: Supabase bearer token → requireUserId.
+ * Auth: Supabase bearer token → requireUserId, then a service-client profile
+ * load + canAccessBetaFeature('followup_drafts') — same check the UI runs.
+ *
+ * Required env: ANTHROPIC_API_KEY, SUPABASE_SERVICE_ROLE_KEY,
+ * SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL).
  * SECURITY: Prospect content (brief, source, previous, rejected) is NEVER
  * logged, on success or on any error path (§12).
  *
@@ -143,6 +153,41 @@ export async function POST(req) {
   const { requireUserId } = await import('@/lib/apiAuth');
   const auth = await requireUserId(req);
   if (auth instanceof Response) return auth;
+
+  // Tier gate (Pro+) — defense in depth; the UI also gates this. Mirrors the
+  // email/send pattern: load the profile with the service client, then run
+  // the same canAccessBetaFeature check the client ran. A 403 tells the
+  // client to write NO cache entry and burn no attempts (mid-session
+  // downgrade shows the stock script, nothing else).
+  const { createClient } = await import('@supabase/supabase-js');
+  const { canAccessBetaFeature } = await import('@/lib/featureFlags');
+  const svcUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const svcKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!svcUrl || !svcKey) {
+    // Distinct log so a misconfigured (e.g. preview) deploy doesn't read as
+    // "feature silently absent" with zero signal — env names only, no content.
+    console.error('[followup-draft] service env missing (SUPABASE_SERVICE_ROLE_KEY / SUPABASE_URL) — tier gate cannot run');
+    return Response.json({ unavailable: true }, { status: 503 });
+  }
+  const svc = createClient(svcUrl, svcKey, { auth: { autoRefreshToken: false, persistSession: false } });
+  const { data: profile, error: profileErr } = await svc
+    .from('profiles')
+    .select('id, email, subscription_status, subscription_tier, trial_ends_at, is_complimentary, is_admin')
+    .eq('id', auth)
+    .maybeSingle();
+  if (profileErr) {
+    // A DB blip is NOT a tier denial: 503 unavailable → the client writes no
+    // cache entry and burns no attempts, and the draft regenerates next open.
+    console.error('[followup-draft] profile load failed:', profileErr.code || profileErr.message);
+    return Response.json({ unavailable: true }, { status: 503 });
+  }
+  if (!profile) {
+    return Response.json({ error: 'profile not found' }, { status: 403 });
+  }
+  const access = canAccessBetaFeature('followup_drafts', profile);
+  if (!access.canAccess) {
+    return Response.json({ upgradeRequired: true }, { status: 403 });
+  }
 
   // Minimal body validation. Error responses name the offending field only —
   // request content is never echoed and never logged, in any path (§12).

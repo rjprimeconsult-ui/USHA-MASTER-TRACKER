@@ -37,7 +37,7 @@ export const ANNOUNCEMENTS = [
     date: '2026-07-28',
     emoji: '✍️',
     title: 'Follow-up messages written from your own notes',
-    body: 'Open a prospect that\'s due for follow-up in Quoted/Pending Decision, Follow-up Later, or Missed Appt — instead of the same sample script everyone gets, PRIM now writes a message built from what YOU wrote in your logged touches. Edit it however you like, then Copy. Not happy with it? Hit Redo for a different angle. One thing worth knowing: PRIM can only do this for prospects where you\'ve actually logged a conversation — the better your touch notes, the better the message. Prospects with no notes just get the standard script, same as before. Nothing ever sends on its own; you always read and send it yourself.',
+    body: 'Open a prospect that\'s due for follow-up in Quoted/Pending Decision, Follow-up Later, or Missed Appt — instead of the same sample script everyone gets, PRIM now writes a message built from what YOU wrote in your logged touches. Edit it however you like, then Copy. Not happy with it? Hit Redo for a different angle. One thing worth knowing: PRIM can only do this for prospects where you\'ve actually logged a conversation — the better your touch notes, the better the message. Prospects with no notes just get the standard script, same as before. Nothing ever sends on its own; you always read and send it yourself. Available on the Pro and Team plans (and during your trial).',
     cta: { label: 'Open Prospects', view: 'prospects' },
   },
   {
