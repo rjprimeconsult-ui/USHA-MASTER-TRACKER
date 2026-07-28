@@ -21,9 +21,12 @@ name: Tests
 # below reports the count without failing; flip `continue-on-error` to false
 # the day the triage lands.
 
+# Runs on EVERY branch push, not just main + PRs. PRIM's actual workflow is
+# local feature branches merged with `git merge --no-ff` — pull requests are
+# rare — so a PR-only trigger would mean feature work is never checked until
+# it is already on main, which is exactly too late.
 on:
   push:
-    branches: [main]
   pull_request:
   workflow_dispatch: {}
 
