@@ -816,8 +816,16 @@ function ImportWizard({ open, file, settings, prospects, onImport, onClose }) {
   const [mapping, setMapping] = useState({});
   const [error, setError] = useState('');
 
-  // Load file once when modal opens with a file
-  useMemo(() => {
+  // Load the file once when the modal opens with one.
+  //
+  // useEffect, NOT useMemo. This was a useMemo whose body calls setState —
+  // useMemo runs DURING render, so those setState calls are state updates in
+  // the render phase, which React can cascade into repeated renders (the
+  // linter's "may trigger an infinite loop"). It also has no return value, so
+  // nothing was ever memoized: it was an effect wearing the wrong hook. The
+  // dependency array is unchanged, so it still fires exactly when `open` or
+  // `file` changes — just after commit rather than mid-render.
+  useEffect(() => {
     if (!open || !file) return;
     setError('');
     (async () => {

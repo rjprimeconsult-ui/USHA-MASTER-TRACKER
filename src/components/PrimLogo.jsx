@@ -1,4 +1,5 @@
 'use client';
+import { useId } from 'react';
 
 /**
  * PRIM brand assets.
@@ -45,8 +46,16 @@ export function PrimMark({ size = 18, className = '', title = 'PRIM' }) {
 
 // Full self-contained app icon. Dark tile + gradient prism + colored beams.
 export function PrimAppIcon({ size = 64, className = '', title = 'PRIM' }) {
-  // Unique gradient IDs so multiple icons can coexist on a page
-  const uid = `prim-${Math.random().toString(36).slice(2, 8)}`;
+  // Unique gradient IDs so multiple icons can coexist on a page.
+  //
+  // useId, NOT Math.random(): a random id is a different string on the server
+  // than on the client, which is a hydration mismatch, and it also changes on
+  // every re-render (and twice per render under StrictMode), so the <svg>'s
+  // url(#id) references churn for no reason. useId is stable per instance and
+  // identical across server and client. Colons are stripped because they are
+  // not valid inside an SVG url(#...) reference. Same approach as
+  // TakenRateCalculator's gauge gradient.
+  const uid = `prim-${useId().replace(/:/g, '')}`;
   return (
     <svg
       width={size}
