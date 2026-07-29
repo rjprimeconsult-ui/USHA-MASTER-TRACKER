@@ -23,7 +23,11 @@ const STORE = typeof window !== 'undefined'
   ? createStore('usha-tracker-attachments', 'blobs')
   : null;
 const memFallback = new Map();
-const useFallback = () => typeof window === 'undefined' || !window.indexedDB;
+// NOTE: named shouldUse*, not use*, on purpose. A bare "use" prefix makes
+// eslint-plugin-react-hooks treat these plain predicates as React hooks and
+// flag every call site (6 rules-of-hooks errors). They are questions
+// ("should we use the cloud?"), not hooks — there is no React state here.
+const shouldUseFallback = () => typeof window === 'undefined' || !window.indexedDB;
 
 // Cache the current user id so we don't hit getSession() on every call.
 let cachedUserId = null;
@@ -35,7 +39,7 @@ if (typeof window !== 'undefined' && supabaseConfigured()) {
     cachedUserId = session?.user?.id || null;
   });
 }
-const useCloud = () => supabaseConfigured() && !!cachedUserId;
+const shouldUseCloud = () => supabaseConfigured() && !!cachedUserId;
 const isCloudPath = (id) => typeof id === 'string' && id.includes('/');
 
 // ---------- Conversions ----------
@@ -63,7 +67,7 @@ export async function saveAttachment(record) {
   if (!record || !record.dataUrl) return null;
 
   // Try cloud first if signed in
-  if (useCloud()) {
+  if (shouldUseCloud()) {
     try {
       const blob = dataUrlToBlob(record.dataUrl);
       const ext = (String(record.name || '').split('.').pop() || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '') || 'bin';
@@ -95,7 +99,7 @@ export async function saveAttachment(record) {
     sizeBytes: record.dataUrl.length || 0,
     createdAt: new Date().toISOString(),
   };
-  if (useFallback()) {
+  if (shouldUseFallback()) {
     memFallback.set(id, value);
   } else {
     try { await set(id, value, STORE); }
@@ -109,7 +113,7 @@ export async function getAttachment(id) {
   if (!id) return null;
 
   // Cloud path (contains '/')
-  if (isCloudPath(id) && useCloud()) {
+  if (isCloudPath(id) && shouldUseCloud()) {
     try {
       const { data, error } = await supabase.storage.from('receipts').download(id);
       if (error || !data) throw error;
@@ -123,19 +127,19 @@ export async function getAttachment(id) {
   }
 
   // Local (IDB)
-  if (useFallback() || memFallback.has(id)) return memFallback.get(id) || null;
+  if (shouldUseFallback() || memFallback.has(id)) return memFallback.get(id) || null;
   try { return (await get(id, STORE)) || null; } catch { return null; }
 }
 
 /** Delete an attachment by id (cloud or local). */
 export async function deleteAttachment(id) {
   if (!id) return;
-  if (isCloudPath(id) && useCloud()) {
+  if (isCloudPath(id) && shouldUseCloud()) {
     try { await supabase.storage.from('receipts').remove([id]); }
     catch (e) { console.warn('deleteAttachment cloud failed', e); }
     return;
   }
   memFallback.delete(id);
-  if (useFallback()) return;
+  if (shouldUseFallback()) return;
   try { await del(id, STORE); } catch { /* ignore */ }
 }
