@@ -737,11 +737,21 @@ function TourUploads({ D }) {
 }
 
 /* ---- New Lead modal (teach-only; fields are illustrative) ---- */
+
+// Field/Sel and their style objects are MODULE-level, not declared inside
+// NewLeadModal's render. A component created during render is a brand-new
+// component TYPE on every render, so React unmounts and remounts the whole
+// subtree each time — children lose state and DOM focus. It happened to be
+// harmless here (this modal is a static teaching mockup with no controlled
+// inputs), but it is the kind of thing that turns into "the field clears
+// while I'm typing" the moment someone makes these inputs real.
+const nlInput = (D) => ({ width: '100%', padding: '11px 12px', background: D.input, border: `1px solid rgba(124,134,176,.22)`, borderRadius: 9, color: D.text, fontSize: 13, fontFamily: FONT, outline: 'none', boxSizing: 'border-box' });
+const nlLabel = (D) => ({ display: 'block', fontSize: 11, fontWeight: 600, color: D.t2, marginBottom: 6 });
+const Field = ({ D, label, req, children }) => <div style={{ marginBottom: 14 }}><label style={nlLabel(D)}>{label} {req && <span style={{ color: D.red }}>*</span>}</label>{children}</div>;
+const Sel = ({ D, opts }) => <select style={nlInput(D)}>{opts.map(o => <option key={o}>{o}</option>)}</select>;
+
 function NewLeadModal({ D, onClose }) {
-  const inC = { width: '100%', padding: '11px 12px', background: D.input, border: `1px solid rgba(124,134,176,.22)`, borderRadius: 9, color: D.text, fontSize: 13, fontFamily: FONT, outline: 'none', boxSizing: 'border-box' };
-  const lab = { display: 'block', fontSize: 11, fontWeight: 600, color: D.t2, marginBottom: 6 };
-  const Field = ({ label, req, children }) => <div style={{ marginBottom: 14 }}><label style={lab}>{label} {req && <span style={{ color: D.red }}>*</span>}</label>{children}</div>;
-  const Sel = ({ opts }) => <select style={inC}>{opts.map(o => <option key={o}>{o}</option>)}</select>;
+  const inC = nlInput(D);
   return (
     <div style={{ position: 'absolute', inset: 0, zIndex: 60, background: 'rgba(5,8,18,.72)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 22, overflow: 'auto', animation: 'pof-fadeUp .25s ease both' }}>
       <div style={{ width: 'min(660px,100%)', background: '#121A30', border: `1px solid rgba(124,134,176,.22)`, borderRadius: 16, boxShadow: '0 40px 90px -30px rgba(0,0,0,.7)', overflow: 'hidden' }}>
@@ -750,13 +760,13 @@ function NewLeadModal({ D, onClose }) {
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: D.t2, cursor: 'pointer', fontSize: 20, padding: '2px 6px' }}>×</button>
         </div>
         <div style={{ padding: '20px 22px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}><Field label="Name" req><input placeholder="John Doe" style={inC} /></Field><Field label="Phone" req><input placeholder="(305) 555-1234" style={inC} /></Field></div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}><Field label="Email"><input placeholder="john@example.com" style={inC} /></Field><Field label="DOB(s)"><input placeholder="MM/DD/YYYY · comma-separate for family" style={inC} /></Field></div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr .8fr 1fr 1fr', gap: 12 }}><Field label="State"><Sel opts={['—', 'FL', 'TX', 'GA', 'CA', 'NV']} /></Field><Field label="ZIP"><input placeholder="33179" style={inC} /></Field><Field label="Time Zone"><input placeholder="ET / CT / MT / PT" style={inC} /></Field><Field label="Indv / Family"><Sel opts={['Individual', 'Family']} /></Field></div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}><Field label="Lead Source"><Sel opts={['—', 'Aged', 'Shared', 'Referral', 'Dialer', 'Benepath']} /></Field><Field label="Lead Vendor"><input placeholder="e.g. Benepath · paid" style={inC} /></Field><Field label="CRM"><Sel opts={['None', 'Ringy', 'TextDrip', 'VanillaSoft']} /></Field></div>
-          <Field label="Stage"><Sel opts={['Quoted/Pending Decision', 'Expressed Interest', 'Appointment Set', 'Webby Confirmed', 'Issued']} /></Field>
-          <Field label="Health Notes"><textarea rows="2" placeholder="General impressions only. NO medication names or diagnoses." style={{ ...inC, resize: 'none' }} /></Field>
-          <Field label="Next Steps"><textarea rows="2" placeholder="What happens next — e.g. follow up Tuesday" style={{ ...inC, resize: 'none' }} /></Field>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}><Field D={D} label="Name" req><input placeholder="John Doe" style={inC} /></Field><Field D={D} label="Phone" req><input placeholder="(305) 555-1234" style={inC} /></Field></div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}><Field D={D} label="Email"><input placeholder="john@example.com" style={inC} /></Field><Field D={D} label="DOB(s)"><input placeholder="MM/DD/YYYY · comma-separate for family" style={inC} /></Field></div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr .8fr 1fr 1fr', gap: 12 }}><Field D={D} label="State"><Sel D={D} opts={['—', 'FL', 'TX', 'GA', 'CA', 'NV']} /></Field><Field D={D} label="ZIP"><input placeholder="33179" style={inC} /></Field><Field D={D} label="Time Zone"><input placeholder="ET / CT / MT / PT" style={inC} /></Field><Field D={D} label="Indv / Family"><Sel D={D} opts={['Individual', 'Family']} /></Field></div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}><Field D={D} label="Lead Source"><Sel D={D} opts={['—', 'Aged', 'Shared', 'Referral', 'Dialer', 'Benepath']} /></Field><Field D={D} label="Lead Vendor"><input placeholder="e.g. Benepath · paid" style={inC} /></Field><Field D={D} label="CRM"><Sel D={D} opts={['None', 'Ringy', 'TextDrip', 'VanillaSoft']} /></Field></div>
+          <Field D={D} label="Stage"><Sel D={D} opts={['Quoted/Pending Decision', 'Expressed Interest', 'Appointment Set', 'Webby Confirmed', 'Issued']} /></Field>
+          <Field D={D} label="Health Notes"><textarea rows="2" placeholder="General impressions only. NO medication names or diagnoses." style={{ ...inC, resize: 'none' }} /></Field>
+          <Field D={D} label="Next Steps"><textarea rows="2" placeholder="What happens next — e.g. follow up Tuesday" style={{ ...inC, resize: 'none' }} /></Field>
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, padding: '14px 20px', background: D.input, borderTop: `1px solid rgba(124,134,176,.18)` }}>
           <button onClick={onClose} style={{ padding: '11px 20px', borderRadius: 11, border: `1px solid rgba(124,134,176,.25)`, background: 'transparent', color: D.t2, fontSize: 13.5, fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
