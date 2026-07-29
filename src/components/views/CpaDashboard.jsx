@@ -1128,7 +1128,7 @@ function CpaDashboard({ leads, investments, activities, platformExpenses = [], b
                 </tr>
               ))}
               {activities.length === 0 && (
-                <tr><td colSpan="8" className="text-center p-8 text-slate-400">No activity logged yet — click "Log Activity" to add your first day.</td></tr>
+                <tr><td colSpan="8" className="text-center p-8 text-slate-400">No activity logged yet — click &quot;Log Activity&quot; to add your first day.</td></tr>
               )}
             </tbody>
           </table>

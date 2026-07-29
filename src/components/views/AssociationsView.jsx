@@ -259,12 +259,12 @@ function AssociationsView({
           <AlertTriangle size={18} className="text-amber-600 flex-shrink-0 mt-0.5" />
           <div className="text-sm text-amber-900">
             <div className="font-semibold">
-              Your data is safe — we imported {abDetail.length.toLocaleString()} row{abDetail.length !== 1 ? 's' : ''}, but couldn't read any active subscribers in the most recent month.
+              Your data is safe — we imported {abDetail.length.toLocaleString()} row{abDetail.length !== 1 ? 's' : ''}, but couldn&apos;t read any active subscribers in the most recent month.
             </div>
             <p className="mt-1 text-amber-800">
-              This usually means the file's production-month column was in an unexpected format, or the
-              file was an adjustments-only batch. We're showing your tracked clients below in the meantime.
-              Try re-uploading your latest CommissionDetail export — if it still shows this, send the file to support and we'll map the format.
+              This usually means the file&apos;s production-month column was in an unexpected format, or the
+              file was an adjustments-only batch. We&apos;re showing your tracked clients below in the meantime.
+              Try re-uploading your latest CommissionDetail export — if it still shows this, send the file to support and we&apos;ll map the format.
             </p>
             <button
               onClick={onOpenImport}

@@ -102,7 +102,7 @@ export default function MigrationPrompt() {
               <div className="font-semibold text-slate-900">Upload your local data to cloud?</div>
               <div className="text-xs text-slate-600 mt-1">
                 We found data in your browser from before you signed in: <span className="font-semibold text-slate-900">{summarize(state.local)}</span>.
-                Upload it now so it's available on every device, or dismiss to start fresh in the cloud.
+                Upload it now so it&apos;s available on every device, or dismiss to start fresh in the cloud.
               </div>
               <div className="flex items-center gap-2 mt-3">
                 <button

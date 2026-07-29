@@ -25,6 +25,11 @@ export default function Error({ error, reset }) {
           <button onClick={() => reset()} style={{ background: '#6366F1', color: '#fff', border: 'none', borderRadius: 10, padding: '10px 18px', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
             Reload
           </button>
+          {/* Intentionally a plain <a>, not next/link: we are INSIDE an error
+              boundary, so the React tree is already broken. <Link> would do a
+              client-side navigation that keeps that broken tree mounted; a
+              real document load is the whole point of this escape hatch. */}
+          {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
           <a href="/" style={{ color: '#F1F5F9', border: '1px solid #3A476B', borderRadius: 10, padding: '10px 18px', fontWeight: 600, fontSize: 14, textDecoration: 'none' }}>
             Go home
           </a>
