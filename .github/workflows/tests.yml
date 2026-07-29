@@ -70,11 +70,11 @@ jobs:
         # post to Slack. Verified in the script's own guard.
         run: npm run build
 
-      - name: Lint (reported, not enforced — see header)
-        continue-on-error: true
-        run: |
-          npm run lint || true
-          echo ""
-          echo "Lint is non-blocking while the ~101 pre-existing react-hooks"
-          echo "errors are triaged. New code should still lint clean — check"
-          echo "your own files with: npx eslint <path>"
+      # ENFORCED as of 2026-07-28. The triage fixed 53 findings outright and
+      # reclassified the rest (React Compiler preview rules) to warnings with
+      # a documented rationale in eslint.config.mjs, so `lint` exits 0 on a
+      # clean tree. A NEW error now fails the build, which is the whole point
+      # — the previous permanently-red step was training everyone to ignore it.
+      # Warnings still print, so the remaining backlog stays visible.
+      - name: Lint
+        run: npm run lint
