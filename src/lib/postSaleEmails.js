@@ -33,6 +33,7 @@
  */
 
 import { storage } from './storage';
+import { sanitizeSenderIdentity } from './senderGate.mjs';
 
 export const TEMPLATE_KEY = 'post_sale_email_template_v1';
 
@@ -317,30 +318,27 @@ export function findMissingValues(rendered) {
 
 // ---------- Sender identity (per-agent From override) ----------
 
-export const DEFAULT_SENDER_IDENTITY = {
-  fromName: '',
-  fromAddress: '',
-};
+// THE field whitelist lives in senderGate.mjs (sanitizeSenderIdentity) —
+// one projection shared by load, save, and the send route's server-side
+// reader, so the three can never disagree on which fields exist (spec
+// §3.1). If load and save carried separate field lists, the Profile flow
+// (load into state, edit one field, save the whole state back) would
+// silently wipe every field the shorter list dropped.
+export const DEFAULT_SENDER_IDENTITY = sanitizeSenderIdentity({});
 
 export async function loadSenderIdentity() {
   try {
     const raw = await storage.getItem(SENDER_IDENTITY_KEY);
     if (!raw) return { ...DEFAULT_SENDER_IDENTITY };
     const parsed = JSON.parse(raw);
-    return {
-      fromName: typeof parsed?.fromName === 'string' ? parsed.fromName : '',
-      fromAddress: typeof parsed?.fromAddress === 'string' ? parsed.fromAddress : '',
-    };
+    return sanitizeSenderIdentity(parsed);
   } catch {
     return { ...DEFAULT_SENDER_IDENTITY };
   }
 }
 
 export async function saveSenderIdentity(identity) {
-  const safe = {
-    fromName: String(identity?.fromName || '').slice(0, 200),
-    fromAddress: String(identity?.fromAddress || '').slice(0, 254).trim(),
-  };
+  const safe = sanitizeSenderIdentity(identity);
   await storage.setItem(SENDER_IDENTITY_KEY, JSON.stringify(safe));
   return safe;
 }
