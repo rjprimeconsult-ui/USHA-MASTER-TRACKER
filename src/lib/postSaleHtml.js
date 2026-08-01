@@ -225,10 +225,14 @@ function renderSignature({ agentName, agentPhone, agentEmail }) {
  *   unsubscribeUrl  — per-recipient signed CAN-SPAM opt-out URL (built by the
  *                     send route). When present, the footer shows a working
  *                     unsubscribe link; when absent it falls back to a mailto.
+ *   sender          — the sending agent's gate-validated identity (spec §8).
+ *                     Threaded into the CAN-SPAM footer so it names the
+ *                     agent's business + mailing address; absent, the
+ *                     footer renders LEGAL exactly as before.
  *
  * Output: string of complete HTML email.
  */
-export function renderPostSaleHtml({ template, lead, profile, agentProfile, resolvedBody, resolvedSubject, userId, appOrigin, unsubscribeUrl }) {
+export function renderPostSaleHtml({ template, lead, profile, agentProfile, resolvedBody, resolvedSubject, userId, appOrigin, unsubscribeUrl, sender }) {
   const agentName  = template?.fromName || agentProfile?.displayName || (profile?.email || '').split('@')[0] || '';
   const agentPhone = agentProfile?.phone || '';
   const agentEmail = profile?.email || '';
@@ -286,7 +290,7 @@ ${renderSignature({ agentName, agentPhone, agentEmail })}
             This email is from ${escapeHtml(agentName)} regarding your new policy.
           </td>
         </tr>
-${canSpamFooterHtml({ unsubscribeUrl })}
+${canSpamFooterHtml({ unsubscribeUrl, sender })}
       </table>
     </td></tr>
   </table>
