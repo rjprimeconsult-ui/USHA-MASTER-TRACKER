@@ -35,6 +35,15 @@ import {
   OUTREACH_UNSUBSCRIBE_PLACEHOLDER,
   canSpamFooterStandaloneHtml,
 } from '@/lib/legalConfig.mjs';
+import {
+  evaluate,
+  selectLane,
+  buildFromHeaders,
+  staleLiteralViolation,
+  sanitizeSenderIdentity,
+  isValidEmail,
+} from '@/lib/senderGate.mjs';
+import { listVerifiedDomains, domainStatusFor } from '@/lib/resendDomains';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -110,13 +119,13 @@ function getServiceClient() {
 //      compliance footer appended before </body>.
 // The post-sale useHtmlRender path already renders the footer via
 // renderPostSaleHtml({ unsubscribeUrl }), so it needs neither.
-function ensureUnsubscribeFooter(html, unsubscribeUrl, { alreadyHasFooter }) {
+function ensureUnsubscribeFooter(html, unsubscribeUrl, { alreadyHasFooter, sender }) {
   let out = String(html || '');
   if (out.includes(OUTREACH_UNSUBSCRIBE_PLACEHOLDER)) {
     return out.split(OUTREACH_UNSUBSCRIBE_PLACEHOLDER).join(unsubscribeUrl);
   }
   if (alreadyHasFooter) return out;
-  const footer = canSpamFooterStandaloneHtml({ unsubscribeUrl });
+  const footer = canSpamFooterStandaloneHtml({ unsubscribeUrl, sender });
   // Function replacer so any `$` in the footer/address isn't treated as a
   // replacement pattern ($&, $1, ...).
   return out.includes('</body>')
@@ -283,13 +292,13 @@ export async function POST(req) {
     }, { status: 503 });
   }
 
-  // Sender identity resolution order:
-  //   1. Per-agent override from user_kv (set in Settings → Post-Sale Emails)
-  //   2. Per-template fromName + global RESEND_FROM_ADDRESS env var
-  //   3. Hard-coded fallback (Resend's onboarding domain)
-  // Reply-To follows the From address when an override is set so customer
-  // replies land in the agent's actual sending mailbox.
-  let senderOverride = null;
+  // Sender identity read (spec §6). The result is DISCRIMINATED, not a
+  // nullable object — the gate must tell a Supabase blip ('threw' → 503,
+  // transient) apart from a typo'd address ('invalid' → 428 from_address;
+  // the row it read RIDES ALONG so the refusal names the bad address, not
+  // fields already filled on screen) and from no row at all ('absent' →
+  // 428 naming the first missing field).
+  let readerResult;
   try {
     const { data: idRow } = await supabase
       .from('user_kv')
@@ -297,32 +306,66 @@ export async function POST(req) {
       .eq('user_id', userId)
       .eq('key', 'email_sender_identity_v1')
       .maybeSingle();
-    if (idRow?.value) {
+    if (!idRow?.value) {
+      readerResult = { ok: false, reason: 'absent' };
+    } else {
       const raw = typeof idRow.value === 'string' ? JSON.parse(idRow.value) : idRow.value;
-      const addr = String(raw?.fromAddress || '').trim();
-      if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(addr)) {
-        senderOverride = {
-          fromName: String(raw?.fromName || '').trim(),
-          fromAddress: addr,
-        };
-      }
+      const identity = sanitizeSenderIdentity(raw);
+      readerResult = isValidEmail(identity.fromAddress)
+        ? { ok: true, identity }
+        : { ok: false, reason: 'invalid', identity };
     }
   } catch (e) {
-    console.warn('[email/send] sender identity load failed (falling back):', e?.message || e);
+    console.warn('[email/send] sender identity load failed:', e?.message || e);
+    readerResult = { ok: false, reason: 'threw' };
+  }
+
+  // The gate (spec §6): between the reader and the From construction.
+  // 'welcome' passes identityless; everything else needs the per-kind
+  // required fields, and only a 'threw' reader result is transient (503).
+  const gateResult = evaluate({ kind, readerResult });
+  if (!gateResult.ok) {
+    return Response.json(
+      { error: gateResult.error, setupRequired: gateResult.setupRequired },
+      { status: gateResult.status }
+    );
+  }
+  const senderIdentity = gateResult.identity; // null only for kind 'welcome'
+
+  // Stale-bundle guard (spec §6, outreach only): outreach HTML is rendered
+  // client-side, so a tab opened before the tokenization deploy can still
+  // POST the retired hardcoded identity over this agent's From. Refuse it
+  // with a "reload" instruction; the agent's own identity values are exempt.
+  if (kind === 'outreach') {
+    const staleHit = staleLiteralViolation({ subject: safeSubject, body: safeBody, html: safeHtml }, senderIdentity);
+    if (staleHit) {
+      return Response.json({
+        error: 'Please reload PRIM and try again — this page is running an outdated version.',
+        setupRequired: 'stale_client',
+      }, { status: 428 });
+    }
   }
 
   const globalFrom = process.env.RESEND_FROM_ADDRESS || 'PRIM <onboarding@resend.dev>';
-  let fromHeader;
-  let replyTo;
-  if (senderOverride) {
-    const display = senderOverride.fromName || (profile.email || '').split('@')[0] || 'PRIM';
-    fromHeader = `${display} <${senderOverride.fromAddress}>`;
-    replyTo = senderOverride.fromAddress;
-  } else {
-    const fromDisplay = (fromName || (profile.email || '').split('@')[0] || 'PRIM').trim();
-    fromHeader = `${fromDisplay} <${globalFrom.match(/<([^>]+)>/)?.[1] || globalFrom}>`;
-    replyTo = profile.email;
+  // Domain status routes, never blocks (spec §5): verified own domain sends
+  // From the agent's address; anything else — including a failed lookup —
+  // rides PRIM's shared verified domain with the agent's name + reply-to.
+  // 'welcome' has no identity and always rides shared with today's fallbacks.
+  let lane = 'shared';
+  let domainStatus = 'unknown';
+  if (senderIdentity) {
+    domainStatus = domainStatusFor(senderIdentity.fromAddress, await listVerifiedDomains());
+    lane = selectLane(domainStatus);
   }
+  const { fromHeader, replyTo } = buildFromHeaders({
+    identity: senderIdentity,
+    lane,
+    globalFrom,
+    // Today's exact welcome-path fallback chain (route.js:322) — preserved
+    // verbatim per spec §5: request fromName, then the email local-part.
+    fallbackName: (fromName || (profile.email || '').split('@')[0] || '').trim(),
+    fallbackReplyTo: profile.email,
+  });
 
   // HTML body resolution. Three paths:
   //   1. Outreach (passes full pre-rendered HTML)        → use as-is
@@ -381,6 +424,7 @@ export async function POST(req) {
       userId,
       appOrigin,
       unsubscribeUrl,
+      sender: senderIdentity,
     });
 
     // Attach the matching "Dear Doctor Letter" PDF when the template
@@ -411,7 +455,7 @@ export async function POST(req) {
   // standalone footer appended here.
   if (isCommercial && unsubscribeUrl) {
     const alreadyHasFooter = !safeHtml && kind === 'post-sale' && useHtmlRender;
-    htmlBody = ensureUnsubscribeFooter(htmlBody, unsubscribeUrl, { alreadyHasFooter });
+    htmlBody = ensureUnsubscribeFooter(htmlBody, unsubscribeUrl, { alreadyHasFooter, sender: senderIdentity });
   }
 
   let resendResult;
