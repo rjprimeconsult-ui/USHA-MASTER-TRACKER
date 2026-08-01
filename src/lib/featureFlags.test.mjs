@@ -71,7 +71,7 @@ test('complimentary users get everything — no tier needed', () => {
   const noTier = canAccessBetaFeature('followup_drafts', P({ is_complimentary: true, subscription_status: 'canceled', subscription_tier: null }));
   assert.equal(noTier.canAccess, true);
   assert.equal(noTier.reason, 'complimentary');
-  // Even team-tier features:
+  // Even tier-gated features with no tier set at all:
   assert.equal(canAccessBetaFeature('outreach_emails', P({ is_complimentary: true, subscription_status: 'canceled', subscription_tier: null })).canAccess, true);
 });
 
@@ -80,6 +80,18 @@ test('admin override and beta allowlist pass regardless of tier', () => {
   const allowlisted = canAccessBetaFeature('followup_drafts', P({ email: 'juantrejo9082@gmail.com', subscription_tier: null, subscription_status: 'canceled' }));
   assert.equal(allowlisted.canAccess, true);
   assert.equal(allowlisted.reason, 'beta_allowlist');
+});
+
+test('outreach_emails is Pro+ — operator decision 2026-07-29: "Pro can use any email feature"', () => {
+  // Pins the sender-identity spec §1 tier change (Team+ → Pro+). The
+  // failing-then-fixed run of this test is the proof the policy changed.
+  assert.equal(canAccessBetaFeature('outreach_emails', P()).canAccess, true); // active pro
+  assert.equal(canAccessBetaFeature('outreach_emails', P({ subscription_tier: 'team' })).canAccess, true);
+  const starter = canAccessBetaFeature('outreach_emails', P({ subscription_tier: 'starter' }));
+  assert.equal(starter.canAccess, false);
+  assert.equal(starter.reason, 'tier_too_low');
+  assert.equal(BETA_FEATURES.outreach_emails.requiredTier, 'pro');
+  assert.equal(BETA_FEATURES.outreach_emails.publicGA, true);
 });
 
 test('no profile / unknown feature are denied', () => {
