@@ -6,6 +6,8 @@ import {
   saveQueue,
   cancelPending,
   markFired,
+  reschedulePending,
+  isExpiredHold,
   pruneCompleted,
   GRACE_MS,
   isDue,
@@ -26,8 +28,18 @@ import { supabase, supabaseConfigured } from '@/lib/supabase';
  *      grace window.
  *   3. When an item is due, render the template against the latest lead
  *      state, POST to /api/email/send, mark fired, and append an audit
- *      entry onto the lead via onAuditEntry.
- *   4. Prune completed/canceled items older than 24h so storage stays slim.
+ *      entry onto the lead via onAuditEntry — on failure branches too, so
+ *      a burned item is always visible in the lead's email log (spec §6.1).
+ *   4. Sender-setup refusals (428/503 with setupRequired, except
+ *      stale_client) RESCHEDULE the item +15 min with a heldReason instead
+ *      of failing it — queued client mail must survive an incomplete
+ *      sender identity. Held items older than 72h are explicitly failed
+ *      ('expired while sender setup incomplete') rather than flushing
+ *      stale mail when setup completes.
+ *   5. Held items collapse into ONE summary toast with an
+ *      "Open Profile → Sender" action (dispatches 'prim:open-profile');
+ *      only un-held items get the per-item countdown toast.
+ *   6. Prune completed/canceled items older than 24h so storage stays slim.
  *
  * Mount this once at the top of LeadTracker, alongside other root-level
  * pieces (Toast, Chatbot, etc.). It renders the toast UI inline; the
@@ -92,16 +104,49 @@ export default function PendingEmailQueueRunner({ leads, onAuditEntry }) {
     async function fireItem(item) {
       const template = (bundle.templates || []).find(t => t.id === item.templateId);
       const lead = leads.find(l => l.id === item.leadId);
+      // Failed sends must be as visible as successful ones (spec §6.1):
+      // mirror the success audit entry minus messageId, so the lead's
+      // email log shows WHY nothing arrived. Uses item.leadId because the
+      // lead itself may be the thing that's missing.
+      const failAudit = (error, rendered = null) => {
+        if (typeof onAuditEntry !== 'function') return;
+        onAuditEntry(item.leadId, {
+          sentAt: new Date().toISOString(),
+          recipient: rendered?.recipient || null,
+          intendedRecipient: rendered?.intendedRecipient || null,
+          testMode: !!rendered?.testMode,
+          subject: rendered?.subject || null,
+          templateId: item.templateId,
+          templateName: template?.name || null,
+          status: 'failed',
+          error,
+          trigger: 'auto',
+        });
+      };
       if (!template || !lead) {
-        await markFired(item.id, { status: 'failed', error: !lead ? 'lead deleted' : 'template missing' });
+        const error = !lead ? 'lead deleted' : 'template missing';
+        await markFired(item.id, { status: 'failed', error });
+        failAudit(error);
         setQueue(await loadQueue());
         return;
       }
       const rendered = renderTemplate(template, lead, profile, bundle, {
         agentName: template.fromName || profile?.email?.split('@')[0],
       });
+      // Staleness bound (spec §6.1): an item held for sender setup past 72h
+      // is burned EXPLICITLY — failed + audited — before any POST. A
+      // days-late "congrats on your new policy" flushing the moment the
+      // agent completes setup is worse than no email at all.
+      if (isExpiredHold(item, now)) {
+        const error = 'expired while sender setup incomplete';
+        await markFired(item.id, { status: 'failed', error });
+        failAudit(error, rendered);
+        setQueue(await loadQueue());
+        return;
+      }
       if (!rendered.recipient) {
         await markFired(item.id, { status: 'failed', error: 'no recipient resolved' });
+        failAudit('no recipient resolved', rendered);
         setQueue(await loadQueue());
         return;
       }
@@ -135,7 +180,28 @@ export default function PendingEmailQueueRunner({ leads, onAuditEntry }) {
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-          await markFired(item.id, { status: 'failed', error: data?.error || `HTTP ${res.status}` });
+          const setupHold = (res.status === 428 || res.status === 503)
+            && data?.setupRequired && data.setupRequired !== 'stale_client';
+          if (setupHold) {
+            // Sender setup incomplete (428) or identity read blip (503):
+            // reschedule, never fail — the item stays pending, visible,
+            // and retryable (spec §6.1). Own try/catch so a storage blip
+            // inside the reschedule cannot fall through to the outer
+            // catch below, which would convert a recoverable hold into a
+            // terminal burn.
+            try {
+              await reschedulePending(item.id, {
+                scheduledAt: Date.now() + 15 * 60 * 1000,
+                heldReason: data.setupRequired,
+              });
+            } catch (reschedErr) {
+              console.warn('pending email reschedule failed; item stays pending', reschedErr);
+            }
+          } else {
+            const error = data?.error || `HTTP ${res.status}`;
+            await markFired(item.id, { status: 'failed', error });
+            failAudit(error, rendered);
+          }
         } else {
           await markFired(item.id, { status: 'sent', messageId: data?.messageId });
           if (typeof onAuditEntry === 'function') {
@@ -154,7 +220,9 @@ export default function PendingEmailQueueRunner({ leads, onAuditEntry }) {
           }
         }
       } catch (e) {
-        await markFired(item.id, { status: 'failed', error: e?.message || String(e) });
+        const error = e?.message || String(e);
+        await markFired(item.id, { status: 'failed', error });
+        failAudit(error, rendered);
       }
       setQueue(await loadQueue());
     }
@@ -168,10 +236,15 @@ export default function PendingEmailQueueRunner({ leads, onAuditEntry }) {
   if (!canAccess) return null;
   const pending = queue.items.filter(it => isPending(it));
   if (pending.length === 0) return null;
+  // Held items (waiting on sender setup) collapse into ONE summary toast —
+  // a per-item countdown resetting every 15 minutes would promise mail that
+  // isn't coming, and N persistent toasts for 72h is noise (spec §6.1).
+  const held = pending.filter(it => !!it.heldReason);
+  const counting = pending.filter(it => !it.heldReason);
 
   return (
     <div className="fixed bottom-6 left-6 z-40 space-y-2 max-w-sm">
-      {pending.map(item => {
+      {counting.map(item => {
         const lead = leads.find(l => l.id === item.leadId);
         const template = (bundle?.templates || []).find(t => t.id === item.templateId);
         const ms = msUntilFire(item, now);
@@ -185,6 +258,32 @@ export default function PendingEmailQueueRunner({ leads, onAuditEntry }) {
           />
         );
       })}
+      {held.length > 0 && <HeldSummaryToast count={held.length} />}
+    </div>
+  );
+}
+
+function HeldSummaryToast({ count }) {
+  return (
+    <div className="bg-white border border-amber-300 shadow-lg rounded-xl p-3 flex items-start gap-3 animate-in fade-in slide-in-from-left-2">
+      <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center flex-shrink-0">
+        <Mail size={16} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-semibold text-slate-900">
+          {count} email{count === 1 ? '' : 's'} waiting on sender setup
+        </div>
+        <div className="text-xs text-slate-600 mt-0.5">
+          Held until your sender identity is complete. Held emails expire after 72 hours.
+        </div>
+        <button
+          type="button"
+          onClick={() => window.dispatchEvent(new CustomEvent('prim:open-profile', { detail: { section: 'sender' } }))}
+          className="text-xs text-amber-700 hover:bg-amber-50 px-2 py-1 rounded font-medium mt-1 -ml-2"
+        >
+          Open Profile &rarr; Sender
+        </button>
+      </div>
     </div>
   );
 }

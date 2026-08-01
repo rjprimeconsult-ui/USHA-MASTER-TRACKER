@@ -16,8 +16,10 @@
  *      cleanup both call the same cancel path).
  *
  * Stored under `pending_email_queue_v1`. Shape:
- *   { items: [{ id, leadId, templateId, scheduledAt, enqueuedAt, status }] }
+ *   { items: [{ id, leadId, templateId, scheduledAt, enqueuedAt, status, heldReason? }] }
  * status: 'pending' | 'firing' | 'sent' | 'failed' | 'canceled'
+ * heldReason (optional): the send route's `setupRequired` field when the item
+ * is being held for sender setup (428/503) — item stays 'pending' throughout.
  */
 
 import { storage } from './storage';
@@ -128,6 +130,29 @@ export async function markFired(id, { status = 'sent', error, messageId } = {}) 
     ),
   };
   await saveQueue(next);
+}
+
+export const HELD_MAX_AGE_MS = 72 * 60 * 60 * 1000; // spec §6.1: stale post-sale mail is worse than none
+
+/**
+ * Push a pending item's fire time forward WITHOUT stamping firedAt —
+ * markFired cannot do this (it always stamps, which pruneCompleted then
+ * uses to delete the row 24h later). Used when the send route answers
+ * 428/503 sender-setup: the item stays pending, visible, and retryable.
+ */
+export async function reschedulePending(id, { scheduledAt, heldReason } = {}) {
+  const q = await loadQueue();
+  const next = {
+    items: q.items.map(it => it.id === id && it.status === 'pending'
+      ? { ...it, scheduledAt: scheduledAt ?? it.scheduledAt, heldReason: heldReason || undefined }
+      : it
+    ),
+  };
+  await saveQueue(next);
+}
+
+export function isExpiredHold(item, now = Date.now()) {
+  return item.status === 'pending' && !!item.heldReason && (now - item.enqueuedAt) > HELD_MAX_AGE_MS;
 }
 
 /**
