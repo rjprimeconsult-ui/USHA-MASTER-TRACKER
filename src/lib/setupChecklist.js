@@ -57,8 +57,24 @@ export function deriveTasks({
   businessExpensesCount,
   businessIncomeCount,
   issuedLeadsCount,
+  // Sender-identity setup (spec §9.1 trigger 3). Both derived upstream in
+  // LeadTracker: emailEntitled from canAccessBetaFeature (D8 — the task
+  // must never appear for a Starter agent), senderIdentityComplete from
+  // senderGate.missingFields() — completion is read off the identity
+  // itself, never tracked separately, matching this module's philosophy.
+  emailEntitled = false,
+  senderIdentityComplete = false,
 }) {
+  const senderTask = emailEntitled ? [{
+    id: 'sender',
+    label: 'Set up your email sender identity',
+    detail: 'Your name, business, mailing address and NPN go on every email PRIM sends for you.',
+    actionLabel: 'Set up sender',
+    action: 'openSenderSetup',
+    done: senderIdentityComplete,
+  }] : [];
   return [
+    ...senderTask,
     {
       id: 'welcome',
       label: 'Finish the welcome tour',

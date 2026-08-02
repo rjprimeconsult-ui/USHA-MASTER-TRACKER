@@ -75,6 +75,10 @@ import {
   isValidEmailAddress,
   DEFAULT_SENDER_IDENTITY,
 } from '@/lib/postSaleEmails';
+import { canAccessBetaFeature } from '@/lib/featureFlags';
+import { missingFields } from '@/lib/senderGate.mjs';
+import { authedFetch } from '@/lib/authedFetch';
+import { LEGAL } from '@/lib/legalConfig.mjs';
 
 const SECTIONS = [
   { id: 'identity',     label: 'Identity',     icon: UserIcon,   phase: 1 },
@@ -97,11 +101,25 @@ const LEAD_SOURCE_OPTIONS = [
   { value: 'SOCIAL',      label: 'Social media' },
 ];
 
-export default function Profile({ open, onClose }) {
+export default function Profile({ open, onClose, initialSection }) {
   const { user: authUser } = useAuth();
   const { profile: subProfile, loading: subLoading, refresh: refreshSub } = useSubscription();
 
   const [active, setActive] = useState('identity');
+
+  // Land on the requested section when the modal opens (the
+  // 'prim:open-profile' mechanism — queue toast, send surfaces, and the
+  // setup walkthrough all deep-link to Profile → Sender through this).
+  useEffect(() => {
+    if (open) setActive(initialSection || 'identity');
+  }, [open, initialSection]);
+
+  // D8 (spec §9): the sender section exists only for email-entitled
+  // agents — a Starter agent sees no sender form for features they
+  // cannot use. Same canAccessBetaFeature calls the send surfaces make.
+  const emailEntitled =
+    canAccessBetaFeature('post_sale_emails', subProfile).canAccess ||
+    canAccessBetaFeature('outreach_emails', subProfile).canAccess;
   const [agentProfile, setAgentProfile] = useState({ ...DEFAULT_AGENT_PROFILE });
   const [senderIdentity, setSenderIdentity] = useState({ ...DEFAULT_SENDER_IDENTITY });
   const [loading, setLoading] = useState(true);
@@ -288,7 +306,7 @@ export default function Profile({ open, onClose }) {
           <div className="flex-1 flex min-h-0 overflow-hidden">
             {/* Sidebar */}
             <nav className="w-52 bg-slate-50/80 border-r border-slate-200 py-4 px-2 flex-shrink-0 overflow-y-auto">
-              {SECTIONS.map((s) => {
+              {SECTIONS.filter((s) => s.id !== 'sender' || emailEntitled).map((s) => {
                 const Icon = s.icon;
                 const isActive = active === s.id;
                 return (
@@ -349,7 +367,7 @@ export default function Profile({ open, onClose }) {
                       </div>
                     </>
                   )}
-                  {active === 'sender' && (
+                  {active === 'sender' && emailEntitled && (
                     <SenderSection
                       identity={senderIdentity}
                       updateIdentity={updateSender}
@@ -721,40 +739,117 @@ function ActionTile({ onClick, disabled, loading, icon: Icon, title, description
 /* ----------------------------------------------------------------
  * Email sender identity section
  * --------------------------------------------------------------- */
+
+// Per-field requirement copy. Keys mirror senderGate.missingFields()
+// output, so these warnings, the send surfaces, and the server gate all
+// name the same gaps (spec §9 — one predicate, three consumers).
+const SENDER_FIELD_WARNINGS = {
+  from_name: 'Add your name — it is the From name customers see on every email.',
+  from_address: 'Add a valid contact email — replies go there in both sending lanes.',
+  business_name: 'Add your business name — it is the sender of record in every email footer.',
+  mailing_address: 'Add your business mailing address — commercial email requires a physical postal address.',
+  npn: 'Add your NPN — outreach emails carry your license number in the footer.',
+};
+
 function SenderSection({ identity, updateIdentity, authEmail, agentName }) {
   const addrLooksOk = !identity.fromAddress || isValidEmailAddress(identity.fromAddress);
+  // The outreach list is the superset (npn included) — the union of the
+  // agent's entitled kinds after the Pro tier change (spec §9.1).
+  const missing = missingFields(identity, 'outreach');
+
+  // Domain status from the server — the browser never holds the Resend
+  // key (spec §9). null while loading; any failure degrades to 'unknown'.
+  // Informational routing state only, never blocking (D2).
+  const [status, setStatus] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await authedFetch('/api/email/sender-status');
+        const data = res.ok ? await res.json().catch(() => null) : null;
+        if (alive) setStatus(data?.domainStatus ? data : { domainStatus: 'unknown', domain: '' });
+      } catch {
+        if (alive) setStatus({ domainStatus: 'unknown', domain: '' });
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  const domainStatus = status?.domainStatus || 'unknown';
+  const domain =
+    (String(identity.fromAddress || '').split('@')[1] || '').trim().toLowerCase() ||
+    status?.domain || '';
+
+  // Lane-aware preview (spec §5): the From is the agent's own address
+  // only on a verified domain; otherwise mail rides PRIM's shared
+  // verified domain with the agent's display name + their reply-to.
   const previewName = identity.fromName || agentName || (authEmail || '').split('@')[0] || 'PRIM';
-  const previewAddr = identity.fromAddress || 'welcome@contact.primtracker.com';
+  const ownLane = domainStatus === 'verified' && !!identity.fromAddress;
+  const signatureName = identity.signatureName || identity.fromName || '—';
 
   return (
     <SectionShell
       title="Email sender identity"
-      description="How outbound post-sale emails appear to your customers. Leave both fields blank to use the PRIM default."
+      description="Every email PRIM sends for you carries this identity, and it is required before you can send: your name, contact email, business name, and mailing address go on every email — outreach also carries your NPN."
     >
-      <div className="bg-amber-50/60 border border-amber-200 rounded-xl p-3 mb-5 text-xs text-amber-900 flex items-start gap-2">
-        <ShieldCheck size={14} className="text-amber-700 mt-0.5 flex-shrink-0" />
-        <div>
-          <span className="font-semibold">Domain verification required.</span>{' '}
-          Custom From addresses only work on a domain that&apos;s been verified in Resend. Otherwise sends silently fail.
-        </div>
+      {/* Domain status row — replaces the old unenforced warning. */}
+      <div className="mb-5">
+        {status === null && (
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-500 flex items-center gap-2">
+            <Loader2 size={14} className="animate-spin flex-shrink-0" /> Checking domain status…
+          </div>
+        )}
+        {status !== null && domainStatus === 'verified' && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-900 flex items-start gap-2">
+            <CheckCircle2 size={14} className="text-emerald-700 mt-0.5 flex-shrink-0" />
+            <div><span className="font-semibold">Verified</span> — mail sends from your own address.</div>
+          </div>
+        )}
+        {status !== null && domainStatus === 'unverified' && (
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-600 flex items-start gap-2">
+            <ShieldCheck size={14} className="text-slate-500 mt-0.5 flex-shrink-0" />
+            <div>
+              <span className="font-semibold text-slate-700">Not verified</span> — mail sends from PRIM&apos;s
+              address with replies going to you.
+              {domain ? <> Ask Juan to verify <span className="font-mono">{domain}</span> to send from it directly.</> : null}
+              <div className="mt-2">
+                {/* No programmatic support-ticket open exists (ReportIssue
+                    holds its modal state privately), so the request path is
+                    a prefilled mailto to the operator — plan 9.2 fallback. */}
+                <a
+                  href={`mailto:${LEGAL.contactEmail}?subject=${encodeURIComponent(`Domain verification request: ${domain || '(no domain yet)'}`)}`}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold border border-slate-200 bg-white rounded-lg px-2.5 py-1.5 text-slate-700 hover:bg-slate-100"
+                >
+                  Request domain verification
+                </a>
+              </div>
+            </div>
+          </div>
+        )}
+        {status !== null && domainStatus === 'unknown' && (
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-600 flex items-start gap-2">
+            <ShieldCheck size={14} className="text-slate-500 mt-0.5 flex-shrink-0" />
+            <div>Couldn&apos;t check right now — sending via PRIM&apos;s address.</div>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Field label="From name" hint="What customers see in their inbox as the sender's name.">
+        <Field label="From name" hint="The sender name customers see in their inbox. Required.">
           <input
             type="text"
             value={identity.fromName}
             onChange={(e) => updateIdentity({ fromName: e.target.value })}
-            placeholder="Julio Fernandez"
+            placeholder="Your name"
             className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
           />
         </Field>
-        <Field label="From address" hint="Must be on a Resend-verified domain.">
+        <Field label="Contact email" hint="Replies always go here — any mailbox you own, Gmail included. A business domain can be verified later to send from it directly. Required.">
           <input
             type="email"
             value={identity.fromAddress}
             onChange={(e) => updateIdentity({ fromAddress: e.target.value })}
-            placeholder="julio.fernandez@rjprimehealth.com"
+            placeholder="you@yourbusiness.com"
             className={`w-full bg-slate-50 border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition ${
               addrLooksOk ? 'border-slate-200' : 'border-rose-300'
             }`}
@@ -763,23 +858,111 @@ function SenderSection({ identity, updateIdentity, authEmail, agentName }) {
             <p className="text-[11px] text-rose-700 mt-1">That doesn&apos;t look like a valid email.</p>
           )}
         </Field>
+        <Field label="Business name" hint="Sender of record in every email footer, subject lines, and outreach copy. Required.">
+          <input
+            type="text"
+            value={identity.businessName}
+            onChange={(e) => updateIdentity({ businessName: e.target.value })}
+            placeholder="Your agency name"
+            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+          />
+        </Field>
+        <Field label="NPN" hint="Your National Producer Number — shown next to your name in outreach footers. Required for outreach.">
+          <input
+            type="text"
+            value={identity.npn}
+            onChange={(e) => updateIdentity({ npn: e.target.value })}
+            placeholder="12345678"
+            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+          />
+        </Field>
+        <div className="md:col-span-2">
+          <Field label="Mailing address" hint="A real physical postal address (a P.O. box works) — required in every commercial email footer.">
+            <textarea
+              rows={2}
+              value={identity.mailingAddress}
+              onChange={(e) => updateIdentity({ mailingAddress: e.target.value })}
+              placeholder="123 Main St, Suite 400, Miami, FL 33101"
+              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition resize-y"
+            />
+          </Field>
+        </div>
+        <Field label="Signature name" hint="How you sign the email body. Optional.">
+          <input
+            type="text"
+            value={identity.signatureName}
+            onChange={(e) => updateIdentity({ signatureName: e.target.value })}
+            placeholder="Defaults to From name"
+            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+          />
+        </Field>
+        <Field label="Signature title" hint="One line under your name (e.g. Owner, Your Agency). Optional — blank omits the line.">
+          <input
+            type="text"
+            value={identity.signatureTitle}
+            onChange={(e) => updateIdentity({ signatureTitle: e.target.value })}
+            placeholder="Owner, Your Agency"
+            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+          />
+        </Field>
+        <div className="md:col-span-2">
+          <Field label="Banner URL" hint="Optional, https only — image shown at the top of outreach emails. Blank means no banner.">
+            <input
+              type="url"
+              value={identity.bannerUrl}
+              onChange={(e) => updateIdentity({ bannerUrl: e.target.value })}
+              placeholder="https://yourbusiness.com/banner.jpg"
+              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+            />
+          </Field>
+        </div>
       </div>
 
-      {/* Live preview */}
+      {/* Specific missing-field warnings — same list the send gate reports. */}
+      {missing.length > 0 && (
+        <div className="mt-5 bg-amber-50 border border-amber-200 rounded-xl p-3">
+          <div className="text-xs font-bold text-amber-900 mb-1.5 flex items-center gap-1.5">
+            <AlertTriangle size={13} className="text-amber-700 flex-shrink-0" /> Required before you can send
+          </div>
+          <ul className="space-y-1">
+            {missing.map((f) => (
+              <li key={f} className="text-xs text-amber-900 flex items-start gap-1.5">
+                <span className="mt-1.5 w-1 h-1 rounded-full bg-amber-600 flex-shrink-0" />
+                <span>{SENDER_FIELD_WARNINGS[f] || f}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Live preview — lane-aware From plus the signature/footer block. */}
       <div className="mt-5">
         <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Preview</div>
         <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
           <div className="text-[10px] text-slate-500 uppercase tracking-wider font-bold mb-1">From</div>
           <div className="font-mono text-sm text-slate-900 mb-3">
-            {previewName} &lt;{previewAddr}&gt;
+            {ownLane
+              ? <>{previewName} &lt;{identity.fromAddress}&gt;</>
+              : <>{previewName} &lt;PRIM shared&gt;</>}
           </div>
           <div className="text-[10px] text-slate-500 uppercase tracking-wider font-bold mb-1">Reply-To</div>
-          <div className="font-mono text-sm text-slate-700">
-            {previewAddr}
+          <div className="font-mono text-sm text-slate-700 mb-3">
+            {identity.fromAddress || '—'}
           </div>
-          {!identity.fromName && !identity.fromAddress && (
+          <div className="text-[10px] text-slate-500 uppercase tracking-wider font-bold mb-1">Signature &amp; footer</div>
+          <div className="text-sm text-slate-800 leading-relaxed">
+            <div className="font-semibold">{signatureName}</div>
+            {identity.signatureTitle && <div className="text-xs text-slate-600">{identity.signatureTitle}</div>}
+            <div className="text-xs text-slate-600">{identity.fromAddress || '—'}</div>
+            <div className="mt-2 pt-2 border-t border-slate-200 text-xs text-slate-500">
+              <div className="font-semibold text-slate-700">{identity.businessName || '(business name)'}</div>
+              <div>Licensed Independent Insurance Agency{identity.npn ? ` · NPN: ${identity.npn}` : ''}</div>
+              <div>{identity.mailingAddress || '(mailing address)'}</div>
+            </div>
+          </div>
+          {!ownLane && (
             <div className="mt-3 text-xs text-slate-500 italic">
-              Using PRIM default sender. Customer replies land in <span className="font-mono">welcome@contact.primtracker.com</span>.
+              Mail is delivered from PRIM&apos;s verified address with your name; replies go to your contact email.
             </div>
           )}
         </div>

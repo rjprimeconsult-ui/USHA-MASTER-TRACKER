@@ -13,7 +13,7 @@
  *   4. "Send to {prospect.email}" → POST to /api/email/send → logs
  *      to prospect.emailLog via onLogged callback
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Mail, X, Send, Loader2, CheckCircle2, AlertTriangle, Eye,
@@ -22,6 +22,19 @@ import {
   OUTREACH_TEMPLATES,
   renderOutreachTemplate,
 } from '@/lib/outreachEmails';
+import { loadSenderIdentity } from '@/lib/postSaleEmails';
+import { missingFields } from '@/lib/senderGate.mjs';
+
+// Human labels for senderGate.missingFields() keys — shown in the setup
+// card and when the server answers 428 with a setupRequired field.
+const SENDER_FIELD_LABELS = {
+  from_name: 'your name',
+  from_address: 'contact email',
+  business_name: 'business name',
+  mailing_address: 'mailing address',
+  npn: 'NPN',
+  stale_client: 'a page reload',
+};
 import { nextTemplateIdForProspect } from '@/lib/outreachReminders';
 import { useBetaFeature } from '@/lib/useBetaFeature';
 import { supabase, supabaseConfigured } from '@/lib/supabase';
@@ -63,14 +76,28 @@ function SendModal({ prospect, onClose, onLogged }) {
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState(null);
 
+  // Sender identity — tri-state like draftsEntitled in FollowupNextStep:
+  // null while loading (no composer, no upsell), then the loaded identity.
+  // The templates are tokenized (spec §7): without a complete identity
+  // renderOutreachTemplate returns null, so there is nothing to preview
+  // and nothing to send until Profile → Sender is filled in.
+  const [sender, setSender] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    loadSenderIdentity().then((si) => { if (alive) setSender(si); });
+    return () => { alive = false; };
+  }, []);
+
   const template = useMemo(
     () => OUTREACH_TEMPLATES.find(t => t.id === selectedId) || null,
     [selectedId]
   );
 
+  const senderMissing = sender ? missingFields(sender, 'outreach') : [];
+
   const rendered = useMemo(
-    () => template ? renderOutreachTemplate(template, prospect) : null,
-    [template, prospect]
+    () => template && sender ? renderOutreachTemplate(template, prospect, { sender }) : null,
+    [template, prospect, sender]
   );
 
   const hasEmail = !!(prospect.email && /.+@.+\..+/.test(prospect.email));
@@ -112,7 +139,12 @@ function SendModal({ prospect, onClose, onLogged }) {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setResult({ ok: false, error: data?.error || `HTTP ${res.status}`, notConfigured: !!data?.notConfigured });
+        setResult({
+          ok: false,
+          error: data?.error || `HTTP ${res.status}`,
+          notConfigured: !!data?.notConfigured,
+          setupRequired: data?.setupRequired || null,
+        });
       } else {
         setResult({ ok: true, messageId: data?.messageId, recipient: rendered.recipient });
         if (typeof onLogged === 'function') {
@@ -207,6 +239,33 @@ function SendModal({ prospect, onClose, onLogged }) {
               </div>
             </div>
 
+            {/* Sender setup gate — loading, or incomplete identity. The
+                field list mirrors senderGate.missingFields(), which is the
+                same predicate the server's 428 uses. */}
+            {sender === null && (
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm text-slate-500 flex items-center gap-2">
+                <Loader2 size={14} className="animate-spin flex-shrink-0" /> Loading your sender identity…
+              </div>
+            )}
+            {sender !== null && senderMissing.length > 0 && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <div className="text-sm font-semibold text-amber-900 flex items-center gap-1.5 mb-1">
+                  <AlertTriangle size={14} className="text-amber-700 flex-shrink-0" /> Finish your sender setup to send outreach
+                </div>
+                <div className="text-xs text-amber-900 mb-2">
+                  Still needed: {senderMissing.map(f => SENDER_FIELD_LABELS[f] || f).join(', ')}. Every outreach
+                  email carries your name, business, mailing address and NPN.
+                </div>
+                <button
+                  type="button"
+                  onClick={() => window.dispatchEvent(new CustomEvent('prim:open-profile', { detail: { section: 'sender' } }))}
+                  className="text-xs font-semibold border border-amber-300 bg-white rounded-lg px-2.5 py-1.5 text-amber-900 hover:bg-amber-100"
+                >
+                  Open Profile → Sender
+                </button>
+              </div>
+            )}
+
             {/* Preview */}
             {rendered && (
               <div>
@@ -241,6 +300,15 @@ function SendModal({ prospect, onClose, onLogged }) {
                   <div className="text-xs mt-0.5">{result.error || ''}</div>
                   {result.notConfigured && (
                     <div className="text-xs mt-1">PRIM needs a Resend API key in Vercel (RESEND_API_KEY).</div>
+                  )}
+                  {result.setupRequired && result.setupRequired !== 'stale_client' && (
+                    <button
+                      type="button"
+                      onClick={() => window.dispatchEvent(new CustomEvent('prim:open-profile', { detail: { section: 'sender' } }))}
+                      className="text-xs font-semibold mt-1.5 border border-rose-300 bg-white rounded-lg px-2.5 py-1 text-rose-800 hover:bg-rose-100"
+                    >
+                      Open Profile → Sender
+                    </button>
                   )}
                 </div>
               </div>

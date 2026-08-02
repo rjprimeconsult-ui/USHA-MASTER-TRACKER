@@ -348,6 +348,19 @@ export default function LeadTracker() {
   const [confirm, setConfirm] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  // Deep-link into a specific Profile section. Anything in the app can
+  // dispatch `prim:open-profile` with { detail: { section } } — the queue's
+  // held-email toast, the send surfaces' setup cards, and the sender-setup
+  // walkthrough all land on Profile → Sender through this one mechanism.
+  const [profileInitialSection, setProfileInitialSection] = useState('identity');
+  useEffect(() => {
+    const openProfile = (e) => {
+      setProfileInitialSection(e?.detail?.section || 'identity');
+      setShowProfile(true);
+    };
+    window.addEventListener('prim:open-profile', openProfile);
+    return () => window.removeEventListener('prim:open-profile', openProfile);
+  }, []);
   // Avatar URL shown in the top-right UserMenu. Refreshed whenever the
   // Profile modal closes so an upload propagates immediately. Listens
   // for the same 'prim:accent-changed' event family so other tabs stay
@@ -2714,7 +2727,7 @@ export default function LeadTracker() {
       )}
 
       {/* Profile hub — personal control center */}
-      <Profile open={showProfile} onClose={() => setShowProfile(false)} />
+      <Profile open={showProfile} onClose={() => setShowProfile(false)} initialSection={profileInitialSection} />
 
       <Toast toast={toast} />
 
