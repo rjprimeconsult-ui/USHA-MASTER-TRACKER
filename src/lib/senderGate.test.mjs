@@ -407,3 +407,22 @@ test('staleLiteralViolation: clean payload → null', () => {
   assert.equal(staleLiteralViolation(payload, MIKE), null);
   assert.equal(staleLiteralViolation(payload, {}), null);
 });
+
+// ---- header hardening (Task-12 review) ----
+
+test('buildFromHeaders strips CR/LF and angle brackets from the display name', () => {
+  const identity = {
+    fromName: 'Support <security@bigbank.com>\r\nBcc: x@y.com',
+    fromAddress: 'mike@healthservicespro.com',
+  };
+  const own = buildFromHeaders({ identity, lane: 'own', globalFrom: 'PRIM <mail@primtracker.com>' });
+  // No injected header line, no second angle-bracket address — the name
+  // collapses to plain words and exactly one <addr> remains.
+  assert.ok(!own.fromHeader.includes('\r') && !own.fromHeader.includes('\n'));
+  assert.equal((own.fromHeader.match(/</g) || []).length, 1);
+  assert.equal(own.fromHeader, 'Support security@bigbank.com Bcc: x@y.com <mike@healthservicespro.com>');
+
+  const shared = buildFromHeaders({ identity, lane: 'shared', globalFrom: 'PRIM <mail@primtracker.com>' });
+  assert.equal((shared.fromHeader.match(/</g) || []).length, 1);
+  assert.ok(shared.fromHeader.endsWith('<mail@primtracker.com>'));
+});

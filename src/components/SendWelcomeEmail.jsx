@@ -8,10 +8,10 @@ import {
   renderTemplate,
   parseTestAddresses,
   findMissingValues,
+  loadSenderIdentity,
 } from '@/lib/postSaleEmails';
 import { renderPostSaleHtml } from '@/lib/postSaleHtml';
 import { loadAgentProfile } from '@/lib/agentProfile';
-import { loadSenderIdentity } from '@/lib/postSaleEmails';
 import { missingFields } from '@/lib/senderGate.mjs';
 import { useBetaFeature } from '@/lib/useBetaFeature';
 import { supabase, supabaseConfigured } from '@/lib/supabase';

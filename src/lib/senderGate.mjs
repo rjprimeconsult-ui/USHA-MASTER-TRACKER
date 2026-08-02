@@ -110,7 +110,13 @@ export function selectLane(domainStatus) {
 export function buildFromHeaders({ identity, lane, globalFrom, fallbackName = '', fallbackReplyTo = '' }) {
   const g = String(globalFrom || '');
   const sharedMailbox = (g.match(/<([^>]+)>/) || [])[1] || g;
-  const name = String(identity?.fromName || '').trim() || String(fallbackName || '').trim() || 'PRIM';
+  // Display names are agent-controlled and land in a mail HEADER — strip
+  // CR/LF (header injection) and angle brackets/quotes (a name of
+  // "X <spoof@bank.com>" must not read as a second address). Resend's
+  // domain enforcement backstops delivery, but the header must be clean
+  // regardless. (Task-12 review hardening.)
+  const headerSafe = (s) => String(s || '').replace(/[\r\n<>"]/g, ' ').replace(/\s+/g, ' ').trim();
+  const name = headerSafe(identity?.fromName) || headerSafe(fallbackName) || 'PRIM';
   const contact = String(identity?.fromAddress || '').trim();
   if (lane === 'own' && contact) {
     return { fromHeader: `${name} <${contact}>`, replyTo: contact };

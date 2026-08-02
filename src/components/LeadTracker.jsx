@@ -2182,7 +2182,7 @@ export default function LeadTracker() {
             </div>
           </div>
           <div className="flex items-center gap-1">
-            <UserMenu onOpenProfile={() => setShowProfile(true)} avatarUrl={headerAvatarUrl} />
+            <UserMenu onOpenProfile={() => { setProfileInitialSection('identity'); setShowProfile(true); }} avatarUrl={headerAvatarUrl} />
             <button onClick={() => setShowSettings(true)} className="text-slate-500 hover:text-slate-900 p-2 rounded-lg hover:bg-slate-100 transition" title="Settings">
               <Settings size={18} />
             </button>

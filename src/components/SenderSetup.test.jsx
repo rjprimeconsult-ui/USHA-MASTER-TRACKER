@@ -6,10 +6,15 @@
  *      from the outreach modal — the gate's 428 is the backstop, but the UI
  *      must refuse first, with the missing fields NAMED (not a bare
  *      disabled button).
- *   2. D8: a Starter agent sees no sender section in Profile at all — a
- *      setup form for features they can't use is how prompts get ignored.
- *   3. The checklist task appears only for email-entitled agents and its
+ *   2. The checklist task and the upgrade prompt appear only for
+ *      email-entitled agents (D8 at the deriveTasks/shouldShow layer), and
  *      completion is DERIVED from the identity, never tracked separately.
+ *
+ * NOT covered here (implementation-verified in review, untested): the
+ * Profile SenderSection itself — its D8 nav/render gating and per-field
+ * warnings live in Profile.jsx and have no component test yet. Do not
+ * cite this file as proof of those; rendering Profile needs a heavier
+ * mock harness and is queued as follow-up work.
  *
  * Conventions per FollowupNextStep.test.jsx: mock the network boundary,
  * `await flush()` before any zero-call assertion (the load path yields

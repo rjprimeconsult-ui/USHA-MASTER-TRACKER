@@ -298,26 +298,39 @@ export async function POST(req) {
   // the row it read RIDES ALONG so the refusal names the bad address, not
   // fields already filled on screen) and from no row at all ('absent' →
   // 428 naming the first missing field).
+  // supabase-js NEVER rejects on a query failure — it resolves with
+  // { data: null, error } (postgrest-js wraps the promise unless
+  // .throwOnError() is set). The `error` field MUST be checked explicitly
+  // or every network blip / RLS error / 5xx reads as "no row stored" and
+  // a fully-configured agent is told their name is missing. Caught by the
+  // Task-12 review; the try/catch alone was dead code for this case.
   let readerResult;
-  try {
-    const { data: idRow } = await supabase
-      .from('user_kv')
-      .select('value')
-      .eq('user_id', userId)
-      .eq('key', 'email_sender_identity_v1')
-      .maybeSingle();
-    if (!idRow?.value) {
-      readerResult = { ok: false, reason: 'absent' };
-    } else {
+  const { data: idRow, error: idErr } = await supabase
+    .from('user_kv')
+    .select('value')
+    .eq('user_id', userId)
+    .eq('key', 'email_sender_identity_v1')
+    .maybeSingle();
+  if (idErr) {
+    console.warn('[email/send] sender identity read failed:', idErr.message || idErr);
+    readerResult = { ok: false, reason: 'threw' };
+  } else if (!idRow?.value) {
+    readerResult = { ok: false, reason: 'absent' };
+  } else {
+    // A corrupt stored string is FIXABLE (re-save in Profile → Sender),
+    // not transient — map it to 'invalid' with an empty identity so the
+    // agent gets a 428 naming the gap, never a 503 the queue retries
+    // against a permanently broken row for 72h.
+    try {
       const raw = typeof idRow.value === 'string' ? JSON.parse(idRow.value) : idRow.value;
       const identity = sanitizeSenderIdentity(raw);
       readerResult = isValidEmail(identity.fromAddress)
         ? { ok: true, identity }
         : { ok: false, reason: 'invalid', identity };
+    } catch (e) {
+      console.warn('[email/send] stored sender identity unparseable:', e?.message || e);
+      readerResult = { ok: false, reason: 'invalid', identity: sanitizeSenderIdentity({}) };
     }
-  } catch (e) {
-    console.warn('[email/send] sender identity load failed:', e?.message || e);
-    readerResult = { ok: false, reason: 'threw' };
   }
 
   // The gate (spec §6): between the reader and the From construction.

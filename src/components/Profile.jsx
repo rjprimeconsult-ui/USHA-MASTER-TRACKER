@@ -760,10 +760,13 @@ function SenderSection({ identity, updateIdentity, authEmail, agentName }) {
   // Domain status from the server — the browser never holds the Resend
   // key (spec §9). null while loading; any failure degrades to 'unknown'.
   // Informational routing state only, never blocking (D2).
+  // The route reads the SAVED identity, so typing changes nothing until
+  // Save — refetch on prim:profile-saved (Task-12 review: with []-deps the
+  // status went stale until the modal was reopened).
   const [status, setStatus] = useState(null);
   useEffect(() => {
     let alive = true;
-    (async () => {
+    const fetchStatus = async () => {
       try {
         const res = await authedFetch('/api/email/sender-status');
         const data = res.ok ? await res.json().catch(() => null) : null;
@@ -771,8 +774,13 @@ function SenderSection({ identity, updateIdentity, authEmail, agentName }) {
       } catch {
         if (alive) setStatus({ domainStatus: 'unknown', domain: '' });
       }
-    })();
-    return () => { alive = false; };
+    };
+    fetchStatus();
+    window.addEventListener('prim:profile-saved', fetchStatus);
+    return () => {
+      alive = false;
+      window.removeEventListener('prim:profile-saved', fetchStatus);
+    };
   }, []);
 
   const domainStatus = status?.domainStatus || 'unknown';

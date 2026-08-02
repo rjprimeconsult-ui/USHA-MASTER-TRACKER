@@ -49,24 +49,32 @@ export async function GET(req) {
   // Same reader shape as the send route (spec §3.1 whitelist #3):
   // sanitizeSenderIdentity is THE projection — an absent row is just an
   // empty identity whose missing lists name every required field.
+  // supabase-js resolves with { data, error } — it never rejects on a
+  // query failure, so `error` must be checked explicitly (same defect
+  // class as the send route's reader; both fixed after the Task-12
+  // review). A corrupt stored string degrades to an empty identity —
+  // every field reads missing, which is what the UI should show.
   let identity;
-  try {
-    const { data: idRow } = await supabase
-      .from('user_kv')
-      .select('value')
-      .eq('user_id', userId)
-      .eq('key', 'email_sender_identity_v1')
-      .maybeSingle();
-    const raw = !idRow?.value
-      ? {}
-      : (typeof idRow.value === 'string' ? JSON.parse(idRow.value) : idRow.value);
-    identity = sanitizeSenderIdentity(raw);
-  } catch (e) {
-    console.warn('[email/sender-status] identity load failed:', e?.message || e);
+  const { data: idRow, error: idErr } = await supabase
+    .from('user_kv')
+    .select('value')
+    .eq('user_id', userId)
+    .eq('key', 'email_sender_identity_v1')
+    .maybeSingle();
+  if (idErr) {
+    console.warn('[email/sender-status] identity read failed:', idErr.message || idErr);
     return Response.json(
       { error: 'Could not load your sender settings — please try again shortly.' },
       { status: 503 }
     );
+  }
+  try {
+    const raw = !idRow?.value
+      ? {}
+      : (typeof idRow.value === 'string' ? JSON.parse(idRow.value) : idRow.value);
+    identity = sanitizeSenderIdentity(raw);
+  } catch {
+    identity = sanitizeSenderIdentity({});
   }
 
   const missing = {
