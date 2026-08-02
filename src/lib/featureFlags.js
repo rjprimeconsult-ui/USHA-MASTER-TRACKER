@@ -90,14 +90,14 @@ export const BETA_FEATURES = {
   },
   outreach_emails: {
     name: 'Cold Outreach Email Sequences',
-    requiredTier: 'team',
+    requiredTier: 'pro',
     betaAllowlist: [
       'juantrejo9082@gmail.com',
       'rjprimeconsult@gmail.com',
     ],
-    // GA at launch: Team only. The Benepath-style outreach + reminders
-    // are positioned as a team-leader tool (your downline lifts when
-    // their cold outreach is automated). Big upgrade incentive from Pro.
+    // GA: Pro + Team. Originally Team-only as an upgrade incentive from
+    // Pro; superseded by operator decision 2026-07-29 ("Pro can use any
+    // email feature") alongside the per-agent sender-identity build.
     publicGA: true,
   },
 };

@@ -65,7 +65,8 @@ import AssociationCommissionDetailImport from './AssociationCommissionDetailImpo
 import PostSaleEmailSettings from './PostSaleEmailSettings';
 import PendingEmailQueueRunner from './PendingEmailQueueRunner';
 import { useBetaFeature } from '@/lib/useBetaFeature';
-import { loadBundle, findAutoSendTemplate } from '@/lib/postSaleEmails';
+import { loadBundle, findAutoSendTemplate, loadSenderIdentity } from '@/lib/postSaleEmails';
+import { missingFields } from '@/lib/senderGate.mjs';
 import { enqueuePending, cancelAllForLead } from '@/lib/pendingEmailQueue';
 import Toast from './Toast';
 import Profile from './Profile';
@@ -348,6 +349,37 @@ export default function LeadTracker() {
   const [confirm, setConfirm] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  // Deep-link into a specific Profile section. Anything in the app can
+  // dispatch `prim:open-profile` with { detail: { section } } — the queue's
+  // held-email toast, the send surfaces' setup cards, and the sender-setup
+  // walkthrough all land on Profile → Sender through this one mechanism.
+  const [profileInitialSection, setProfileInitialSection] = useState('identity');
+  useEffect(() => {
+    const openProfile = (e) => {
+      setProfileInitialSection(e?.detail?.section || 'identity');
+      setShowProfile(true);
+    };
+    window.addEventListener('prim:open-profile', openProfile);
+    return () => window.removeEventListener('prim:open-profile', openProfile);
+  }, []);
+  // Sender-identity completeness for the setup checklist (spec §9.1
+  // trigger 3). Derived, never tracked: re-read on mount and whenever the
+  // agent saves Profile (same prim:profile-saved event the avatar uses).
+  const [senderIdentityOk, setSenderIdentityOk] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    const check = () => {
+      loadSenderIdentity().then((si) => {
+        if (alive) setSenderIdentityOk(missingFields(si, 'outreach').length === 0);
+      });
+    };
+    check();
+    window.addEventListener('prim:profile-saved', check);
+    return () => {
+      alive = false;
+      window.removeEventListener('prim:profile-saved', check);
+    };
+  }, []);
   // Avatar URL shown in the top-right UserMenu. Refreshed whenever the
   // Profile modal closes so an upload propagates immediately. Listens
   // for the same 'prim:accent-changed' event family so other tabs stay
@@ -2106,6 +2138,14 @@ export default function LeadTracker() {
     businessExpensesCount: businessExpenses.length,
     businessIncomeCount: businessIncome.length,
     issuedLeadsCount: leads.filter(l => l.stage === 'Issued').length,
+    // Sender-setup task (spec §9.1 trigger 3). Entitlement via the same
+    // canAccessBetaFeature checks the send surfaces make (D8 — never shown
+    // to Starter); completion derived from the identity via missingFields,
+    // loaded in the senderIdentityOk effect above.
+    emailEntitled:
+      canAccessBetaFeature('post_sale_emails', subProfile).canAccess ||
+      canAccessBetaFeature('outreach_emails', subProfile).canAccess,
+    senderIdentityComplete: senderIdentityOk,
   };
 
   return (
@@ -2142,7 +2182,7 @@ export default function LeadTracker() {
             </div>
           </div>
           <div className="flex items-center gap-1">
-            <UserMenu onOpenProfile={() => setShowProfile(true)} avatarUrl={headerAvatarUrl} />
+            <UserMenu onOpenProfile={() => { setProfileInitialSection('identity'); setShowProfile(true); }} avatarUrl={headerAvatarUrl} />
             <button onClick={() => setShowSettings(true)} className="text-slate-500 hover:text-slate-900 p-2 rounded-lg hover:bg-slate-100 transition" title="Settings">
               <Settings size={18} />
             </button>
@@ -2293,6 +2333,9 @@ export default function LeadTracker() {
                 case 'goLeads': setView('leads'); break;
                 case 'goUpload': setView('upload'); break;
                 case 'goBooks': setView('books'); break;
+                case 'openSenderSetup':
+                  window.dispatchEvent(new CustomEvent('prim:open-profile', { detail: { section: 'sender' } }));
+                  break;
                 default: break;
               }
             }}
@@ -2714,7 +2757,7 @@ export default function LeadTracker() {
       )}
 
       {/* Profile hub — personal control center */}
-      <Profile open={showProfile} onClose={() => setShowProfile(false)} />
+      <Profile open={showProfile} onClose={() => setShowProfile(false)} initialSection={profileInitialSection} />
 
       <Toast toast={toast} />
 

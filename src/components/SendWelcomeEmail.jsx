@@ -8,9 +8,11 @@ import {
   renderTemplate,
   parseTestAddresses,
   findMissingValues,
+  loadSenderIdentity,
 } from '@/lib/postSaleEmails';
 import { renderPostSaleHtml } from '@/lib/postSaleHtml';
 import { loadAgentProfile } from '@/lib/agentProfile';
+import { missingFields } from '@/lib/senderGate.mjs';
 import { useBetaFeature } from '@/lib/useBetaFeature';
 import { supabase, supabaseConfigured } from '@/lib/supabase';
 import { GlassModal } from './motion/MotionPrimitives';
@@ -58,15 +60,21 @@ function SendModal({ lead, onClose, onLogged }) {
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState(null);
 
+  // Sender identity (spec §9) — the preview must render the SAME footer
+  // the wire renders, and the Send button names the gate's missing fields
+  // before the server ever answers 428.
+  const [sender, setSender] = useState(null);
+
   useEffect(() => {
     let alive = true;
-    // Load BOTH the email templates and the agent profile in parallel.
-    // Agent profile drives the polished HTML banner (accent palette +
-    // display name) and signature (phone) shown in the preview.
-    Promise.all([loadBundle(), loadAgentProfile()]).then(([b, ap]) => {
+    // Load the email templates, agent profile, and sender identity in
+    // parallel. Agent profile drives the polished HTML banner (accent
+    // palette + display name) and signature (phone) shown in the preview.
+    Promise.all([loadBundle(), loadAgentProfile(), loadSenderIdentity()]).then(([b, ap, si]) => {
       if (!alive) return;
       setBundle(b);
       setAgentProfile(ap);
+      setSender(si);
       const enabled = (b.templates || []).filter(t => t.enabled !== false);
       setSelectedId(enabled[0]?.id || b.templates?.[0]?.id || null);
       setLoading(false);
@@ -122,14 +130,20 @@ function SendModal({ lead, onClose, onLogged }) {
         // the server uses at send time, so preview == real email.
         userId: profile?.id || '',
         appOrigin: typeof window !== 'undefined' ? window.location.origin : '',
+        // Preview footer must match the wire exactly (spec §8) — the send
+        // route passes the same identity into renderPostSaleHtml.
+        sender,
       });
     } catch {
       return null;
     }
-  }, [template, rendered, agentProfile, lead, profile]);
+  }, [template, rendered, agentProfile, lead, profile, sender]);
   const testList = parseTestAddresses(bundle?.testAddresses || '');
   const noTestAddress = !!(bundle?.testMode !== false) && testList.length === 0;
-  const canSend = rendered && rendered.recipient && !noTestAddress && !sending && !!template;
+  // Post-sale kind: npn not required (senderGate.missingFields is per-kind).
+  const senderMissing = sender ? missingFields(sender, 'post-sale') : [];
+  const canSend = rendered && rendered.recipient && !noTestAddress && !sending && !!template
+    && sender !== null && senderMissing.length === 0;
 
   const onSend = async () => {
     if (!canSend) return;
@@ -326,6 +340,25 @@ function SendModal({ lead, onClose, onLogged }) {
               <div>
                 <div className="font-semibold">Sent to {result.recipient}.</div>
                 {result.messageId && <div className="text-xs mt-0.5 font-mono">id: {result.messageId}</div>}
+              </div>
+            </div>
+          )}
+          {sender !== null && senderMissing.length > 0 && !result && (
+            <div className="flex items-start gap-2 text-sm bg-amber-50 border border-amber-200 rounded-lg p-3 text-amber-900">
+              <AlertTriangle size={16} className="mt-0.5 flex-shrink-0 text-amber-700" />
+              <div>
+                <div className="font-semibold">Finish your sender setup to send</div>
+                <div className="text-xs mt-0.5">
+                  Still needed: {senderMissing.map(f => f.replace(/_/g, ' ')).join(', ')}. Every email
+                  carries your name, business and mailing address.
+                </div>
+                <button
+                  type="button"
+                  onClick={() => window.dispatchEvent(new CustomEvent('prim:open-profile', { detail: { section: 'sender' } }))}
+                  className="text-xs font-semibold mt-1.5 border border-amber-300 bg-white rounded-lg px-2.5 py-1 text-amber-900 hover:bg-amber-100"
+                >
+                  Open Profile → Sender
+                </button>
               </div>
             </div>
           )}
