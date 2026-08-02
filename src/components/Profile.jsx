@@ -495,7 +495,7 @@ function IdentitySection({ authUser, agentProfile, updateAgent, initials }) {
             type="text"
             value={agentProfile.displayName}
             onChange={(e) => updateAgent({ displayName: e.target.value })}
-            placeholder="e.g. Julio Fernandez"
+            placeholder="e.g. Maria Santos"
             maxLength={100}
             className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
           />
