@@ -65,7 +65,8 @@ import AssociationCommissionDetailImport from './AssociationCommissionDetailImpo
 import PostSaleEmailSettings from './PostSaleEmailSettings';
 import PendingEmailQueueRunner from './PendingEmailQueueRunner';
 import { useBetaFeature } from '@/lib/useBetaFeature';
-import { loadBundle, findAutoSendTemplate } from '@/lib/postSaleEmails';
+import { loadBundle, findAutoSendTemplate, loadSenderIdentity } from '@/lib/postSaleEmails';
+import { missingFields } from '@/lib/senderGate.mjs';
 import { enqueuePending, cancelAllForLead } from '@/lib/pendingEmailQueue';
 import Toast from './Toast';
 import Profile from './Profile';
@@ -360,6 +361,24 @@ export default function LeadTracker() {
     };
     window.addEventListener('prim:open-profile', openProfile);
     return () => window.removeEventListener('prim:open-profile', openProfile);
+  }, []);
+  // Sender-identity completeness for the setup checklist (spec §9.1
+  // trigger 3). Derived, never tracked: re-read on mount and whenever the
+  // agent saves Profile (same prim:profile-saved event the avatar uses).
+  const [senderIdentityOk, setSenderIdentityOk] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    const check = () => {
+      loadSenderIdentity().then((si) => {
+        if (alive) setSenderIdentityOk(missingFields(si, 'outreach').length === 0);
+      });
+    };
+    check();
+    window.addEventListener('prim:profile-saved', check);
+    return () => {
+      alive = false;
+      window.removeEventListener('prim:profile-saved', check);
+    };
   }, []);
   // Avatar URL shown in the top-right UserMenu. Refreshed whenever the
   // Profile modal closes so an upload propagates immediately. Listens
@@ -2119,6 +2138,14 @@ export default function LeadTracker() {
     businessExpensesCount: businessExpenses.length,
     businessIncomeCount: businessIncome.length,
     issuedLeadsCount: leads.filter(l => l.stage === 'Issued').length,
+    // Sender-setup task (spec §9.1 trigger 3). Entitlement via the same
+    // canAccessBetaFeature checks the send surfaces make (D8 — never shown
+    // to Starter); completion derived from the identity via missingFields,
+    // loaded in the senderIdentityOk effect above.
+    emailEntitled:
+      canAccessBetaFeature('post_sale_emails', subProfile).canAccess ||
+      canAccessBetaFeature('outreach_emails', subProfile).canAccess,
+    senderIdentityComplete: senderIdentityOk,
   };
 
   return (
@@ -2306,6 +2333,9 @@ export default function LeadTracker() {
                 case 'goLeads': setView('leads'); break;
                 case 'goUpload': setView('upload'); break;
                 case 'goBooks': setView('books'); break;
+                case 'openSenderSetup':
+                  window.dispatchEvent(new CustomEvent('prim:open-profile', { detail: { section: 'sender' } }));
+                  break;
                 default: break;
               }
             }}

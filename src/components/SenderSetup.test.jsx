@@ -35,6 +35,7 @@ import { useBetaFeature } from '@/lib/useBetaFeature';
 import { authedFetch } from '@/lib/authedFetch';
 import { sanitizeSenderIdentity, missingFields } from '@/lib/senderGate.mjs';
 import { deriveTasks } from '@/lib/setupChecklist';
+import { shouldShowSenderSetupPrompt } from './SenderSetupPrompt';
 import SendOutreachEmail from './SendOutreachEmail';
 
 const flush = () => act(async () => {});
@@ -190,4 +191,21 @@ test('checklist sender task exists only for email-entitled agents and derives co
   // satisfies the checklist — one predicate, no separate tracking.
   expect(missingFields(COMPLETE, 'outreach').length).toBe(0);
   expect(missingFields(INCOMPLETE, 'outreach').length).toBeGreaterThan(0);
+});
+
+// ---- 5. Upgrade prompt: all four entitled × complete combinations ----
+
+test('upgrade prompt shows ONLY for entitled + incomplete (all four combinations)', () => {
+  const pro = { subscription_tier: 'pro', subscription_status: 'active', email: 'a@b.com' };
+  const starter = { subscription_tier: 'starter', subscription_status: 'active', email: 'a@b.com' };
+
+  // entitled + incomplete → the one showing case
+  expect(shouldShowSenderSetupPrompt({ profile: pro, identity: INCOMPLETE })).toBe(true);
+  // entitled + complete → no prompt (nothing to set up)
+  expect(shouldShowSenderSetupPrompt({ profile: pro, identity: COMPLETE })).toBe(false);
+  // not entitled + incomplete → no prompt (D8: never ask Starter for
+  // setup they cannot use — this is how upgrade prompts get ignored)
+  expect(shouldShowSenderSetupPrompt({ profile: starter, identity: INCOMPLETE })).toBe(false);
+  // not entitled + complete → no prompt
+  expect(shouldShowSenderSetupPrompt({ profile: starter, identity: COMPLETE })).toBe(false);
 });

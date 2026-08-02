@@ -1,7 +1,9 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Lock, Sparkles, ArrowRight, Loader2, X, AlertTriangle, Zap } from 'lucide-react';
 import { useSubscription, hasActiveSubscription, isInTrial, trialDaysLeft, isComplimentary, syncAfterCheckout } from '@/lib/subscription';
+import { loadSenderIdentity } from '@/lib/postSaleEmails';
+import SenderSetupPrompt, { shouldShowSenderSetupPrompt } from './SenderSetupPrompt';
 
 /**
  * Wraps the app's main content. Shows a soft-paywall screen when the
@@ -25,6 +27,28 @@ export default function PaywallGate({ children }) {
   // want to flash the paywall during this window — the user JUST paid.
   const [postCheckoutSyncing, setPostCheckoutSyncing] = useState(false);
 
+  // Sender-setup walkthrough, trigger 1 (spec §9.1): after a SUCCESSFUL
+  // checkout sync, if the new tier grants email features and the sender
+  // identity is incomplete, prompt once. `syncedOk` (not the sync effect's
+  // closure) carries the signal because refresh() returns undefined — the
+  // fresh profile only exists in the NEXT render's `profile`, so the
+  // decision runs in its own effect keyed on [profile, syncedOk].
+  const [syncedOk, setSyncedOk] = useState(false);
+  const [showSenderPrompt, setShowSenderPrompt] = useState(false);
+  const promptedRef = useRef(false);
+  useEffect(() => {
+    if (!syncedOk || !profile || promptedRef.current) return;
+    let alive = true;
+    loadSenderIdentity().then((identity) => {
+      if (!alive || promptedRef.current) return;
+      if (shouldShowSenderSetupPrompt({ profile, identity })) {
+        promptedRef.current = true; // once per mount
+        setShowSenderPrompt(true);
+      }
+    });
+    return () => { alive = false; };
+  }, [syncedOk, profile]);
+
   // Detect Stripe's post-checkout redirect and force-sync the profile
   // so the gate reads up-to-date state instead of webhook-eventual.
   useEffect(() => {
@@ -41,6 +65,7 @@ export default function PaywallGate({ children }) {
         await syncAfterCheckout(sessionId);
         if (!alive) return;
         await refresh();
+        setSyncedOk(true); // a thrown sync skips this — success only
       } finally {
         if (!alive) return;
         setPostCheckoutSyncing(false);
@@ -76,7 +101,18 @@ export default function PaywallGate({ children }) {
   // either — let the regular sign-in flow handle them.
   if (loading || !profile) return children;
 
-  if (hasActiveSubscription(profile)) return children;
+  if (hasActiveSubscription(profile)) {
+    return (
+      <>
+        {children}
+        <SenderSetupPrompt
+          open={showSenderPrompt}
+          onClose={() => setShowSenderPrompt(false)}
+          onOpenProfile={() => window.dispatchEvent(new CustomEvent('prim:open-profile', { detail: { section: 'sender' } }))}
+        />
+      </>
+    );
+  }
 
   // No active subscription → soft paywall
   return <PaywallScreen profile={profile} />;
