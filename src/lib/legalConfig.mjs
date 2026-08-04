@@ -2,14 +2,16 @@
 // Terms of Service, DPA pages, and the CAN-SPAM footer on outbound email.
 //
 // IMPORTANT — mailingAddress: CAN-SPAM requires a valid physical postal address in
-// commercial email. Until this is set to a REAL address (a P.O. box or the LLC's
-// registered-agent address is acceptable), the outreach-email footer will show a
-// clearly-marked placeholder and is NOT yet compliant. Set it in ONE place here.
+// commercial email. This value is PUBLIC in two places: the Privacy/Terms/DPA
+// pages (search-indexable) and the footer of every commercial email every agent
+// sends. Changing it here changes it everywhere — it is the single source of
+// truth. A P.O. box, registered-agent, or virtual business address is equally
+// acceptable to CAN-SPAM if a non-residential address is ever preferred.
 export const LEGAL = {
   company: 'R&J Prime Consultancy LLC',
   companyShort: 'R&J Prime',
   attn: 'Juan Trejo',
-  mailingAddress: '', // TODO(Juan): REQUIRED — set a real physical mailing address
+  mailingAddress: '8093 W Oakland Park Blvd, Apt 306, Sunrise, FL 33351',
   contactEmail: 'rjprimeconsult@gmail.com',
   effectiveDate: 'July 18, 2026',
   // Version of the Terms / Privacy / DPA set, used by the clickwrap record
