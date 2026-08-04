@@ -5,9 +5,11 @@ import { Mail, Lock, AlertCircle, Loader2 } from 'lucide-react';
 import { PrimAppIcon } from '@/components/PrimLogo';
 import { supabase, supabaseConfigured } from '@/lib/supabase';
 import { isPublicRoute } from '@/lib/routeAccess.mjs';
+import { buildAcceptanceRecord } from '@/lib/legalAcceptance.mjs';
 import { useAuth } from './AuthProvider';
 import ConstellationBackground from '../motion/ConstellationBackground';
 import MigrationPrompt from './MigrationPrompt';
+import LegalAcceptanceGate from './LegalAcceptanceGate';
 
 /**
  * AuthGate — wraps the app and shows the sign-in / sign-up screen until the
@@ -48,6 +50,10 @@ export default function AuthGate({ children, isMarketingHost = false }) {
   return (
     <>
       <MigrationPrompt />
+      {/* Existing agents predate the signup clickwrap — this blocks the app
+          until they accept, and re-prompts everyone when LEGAL.documentVersion
+          is bumped. Renders nothing once a current acceptance is on file. */}
+      <LegalAcceptanceGate />
       {children}
     </>
   );
@@ -61,13 +67,30 @@ function SignInScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
+  // Clickwrap. Signup is blocked until this is ticked, and the acceptance
+  // (version + timestamp) rides along with account creation so there is a
+  // durable record of what was agreed to and when.
+  const [acceptedLegal, setAcceptedLegal] = useState(false);
 
   const submit = async (e) => {
     e.preventDefault();
     setBusy(true); setError(''); setInfo('');
     try {
       if (mode === 'signup') {
-        const { error: err } = await supabase.auth.signUp({ email, password });
+        if (!acceptedLegal) {
+          setError('Please accept the Terms of Service and Privacy Policy to create an account.');
+          setBusy(false);
+          return;
+        }
+        // Written into auth user_metadata at creation time — captured
+        // atomically with the account, before any session exists. The
+        // in-app gate backfills this into user_kv on first sign-in.
+        const acceptance = buildAcceptanceRecord({ source: 'signup' });
+        const { error: err } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { data: { legal_acceptance: acceptance } },
+        });
         if (err) throw err;
         setInfo('Check your email to confirm your account, then sign in.');
         setMode('signin');
@@ -166,9 +189,29 @@ function SignInScreen() {
             </div>
           )}
 
+          {/* Clickwrap — signup only. Notice + affirmative assent at the
+              moment of account creation is what makes the liability cap and
+              the indemnity in the Terms enforceable. */}
+          {mode === 'signup' && (
+            <label className="flex items-start gap-2.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={acceptedLegal}
+                onChange={(e) => { setAcceptedLegal(e.target.checked); setError(''); }}
+                className="mt-0.5 h-4 w-4 flex-shrink-0 rounded border-slate-300 text-indigo-600 focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+              />
+              <span className="text-xs text-slate-600 leading-relaxed">
+                I have read and agree to the{' '}
+                <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:text-indigo-700 font-semibold underline">Terms of Service</a>,{' '}
+                <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:text-indigo-700 font-semibold underline">Privacy Policy</a>, and{' '}
+                <a href="/dpa" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:text-indigo-700 font-semibold underline">Data Processing Addendum</a>.
+              </span>
+            </label>
+          )}
+
           <button
             type="submit"
-            disabled={busy}
+            disabled={busy || (mode === 'signup' && !acceptedLegal)}
             className="w-full bg-accent-gradient disabled:bg-slate-300 disabled:bg-none text-white rounded-lg py-2.5 text-sm font-bold transition flex items-center justify-center gap-2 shadow-accent hover:opacity-95 disabled:opacity-100 disabled:shadow-none"
           >
             {busy && <Loader2 size={14} className="animate-spin" />}
