@@ -46,7 +46,11 @@
 
 ### 🔴 2. Your published legal pages display a placeholder instead of your address
 
-**Evidence:** `src/lib/legalConfig.mjs:12` — `mailingAddress: ''`. `mailingAddressOrPlaceholder()` therefore renders the literal string **`[mailing address — to be added]`** on Privacy §16, Terms §16, and the DPA contact block, live on primtracker.com right now.
+**Evidence:** `src/lib/legalConfig.mjs:12` — `mailingAddress: ''`. `mailingAddressOrPlaceholder()` therefore renders the literal string **`[mailing address — to be added]`** on Privacy §16 and Terms §16, live on primtracker.com right now.
+
+> **CORRECTION (2026-08-02, post-fix verification).** An earlier draft of this document also listed "the DPA contact block." That was wrong — `src/app/dpa/page.jsx` never calls `mailingAddressOrPlaceholder()` and **has no contact block at all**; it ends at Schedule B. See Finding 12.
+
+**RESOLVED 2026-08-02** — address set and verified live on `/privacy` and `/terms`; placeholder returns zero matches on all three pages.
 
 **Why it matters:** it reads as unfinished to any agent or partner who scrolls down, and multiple state privacy statutes require a physical contact address in the policy. This is the last remnant of the ticket-#3 problem — the *email* path was fixed today by the sender-identity release, but the *legal pages* still show it.
 
@@ -57,6 +61,8 @@
 ### 🟠 3. The DPA promises a written security program — does it exist on paper?
 
 **Evidence:** DPA §4.3 commits R&J Prime to *"maintain a **written** information-security program … consistent with the **GLBA Safeguards Rule (16 C.F.R. Part 314)**."* DPA §4.5 promises breach notice **within 72 hours**. DPA §4.8 grants audit rights.
+
+**This is stronger than §4.3 alone — and I understated it in the first draft.** DPA **Schedule B** (`src/app/dpa/page.jsx:195-197`) lists, as a security measure *presently in place*: *"logging/monitoring; **a written incident-response plan with breach timelines**; periodic dependency vulnerability review."* §4.3 is a forward-looking commitment; Schedule B is a **present-tense factual assertion** about controls that exist today. If the written IR plan does not exist, that is a misstatement of current fact in a published contract — a materially worse position than an unmet commitment, and the exact document an opposing lawyer or regulator asks for first after an incident.
 
 **Why it matters:** this is the sharpest version of your own concern — *the policy says one thing, the practice does another*. The Safeguards Rule contemplates specific artifacts: a designated qualified individual, a written risk assessment, a written incident-response plan, and periodic review. **If those documents don't exist, the DPA contains a factual misstatement you've contractually committed to** — and it's the first thing an opposing lawyer or a state regulator would ask for after an incident.
 
@@ -131,6 +137,18 @@ Worth noting: carriers will ask whether you have a WISP, MFA, and an IR plan. Fi
 - **SLA:** you have none, and Terms §10 correctly disclaims uptime ("AS IS," no warranty of uninterrupted service). That's the right posture at your price point. An SLA becomes a sales asset when you chase larger agencies — and it must then be backed by real monitoring and service credits. Don't promise one before you can measure it.
 - **Refund policy:** you *have* one — Terms §7: *"Except where required by law, fees are non-refundable,"* plus cancel-anytime and trial-converts-to-paid. That's complete and standard. One consistency check: confirm the trial length in Stripe matches the 7 days advertised in the paywall copy.
 - **Cookie policy:** correctly folded into Privacy §7, and accurate given you run no ad tech.
+
+---
+
+### 🟡 12. The DPA has no contact block — a contract with no way to reach the counterparty
+
+**Evidence:** `src/app/dpa/page.jsx` ends at Schedule B (line 204). Unlike Privacy §16 and Terms §16, it contains **no address, no email, and no notice provision** — the only identification of R&J Prime is the company name in the opening paragraph.
+
+**Why it matters:** the DPA is the document an agent (or an agency doing vendor diligence on you) would need to serve a notice under — a subprocessor objection under §4.4, an audit request under §4.8, or a data-deletion instruction under §4.7. All three are rights the DPA grants with no stated channel for exercising them. Privacy and Terms both solve this; the DPA was simply missed.
+
+**Fix:** add the same contact block the other two documents use, ideally with a one-line notice provision ("notices under this DPA may be sent to…"). Small, and it makes the rights in §4 actually exercisable. **[ATTORNEY]** for the notice wording.
+
+*(Found while verifying the address fix — the DPA showed neither the placeholder nor the new address, which is what surfaced it.)*
 
 ---
 
