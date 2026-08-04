@@ -12,6 +12,13 @@ export const LEGAL = {
   mailingAddress: '', // TODO(Juan): REQUIRED — set a real physical mailing address
   contactEmail: 'rjprimeconsult@gmail.com',
   effectiveDate: 'July 18, 2026',
+  // Version of the Terms / Privacy / DPA set, used by the clickwrap record
+  // (legalAcceptance.mjs). BUMP THIS whenever those documents change
+  // materially — every agent is then re-prompted to accept before they can
+  // keep using PRIM. Binding someone to terms they never saw is the exact
+  // failure the acceptance gate exists to prevent, so a doc change without
+  // a version bump is a bug. Format: ISO date of the effective date.
+  documentVersion: '2026-07-18',
 };
 
 // Renders the mailing address, or a visible placeholder if not yet set.

@@ -376,6 +376,11 @@ const APP_KEYS = [
   // Setup checklist dismiss flag (Dashboard widget)
   'setup_checklist_v1',
   'followup_drafts_v1', // personalized follow-up drafts cache — registered so purgeLocalMirror clears it on account switch
+  // Clickwrap acceptance record. MUST be registered: unregistered keys
+  // survive purgeLocalMirror, so on a shared browser agent B would inherit
+  // agent A's acceptance and never be prompted — i.e. we'd have no assent
+  // from B at all, which is the whole point of the gate.
+  'legal_acceptance_v1',
 ];
 export async function migrateLocalToCloud() {
   if (!cloudActive()) throw new Error('Not signed in');
