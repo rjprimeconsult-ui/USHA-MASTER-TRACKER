@@ -18,28 +18,11 @@ export const SUB_STATUS = {
   INCOMPLETE_EXPIRED: 'incomplete_expired',
 };
 
-/**
- * Returns true when the user has full access. That's:
- *   - is_complimentary = true (hand-picked free access, e.g. early
- *     test users / partners — flip in SQL when you want to convert
- *     them to paying)
- *   - status='trialing' AND trial hasn't ended
- *   - status='active'
- *   - status='past_due' AND we're inside a grace period (kept generous so
- *     a card decline doesn't kill productivity mid-import)
- */
-export function hasActiveSubscription(profile) {
-  if (!profile) return false;
-  if (profile.is_complimentary === true) return true;
-  const s = profile.subscription_status;
-  if (s === SUB_STATUS.ACTIVE) return true;
-  if (s === SUB_STATUS.TRIALING) {
-    if (!profile.trial_ends_at) return true; // no end -> still trialing
-    return new Date(profile.trial_ends_at).getTime() > Date.now();
-  }
-  if (s === SUB_STATUS.PAST_DUE) return true; // grace period — gate elsewhere if needed
-  return false;
-}
+// Full-access check now lives in the pure resolver (subscriptionAccess.mjs)
+// so client and server can never disagree — re-exported here for existing
+// callers (PaywallGate, Profile). Alias of isFull: comp/admin/active/trialing
+// are full; past_due is now BASIC (limited), no longer "active".
+export { hasActiveSubscription } from './subscriptionAccess.mjs';
 
 /**
  * True when the user has complimentary access (no Stripe sub, no trial).
@@ -90,7 +73,7 @@ export function useSubscription() {
     }
     const { data, error } = await supabase
       .from('profiles')
-      .select('id, email, subscription_status, subscription_tier, subscription_period, trial_ends_at, current_period_end, cancel_at_period_end, stripe_customer_id, is_complimentary, is_admin')
+      .select('id, email, subscription_status, subscription_tier, subscription_period, trial_ends_at, current_period_end, cancel_at_period_end, stripe_customer_id, is_complimentary, is_admin, past_due_since')
       .eq('id', userId)
       .maybeSingle();
     if (error) {
