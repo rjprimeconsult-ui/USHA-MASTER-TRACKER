@@ -15,11 +15,10 @@ import { BETA_FEATURES, canAccessBetaFeature } from './featureFlags';
  * Usage:
  *   const { canAccess, loading, reason, profile, feature } = useBetaFeature('post_sale_emails');
  *
- * IMPORTANT: useSubscription's profile shape doesn't currently include
- * `is_admin`. If admin override matters for your beta, either:
- *   (a) extend the select in subscription.js to include is_admin, OR
- *   (b) add the admin user's email to betaAllowlist in featureFlags.js.
- * For PRIM today, option (b) is in place.
+ * useSubscription's profile SELECT (subscription.js) includes `is_admin`
+ * and `is_complimentary`, so the admin and complimentary overrides in
+ * canAccessBetaFeature work client-side too — no allowlist workaround
+ * needed (the old note claiming is_admin was missing was stale).
  */
 export function useBetaFeature(featureKey) {
   const { profile, loading } = useSubscription();

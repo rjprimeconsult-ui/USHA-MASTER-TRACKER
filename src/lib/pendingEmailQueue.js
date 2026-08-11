@@ -18,8 +18,10 @@
  * Stored under `pending_email_queue_v1`. Shape:
  *   { items: [{ id, leadId, templateId, scheduledAt, enqueuedAt, status, heldReason? }] }
  * status: 'pending' | 'firing' | 'sent' | 'failed' | 'canceled'
- * heldReason (optional): the send route's `setupRequired` field when the item
- * is being held for sender setup (428/503) — item stays 'pending' throughout.
+ * heldReason (optional): why a pending item is on hold — the send route's
+ * `setupRequired` value when held for sender setup (428/503), or the
+ * literal 'subscription' when the route answered 402 payment-required.
+ * The item stays 'pending' throughout either hold.
  */
 
 import { storage } from './storage';
