@@ -14,7 +14,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
-import { getStripe, getSupabaseAdmin, subscriptionToProfileFields } from '@/lib/stripe-server';
+import { getStripe, getSupabaseAdmin, applySubscriptionFields } from '@/lib/stripe-server';
 import { priceIdToTier } from '@/lib/stripe-prices';
 
 export const dynamic = 'force-dynamic';
@@ -67,7 +67,7 @@ export async function POST(req) {
     const customerId = typeof session.customer === 'string' ? session.customer : session.customer?.id;
     const { data: profile, error: lookupErr } = await supabaseAdmin
       .from('profiles')
-      .select('id, stripe_customer_id')
+      .select('id, stripe_customer_id, past_due_since')
       .eq('id', userData.user.id)
       .maybeSingle();
     if (lookupErr) throw lookupErr;
@@ -83,7 +83,7 @@ export async function POST(req) {
       ? await stripe.subscriptions.retrieve(session.subscription, { expand: ['items.data.price'] })
       : session.subscription;
 
-    const fields = subscriptionToProfileFields(subscription, priceIdToTier);
+    const fields = applySubscriptionFields(subscription, priceIdToTier, profile.past_due_since);
     const update = { ...fields };
     if (!profile.stripe_customer_id && customerId) {
       update.stripe_customer_id = customerId;
