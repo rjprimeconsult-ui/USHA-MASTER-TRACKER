@@ -257,7 +257,7 @@ function PaywallScreen({ profile }) {
         <p className="text-slate-600 mb-6">
           {wasInTrial
             ? 'Pick a plan to keep using PRIM. Your data is safe and waiting — nothing is deleted.'
-            : 'Pick a plan to unlock PRIM. 7-day free trial on every plan, cancel anytime.'}
+            : 'Pick a plan to unlock PRIM. 7-day free trial for new customers, cancel anytime.'}
         </p>
         <a
           href="/pricing"

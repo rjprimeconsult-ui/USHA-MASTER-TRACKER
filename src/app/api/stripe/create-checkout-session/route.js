@@ -5,9 +5,11 @@
  *
  * Verifies the caller via the Authorization bearer token (their
  * Supabase session), ensures they have a Stripe customer, then creates
- * a Stripe Checkout session for the requested Price ID with a 7-day
- * trial. Returns { url } so the client can redirect to Stripe-hosted
- * checkout.
+ * a card-only Stripe Checkout session for the requested Price ID. The
+ * 7-day trial applies only to first-time subscribers — any prior
+ * subscription (any status) means the new one bills immediately
+ * (spec §6, no repeat trials). Returns { url } so the client can
+ * redirect to Stripe-hosted checkout.
  */
 
 import { createClient } from '@supabase/supabase-js';
@@ -62,12 +64,18 @@ export async function POST(req) {
     // live subscription (trialing / active / past_due / unpaid), creating
     // another Checkout would bill them twice on the same account. Send
     // them to the Customer Portal to manage the existing one instead.
+    //
+    // hadAnySub also powers the no-repeat-trials rule (spec §6): ANY prior
+    // subscription — even canceled — means they've already had their free
+    // trial, so the new subscription bills immediately.
+    let hadAnySub = false;   // fail-open: lookup failure grants the trial, never double-bills
     try {
       const existing = await stripe.subscriptions.list({
         customer: customerId,
         status: 'all',
         limit: 10,
       });
+      hadAnySub = (existing?.data || []).length > 0;
       const live = (existing?.data || []).find(s =>
         ['trialing', 'active', 'past_due', 'unpaid'].includes(s.status)
       );
@@ -80,6 +88,7 @@ export async function POST(req) {
     } catch (e) {
       // Non-fatal: if the lookup fails we fall through and let checkout
       // proceed rather than block a legitimate new subscriber.
+      // hadAnySub stays false — a lookup failure grants the trial.
       console.warn('[create-checkout-session] existing-sub check failed:', e?.message);
     }
 
@@ -94,8 +103,12 @@ export async function POST(req) {
       mode: 'subscription',
       customer: customerId,
       line_items: [{ price: priceId, quantity: 1 }],
+      payment_method_types: ['card'],   // launch: card only (credit + debit). See spec §6 ACH note.
+      // No repeat trials: the trial_period_days key is OMITTED entirely for
+      // returning customers (Stripe then bills immediately; `0` behaves
+      // differently). First-ever checkout keeps the free trial.
       subscription_data: {
-        trial_period_days: TRIAL_DAYS,
+        ...(hadAnySub ? {} : { trial_period_days: TRIAL_DAYS }),
         metadata: { supabase_user_id: userData.user.id },
       },
       success_url: successUrl,

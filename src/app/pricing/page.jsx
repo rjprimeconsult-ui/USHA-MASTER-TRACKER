@@ -44,7 +44,7 @@ export default function PricingPage() {
         {/* Header */}
         <div className="text-center mb-10">
           <div className="inline-block bg-indigo-100 text-indigo-700 text-xs font-bold uppercase tracking-wider rounded-full px-3 py-1 mb-4">
-            {TRIAL_DAYS}-day free trial · cancel anytime
+            {TRIAL_DAYS}-day free trial for new customers · cancel anytime
           </div>
           <h1 className="text-4xl sm:text-5xl font-bold text-slate-900 mb-3">
             Pick a plan that fits your book
@@ -144,6 +144,12 @@ export default function PricingPage() {
                   )}
                 </div>
 
+                {/* Accurate-for-everyone CTA (spec §6): returning customers get
+                    no trial and bill immediately, and the client can't know
+                    eligibility without a lookup — so the button never promises
+                    a trial unconditionally. The badge + footer carry the
+                    "free trial for new customers" terms; Stripe's hosted
+                    checkout shows each user their true terms pre-confirmation. */}
                 <button
                   onClick={() => handleSubscribe(tierId)}
                   disabled={isBusy}
@@ -153,7 +159,7 @@ export default function PricingPage() {
                       : 'bg-slate-900 hover:bg-slate-800 text-white'
                   } disabled:opacity-50`}
                 >
-                  {isBusy ? 'Redirecting…' : `Start ${TRIAL_DAYS}-day free trial`}
+                  {isBusy ? 'Redirecting…' : `Choose ${plan.name}`}
                 </button>
 
                 <ul className="space-y-2 text-sm text-slate-700">
@@ -186,8 +192,10 @@ export default function PricingPage() {
         {/* Footer copy */}
         <div className="text-center mt-12 text-sm text-slate-500 max-w-2xl mx-auto">
           <p className="mb-2">
-            Card required to start the trial. You won&apos;t be charged for {TRIAL_DAYS} days
-            and can cancel any time from Settings → Manage subscription.
+            Card required. New customers get a {TRIAL_DAYS}-day free trial and
+            aren&apos;t charged until it ends. If you&apos;ve subscribed before, your
+            plan starts — and your card is charged — immediately. Cancel any
+            time from Settings → Manage subscription.
           </p>
           <p>
             Questions? Hit the chat bubble inside PRIM or email{' '}
