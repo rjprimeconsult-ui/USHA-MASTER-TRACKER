@@ -119,6 +119,21 @@ export async function POST(req) {
 
   // Auth — gates tool use. No token = no tools but chat still works.
   const userId = await authenticate(req);
+
+  // Subscription gate (spec §3): BASIC/LOCKED never spend on AI/email.
+  // Chat genuinely binds userId (not auth); anonymous chat stays ungated.
+  if (userId) {
+    const { requireFullAccess } = await import('@/lib/subscriptionGate.server.mjs');
+    const access = await requireFullAccess(userId);
+    if (!access.ok) {
+      return Response.json(
+        { error: 'Your subscription is not active. Update your payment method to use this feature.',
+          accessLevel: access.level, subscriptionRequired: true },
+        { status: 402 }
+      );
+    }
+  }
+
   const serviceClient = userId ? getServiceClient() : null;
   const toolsEnabled = !!(userId && serviceClient);
 

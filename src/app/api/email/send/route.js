@@ -143,11 +143,25 @@ export async function POST(req) {
   // Profile + access check (defense in depth — UI also gates this)
   const { data: profile, error: pErr } = await supabase
     .from('profiles')
-    .select('id, email, subscription_status, subscription_tier, trial_ends_at, is_complimentary, is_admin')
+    .select('id, email, subscription_status, subscription_tier, trial_ends_at, is_complimentary, is_admin, past_due_since')
     .eq('id', userId)
     .maybeSingle();
   if (pErr || !profile) {
     return Response.json({ error: 'profile not found' }, { status: 403 });
+  }
+
+  // Subscription gate (spec §3): BASIC/LOCKED never spend on AI/email.
+  // Profile is already loaded here, so run the pure resolver directly.
+  // Gates ALL kinds incl. 'welcome' (accepted: welcome is an agent-initiated
+  // paid send; ticket/reminder mail doesn't route here).
+  const { gateFromProfile } = await import('@/lib/subscriptionAccess.mjs');
+  const access = gateFromProfile(profile, pErr);
+  if (!access.ok) {
+    return Response.json(
+      { error: 'Your subscription is not active. Update your payment method to use this feature.',
+        accessLevel: access.level, subscriptionRequired: true },
+      { status: 402 }
+    );
   }
 
   // Parse body

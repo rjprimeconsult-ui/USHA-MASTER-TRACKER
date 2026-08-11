@@ -257,6 +257,17 @@ export async function POST(req) {
   const auth = await requireUserId(req);
   if (auth instanceof Response) return auth;
 
+  // Subscription gate (spec §3): BASIC/LOCKED never spend on AI/email.
+  const { requireFullAccess } = await import('@/lib/subscriptionGate.server.mjs');
+  const access = await requireFullAccess(auth);
+  if (!access.ok) {
+    return Response.json(
+      { error: 'Your subscription is not active. Update your payment method to use this feature.',
+        accessLevel: access.level, subscriptionRequired: true },
+      { status: 402 }
+    );
+  }
+
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return Response.json({
