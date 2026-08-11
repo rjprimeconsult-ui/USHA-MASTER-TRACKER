@@ -133,6 +133,7 @@ export function gateFromProfile(profile, error, now = Date.now()) {
 }
 ```
 
+- [ ] **1.1b** Also assert `isLocked` and `hasBasicOrBetter` once each (LOCKED profile → `isLocked` true, `hasBasicOrBetter` false; BASIC → false/true) — exported per spec §2, so they get pinned (round-3 note 9).
 - [ ] **1.4** GREEN. **1.5 Mutations (6):** delete `is_admin` line / delete `is_complimentary` line / `<`→`<=` / past_due default→FULL / `applyPastDueStamp` always re-stamps / drop `'is_complimentary'` from `GATE_FIELDS`. Each RED→restore→GREEN.
 - [ ] **1.6** Commit: `feat(billing): pure subscription access resolver`
 
@@ -164,13 +165,20 @@ import { getSupabaseAdmin } from './stripe-server';
 import { gateFromProfile, GATE_FIELDS } from './subscriptionAccess.mjs';
 
 export async function requireFullAccess(userId) {
-  const supabase = getSupabaseAdmin();
-  const { data: profile, error } = await supabase
-    .from('profiles')
-    .select(GATE_FIELDS.join(', '))   // pinned by the Task-1 GATE_FIELDS test
-    .eq('id', userId)
-    .maybeSingle();
-  return gateFromProfile(profile, error || (!profile ? new Error('no profile') : null));
+  try {
+    const supabase = getSupabaseAdmin();
+    const { data: profile, error } = await supabase
+      .from('profiles')
+      .select(GATE_FIELDS.join(', '))   // pinned by the Task-1 GATE_FIELDS test
+      .eq('id', userId)
+      .maybeSingle();
+    return gateFromProfile(profile, error || (!profile ? new Error('no profile') : null));
+  } catch (e) {
+    // getSupabaseAdmin throws on missing env (stripe-server.js:30-39). Spec §7
+    // promises fail-CLOSED-as-402, not a 500 — especially since import-expenses-ai's
+    // insert sits above its own JSON-error net. Round-3 note 6.
+    return { ok: false, level: 'locked', transient: true };
+  }
 }
 ```
   Explicit test-reduction note (spec §8): the decision matrix incl. fail-closed is fully asserted on `gateFromProfile` in Task 1; the query shape is pinned by `GATE_FIELDS`; this 10-line wrapper carries no additional logic. Build-verified only — stated, not hidden.
@@ -208,15 +216,18 @@ Block, inserted immediately after each route's `const auth = await requireUserId
             // reschedule (existing call), with:
             //   heldReason: setupHold ? data.setupRequired : 'subscription'
 ```
-  and thread that `heldReason` into the existing `reschedulePending` call. Expiry copy: in the `isExpiredHold` failure branch, the error becomes reason-aware — `heldReason === 'subscription' ? 'expired while payment on hold' : 'expired while sender setup incomplete'`. Held-summary toast copy: "waiting on sender setup or payment." Tests (`PendingEmailQueueRunner.test.jsx`): 402+`subscriptionRequired:true` → item stays `pending`, `heldReason:'subscription'`; 402 WITHOUT the flag → `failed` (a non-PRIM 402 shouldn't hold forever); mutation: revert to the old condition → the 402-hold test goes red.
+  and thread that `heldReason` into the existing `reschedulePending` call. Expiry copy at the `isExpiredHold` failure branch (:140-142): reason-aware via **`item.heldReason`** — the binding in scope there is `item`, NOT a bare `heldReason` (round-3 catch: the bare name is a ReferenceError outside the try at :162 → unhandled rejection → the item retries every second forever) — `item.heldReason === 'subscription' ? 'expired while payment on hold' : 'expired while sender setup incomplete'`. Toast copy — ALL THREE strings: the `:274` headline ("waiting on sender setup or payment"), the `:277` detail line, and the `:284` action (payment holds point at billing/portal, not Profile → Sender). Also refresh the stale `heldReason` JSDoc in `pendingEmailQueue.js:19-22`. Tests (`PendingEmailQueueRunner.test.jsx`): 402+`subscriptionRequired:true` → `pending` + `heldReason:'subscription'`; 402 WITHOUT the flag → `failed`; an expired subscription-hold fails with the payment error string (pins `item.heldReason`); mutation: revert to the old condition → the 402-hold test red.
+  **Accepted residual (round-3 note 4):** after Task 6.2, a BASIC agent's runner short-circuits on `canAccess` (:63) — queued items neither fire nor hold while in grace, then flush on recovery (no staleness bound for un-held items). The 402-hold therefore covers the stale-client race window, which is the case that matters (spec §7). Documented, not hidden.
 - [ ] **6.4** Green (record new counts). Commit: `feat(billing): BASIC blocks paid features client-side; queue holds on 402`
 
 ### Task 7: Client gate (TDD)
 - [ ] **7.1 Failing tests first** (`PaywallGate.test.jsx`): invariant (comp + stale stamp → children, no banner/wall); **loading/`profile===null` → children, no wall**; active → children; BASIC stamped-1d → banner "2 days"; BASIC unstamped → banner, stamp-less copy, no "null"; past_due-stamp-4d → PaymentWall (no app content; exactly TWO actions: update payment, recheck); `canceled`/`incomplete_expired`/status-null → `PaywallScreen` (pricing), not PaymentWall; recovery (mock refresh-subscription 200 + profile flips active) → wall unmounts; **stale-trialing self-heal:** profile `trialing`+`trial_ends_at` past → children render AND exactly one POST to `/api/stripe/refresh-subscription` fires (sessionStorage-throttled — second render, no second POST).
 - [ ] **7.2** `subscription.js`: SELECT `:93` gains `past_due_since` (**the line that makes LOCKED reachable**); delete the local `hasActiveSubscription`, add `export { hasActiveSubscription } from './subscriptionAccess.mjs';` — `isInTrial`/`trialDaysLeft` stay local, untouched.
-- [ ] **7.3 PaywallGate** — **imports first** (rev-1-finding-1 class, called out this time): add `accessLevel, ACCESS, graceDaysLeft` from `@/lib/subscriptionAccess.mjs`, `openCustomerPortal` to the existing `@/lib/subscription` import, `authedFetch` from `@/lib/authedFetch` (for the recheck POST); drop `hasActiveSubscription` from the import if now unused. Lines **:87-102 UNTOUCHED** (syncing overlay + `loading || !profile` guard). Replace only the `:104-118` region:
+- [ ] **7.3 PaywallGate** — **imports first** (rev-1-finding-1 class, called out this time): add `accessLevel, ACCESS, graceDaysLeft` from `@/lib/subscriptionAccess.mjs`, `openCustomerPortal` to the existing `@/lib/subscription` import, `authedFetch` from `@/lib/authedFetch` (for the recheck POST); drop `hasActiveSubscription` from the import if now unused.
+  **HOOKS ORDER (round-3 catch — a hook below the early returns white-screens EVERY user on the loading→loaded transition):** the new self-heal `useEffect` goes **with the existing effects, immediately after the one ending at `:83`** — ABOVE the `:87` and `:102` early returns, NOT inside the replacement region:
 ```js
   // Stale-trialing self-heal (spec §2 residual): one throttled re-sync.
+  // MUST sit above the early returns with the other effects (hooks order).
   useEffect(() => {
     if (profile?.subscription_status === 'trialing' && profile.trial_ends_at
         && new Date(profile.trial_ends_at).getTime() < Date.now()
@@ -225,7 +236,9 @@ Block, inserted immediately after each route's `const auth = await requireUserId
       authedFetch('/api/stripe/refresh-subscription', { method: 'POST' }).then(() => refresh()).catch(() => {});
     }
   }, [profile, refresh]);
-
+```
+  Lines **:87-102 UNTOUCHED** (syncing overlay + `loading || !profile` guard). Replace only the `:104-118` region — **branching only, no hooks**:
+```js
   const level = accessLevel(profile);
   if (level === ACCESS.FULL) { /* existing children + SenderSetupPrompt return, unchanged */ }
   if (level === ACCESS.BASIC) return (<><GraceBanner profile={profile} />{children}</>);
@@ -240,6 +253,7 @@ Block, inserted immediately after each route's `const auth = await requireUserId
 
 ### Task 8: refresh-subscription route
 - [ ] `src/app/api/stripe/refresh-subscription/route.js` — POST; `const auth = await requireUserId(req); if (auth instanceof Response) return auth; const userId = auth;`; admin client; profile select `stripe_customer_id, past_due_since`; no customer → 200 `{ok:false, reason:'no_customer'}`; `stripe.subscriptions.list({customer, status:'all', limit:10})`; pick live (`trialing|active|past_due|unpaid`) else most recent by `created`; none → 200 `{ok:false, reason:'no_subscription'}`; `applySubscriptionFields(sub, priceIdToTier, profile.past_due_since)` → update → `{ok:true, subscription_status}`. Stripe error → 503. Model on sync-after-checkout.
+- [ ] Test-reduction note, stated (round-3 note 7): the route's branching (live-pick, most-recent fallback, three ok-shapes, 503) is exercised indirectly by Task 7.1's recovery + self-heal tests through a mocked endpoint; the field-writing correctness rides on `applySubscriptionFields` (Task 3.0 tests). Direct route tests would need a Stripe mock harness the repo doesn't have — accepted, verified in the Task 11 live pass instead.
 - [ ] Build green + grep gate (`applySubscriptionFields` imported + called). Commit: `feat(billing): refresh-subscription re-sync`
 
 ### Task 9: Checkout — card-only, no repeat trials, honest copy
@@ -254,11 +268,11 @@ Block, inserted immediately after each route's `const auth = await requireUserId
     } catch (e) { /* existing warn, unchanged — hadAnySub stays false */ }
 ```
   Session config: `payment_method_types: ['card'],` and `subscription_data: { ...(hadAnySub ? {} : { trial_period_days: TRIAL_DAYS }), metadata: {...} }` — the key is **omitted** entirely for returning customers (Stripe bills immediately; `0` behaves differently).
-- [ ] **9.2 Copy (compliance flag — human review; spec §6):** `pricing/page.jsx:47,156` and `PaywallGate.jsx:145` → "7-day free trial **for new customers**" (returning canceled customers are charged immediately; Stripe's hosted page shows each user their true terms pre-confirmation).
+- [ ] **9.2 Copy (compliance flag — human review; spec §6):** `pricing/page.jsx:47,156`, **`pricing/page.jsx:189`** ("Card required to start the trial. You won't be charged for {TRIAL_DAYS} days" — round-3 catch: the page's most explicit charge-timing claim, flatly false for a returning customer after 9.1; reword to disclose immediate billing for returning customers), and `PaywallGate.jsx:145` → "7-day free trial **for new customers**" (Stripe's hosted page shows each user their true terms pre-confirmation).
 - [ ] **9.3 Grep gate:** `grep -n "hadAnySub" src/app/api/stripe/create-checkout-session/route.js` → declaration BEFORE the `try` line number, usage in `subscription_data`. Build green. Commit: `feat(billing): card-only checkout, no repeat free trials, accurate trial copy`
 
 ### Task 10: Offline gate + push
-- [ ] `npm run test:all` (record counts), build, lint 0 errors, byte-checks, re-run ALL grep gates (3.4, 5.4, 7.4, 9.3), push, CI green.
+- [ ] `npm run test:all` (record counts), build, lint 0 errors, byte-checks, re-run ALL grep gates (3.4, 5.4, **6.3:** `grep -n "item.heldReason" src/components/PendingEmailQueueRunner.jsx` present AND `grep -cn "[^.]heldReason ===" src/components/PendingEmailQueueRunner.jsx` → 0, 7.4, 9.3), push, CI green.
 
 ### Task 11: Live pass + review + STOP
 - [ ] **PRECONDITION: migration run (Task 2 — read AND write failure modes).**
