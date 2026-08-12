@@ -196,6 +196,9 @@ test('past_due stamped 4 days ago shows the PaymentWall: no app content, exactly
   expect(screen.getByRole('button', { name: 'Update payment method' })).toBeTruthy();
   expect(screen.getByRole('button', { name: /I've paid — recheck/ })).toBeTruthy();
   expect(screen.queryByText(/See plans/)).toBeNull();
+  // Spec §3 N-8: a locked agent must always have a support path — if the
+  // portal call errors, the wall is otherwise their whole universe.
+  expect(screen.getByRole('link', { name: /rjprimeconsult@gmail\.com/ })).toBeTruthy();
   unmount();
 
   // 'unpaid' (post-dunning) has a live sub too — same wall, portal path.
@@ -249,6 +252,28 @@ test('"I\'ve paid — recheck" POSTs refresh-subscription and unmounts the wall 
     '/api/stripe/refresh-subscription',
     expect.objectContaining({ method: 'POST' })
   );
+});
+
+test('recheck with a 200 {ok:false} body keeps the wall and shows feedback, never a silent no-op', async () => {
+  setProfile({
+    subscription_status: 'past_due',
+    past_due_since: iso(Date.now() - 4 * DAY),
+  });
+  // The route 200s with {ok:false, reason} when no customer/subscription
+  // exists — res.ok alone reads that as success, and the user clicking
+  // "I've paid — recheck" would observe nothing at all.
+  authedFetchMock.mockImplementation(async () => (
+    { ok: true, status: 200, json: async () => ({ ok: false, reason: 'no_subscription' }) }
+  ));
+
+  render(<PaywallGate>{child}</PaywallGate>);
+  await flush();
+  fireEvent.click(screen.getByRole('button', { name: /I've paid — recheck/ }));
+
+  await waitFor(() => {
+    expect(screen.getByText(/gone through yet/)).toBeTruthy();
+  });
+  expect(screen.getByText(WALL_HEADLINE)).toBeTruthy();
 });
 
 // ---- 5. Stale-trialing self-heal (throttled) ----

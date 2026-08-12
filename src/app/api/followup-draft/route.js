@@ -185,7 +185,7 @@ export async function POST(req) {
   const svc = createClient(svcUrl, svcKey, { auth: { autoRefreshToken: false, persistSession: false } });
   const { data: profile, error: profileErr } = await svc
     .from('profiles')
-    .select('id, email, subscription_status, subscription_tier, trial_ends_at, is_complimentary, is_admin')
+    .select('id, email, subscription_status, subscription_tier, trial_ends_at, is_complimentary, is_admin, past_due_since')
     .eq('id', auth)
     .maybeSingle();
   if (profileErr) {

@@ -89,7 +89,7 @@ function Hero() {
           <a href={appUrl()} className="text-sm font-medium" style={{ color: BRAND.textMuted }}>Sign in</a>
           <a href={`${appUrl()}/pricing`}
             className="bg-white text-slate-900 text-sm font-semibold px-4 py-2 rounded-lg hover:bg-slate-100 transition">
-            Start free trial
+            Get started
           </a>
         </div>
       </nav>
@@ -927,7 +927,7 @@ function SeeItInAction() {
                 boxShadow: `0 20px 50px -10px ${BRAND.accent}80`,
               }}
             >
-              Start your 7-day free trial <ArrowRight size={16} />
+              Get started — free trial for new customers <ArrowRight size={16} />
             </a>
           </motion.div>
         </div>
@@ -1031,7 +1031,7 @@ function PricingTeaser() {
             Pick the plan that fits.
           </h2>
           <p className="mt-4 text-lg" style={{ color: BRAND.textMuted }}>
-            Every plan starts with a 7-day free trial. No long contracts.
+            New customers get a 7-day free trial on every plan. No long contracts.
           </p>
         </div>
         <div className="grid md:grid-cols-3 gap-6">
@@ -1174,7 +1174,7 @@ function FinalCta() {
               fontSize: 17,
               boxShadow: `0 16px 40px -12px ${BRAND.accent}88`,
             }}>
-            Start your free trial <ArrowRight size={18} />
+            Get started today <ArrowRight size={18} />
           </a>
         </div>
       </div>

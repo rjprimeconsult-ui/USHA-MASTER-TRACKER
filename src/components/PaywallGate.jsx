@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Lock, Sparkles, ArrowRight, Loader2, X, AlertTriangle, Zap } from 'lucide-react';
 import { useSubscription, isInTrial, trialDaysLeft, isComplimentary, syncAfterCheckout, openCustomerPortal } from '@/lib/subscription';
 import { accessLevel, ACCESS, graceDaysLeft } from '@/lib/subscriptionAccess.mjs';
+import { LEGAL } from '@/lib/legalConfig.mjs';
 import { authedFetch } from '@/lib/authedFetch';
 import { loadSenderIdentity } from '@/lib/postSaleEmails';
 import SenderSetupPrompt, { shouldShowSenderSetupPrompt } from './SenderSetupPrompt';
@@ -21,7 +22,9 @@ import SenderSetupPrompt, { shouldShowSenderSetupPrompt } from './SenderSetupPro
  *   - User isn't signed in (auth handles its own gate)
  *   - Subscription state is still loading
  *   - We're mid-sync after a successful checkout
- *   - User has any kind of active access (trial, active, past_due grace)
+ *   - Access resolves FULL (active, trialing, admin, complimentary)
+ * BASIC (past_due inside the 3-day grace) renders children under a
+ * non-dismissible grace banner; LOCKED renders a wall instead of children.
  */
 export default function PaywallGate({ children }) {
   const { loading, profile, refresh } = useSubscription();
@@ -88,9 +91,15 @@ export default function PaywallGate({ children }) {
   // MUST sit above the early returns with the other effects (hooks order).
   useEffect(() => {
     if (profile?.subscription_status === 'trialing' && profile.trial_ends_at
-        && new Date(profile.trial_ends_at).getTime() < Date.now()
-        && !sessionStorage.getItem('trial_resync_v1')) {
-      sessionStorage.setItem('trial_resync_v1', '1');
+        && new Date(profile.trial_ends_at).getTime() < Date.now()) {
+      // Storage can throw when partitioned/blocked (embedded contexts,
+      // hardened privacy settings). This user is FULL — an uncaught throw
+      // here blanks the app for a paying agent, and without the flag the
+      // throttle is gone too, so skip the optional resync entirely.
+      try {
+        if (sessionStorage.getItem('trial_resync_v1')) return;
+        sessionStorage.setItem('trial_resync_v1', '1');
+      } catch { return; }
       authedFetch('/api/stripe/refresh-subscription', { method: 'POST' }).then(() => refresh()).catch(() => {});
     }
   }, [profile, refresh]);
@@ -192,7 +201,17 @@ function PaymentWall({ onRecovered }) {
     try {
       const res = await authedFetch('/api/stripe/refresh-subscription', { method: 'POST' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      await onRecovered();
+      // The route 200s with {ok:false} when no customer/subscription exists,
+      // and {ok:true, subscription_status} after a sync — a sync can succeed
+      // while the sub is still delinquent, so branch on the body, not res.ok.
+      const data = await res.json().catch(() => null);
+      // Refresh the local profile regardless: the sync may have changed state
+      // even when the sub isn't active yet, and a refresh() rejection must not
+      // read as "sync failed" (the wall re-renders from profile state anyway).
+      await onRecovered().catch(() => {});
+      if (!data?.ok || !['active', 'trialing'].includes(data.subscription_status)) {
+        setError('Your payment hasn’t gone through yet. If you just paid, give it a minute and recheck.');
+      }
     } catch {
       setError('Still no active subscription found. If you just paid, give it a minute and recheck.');
     } finally {
@@ -228,6 +247,15 @@ function PaymentWall({ onRecovered }) {
           </button>
         </div>
         {error && <p className="text-sm text-rose-600 mt-4">{error}</p>}
+        {/* Spec §3 N-8: a locked agent must always have a support path — if the
+            portal errors, these two buttons are otherwise the whole universe. */}
+        <p className="text-xs text-slate-400 mt-6">
+          Having trouble? Email{' '}
+          <a href={`mailto:${LEGAL.contactEmail}`} className="underline hover:text-slate-600">
+            {LEGAL.contactEmail}
+          </a>{' '}
+          and we&apos;ll get you back in.
+        </p>
       </div>
     </div>
   );

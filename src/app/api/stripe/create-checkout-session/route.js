@@ -75,7 +75,12 @@ export async function POST(req) {
         status: 'all',
         limit: 10,
       });
-      hadAnySub = (existing?.data || []).length > 0;
+      // A sub that never activated (incomplete / incomplete_expired — e.g. a
+      // failed SCA at checkout) proves nothing about a consumed trial; only
+      // statuses that actually had service count toward no-repeat-trials.
+      hadAnySub = (existing?.data || []).some(
+        s => s.status !== 'incomplete' && s.status !== 'incomplete_expired'
+      );
       const live = (existing?.data || []).find(s =>
         ['trialing', 'active', 'past_due', 'unpaid'].includes(s.status)
       );
