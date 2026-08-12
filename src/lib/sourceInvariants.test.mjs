@@ -82,6 +82,14 @@ test('chat gates via requireFullAccess(userId) and refuses with a 402', () => {
   assert.ok(/status: 402/.test(src) && src.includes('subscriptionRequired: true'));
 });
 
+test('chat refuses anonymous requests (token-cost loophole closed, spec §11.5)', () => {
+  const src = read('src/app/api/chat/route.js');
+  const auth = src.indexOf('const userId = await authenticate(req)');
+  const refusal = src.indexOf('if (!userId)');
+  assert.ok(auth >= 0 && refusal > auth, 'the !userId refusal must sit directly after authenticate');
+  assert.ok(/status: 401/.test(src), 'anonymous chat must 401 — an unauthenticated reply bills PRIM for tokens');
+});
+
 test('email/send gates from its profile SELECT and refuses with a 402 (the Resend spend path)', () => {
   const src = read('src/app/api/email/send/route.js');
   assert.ok(src.includes('gateFromProfile'), 'email/send must gate via gateFromProfile');

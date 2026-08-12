@@ -117,11 +117,21 @@ export async function POST(req) {
     }
   }
 
-  // Auth — gates tool use. No token = no tools but chat still works.
+  // Auth — REQUIRED. Anonymous chat was a token-cost loophole (spec §11.5,
+  // closed by operator decision 2026-08-12): a locked agent stripping the
+  // Authorization header is indistinguishable from a stranger, and every
+  // anonymous reply billed PRIM. Nothing in the product calls chat
+  // signed-out — AgentChatbot is the only caller and lives inside the
+  // authed app; it surfaces this error string in the chat window.
   const userId = await authenticate(req);
+  if (!userId) {
+    return Response.json(
+      { error: 'Sign in to use the PRIM Assistant.' },
+      { status: 401 }
+    );
+  }
 
   // Subscription gate (spec §3): BASIC/LOCKED never spend on AI/email.
-  // Chat genuinely binds userId (not auth); anonymous chat stays ungated.
   if (userId) {
     const { requireFullAccess } = await import('@/lib/subscriptionGate.server.mjs');
     const access = await requireFullAccess(userId);
