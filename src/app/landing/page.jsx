@@ -139,7 +139,7 @@ function Hero() {
                 background: `linear-gradient(135deg, ${BRAND.accent} 0%, ${BRAND.accent2} 100%)`,
                 boxShadow: `0 12px 32px -8px rgba(${BRAND.glow},0.55)`,
               }}>
-              Start your 7-day trial <ArrowRight size={16} />
+              Get started <ArrowRight size={16} />
             </a>
             <a href="#features"
               className="inline-flex items-center gap-2 font-semibold px-6 py-3.5 rounded-xl border transition-colors"
@@ -1002,7 +1002,7 @@ function PricingTeaser() {
       price: '$49.95',
       tagline: 'Solo agents tracking their own book.',
       features: ['Smart Import (AI)', 'Vendor memory', 'Prospects mini-CRM', 'Commission Calculator', 'PRIM Assistant'],
-      cta: 'Start trial',
+      cta: 'Get started',
       highlight: false,
     },
     {
@@ -1010,7 +1010,7 @@ function PricingTeaser() {
       price: '$99',
       tagline: 'Producers who care about real numbers.',
       features: ['Everything in Starter', 'CPA Dashboard + True Net', 'Bulk AI Re-categorize', 'Statement reconciliation', 'Post-sale email automation', 'Priority support'],
-      cta: 'Start trial',
+      cta: 'Get started',
       highlight: true,
     },
     {
@@ -1018,7 +1018,7 @@ function PricingTeaser() {
       price: '$200',
       tagline: 'FSLs managing downline + overrides.',
       features: ['Everything in Pro', 'Override commission tracking', 'Multi-agent admin', 'Team insights', 'Cold outreach sequences', 'White-glove onboarding'],
-      cta: 'Start trial',
+      cta: 'Get started',
       highlight: false,
     },
   ];
@@ -1093,7 +1093,7 @@ function FAQ() {
     ['Does PRIM connect to USHA’s portal?', 'No direct API connection — USHA doesn’t offer one. PRIM works by parsing your existing USHA documents (Account Summaries, Sales Reports, Portal screenshots) with AI. You’re always in control of what gets imported.'],
     ['Can I import from Airtable, Excel, or Google Sheets?', 'Yes. Smart Import (AI) reads any spreadsheet structure and auto-maps columns to PRIM’s fields. Export from any source as CSV or XLSX, drop it in, confirm the preview, done.'],
     ['What if I have a team / downline?', 'The Team plan supports multi-agent admin, override commission tracking, and team-wide insights. Get every agent in PRIM and you can see the whole pipeline + override flow in one place.'],
-    ['How does the 7-day trial work?', 'Pick a plan, enter your card, get 7 days of full access. Cancel anytime before day 7 from Profile → Subscription and you’re not charged. No hidden auto-charges.'],
+    ['How does the 7-day free trial work?', 'New customers: pick a plan, enter your card, and get 7 days of full access. Cancel anytime before day 7 from Profile → Subscription and you’re not charged; otherwise your paid subscription starts automatically on day 8. If you’ve subscribed to PRIM before, there’s no second trial — your new subscription starts and bills immediately.'],
     ['I’m not technical — is PRIM easy to use?', 'PRIM is built BY an agent, FOR agents. The onboarding wizard guides you through your first import in under 5 minutes. The PRIM Assistant (built-in AI co-pilot) answers questions in plain English. No training required.'],
     ['What if PRIM doesn’t work for me?', 'Cancel anytime — month-to-month, no contracts. Your data exports cleanly back to CSV if you ever want to leave.'],
     ['Can I use my own email domain for customer emails?', 'Yes. Pro+ agents can connect their own Resend-verified domain so post-sale emails go out from their business (e.g., agent@theirCompany.com) — not from PRIM’s default.'],
@@ -1164,7 +1164,7 @@ function FinalCta() {
           }}>in spreadsheets?</span>
         </h2>
         <p className="mt-6 max-w-xl mx-auto text-lg" style={{ color: BRAND.textMuted }}>
-          7 days free. Cancel anytime. Built by an agent who got tired of guessing.
+          7 days free for new customers. Cancel anytime. Built by an agent who got tired of guessing.
         </p>
         <div className="mt-9">
           <a href={`${appUrl()}/pricing`}

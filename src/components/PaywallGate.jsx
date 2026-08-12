@@ -208,7 +208,7 @@ function PaymentWall({ onRecovered }) {
       // Refresh the local profile regardless: the sync may have changed state
       // even when the sub isn't active yet, and a refresh() rejection must not
       // read as "sync failed" (the wall re-renders from profile state anyway).
-      await onRecovered().catch(() => {});
+      await Promise.resolve(onRecovered()).catch(() => {});
       if (!data?.ok || !['active', 'trialing'].includes(data.subscription_status)) {
         setError('Your payment hasn’t gone through yet. If you just paid, give it a minute and recheck.');
       }

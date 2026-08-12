@@ -65,6 +65,7 @@ vi.mock('./SenderSetupPrompt', () => ({
 }));
 
 import PaywallGate from './PaywallGate';
+import { LEGAL } from '@/lib/legalConfig.mjs';
 
 const DAY = 24 * 60 * 60 * 1000;
 const iso = (ms) => new Date(ms).toISOString();
@@ -198,7 +199,9 @@ test('past_due stamped 4 days ago shows the PaymentWall: no app content, exactly
   expect(screen.queryByText(/See plans/)).toBeNull();
   // Spec §3 N-8: a locked agent must always have a support path — if the
   // portal call errors, the wall is otherwise their whole universe.
-  expect(screen.getByRole('link', { name: /rjprimeconsult@gmail\.com/ })).toBeTruthy();
+  expect(screen.getByRole('link', {
+    name: new RegExp(LEGAL.contactEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+  })).toBeTruthy();
   unmount();
 
   // 'unpaid' (post-dunning) has a live sub too — same wall, portal path.

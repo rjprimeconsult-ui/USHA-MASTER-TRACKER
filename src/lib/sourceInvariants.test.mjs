@@ -6,11 +6,12 @@
 // plan's manual grep gates (5.4, 9.3) into the suite so CI runs them forever.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 
 const read = (p) => readFileSync(path.join(process.cwd(), p), 'utf8');
 const count = (src, re) => (src.match(re) || []).length;
+const selectStrings = (src) => [...src.matchAll(/\.select\('([^']*)'\)/g)].map((m) => m[1]);
 
 const CHECKOUT = 'src/app/api/stripe/create-checkout-session/route.js';
 
@@ -26,15 +27,19 @@ const UNIFORM_GATED = [
   'src/app/api/textdrip/extract-conversation/route.js',
 ];
 
-// System mail that must NEVER be subscription-gated (spec §3 EXEMPT table):
-// tickets are the locked user's escape hatch, welcome/reminder mail is
+// Surfaces that must NEVER be subscription-gated (spec §3 EXEMPT table):
+// tickets are the locked user's escape hatch (both the mail helper AND the
+// HTTP route a future gate would land on), welcome/reminder mail is
 // PRIM-initiated, webform capture is inbound revenue.
 const EXEMPT = [
   'src/lib/ticketEmails.js',
   'src/lib/welcomeEmails.js',
+  'src/app/api/tickets/route.js',
   'src/app/api/reminders/route.js',
   'src/app/api/webforms/webhook/[token]/route.js',
 ];
+
+const GATE_IDENTIFIERS = ['requireFullAccess', 'gateFromProfile'];
 
 test('checkout is card-only for launch (spec D6 — no Cash App/Chime/Venmo/Link)', () => {
   assert.ok(
@@ -43,11 +48,15 @@ test('checkout is card-only for launch (spec D6 — no Cash App/Chime/Venmo/Link
   );
 });
 
-test('free trial is conditional on hadAnySub and omitted (not zeroed) for returning customers', () => {
+test('free trial is conditional on hadAnySub, omitted not zeroed, declared above the lookup try', () => {
   const src = read(CHECKOUT);
+  const decl = src.indexOf('let hadAnySub = false');
+  const listCall = src.indexOf('const existing = await stripe.subscriptions.list');
+  const lookupTry = src.lastIndexOf('try {', listCall);
+  assert.ok(decl >= 0 && listCall >= 0 && lookupTry >= 0, 'expected anchors missing from checkout route');
   assert.ok(
-    src.includes('let hadAnySub = false'),
-    'hadAnySub must be hoisted above the lookup try (catch path must not throw ReferenceError)'
+    decl < lookupTry,
+    'hadAnySub must be declared ABOVE the lookup try — moved inside, the catch path throws ReferenceError (the rev-2 bug)'
   );
   assert.ok(
     src.includes('...(hadAnySub ? {} : { trial_period_days: TRIAL_DAYS })'),
@@ -55,30 +64,67 @@ test('free trial is conditional on hadAnySub and omitted (not zeroed) for return
   );
 });
 
-test('every uniform paid AI route carries exactly one requireFullAccess(auth) gate', () => {
+test('every uniform paid AI route gates once AND refuses with a 402 subscriptionRequired body', () => {
   for (const p of UNIFORM_GATED) {
-    assert.equal(count(read(p), /requireFullAccess\(auth\)/g), 1, `${p} must gate exactly once`);
+    const src = read(p);
+    assert.equal(count(src, /requireFullAccess\(auth\)/g), 1, `${p} must gate exactly once`);
+    // The call alone is a no-op if the refusal block is deleted — pin both.
+    assert.ok(
+      /status: 402/.test(src) && src.includes('subscriptionRequired: true'),
+      `${p} must actually refuse (402 + subscriptionRequired body), not just call the gate`
+    );
   }
 });
 
-test('chat gates via requireFullAccess(userId)', () => {
-  assert.equal(count(read('src/app/api/chat/route.js'), /requireFullAccess\(userId\)/g), 1);
+test('chat gates via requireFullAccess(userId) and refuses with a 402', () => {
+  const src = read('src/app/api/chat/route.js');
+  assert.equal(count(src, /requireFullAccess\(userId\)/g), 1);
+  assert.ok(/status: 402/.test(src) && src.includes('subscriptionRequired: true'));
 });
 
-test('the SELECTs that make LOCKED reachable carry past_due_since', () => {
-  // Client hook: spec §2 calls this "the one change that makes the client
-  // enforcement real" — without the column, day-3 LOCKED never fires.
-  assert.match(read('src/lib/subscription.js'), /\.select\('[^']*past_due_since[^']*'\)/);
-  // email/send gates from its own profile SELECT rather than requireFullAccess.
-  assert.match(read('src/app/api/email/send/route.js'), /\.select\('[^']*past_due_since[^']*'\)/);
+test('email/send gates from its profile SELECT and refuses with a 402 (the Resend spend path)', () => {
+  const src = read('src/app/api/email/send/route.js');
+  assert.ok(src.includes('gateFromProfile'), 'email/send must gate via gateFromProfile');
+  assert.ok(
+    /status: 402/.test(src) && src.includes('subscriptionRequired: true'),
+    'email/send must refuse with a 402 subscriptionRequired body'
+  );
+  // The gate is only as good as its input: the PROFILE select (the one that
+  // carries subscription_status) must also carry past_due_since.
+  assert.ok(
+    selectStrings(src).some((s) => s.includes('subscription_status') && s.includes('past_due_since')),
+    'email/send profile SELECT must carry past_due_since alongside subscription_status'
+  );
 });
 
-test('exempt system mail and webform capture are never subscription-gated', () => {
+test('the client subscription hook SELECTs past_due_since (makes LOCKED reachable — spec §2)', () => {
+  assert.ok(
+    selectStrings(read('src/lib/subscription.js')).some(
+      (s) => s.includes('subscription_status') && s.includes('past_due_since')
+    ),
+    'useSubscription SELECT must carry past_due_since or day-3 LOCKED never fires client-side'
+  );
+});
+
+test('exempt surfaces (system mail, tickets, webform capture) are never subscription-gated', () => {
   for (const p of EXEMPT) {
     const src = read(p);
-    assert.ok(
-      !src.includes('requireFullAccess') && !src.includes('gateFromProfile'),
-      `${p} must stay ungated (spec §3 EXEMPT)`
-    );
+    for (const id of GATE_IDENTIFIERS) {
+      assert.ok(!src.includes(id), `${p} must stay ungated (spec §3 EXEMPT) — found ${id}`);
+    }
+  }
+});
+
+test('the blast capture path carries no subscription gates (standing never-touch rule)', () => {
+  const apiRoot = path.join(process.cwd(), 'src/app/api');
+  const files = readdirSync(apiRoot, { recursive: true })
+    .map(String)
+    .filter((f) => f.endsWith('route.js') && /ringy|benepath|blast/i.test(f));
+  assert.ok(files.length > 0, 'expected blast-path routes to exist under src/app/api');
+  for (const f of files) {
+    const src = readFileSync(path.join(apiRoot, f), 'utf8');
+    for (const id of GATE_IDENTIFIERS) {
+      assert.ok(!src.includes(id), `src/app/api/${f} must stay ungated — found ${id}`);
+    }
   }
 });
