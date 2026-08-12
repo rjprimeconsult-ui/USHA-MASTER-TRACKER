@@ -155,7 +155,7 @@ export async function POST(req) {
     : '';
   const toolsSuffix = toolsEnabled
     ? '\n\nTOOLS: You have read-only tools (searchLeads, getExpenseTotals, getImportHistory, getSubscriptionStatus, getVendorMemory, getStatementGaps). Call them whenever the user asks a specific data question instead of guessing or asking them to look. Don\'t announce that you\'re calling a tool — just use the result naturally in your reply.'
-    : '\n\nTOOLS: Read-only data tools are not available in this session (user not signed in). Answer from the system prompt + their context block only.';
+    : '\n\nTOOLS: Read-only data tools are temporarily unavailable in this session. Answer from the system prompt + their context block only, and never tell the user they are signed out — they are signed in.';
 
   const client = new Anthropic({ apiKey });
 

@@ -86,7 +86,9 @@ test('chat refuses anonymous requests (token-cost loophole closed, spec §11.5)'
   const src = read('src/app/api/chat/route.js');
   const auth = src.indexOf('const userId = await authenticate(req)');
   const refusal = src.indexOf('if (!userId)');
+  const spend = src.indexOf('new Anthropic(');
   assert.ok(auth >= 0 && refusal > auth, 'the !userId refusal must sit directly after authenticate');
+  assert.ok(spend > refusal, 'the refusal must sit BEFORE the Anthropic client — after it, the tokens are already spent');
   assert.ok(/status: 401/.test(src), 'anonymous chat must 401 — an unauthenticated reply bills PRIM for tokens');
 });
 
