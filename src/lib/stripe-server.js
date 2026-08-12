@@ -8,6 +8,7 @@
 
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
+import { applyPastDueStamp } from './subscriptionAccess.mjs';
 
 let _stripe = null;
 export function getStripe() {
@@ -129,4 +130,12 @@ export function subscriptionToProfileFields(subscription, priceIdToTier) {
     current_period_end: subscription.current_period_end ? new Date(subscription.current_period_end * 1000).toISOString() : null,
     cancel_at_period_end: !!subscription.cancel_at_period_end,
   };
+}
+
+/** Canonical subscription→profile fields INCLUDING the past_due_since
+ * lifecycle. EVERY writer (webhook, sync-after-checkout, refresh-subscription)
+ * uses this — never subscriptionToProfileFields directly. Third arg: the RAW
+ * existing timestamp (profile.past_due_since), string|null. */
+export function applySubscriptionFields(subscription, priceIdToTier, existingPastDueSince) {
+  return applyPastDueStamp(subscriptionToProfileFields(subscription, priceIdToTier), existingPastDueSince);
 }

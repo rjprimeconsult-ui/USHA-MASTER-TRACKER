@@ -154,6 +154,19 @@ export async function POST(req) {
   const auth = await requireUserId(req);
   if (auth instanceof Response) return auth;
 
+  // Subscription gate (spec §3): BASIC/LOCKED never spend on AI/email.
+  // Binding is `subAccess` (not the template's `access`) — this scope already
+  // declares `const access` for the tier gate below (plan Task-5 REVISION).
+  const { requireFullAccess } = await import('@/lib/subscriptionGate.server.mjs');
+  const subAccess = await requireFullAccess(auth);
+  if (!subAccess.ok) {
+    return Response.json(
+      { error: 'Your subscription is not active. Update your payment method to use this feature.',
+        accessLevel: subAccess.level, subscriptionRequired: true },
+      { status: 402 }
+    );
+  }
+
   // Tier gate (Pro+) — defense in depth; the UI also gates this. Mirrors the
   // email/send pattern: load the profile with the service client, then run
   // the same canAccessBetaFeature check the client ran. A 403 tells the
@@ -172,7 +185,7 @@ export async function POST(req) {
   const svc = createClient(svcUrl, svcKey, { auth: { autoRefreshToken: false, persistSession: false } });
   const { data: profile, error: profileErr } = await svc
     .from('profiles')
-    .select('id, email, subscription_status, subscription_tier, trial_ends_at, is_complimentary, is_admin')
+    .select('id, email, subscription_status, subscription_tier, trial_ends_at, is_complimentary, is_admin, past_due_since')
     .eq('id', auth)
     .maybeSingle();
   if (profileErr) {

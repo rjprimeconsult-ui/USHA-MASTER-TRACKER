@@ -252,7 +252,7 @@ test('a held item renders the summary toast (not a countdown) with the Open Prof
   render(<PendingEmailQueueRunner leads={LEADS} onAuditEntry={audit} />);
   await flush();
 
-  expect(await screen.findByText('1 email waiting on sender setup')).toBeTruthy();
+  expect(await screen.findByText('1 email waiting on sender setup or payment')).toBeTruthy();
   expect(screen.queryByText(/Sending in/)).toBeNull();
 
   const events = [];
@@ -282,9 +282,91 @@ test('two held items collapse into ONE summary toast saying 2', async () => {
   render(<PendingEmailQueueRunner leads={LEADS} onAuditEntry={audit} />);
   await flush();
 
-  expect(await screen.findByText('2 emails waiting on sender setup')).toBeTruthy();
+  expect(await screen.findByText('2 emails waiting on sender setup or payment')).toBeTruthy();
   expect(screen.queryAllByText(/waiting on sender setup/)).toHaveLength(1);
   expect(screen.queryByText(/Sending in/)).toBeNull();
+});
+
+// ---- (g) 402 subscription hold — 2026-08-02 enforcement spec §6/§7 ----
+// The stale-client race: a BASIC/LOCKED agent's already-loaded tab fires a
+// queued item, the server answers 402. Burning queued client mail over a
+// payment hiccup mirrors the deploy-day sender-setup disaster this suite
+// exists for — so the explicit `subscriptionRequired: true` flag holds the
+// item instead.
+
+test('402 subscriptionRequired:true reschedules the item — pending, heldReason "subscription", markFired untouched', async () => {
+  const item = mkItem();
+  await saveQueue({ items: [item] });
+  const t0 = Date.now();
+  fetchMock.mockResolvedValue(
+    jsonResponse(false, 402, {
+      error: 'Your subscription is not active. Update your payment method to use this feature.',
+      accessLevel: 'locked',
+      subscriptionRequired: true,
+    })
+  );
+
+  render(<PendingEmailQueueRunner leads={LEADS} onAuditEntry={audit} />);
+
+  await waitFor(async () => {
+    const it = await storedItem(item.id);
+    expect(it.heldReason).toBe('subscription');
+  }, { timeout: 3000 });
+
+  const it = await storedItem(item.id);
+  expect(it.status).toBe('pending');
+  expect(it.scheduledAt).toBeGreaterThanOrEqual(t0 + 14 * 60 * 1000);
+  expect(markFired).not.toHaveBeenCalled();
+  expect(audit).not.toHaveBeenCalled();
+});
+
+test('a 402 WITHOUT subscriptionRequired:true fails the item — only the explicit flag holds', async () => {
+  const item = mkItem();
+  await saveQueue({ items: [item] });
+  fetchMock.mockResolvedValue(jsonResponse(false, 402, { error: 'Payment Required' }));
+
+  render(<PendingEmailQueueRunner leads={LEADS} onAuditEntry={audit} />);
+
+  await waitFor(async () => {
+    const it = await storedItem(item.id);
+    expect(it.status).toBe('failed');
+  }, { timeout: 3000 });
+
+  const it = await storedItem(item.id);
+  expect(it.error).toBe('Payment Required');
+  expect(reschedulePending).not.toHaveBeenCalled();
+});
+
+test('an expired subscription-hold burns with the payment expiry copy — pins item.heldReason, never a bare heldReason', async () => {
+  const item = mkItem({
+    heldReason: 'subscription',
+    enqueuedAt: Date.now() - 73 * 60 * 60 * 1000,
+  });
+  await saveQueue({ items: [item] });
+  // If the runner wrongly POSTs, let it "succeed" so the status assertion
+  // fails loudly with sent-vs-failed instead of a timeout. A bare
+  // `heldReason` in the expiry branch would instead be a ReferenceError →
+  // unhandled rejection → the item stays pending and this times out.
+  fetchMock.mockResolvedValue(jsonResponse(true, 200, { messageId: 'm1' }));
+
+  render(<PendingEmailQueueRunner leads={LEADS} onAuditEntry={audit} />);
+
+  await waitFor(async () => {
+    const it = await storedItem(item.id);
+    expect(it.status).toBe('failed');
+  }, { timeout: 3000 });
+
+  const it = await storedItem(item.id);
+  expect(it.error).toBe('expired while payment on hold');
+  expect(audit).toHaveBeenCalledWith(
+    'lead-1',
+    expect.objectContaining({
+      status: 'failed',
+      error: 'expired while payment on hold',
+    })
+  );
+  await flush();
+  expect(fetchMock).not.toHaveBeenCalled();
 });
 
 // ---- (f) a reschedule that throws must NOT convert the hold into a burn ----

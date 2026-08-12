@@ -1,7 +1,10 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { Lock, Sparkles, ArrowRight, Loader2, X, AlertTriangle, Zap } from 'lucide-react';
-import { useSubscription, hasActiveSubscription, isInTrial, trialDaysLeft, isComplimentary, syncAfterCheckout } from '@/lib/subscription';
+import { useSubscription, isInTrial, trialDaysLeft, isComplimentary, syncAfterCheckout, openCustomerPortal } from '@/lib/subscription';
+import { accessLevel, ACCESS, graceDaysLeft } from '@/lib/subscriptionAccess.mjs';
+import { LEGAL } from '@/lib/legalConfig.mjs';
+import { authedFetch } from '@/lib/authedFetch';
 import { loadSenderIdentity } from '@/lib/postSaleEmails';
 import SenderSetupPrompt, { shouldShowSenderSetupPrompt } from './SenderSetupPrompt';
 
@@ -19,7 +22,9 @@ import SenderSetupPrompt, { shouldShowSenderSetupPrompt } from './SenderSetupPro
  *   - User isn't signed in (auth handles its own gate)
  *   - Subscription state is still loading
  *   - We're mid-sync after a successful checkout
- *   - User has any kind of active access (trial, active, past_due grace)
+ *   - Access resolves FULL (active, trialing, admin, complimentary)
+ * BASIC (past_due inside the 3-day grace) renders children under a
+ * non-dismissible grace banner; LOCKED renders a wall instead of children.
  */
 export default function PaywallGate({ children }) {
   const { loading, profile, refresh } = useSubscription();
@@ -82,6 +87,23 @@ export default function PaywallGate({ children }) {
     return () => { alive = false; };
   }, [refresh]);
 
+  // Stale-trialing self-heal (spec §2 residual): one throttled re-sync.
+  // MUST sit above the early returns with the other effects (hooks order).
+  useEffect(() => {
+    if (profile?.subscription_status === 'trialing' && profile.trial_ends_at
+        && new Date(profile.trial_ends_at).getTime() < Date.now()) {
+      // Storage can throw when partitioned/blocked (embedded contexts,
+      // hardened privacy settings). This user is FULL — an uncaught throw
+      // here blanks the app for a paying agent, and without the flag the
+      // throttle is gone too, so skip the optional resync entirely.
+      try {
+        if (sessionStorage.getItem('trial_resync_v1')) return;
+        sessionStorage.setItem('trial_resync_v1', '1');
+      } catch { return; }
+      authedFetch('/api/stripe/refresh-subscription', { method: 'POST' }).then(() => refresh()).catch(() => {});
+    }
+  }, [profile, refresh]);
+
   // While the post-checkout sync is in flight, render the children with
   // a small overlay so the user sees progress instead of a paywall flash.
   if (postCheckoutSyncing) {
@@ -101,7 +123,9 @@ export default function PaywallGate({ children }) {
   // either — let the regular sign-in flow handle them.
   if (loading || !profile) return children;
 
-  if (hasActiveSubscription(profile)) {
+  const level = accessLevel(profile);
+
+  if (level === ACCESS.FULL) {
     return (
       <>
         {children}
@@ -114,8 +138,127 @@ export default function PaywallGate({ children }) {
     );
   }
 
-  // No active subscription → soft paywall
-  return <PaywallScreen profile={profile} />;
+  // BASIC: past_due inside the 3-day grace — app stays usable, paid
+  // features are already 402'd server-side; the banner says why.
+  if (level === ACCESS.BASIC) return (<><GraceBanner profile={profile} />{children}</>);
+
+  // LOCKED: which wall depends on whether a live-but-delinquent Stripe sub
+  // exists. past_due/unpaid → the portal fixes it (a /pricing checkout on a
+  // live sub would 409-loop); anything else → new checkout.
+  const s = profile.subscription_status;
+  if (s === 'past_due' || s === 'unpaid') return <PaymentWall onRecovered={refresh} />;
+  return <PaywallScreen profile={profile} />;   // null | canceled | incomplete_expired → new checkout
+}
+
+/**
+ * In-flow amber banner for BASIC (past_due, inside the 3-day grace).
+ * In-flow — ABOVE children, never fixed — because a fixed banner covers the
+ * app header (TrialBanner at LeadTracker.jsx:2159 is the precedent).
+ * Non-dismissible on purpose: this is a payment problem, not a nudge.
+ */
+function GraceBanner({ profile }) {
+  const days = graceDaysLeft(profile);
+  const msg = days != null
+    ? `Your payment failed — ${days} day${days === 1 ? '' : 's'} of limited access left. AI features and email are paused until you update your payment.`
+    : 'Your payment failed — limited access. AI features and email are paused until you update your payment.';
+  return (
+    <div className="bg-gradient-to-r from-amber-500 to-orange-600 text-white text-sm py-2 px-4 flex items-center justify-center gap-3 flex-wrap">
+      <AlertTriangle size={14} className="flex-shrink-0" />
+      <span>{msg}</span>
+      <button
+        onClick={() => { openCustomerPortal().catch(() => {}); }}
+        className="bg-white/20 hover:bg-white/30 rounded-lg px-3 py-1 text-xs font-semibold transition"
+      >
+        Update payment
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Hard wall for LOCKED accounts whose Stripe sub is still alive
+ * (past_due past grace, or unpaid). Modeled on PaywallScreen's layout but
+ * with NO auto-redirect and NO "See plans" — these users have a live sub,
+ * so /pricing checkout would 409-loop; the Customer Portal is the path.
+ * Exactly two actions: update payment, or recheck after paying.
+ */
+function PaymentWall({ onRecovered }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const openPortal = async () => {
+    setError('');
+    try {
+      await openCustomerPortal();
+    } catch (e) {
+      setError(e?.message || 'Could not open the payment portal. Please try again.');
+    }
+  };
+
+  const recheck = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      const res = await authedFetch('/api/stripe/refresh-subscription', { method: 'POST' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      // The route 200s with {ok:false} when no customer/subscription exists,
+      // and {ok:true, subscription_status} after a sync — a sync can succeed
+      // while the sub is still delinquent, so branch on the body, not res.ok.
+      const data = await res.json().catch(() => null);
+      // Refresh the local profile regardless: the sync may have changed state
+      // even when the sub isn't active yet, and a refresh() rejection must not
+      // read as "sync failed" (the wall re-renders from profile state anyway).
+      await Promise.resolve(onRecovered()).catch(() => {});
+      if (!data?.ok || !['active', 'trialing'].includes(data.subscription_status)) {
+        setError('Your payment hasn’t gone through yet. If you just paid, give it a minute and recheck.');
+      }
+    } catch {
+      setError('Still no active subscription found. If you just paid, give it a minute and recheck.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-amber-50 via-white to-orange-50 px-4">
+      <div className="max-w-md text-center">
+        <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 text-white flex items-center justify-center shadow-lg">
+          <Lock size={28} />
+        </div>
+        <h1 className="text-2xl font-bold text-slate-900 mb-2">Your subscription is paused</h1>
+        <p className="text-slate-600 mb-6">
+          Update your payment method to get back in — your data is safe and exactly where you left it.
+        </p>
+        <div className="flex flex-col items-center gap-3">
+          <button
+            onClick={openPortal}
+            disabled={busy}
+            className="inline-flex items-center gap-2 bg-gradient-to-br from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white rounded-xl px-5 py-2.5 font-semibold shadow-lg shadow-indigo-500/30 disabled:opacity-60"
+          >
+            Update payment method
+          </button>
+          <button
+            onClick={recheck}
+            disabled={busy}
+            className="inline-flex items-center gap-2 text-slate-600 hover:text-slate-900 rounded-xl px-4 py-2 text-sm font-semibold border border-slate-200 hover:border-slate-300 disabled:opacity-60"
+          >
+            {busy && <Loader2 size={14} className="animate-spin" />}
+            I&apos;ve paid — recheck
+          </button>
+        </div>
+        {error && <p className="text-sm text-rose-600 mt-4">{error}</p>}
+        {/* Spec §3 N-8: a locked agent must always have a support path — if the
+            portal errors, these two buttons are otherwise the whole universe. */}
+        <p className="text-xs text-slate-400 mt-6">
+          Having trouble? Email{' '}
+          <a href={`mailto:${LEGAL.contactEmail}`} className="underline hover:text-slate-600">
+            {LEGAL.contactEmail}
+          </a>{' '}
+          and we&apos;ll get you back in.
+        </p>
+      </div>
+    </div>
+  );
 }
 
 function PaywallScreen({ profile }) {
@@ -142,7 +285,7 @@ function PaywallScreen({ profile }) {
         <p className="text-slate-600 mb-6">
           {wasInTrial
             ? 'Pick a plan to keep using PRIM. Your data is safe and waiting — nothing is deleted.'
-            : 'Pick a plan to unlock PRIM. 7-day free trial on every plan, cancel anytime.'}
+            : 'Pick a plan to unlock PRIM. 7-day free trial for new customers, cancel anytime.'}
         </p>
         <a
           href="/pricing"

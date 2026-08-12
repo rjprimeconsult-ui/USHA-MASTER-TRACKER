@@ -20,6 +20,8 @@
  *      above have access.
  */
 
+import { isFull } from './subscriptionAccess.mjs';
+
 // ---------- Tier helpers ----------
 
 const TIER_ORDER = ['starter', 'pro', 'team'];
@@ -34,19 +36,15 @@ function meetsTierRequirement(userTier, requiredTier) {
 }
 
 // ---------- Pure active-subscription check ----------
-// Mirrors src/lib/subscription.js → hasActiveSubscription, inlined so this
-// module stays import-safe from server routes.
+// Delegates to the subscription access resolver (subscriptionAccess.mjs,
+// pure + import-safe from server routes): "active" here means FULL access.
+// Two deliberate semantics changes vs the old inlined body (2026-08-02
+// enforcement spec §2): past_due maps to BASIC, so paid features gate off
+// during the grace window; and an EXPIRED 'trialing' row stays FULL
+// (CRITICAL-2 — a lingering 'trialing' means OUR webhook lagged, and
+// PaywallGate self-heals the stale row via refresh-subscription).
 function hasActiveSubscription(profile) {
-  if (!profile) return false;
-  if (profile.is_complimentary === true) return true;
-  const s = profile.subscription_status;
-  if (s === 'active') return true;
-  if (s === 'trialing') {
-    if (!profile.trial_ends_at) return true;
-    return new Date(profile.trial_ends_at).getTime() > Date.now();
-  }
-  if (s === 'past_due') return true;
-  return false;
+  return isFull(profile);
 }
 
 // ---------- Beta feature registry ----------

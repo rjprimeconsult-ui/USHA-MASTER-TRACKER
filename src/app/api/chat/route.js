@@ -117,8 +117,33 @@ export async function POST(req) {
     }
   }
 
-  // Auth — gates tool use. No token = no tools but chat still works.
+  // Auth — REQUIRED. Anonymous chat was a token-cost loophole (spec §11.5,
+  // closed by operator decision 2026-08-12): a locked agent stripping the
+  // Authorization header is indistinguishable from a stranger, and every
+  // anonymous reply billed PRIM. Nothing in the product calls chat
+  // signed-out — AgentChatbot is the only caller and lives inside the
+  // authed app; it surfaces this error string in the chat window.
   const userId = await authenticate(req);
+  if (!userId) {
+    return Response.json(
+      { error: 'Sign in to use the PRIM Assistant.' },
+      { status: 401 }
+    );
+  }
+
+  // Subscription gate (spec §3): BASIC/LOCKED never spend on AI/email.
+  if (userId) {
+    const { requireFullAccess } = await import('@/lib/subscriptionGate.server.mjs');
+    const access = await requireFullAccess(userId);
+    if (!access.ok) {
+      return Response.json(
+        { error: 'Your subscription is not active. Update your payment method to use this feature.',
+          accessLevel: access.level, subscriptionRequired: true },
+        { status: 402 }
+      );
+    }
+  }
+
   const serviceClient = userId ? getServiceClient() : null;
   const toolsEnabled = !!(userId && serviceClient);
 
@@ -130,7 +155,7 @@ export async function POST(req) {
     : '';
   const toolsSuffix = toolsEnabled
     ? '\n\nTOOLS: You have read-only tools (searchLeads, getExpenseTotals, getImportHistory, getSubscriptionStatus, getVendorMemory, getStatementGaps). Call them whenever the user asks a specific data question instead of guessing or asking them to look. Don\'t announce that you\'re calling a tool — just use the result naturally in your reply.'
-    : '\n\nTOOLS: Read-only data tools are not available in this session (user not signed in). Answer from the system prompt + their context block only.';
+    : '\n\nTOOLS: Read-only data tools are temporarily unavailable in this session. Answer from the system prompt + their context block only, and never tell the user they are signed out — they are signed in.';
 
   const client = new Anthropic({ apiKey });
 

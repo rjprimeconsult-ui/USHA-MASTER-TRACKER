@@ -15,6 +15,7 @@ import {
   msUntilFire,
 } from '@/lib/pendingEmailQueue';
 import { loadBundle, renderTemplate } from '@/lib/postSaleEmails';
+import { openCustomerPortal } from '@/lib/subscription';
 import { useBetaFeature } from '@/lib/useBetaFeature';
 import { supabase, supabaseConfigured } from '@/lib/supabase';
 
@@ -31,14 +32,17 @@ import { supabase, supabaseConfigured } from '@/lib/supabase';
  *      entry onto the lead via onAuditEntry — on failure branches too, so
  *      a burned item is always visible in the lead's email log (spec §6.1).
  *   4. Sender-setup refusals (428/503 with setupRequired, except
- *      stale_client) RESCHEDULE the item +15 min with a heldReason instead
- *      of failing it — queued client mail must survive an incomplete
- *      sender identity. Held items older than 72h are explicitly failed
- *      ('expired while sender setup incomplete') rather than flushing
- *      stale mail when setup completes.
- *   5. Held items collapse into ONE summary toast with an
- *      "Open Profile → Sender" action (dispatches 'prim:open-profile');
- *      only un-held items get the per-item countdown toast.
+ *      stale_client) and subscription refusals (402 with
+ *      subscriptionRequired — the stale-client race, 2026-08-02
+ *      enforcement spec §7) RESCHEDULE the item +15 min with a heldReason
+ *      instead of failing it — queued client mail must survive an
+ *      incomplete sender identity or a payment hiccup. Held items older
+ *      than 72h are explicitly failed with reason-aware copy rather than
+ *      flushing stale mail when setup completes or payment recovers.
+ *   5. Held items collapse into ONE summary toast; setup holds get an
+ *      "Open Profile → Sender" action (dispatches 'prim:open-profile'),
+ *      payment holds get an "Update payment" action (customer portal).
+ *      Only un-held items get the per-item countdown toast.
  *   6. Prune completed/canceled items older than 24h so storage stays slim.
  *
  * Mount this once at the top of LeadTracker, alongside other root-level
@@ -133,12 +137,17 @@ export default function PendingEmailQueueRunner({ leads, onAuditEntry }) {
       const rendered = renderTemplate(template, lead, profile, bundle, {
         agentName: template.fromName || profile?.email?.split('@')[0],
       });
-      // Staleness bound (spec §6.1): an item held for sender setup past 72h
-      // is burned EXPLICITLY — failed + audited — before any POST. A
-      // days-late "congrats on your new policy" flushing the moment the
-      // agent completes setup is worse than no email at all.
+      // Staleness bound (spec §6.1): an item held past 72h is burned
+      // EXPLICITLY — failed + audited — before any POST. A days-late
+      // "congrats on your new policy" flushing the moment the agent
+      // completes setup (or fixes payment) is worse than no email at all.
+      // Reason-aware copy reads item.heldReason — the binding in scope
+      // here is `item`; a bare `heldReason` would be a ReferenceError
+      // outside the try below → unhandled rejection → infinite retries.
       if (isExpiredHold(item, now)) {
-        const error = 'expired while sender setup incomplete';
+        const error = item.heldReason === 'subscription'
+          ? 'expired while payment on hold'
+          : 'expired while sender setup incomplete';
         await markFired(item.id, { status: 'failed', error });
         failAudit(error, rendered);
         setQueue(await loadQueue());
@@ -182,8 +191,11 @@ export default function PendingEmailQueueRunner({ leads, onAuditEntry }) {
         if (!res.ok) {
           const setupHold = (res.status === 428 || res.status === 503)
             && data?.setupRequired && data.setupRequired !== 'stale_client';
-          if (setupHold) {
-            // Sender setup incomplete (428) or identity read blip (503):
+          const subscriptionHold = res.status === 402 && data?.subscriptionRequired === true;
+          if (setupHold || subscriptionHold) {
+            // Sender setup incomplete (428), identity read blip (503), or
+            // subscription gate (402 with the explicit subscriptionRequired
+            // flag — the stale-client race, 2026-08-02 enforcement spec §7):
             // reschedule, never fail — the item stays pending, visible,
             // and retryable (spec §6.1). Own try/catch so a storage blip
             // inside the reschedule cannot fall through to the outer
@@ -192,7 +204,7 @@ export default function PendingEmailQueueRunner({ leads, onAuditEntry }) {
             try {
               await reschedulePending(item.id, {
                 scheduledAt: Date.now() + 15 * 60 * 1000,
-                heldReason: data.setupRequired,
+                heldReason: setupHold ? data.setupRequired : 'subscription',
               });
             } catch (reschedErr) {
               console.warn('pending email reschedule failed; item stays pending', reschedErr);
@@ -258,12 +270,18 @@ export default function PendingEmailQueueRunner({ leads, onAuditEntry }) {
           />
         );
       })}
-      {held.length > 0 && <HeldSummaryToast count={held.length} />}
+      {held.length > 0 && <HeldSummaryToast items={held} />}
     </div>
   );
 }
 
-function HeldSummaryToast({ count }) {
+function HeldSummaryToast({ items }) {
+  const count = items.length;
+  // Payment holds (heldReason 'subscription', from a 402) point at
+  // billing/portal; sender-setup holds (any other heldReason) point at
+  // Profile → Sender. Mixed holds show both actions.
+  const hasPaymentHold = items.some(it => it.heldReason === 'subscription');
+  const hasSetupHold = items.some(it => it.heldReason && it.heldReason !== 'subscription');
   return (
     <div className="bg-white border border-amber-300 shadow-lg rounded-xl p-3 flex items-start gap-3 animate-in fade-in slide-in-from-left-2">
       <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center flex-shrink-0">
@@ -271,18 +289,31 @@ function HeldSummaryToast({ count }) {
       </div>
       <div className="flex-1 min-w-0">
         <div className="text-sm font-semibold text-slate-900">
-          {count} email{count === 1 ? '' : 's'} waiting on sender setup
+          {count} email{count === 1 ? '' : 's'} waiting on sender setup or payment
         </div>
         <div className="text-xs text-slate-600 mt-0.5">
-          Held until your sender identity is complete. Held emails expire after 72 hours.
+          Held until your sender identity is complete and your subscription is active. Held emails expire after 72 hours.
         </div>
-        <button
-          type="button"
-          onClick={() => window.dispatchEvent(new CustomEvent('prim:open-profile', { detail: { section: 'sender' } }))}
-          className="text-xs text-amber-700 hover:bg-amber-50 px-2 py-1 rounded font-medium mt-1 -ml-2"
-        >
-          Open Profile &rarr; Sender
-        </button>
+        {hasSetupHold && (
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new CustomEvent('prim:open-profile', { detail: { section: 'sender' } }))}
+            className="text-xs text-amber-700 hover:bg-amber-50 px-2 py-1 rounded font-medium mt-1 -ml-2"
+          >
+            Open Profile &rarr; Sender
+          </button>
+        )}
+        {hasPaymentHold && (
+          <button
+            type="button"
+            onClick={() => {
+              openCustomerPortal().catch(err => console.warn('customer portal open failed', err));
+            }}
+            className="text-xs text-amber-700 hover:bg-amber-50 px-2 py-1 rounded font-medium mt-1 -ml-2"
+          >
+            Update payment
+          </button>
+        )}
       </div>
     </div>
   );

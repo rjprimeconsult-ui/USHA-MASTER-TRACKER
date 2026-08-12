@@ -49,9 +49,14 @@ test('trial counts AT THE TRIALED TIER: pro trial passes, starter trial does not
   const starterTrial = canAccessBetaFeature('followup_drafts', P({ subscription_status: 'trialing', trial_ends_at: FUTURE, subscription_tier: 'starter' }));
   assert.equal(starterTrial.canAccess, false);
   assert.equal(starterTrial.reason, 'tier_too_low');
+  // CRITICAL-2 (2026-08-02 enforcement spec §2): an EXPIRED 'trialing' row
+  // still passes. Stripe moves a genuinely failed trial to past_due within
+  // seconds, so a lingering 'trialing' means OUR webhook lagged — and
+  // walling a just-charged paying agent over our own lag is the worse
+  // error. PaywallGate self-heals the stale row via refresh-subscription.
   const expired = canAccessBetaFeature('followup_drafts', P({ subscription_status: 'trialing', trial_ends_at: PAST }));
-  assert.equal(expired.canAccess, false);
-  assert.equal(expired.reason, 'no_subscription');
+  assert.equal(expired.canAccess, true);
+  assert.equal(expired.reason, 'tier_match');
 });
 
 test('canceled / unpaid are denied even at pro tier', () => {
@@ -59,8 +64,40 @@ test('canceled / unpaid are denied even at pro tier', () => {
   assert.equal(canAccessBetaFeature('followup_drafts', P({ subscription_status: 'unpaid' })).canAccess, false);
 });
 
-test('past_due keeps access at pro tier (grace period)', () => {
-  assert.equal(canAccessBetaFeature('followup_drafts', P({ subscription_status: 'past_due' })).canAccess, true);
+test('past_due is denied paid features — grace is BASIC, not FULL', () => {
+  // Rewritten for subscription enforcement (2026-08-02 spec §2): past_due
+  // now maps to BASIC access, and BASIC blocks paid AI/email features
+  // client-side. The old "past_due keeps access" grace semantics moved to
+  // hasBasicOrBetter — APP access survives the 3-day grace window, paid
+  // features do not.
+  const r = canAccessBetaFeature('followup_drafts', P({ subscription_status: 'past_due' }));
+  assert.equal(r.canAccess, false);
+  assert.equal(r.reason, 'no_subscription');
+});
+
+test('past_due with a 1-day-old stamp is still denied (inside grace, still BASIC)', () => {
+  const r = canAccessBetaFeature('followup_drafts', P({
+    subscription_status: 'past_due',
+    past_due_since: new Date(Date.now() - 86400000).toISOString(),
+  }));
+  assert.equal(r.canAccess, false);
+  assert.equal(r.reason, 'no_subscription');
+});
+
+test('THE COMPLIMENTARY INVARIANT survives past_due: comp/admin/allowlist stay true', () => {
+  const pastDue = {
+    subscription_status: 'past_due',
+    past_due_since: new Date(Date.now() - 86400000).toISOString(),
+  };
+  const comp = canAccessBetaFeature('followup_drafts', P({ ...pastDue, is_complimentary: true, subscription_tier: null }));
+  assert.equal(comp.canAccess, true);
+  assert.equal(comp.reason, 'complimentary');
+  const admin = canAccessBetaFeature('followup_drafts', P({ ...pastDue, is_admin: true, subscription_tier: null }));
+  assert.equal(admin.canAccess, true);
+  assert.equal(admin.reason, 'admin');
+  const allowlisted = canAccessBetaFeature('followup_drafts', P({ ...pastDue, email: 'juantrejo9082@gmail.com', subscription_tier: null }));
+  assert.equal(allowlisted.canAccess, true);
+  assert.equal(allowlisted.reason, 'beta_allowlist');
 });
 
 test('complimentary users get everything — no tier needed', () => {

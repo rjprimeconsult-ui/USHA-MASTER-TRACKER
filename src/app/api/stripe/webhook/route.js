@@ -16,7 +16,7 @@
  * Stripe Dashboard → Developers → Webhooks → endpoint detail page).
  */
 
-import { getStripe, getSupabaseAdmin, subscriptionToProfileFields } from '@/lib/stripe-server';
+import { getStripe, getSupabaseAdmin, applySubscriptionFields } from '@/lib/stripe-server';
 import { priceIdToTier } from '@/lib/stripe-prices';
 import { sendWelcomeEmailForUser } from '@/lib/welcomeEmails';
 
@@ -58,7 +58,7 @@ async function syncSubscription(subscriptionId) {
   // welcome-email path can fire without an extra round-trip.
   const { data: profile, error: lookupErr } = await supabase
     .from('profiles')
-    .select('id, email')
+    .select('id, email, past_due_since')
     .eq('stripe_customer_id', customerId)
     .maybeSingle();
   if (lookupErr) throw lookupErr;
@@ -67,7 +67,7 @@ async function syncSubscription(subscriptionId) {
     return null;
   }
 
-  const fields = subscriptionToProfileFields(subscription, priceIdToTier);
+  const fields = applySubscriptionFields(subscription, priceIdToTier, profile.past_due_since);
   const { error: updateErr } = await supabase
     .from('profiles')
     .update(fields)
