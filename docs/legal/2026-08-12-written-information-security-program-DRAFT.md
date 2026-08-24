@@ -58,8 +58,8 @@ information PRIM holds, and how each is currently addressed:
 
 | Risk | Mitigation | Status |
 |---|---|---|
-| Compromised owner/admin credentials | Strong, unique password + Supabase Auth; **MFA on the admin account** | ⚠️ **GAP — see §9, priority action** |
-| Compromised agent credentials | Supabase Auth (hashed passwords, never stored in plaintext); **leaked-password protection** (rejects known-breached passwords at signup/reset) | ⚠️ **GAP — see §9, priority action** |
+| Compromised owner/admin credentials | Strong, unique password + Supabase Auth; **TOTP MFA required on admin accounts** (forced enrollment + per-sign-in challenge; project-level TOTP verified enabled 2026-08-12) | ✅ In place client-side as of 2026-08-12 — server-side aal2 enforcement on admin routes pending, see §9 |
+| Compromised agent credentials | Supabase Auth (hashed passwords, never stored in plaintext); **leaked-password protection ENABLED 2026-08-12** (HaveIBeenPwned check rejects known-breached passwords at signup and password change) | ✅ In place |
 | Unauthorized cross-account data access | Postgres Row-Level Security (RLS) on every data table, scoped to auth.uid() — an agent's queries can only return that agent's own rows; verified programmatically (65 auth.uid()-scoped policies as of this draft) | ✅ In place |
 | Privilege escalation via client-writable columns | profiles.is_admin and profiles.is_complimentary are excluded from the client-writable RLS surface (see the privilege-lockdown migration) — an agent cannot grant themselves admin or complimentary status by editing their own row | ✅ In place (verify the lockdown migration is applied in production — see §9) |
 | Stolen/leaked payment card data | PRIM never receives or stores full card numbers — all card collection happens on Stripe-hosted Checkout pages; PRIM stores only a Stripe customer ID and subscription status | ✅ In place (by design — out of scope by architecture) |
@@ -168,8 +168,8 @@ are tracked, owned, and should be closed in roughly this order:
 
 | # | Gap | Why it matters | Owner | Target |
 |---|---|---|---|---|
-| 1 | No MFA on the admin/owner account | Single point of failure — a compromised owner password compromises every agent's data | Juan | Next available session |
-| 2 | Supabase leaked-password protection not enabled | Lets an agent sign up or reset into a password already known to be breached elsewhere | Juan | Next available session |
+| 1 | ~~No MFA on the admin/owner account~~ **CLOSED 2026-08-12** — TOTP forced enrollment + sign-in challenge shipped to prod (438291800183). **Residual:** the gate is client-side; a stolen password could still reach the API directly, since RLS checks identity, not AAL. | Single point of failure — a compromised owner password compromises every agent's data | Juan + Claude Code | **Follow-up: require aal2 on the 5 admin routes** (broadcast, duplicate-leads, impersonate, phantom-bonuses, tickets) once enrollment is confirmed |
+| 2 | ~~Supabase leaked-password protection not enabled~~ **CLOSED 2026-08-12** — enabled at Authentication → Attack Protection (toggle lives in the Email provider panel), verified ENABLED after reload | Lets an agent sign up or reset into a password already known to be breached elsewhere | Juan | ✅ Done |
 | 3 | TextDrip API keys stored in plaintext (user_kv) | A database-read-level exposure would leak agents' TextDrip credentials directly (task #51 — needs a migration path for agents with an existing key, deliberately not rushed) | Juan + Claude Code | Design pass scheduled |
 | 4 | No formal vendor security review on file | Can't yet produce "we reviewed each subprocessor's security posture" as a documented step, only "we chose reputable, named vendors" | Juan | Before a broker/regulator asks |
 | 5 | No documented account-recovery/succession plan | If the owner is unreachable, there is no written procedure for regaining vendor account access | Juan | Low urgency, single-operator risk |
