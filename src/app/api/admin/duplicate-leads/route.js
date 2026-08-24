@@ -14,6 +14,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
+import { requireAdminMfa } from '@/lib/adminMfa.server.mjs';
 import { findDuplicateGroups } from '@/lib/leadDedup';
 
 export const dynamic = 'force-dynamic';
@@ -47,6 +48,14 @@ async function authAdmin(req) {
     .single();
   if (profErr) return { err: `Profile lookup failed: ${profErr.message}` };
   if (!profile?.is_admin) return { err: 'Admin role required' };
+
+  // Admin actions require a completed second factor (WISP gap #1). The
+  // client gate only controls rendering — this is what stops a stolen
+  // admin password from reaching this endpoint directly.
+  const mfa = await requireAdminMfa({
+    accessToken: accessToken, user: userResp.user, adminClient: admin,
+  });
+  if (!mfa.ok) return { err: mfa.error };
   return { admin, callerEmail: userResp.user.email };
 }
 

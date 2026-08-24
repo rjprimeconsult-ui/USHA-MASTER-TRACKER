@@ -64,3 +64,25 @@ export function mfaState({ currentLevel, nextLevel, factors, isAdmin }) {
 
   return MFA.OK;
 }
+
+/**
+ * Server-side admin decision: may this caller reach an admin route?
+ *
+ * This is the control that actually stops a stolen admin password. The
+ * client gate only decides what renders; an attacker with the password can
+ * skip the UI entirely and call /api/admin/* directly, so the same question
+ * has to be answered again here, from the token.
+ *
+ * Rules, in order:
+ *   aal2                     → allow (completed the code prompt)
+ *   aal1 + verified factor   → DENY  (the stolen-password case)
+ *   aal1 + no/unknown factor → allow (not enrolled yet, or the factor list
+ *                              could not be read — the client gate forces
+ *                              enrollment, and bricking every admin tool
+ *                              over an unreadable API shape is the worse
+ *                              failure)
+ */
+export function adminMfaOk({ aal, factors }) {
+  if (aal === 'aal2') return true;
+  return verifiedTotpFactor(factors) === null;
+}

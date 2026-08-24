@@ -19,6 +19,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
+import { requireAdminMfa } from '@/lib/adminMfa.server.mjs';
 import { appUrl } from '@/lib/appUrl.mjs';
 
 export const dynamic = 'force-dynamic';
@@ -82,6 +83,14 @@ export async function POST(req) {
       return jsonResponse(401, { error: `Profile lookup failed: ${profErr.message}` });
     }
     if (!profile?.is_admin) return jsonResponse(401, { error: 'Admin role required' });
+
+    // Admin actions require a completed second factor (WISP gap #1). The
+    // client gate only controls rendering — this is what stops a stolen
+    // admin password from reaching this endpoint directly.
+    const mfa = await requireAdminMfa({
+      accessToken: accessToken, user: userResp.user, adminClient: admin,
+    });
+    if (!mfa.ok) return jsonResponse(403, { error: mfa.error });
 
     // 4. Parse target email
     let body;

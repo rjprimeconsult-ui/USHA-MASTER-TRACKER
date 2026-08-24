@@ -138,3 +138,26 @@ test('the blast capture path carries no subscription gates (standing never-touch
     }
   }
 });
+
+test('every admin route enforces MFA server-side (WISP gap #1 residual)', () => {
+  // The client gate only controls rendering. If these calls disappear, a
+  // stolen admin password reaches /api/admin/* directly again — including
+  // impersonate, which mints a login link for ANY agent.
+  const ADMIN_ROUTES = [
+    'src/app/api/admin/broadcast/route.js',
+    'src/app/api/admin/duplicate-leads/route.js',
+    'src/app/api/admin/impersonate/route.js',
+    'src/app/api/admin/phantom-bonuses/route.js',
+    'src/app/api/admin/tickets/[id]/route.js',
+  ];
+  for (const p of ADMIN_ROUTES) {
+    const src = read(p);
+    assert.equal(count(src, /requireAdminMfa\(/g), 1, `${p} must call requireAdminMfa exactly once`);
+    assert.ok(
+      /if \(!mfa\.ok\)/.test(src),
+      `${p} must ACT on the result — a call without the refusal is a no-op`
+    );
+    // The check has to sit behind the is_admin gate, not replace it.
+    assert.ok(src.includes('is_admin'), `${p} must still check is_admin`);
+  }
+});

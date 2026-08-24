@@ -11,6 +11,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
+import { requireAdminMfa } from '@/lib/adminMfa.server.mjs';
 import { postToSlack, announcementBlocks, slackConfigured } from '@/lib/slack';
 import { appUrl } from '@/lib/appUrl.mjs';
 
@@ -42,6 +43,14 @@ export async function POST(req) {
   const { data: profile } = await admin
     .from('profiles').select('is_admin').eq('id', userResp.user.id).single();
   if (!profile?.is_admin) return json(401, { error: 'Admin role required' });
+
+  // Admin actions require a completed second factor (WISP gap #1). The
+  // client gate only controls rendering — this is what stops a stolen
+  // admin password from reaching this endpoint directly.
+  const mfa = await requireAdminMfa({
+    accessToken: match[1], user: userResp.user, adminClient: admin,
+  });
+  if (!mfa.ok) return json(403, { error: mfa.error });
 
   // 2. Validate input
   if (!slackConfigured()) {

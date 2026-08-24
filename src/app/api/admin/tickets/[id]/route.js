@@ -9,6 +9,7 @@
  * Body: { status?, admin_notes?, resolution? }
  */
 import { createClient } from '@supabase/supabase-js';
+import { requireAdminMfa } from '@/lib/adminMfa.server.mjs';
 import { buildResolutionEmail } from '@/lib/tickets.mjs';
 import { sendTicketEmail } from '@/lib/ticketEmails';
 
@@ -35,6 +36,14 @@ export async function POST(req, ctx) {
   if (userErr || !userResp?.user) return json(401, { error: 'Invalid session' });
   const { data: profile } = await admin.from('profiles').select('is_admin').eq('id', userResp.user.id).single();
   if (!profile?.is_admin) return json(401, { error: 'Admin role required' });
+
+  // Admin actions require a completed second factor (WISP gap #1). The
+  // client gate only controls rendering — this is what stops a stolen
+  // admin password from reaching this endpoint directly.
+  const mfa = await requireAdminMfa({
+    accessToken: m[1], user: userResp.user, adminClient: admin,
+  });
+  if (!mfa.ok) return json(403, { error: mfa.error });
 
   // Next 16: dynamic-route params are async — MUST await.
   const { id } = await ctx.params;
