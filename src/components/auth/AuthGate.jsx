@@ -10,6 +10,7 @@ import { useAuth } from './AuthProvider';
 import ConstellationBackground from '../motion/ConstellationBackground';
 import MigrationPrompt from './MigrationPrompt';
 import LegalAcceptanceGate from './LegalAcceptanceGate';
+import MfaGate from './MfaGate';
 
 /**
  * AuthGate — wraps the app and shows the sign-in / sign-up screen until the
@@ -54,7 +55,10 @@ export default function AuthGate({ children, isMarketingHost = false }) {
           until they accept, and re-prompts everyone when LEGAL.documentVersion
           is bumped. Renders nothing once a current acceptance is on file. */}
       <LegalAcceptanceGate />
-      {children}
+      {/* Admin accounts require a second factor before the app renders
+          (WISP gap #1). Ordinary agents pass straight through unless they
+          opted in. Fails SAFE — see MfaGate's header. */}
+      <MfaGate>{children}</MfaGate>
     </>
   );
 }
