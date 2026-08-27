@@ -3,8 +3,8 @@
 **Date:** 2026-08-26 · **Trigger:** support ticket #4 ("I forgot my password on my
 mac and I want to log in on both") · **Approved approach:** in-place gates, no new
 route (Juan, 2026-08-26). MFA-enrolled accounts must clear the TOTP challenge
-before setting a new password (Juan's decision A, 2026-08-26). · **Rev 2** after
-adversarial review (2 blockers, 4 majors folded in).
+before setting a new password (Juan's decision A, 2026-08-26). · **Rev 3** after two
+adversarial review rounds (r1: 2 blockers + 4 majors; r2: 3 majors).
 
 ## 1. Problem
 
@@ -37,12 +37,20 @@ recovery link must therefore land on the **app origin** — a link that falls
 back to the marketing host renders the landing page while `detectSessionInUrl`
 silently burns the single-use token in the hash.
 
-- The forgot form only renders inside `AuthGate`, which only renders on the app
-  host — so `redirectTo: window.location.origin` is automatically
-  `https://app.primtracker.com` (or `http://localhost:3000` in dev). Correct by
-  construction, but **only if** the Supabase redirect allowlist admits it and
-  the **Site URL fallback is the app origin** (§7 — this is the config that
-  review blocker #1 caught pointing at the marketing host).
+- **`redirectTo` uses `appUrl()`** (`src/lib/appUrl.mjs` — already the repo's
+  "single source of truth for the app origin", resolving to
+  `NEXT_PUBLIC_SITE_URL` = `https://app.primtracker.com`), NOT
+  `window.location.origin`. Review r2 proved the origin is not "correct by
+  construction": `AuthGate` wraps every route on BOTH hosts (`layout.js:45`),
+  and a non-public path on the marketing host (e.g. a stale
+  `www.primtracker.com/leads` bookmark — no custom not-found exists) renders
+  `SignInScreen` on the `www` origin, whose `window.location.origin` the
+  cutover-era allowlist would honor, landing the link on the marketing
+  root and burning the token. `appUrl()` makes the target host-independent.
+  Config hardening in §7 removes the `www` allowlist entry as defense in
+  depth. Dev note: `appUrl()` must resolve to `http://localhost:3000` under
+  local dev (it reads `NEXT_PUBLIC_SITE_URL`; verify `.env.local`'s dev value
+  or fall back to `window.location.origin` ONLY when the env var is absent).
 
 **Recovery detection — belt and braces, because the event alone is racy:**
 supabase-js consumes the hash and emits `PASSWORD_RECOVERY` from a
@@ -50,12 +58,19 @@ supabase-js consumes the hash and emits `PASSWORD_RECOVERY` from a
 mount effect — subscription order vs. dispatch is not guaranteed, and
 `setUser` from `getSession()` lands in an earlier task regardless.
 
-1. **Synchronous hash sniff (primary):** at `AuthProvider`'s first render
-   (before effects, before supabase's timeout can have cleared the hash), read
-   `window.location.hash` once; if it contains `type=recovery`, initialize
-   `recovery: true`. This does not parse or trust the token — supabase-js still
-   does the real verification; the sniff only decides *what screen to show
-   while it does*.
+1. **Synchronous hash sniff (primary):** initialize the `recovery` state via
+   a `useState` initializer that reads `window.location.hash` once — **guarded
+   with `typeof window !== 'undefined'`**. `AuthProvider` is a client
+   component prerendered on the server during `next build`; a bare `window`
+   read in render is a build-breaking ReferenceError (this exact class took
+   down a deploy on 2026-06-12 — see the header of `src/lib/supabase.js`,
+   whose line 15 shows the required guard pattern). Hydration is safe: with
+   `loading: true` on both server and client, `AuthGate` renders the spinner
+   branch either way, so the guarded initializer produces no visible
+   mismatch. If the hash contains `type=recovery`, initialize
+   `recovery: true`. This does not parse or trust the token — supabase-js
+   still does the real verification; the sniff only decides *what screen to
+   show while it does*.
 2. **`PASSWORD_RECOVERY` event (backup):** the existing `onAuthStateChange`
    listener (currently `(_event, session)` — event discarded) also sets
    `recovery: true` on that event name.
@@ -86,7 +101,7 @@ Profile → Security covers them.
 link".
 
 - Calls `supabase.auth.resetPasswordForEmail(email, { redirectTo:
-  window.location.origin })`.
+  appUrl() })` (§3 — host-independent app origin).
 - **Success copy is enumeration-safe and unconditional:** "If an account exists
   for that email, a reset link is on the way. Check spam too." Shown for
   success AND for user-not-found-shaped errors; only rate-limit errors
@@ -102,15 +117,24 @@ already consumed (e.g. Outlook SafeLinks prefetch), supabase-js does **not**
 emit any event; it leaves `#error=access_denied&error_code=otp_expired…` in
 the URL and the user would land on the plain sign-in card with no explanation.
 
-On `SignInScreen` mount: parse `window.location.hash` once; if `error_code`
-is `otp_expired` (or `error=access_denied` with `type=recovery` context),
-show an inline notice — "That reset link has expired or was already used.
-Request a new one." — pre-switch `mode` to `'forgot'`, and clear the hash
-(`history.replaceState`). No token material is logged or displayed.
+On `SignInScreen` mount: parse `window.location.hash` once; key on
+**`error_code` alone** (`otp_expired`, or `error=access_denied` generally) —
+GoTrue's error fragment carries NO `type` parameter, and `otp_expired` is
+shared with stale **signup-confirmation** links riding the same mailer. So the
+copy stays generic and the mode does NOT auto-switch: inline notice "That link
+has expired or was already used. If you were resetting your password, request
+a new link below." on the sign-in card (the Forgot button is adjacent), then
+clear the hash (`history.replaceState`). No token material is logged or
+displayed.
 
 ### 4c. `RecoveryScreen` (new: `src/components/auth/RecoveryScreen.jsx`)
 
-Phases resolved by pure logic (§5): `challenge`, `set`, or `blocked`.
+Phases resolved by pure logic (§5): `loading`, `challenge`, `set`, or
+`blocked`. **`loading`** (AAL/factor lookups in flight) renders a spinner and
+nothing else — the set-password form must never paint before the lookups
+resolve (r2 major #2: without this, an enrolled account's first frame is the
+set form, and a password-manager autofill + Enter rotates the password at
+aal1 with no challenge — decision A defeated on the loading frame).
 
 1. **`challenge`** — the account has a verified TOTP factor and the session is
    aal1 with aal2 reachable: render the existing exported **`MfaChallenge`**
@@ -161,7 +185,11 @@ Phases resolved by pure logic (§5): `challenge`, `set`, or `blocked`.
   call 403s until re-challenge (review major #5; `adminMfaOk` denies
   aal1+factor by design). Instead, verify with a **throwaway non-persisting
   client**: `createClient(url, anonKey, { auth: { persistSession: false,
-  autoRefreshToken: false } })` → `signInWithPassword({ email, password:
+  autoRefreshToken: false, detectSessionInUrl: false, storageKey:
+  'prim-pw-verify' } })` — `detectSessionInUrl` off so construction never
+  parses the URL, and a distinct `storageKey` so the throwaway does not share
+  the singleton's auth-lock name (avoids the "Multiple GoTrueClient
+  instances" warning and lock serialization against an in-flight refresh) → `signInWithPassword({ email, password:
   current })` → on success discard it (`signOut({ scope: 'local' })` on the
   throwaway; never the singleton). The singleton session — and its aal2
   claim — is never replaced. Then `supabase.auth.updateUser({ password })` on
@@ -183,13 +211,15 @@ Reuses `verifiedTotpFactor` (imported from `mfa.mjs`; tolerant of bare-array /
   | # | Condition | Result | Why |
   |---|---|---|---|
   | 1 | `!recovering` | `none` | not in recovery |
-  | 2 | `lookupFailed` | `blocked` | lookups errored → fail-closed retry screen (§4c.3). `lookupFailed` means the AAL or factor **calls errored**; a successful call returning an empty list is NOT a failed lookup |
-  | 3 | `currentLevel === 'aal2'` | `set` | challenge already cleared this session — this row is what terminates the challenge → onDone loop (review major #3) |
-  | 4 | `verifiedTotpFactor(factors)` truthy `&& currentLevel === 'aal1' && nextLevel === 'aal2'` | `challenge` | enrolled, second factor outstanding — mirrors `mfa.mjs:60` exactly, both AAL inputs included |
-  | 5 | otherwise | `set` | no verified factor (affirmatively known) |
+  | 2 | `currentLevel == null && !lookupFailed` | `loading` | lookups in flight — never `set` on the loading frame; mirrors `mfa.mjs:54-55`'s loading guard, inverted to fail CLOSED because this gate's asymmetry is the opposite of MfaGate's |
+  | 3 | `lookupFailed` | `blocked` | lookups errored → fail-closed retry screen (§4c.3). `lookupFailed` means the AAL or factor **calls errored**; a successful call returning an empty list is NOT a failed lookup |
+  | 4 | `currentLevel === 'aal2'` | `set` | challenge already cleared this session — this row is what terminates the challenge → onDone loop (r1 major #3) |
+  | 5 | `verifiedTotpFactor(factors)` truthy `&& currentLevel === 'aal1' && nextLevel === 'aal2'` | `challenge` | enrolled, second factor outstanding — mirrors `mfa.mjs:60` exactly, both AAL inputs included |
+  | 6 | otherwise | `set` | no verified factor (affirmatively known — rows 2/3 above guarantee the lookups RESOLVED by the time this row is reachable) |
 
-  Row 2 beats row 5 by ordering, resolving the rev-1 ambiguity: with
-  `lookupFailed` there IS no factor list to consult.
+  Row 3 beats row 6 by ordering (with `lookupFailed` there is no factor list
+  to consult), and row 2 guarantees `set` is unreachable while
+  `currentLevel` is still null.
 - `newPasswordIssue(pw, confirm)` → `null | 'too_short' | 'mismatch'` — one
   shared validator for recovery and Profile forms.
 - `resetRequestMessage(error)` → maps a `resetPasswordForEmail` result to the
@@ -221,10 +251,15 @@ Reuses `verifiedTotpFactor` (imported from `mfa.mjs`; tolerant of bare-array /
      tokens on the landing page (§3).
    - **Redirect allowlist** must contain `https://app.primtracker.com/**` and
      `http://localhost:3000/**` (dev).
-   - While there, note current values before changing — signup confirmation
-     emails also use the Site URL, so if it currently reads `www…` and signup
-     confirmations work, they work by allowlist or by landing-page tolerance;
-     don't leave it pointing at marketing either way.
+   - **Remove `https://www.primtracker.com/**` from the redirect allowlist**
+     (or confirm it was never added). The subdomain cutover checklist said to
+     keep it "during transition" — the transition is over, and while it
+     remains, any `redirectTo` pointing at `www` is HONORED and burns
+     recovery tokens on the landing page (r2 major #1). `appUrl()` makes the
+     app's own links safe regardless; this closes the config side.
+   - Note current values before changing — signup confirmation emails also
+     use the Site URL; after the change, send yourself a test signup
+     confirmation to verify that flow still lands correctly.
 2. Glance at the **Reset Password email template** (default copy acceptable
    for launch).
 3. Nothing else — no env vars, no migration, no Stripe/Resend involvement.
@@ -232,15 +267,20 @@ Reuses `verifiedTotpFactor` (imported from `mfa.mjs`; tolerant of bare-array /
 ## 8. Testing
 
 - **Node lane** (`src/lib/passwordReset.test.mjs`, picked up by the existing
-  `node --test` glob): every `recoveryPhase` row incl. row-2-beats-row-5
-  ordering, the aal2 terminator row, and the three factor shapes; validator
+  `node --test` glob): every `recoveryPhase` row incl. the row-2 loading
+  guard (null currentLevel NEVER yields `set`), row-3-beats-row-6 ordering,
+  the aal2 terminator row, and the three factor shapes; validator
   boundaries (5/6 chars, mismatch); `resetRequestMessage` incl. 429;
-  `recoveryErrorFromHash` on real hash fixtures.
+  `recoveryErrorFromHash` on real hash fixtures — fixtures must match
+  GoTrue's actual error fragment shape (`error`, `error_code`,
+  `error_description`; NO `type` param).
 - **UI lane** (vitest+RTL jsdom, matching `vitest.config.mjs` include
   `src/**/*.{test,spec}.{jsx,tsx}`; conventions per the header of
   `src/components/auth/LegalAcceptanceGate.test.jsx` and
-  `FollowupNextStep.test.jsx`): `RecoveryScreen` — challenge-before-set for
-  enrolled, straight-to-set for unenrolled, `blocked` retry re-resolves,
+  `FollowupNextStep.test.jsx`): `RecoveryScreen` — spinner while lookups are
+  unresolved (no password input in the DOM on first paint), challenge-before-
+  set for enrolled, straight-to-set for unenrolled, `blocked` retry
+  re-resolves,
   updateUser called with the typed password, inline success then
   clearRecovery; `ChangePasswordForm` — wrong current password blocks update
   (`updateUser` **never called** — `await act(async () => {})` flush before
@@ -250,8 +290,9 @@ Reuses `verifiedTotpFactor` (imported from `mfa.mjs`; tolerant of bare-array /
   enumeration-safe copy on success and on user-not-found; expired-hash notice
   + mode pre-switch; Forgot button `type="button"` (assert clicking it does
   not fire signInWithPassword).
-- **Mutation checks** (manual, house rule): neuter row 3 (aal2 → set) →
-  challenge-loop test goes red; neuter row 4 → enrolled-account test red;
+- **Mutation checks** (manual, house rule): delete row 2 (loading guard) →
+  first-paint test goes red; neuter row 4 (aal2 → set) → challenge-loop test
+  red; neuter row 5 → enrolled-account test red;
   swap the throwaway client for the singleton → session-preservation test
   red; drop the current-password pre-check → red; flip enumeration-safe copy
   condition → red.
