@@ -341,3 +341,8 @@ Reuses `verifiedTotpFactor` (imported from `mfa.mjs`; tolerant of bare-array /
    stuck gate.
 4. The one-render-pass gate flash when only the event path fires (§3) is
    cosmetic and accepted.
+5. **The hash sniff is trust-free by design**, so a signed-in user (or anyone
+   at their unlocked machine) can open `/#type=recovery` and reach the
+   set-password form without the current-password check Profile enforces.
+   Same trust level as calling updateUser from devtools on that session —
+   no escalation — but on record (final-review finding, 2026-08-26).

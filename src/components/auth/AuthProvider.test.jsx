@@ -61,6 +61,17 @@ test('PASSWORD_RECOVERY event (backup path) → recovery true', async () => {
   expect(screen.getByTestId('recovery').textContent).toBe('true');
 });
 
+test('SIGNED_IN with NO recovery hash does NOT set recovery (ordinary sign-in)', async () => {
+  // The load-bearing negative: an unconditional setRecovery(true) in the
+  // event handler would trap every agent on the reset wall at every sign-in.
+  render(<AuthProvider><Probe /></AuthProvider>);
+  await flush();
+  act(() => { listeners.cb('SIGNED_IN', { user: { id: 'u1' } }); });
+  expect(screen.getByTestId('recovery').textContent).toBe('false');
+  act(() => { listeners.cb('TOKEN_REFRESHED', { user: { id: 'u1' } }); });
+  expect(screen.getByTestId('recovery').textContent).toBe('false');
+});
+
 test('other events do NOT set recovery; clearRecovery clears it', async () => {
   window.history.replaceState(null, '', '/#type=recovery');
   render(<AuthProvider><Probe /></AuthProvider>);

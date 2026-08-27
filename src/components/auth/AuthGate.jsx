@@ -105,7 +105,9 @@ function SignInScreen() {
         const { error: err } = await supabase.auth.resetPasswordForEmail(email, {
           redirectTo: resetRedirectTarget({
             origin: window.location.origin,
-            marketingUrl: process.env.NEXT_PUBLIC_MARKETING_URL,
+            // Same fallback as middleware.js — without it, an unset env var
+            // silently no-ops the marketing-host remap and burns the token.
+            marketingUrl: process.env.NEXT_PUBLIC_MARKETING_URL || 'https://www.primtracker.com',
             appOrigin: appUrl(),
           }),
         });

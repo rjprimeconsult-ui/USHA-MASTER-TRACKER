@@ -47,7 +47,9 @@ export default function RecoveryScreen({ onDone }) {
         currentLevel: aalRes?.data?.currentLevel ?? null,
         nextLevel: aalRes?.data?.nextLevel ?? null,
         factors: factorsRes?.data ?? null,
-        lookupFailed: aalRes?.data?.currentLevel == null, // null AAL after a "successful" call = unusable shape
+        // Null AAL or null factor data after a "successful" call = unusable
+        // shape — fail CLOSED (blocked), symmetric for both lookups.
+        lookupFailed: aalRes?.data?.currentLevel == null || factorsRes?.data == null,
       });
     } catch {
       setLookup((s) => ({ ...s, lookupFailed: true }));
