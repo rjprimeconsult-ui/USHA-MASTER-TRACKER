@@ -32,6 +32,13 @@ export const supabase = createClient(
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: true,
+      // flowType intentionally left at the 'implicit' default. Password
+      // recovery depends on it: the reset email must work when opened on a
+      // DIFFERENT device than the one that requested it ("forgot on my mac,
+      // want to log in on both" — ticket #4). Under 'pkce' the code verifier
+      // lives in the requesting browser's localStorage and the link dies on
+      // every other device. Do not change without re-testing cross-device
+      // recovery. (Spec §6.1, 2026-08-26.)
     },
   },
 );

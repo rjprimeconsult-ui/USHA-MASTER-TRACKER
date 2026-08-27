@@ -1,16 +1,19 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { Mail, Lock, AlertCircle, Loader2 } from 'lucide-react';
 import { PrimAppIcon } from '@/components/PrimLogo';
 import { supabase, supabaseConfigured } from '@/lib/supabase';
 import { isPublicRoute } from '@/lib/routeAccess.mjs';
 import { buildAcceptanceRecord } from '@/lib/legalAcceptance.mjs';
+import { recoveryErrorFromHash, resetRequestMessage, resetRedirectTarget } from '@/lib/passwordReset.mjs';
+import { appUrl } from '@/lib/appUrl.mjs';
 import { useAuth } from './AuthProvider';
 import ConstellationBackground from '../motion/ConstellationBackground';
 import MigrationPrompt from './MigrationPrompt';
 import LegalAcceptanceGate from './LegalAcceptanceGate';
 import MfaGate from './MfaGate';
+import RecoveryScreen from './RecoveryScreen';
 
 /**
  * AuthGate — wraps the app and shows the sign-in / sign-up screen until the
@@ -20,7 +23,7 @@ import MfaGate from './MfaGate';
  * see them.
  */
 export default function AuthGate({ children, isMarketingHost = false }) {
-  const { user, loading } = useAuth();
+  const { user, loading, recovery, clearRecovery } = useAuth();
   const pathname = usePathname();
 
   // Public marketing/legal pages bypass auth completely.
@@ -48,6 +51,8 @@ export default function AuthGate({ children, isMarketingHost = false }) {
 
   if (!user) return <SignInScreen />;
 
+  if (recovery) return <RecoveryScreen onDone={clearRecovery} />;
+
   return (
     <>
       <MigrationPrompt />
@@ -65,7 +70,7 @@ export default function AuthGate({ children, isMarketingHost = false }) {
 
 function SignInScreen() {
   const searchParams = useSearchParams();
-  const [mode, setMode] = useState(searchParams.get('signup') === '1' ? 'signup' : 'signin'); // 'signin' | 'signup'
+  const [mode, setMode] = useState(searchParams.get('signup') === '1' ? 'signup' : 'signin'); // 'signin' | 'signup' | 'forgot'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -75,11 +80,45 @@ function SignInScreen() {
   // (version + timestamp) rides along with account creation so there is a
   // durable record of what was agreed to and when.
   const [acceptedLegal, setAcceptedLegal] = useState(false);
+  // 60s cooldown after a reset-link send — a resend spam guard, not a
+  // security control (spec §4a); the real rate limit lives server-side.
+  const [cooldown, setCooldown] = useState(false);
+  // Expired/used-link notice (spec §4b). GoTrue's error redirect emits no
+  // auth event, so this is detected the same way as AuthProvider's recovery
+  // sniff: read the hash synchronously at first render, before the effect
+  // below clears it. Guarded for prerender — see AuthProvider.jsx's sniff.
+  const [linkNotice, setLinkNotice] = useState(() =>
+    typeof window !== 'undefined' && recoveryErrorFromHash(window.location.hash) === 'expired'
+      ? 'That link has expired or was already used. If you were resetting your password, request a new link below.'
+      : ''
+  );
+  useEffect(() => {
+    if (linkNotice) window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const submit = async (e) => {
     e.preventDefault();
     setBusy(true); setError(''); setInfo('');
     try {
+      if (mode === 'forgot') {
+        const { error: err } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: resetRedirectTarget({
+            origin: window.location.origin,
+            marketingUrl: process.env.NEXT_PUBLIC_MARKETING_URL,
+            appOrigin: appUrl(),
+          }),
+        });
+        const msg = resetRequestMessage(err);
+        if (msg.kind === 'rate_limited') setError(msg.text);
+        else {
+          setInfo(msg.text);
+          setCooldown(true);
+          setTimeout(() => setCooldown(false), 60_000);
+        }
+        setBusy(false);
+        return;
+      }
       if (mode === 'signup') {
         if (!acceptedLegal) {
           setError('Please accept the Terms of Service and Privacy Policy to create an account.');
@@ -142,13 +181,22 @@ function SignInScreen() {
         </div>
 
         <h2 className="text-2xl font-extrabold text-slate-900 mb-1 tracking-tight">
-          {mode === 'signin' ? 'Welcome back' : 'Create your account'}
+          {mode === 'signin' ? 'Welcome back' : mode === 'signup' ? 'Create your account' : 'Reset your password'}
         </h2>
         <p className="text-sm text-slate-500 mb-6">
           {mode === 'signin'
             ? 'Pick up where you left off.'
-            : 'Track every deal, every dollar, every week.'}
+            : mode === 'signup'
+            ? 'Track every deal, every dollar, every week.'
+            : "Enter your email and we'll send you a reset link."}
         </p>
+
+        {linkNotice && (
+          <div className="mb-4 bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800 flex items-start gap-2">
+            <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
+            <span>{linkNotice}</span>
+          </div>
+        )}
 
         <form onSubmit={submit} className="space-y-4">
           <div>
@@ -165,21 +213,34 @@ function SignInScreen() {
               />
             </div>
           </div>
-          <div>
-            <label className="text-xs font-bold text-slate-500 tracking-wider uppercase">Password</label>
-            <div className="relative mt-1">
-              <Lock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                type="password"
-                required
-                minLength={6}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder={mode === 'signup' ? 'At least 6 characters' : '••••••••'}
-                className="w-full pl-9 pr-3 py-2.5 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
-              />
+          {mode !== 'forgot' && (
+            <div>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-500 tracking-wider uppercase">Password</label>
+                {mode === 'signin' && (
+                  <button
+                    type="button"
+                    onClick={() => { setMode('forgot'); setError(''); setInfo(''); }}
+                    className="text-xs text-indigo-600 hover:text-indigo-700 font-semibold"
+                  >
+                    Forgot password?
+                  </button>
+                )}
+              </div>
+              <div className="relative mt-1">
+                <Lock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder={mode === 'signup' ? 'At least 6 characters' : '••••••••'}
+                  className="w-full pl-9 pr-3 py-2.5 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800 flex items-start gap-2">
@@ -215,11 +276,11 @@ function SignInScreen() {
 
           <button
             type="submit"
-            disabled={busy || (mode === 'signup' && !acceptedLegal)}
+            disabled={busy || (mode === 'signup' && !acceptedLegal) || (mode === 'forgot' && cooldown)}
             className="w-full bg-accent-gradient disabled:bg-slate-300 disabled:bg-none text-white rounded-lg py-2.5 text-sm font-bold transition flex items-center justify-center gap-2 shadow-accent hover:opacity-95 disabled:opacity-100 disabled:shadow-none"
           >
             {busy && <Loader2 size={14} className="animate-spin" />}
-            {mode === 'signin' ? 'Sign in' : 'Create account'}
+            {mode === 'signin' ? 'Sign in' : mode === 'signup' ? 'Create account' : 'Send reset link'}
           </button>
         </form>
 
@@ -231,13 +292,21 @@ function SignInScreen() {
                 Create one
               </button>
             </>
-          ) : (
+          ) : mode === 'signup' ? (
             <>
               Already have an account?{' '}
               <button onClick={() => { setMode('signin'); setError(''); setInfo(''); }} className="text-indigo-600 hover:text-indigo-700 font-semibold">
                 Sign in
               </button>
             </>
+          ) : (
+            <button
+              type="button"
+              onClick={() => { setMode('signin'); setError(''); setInfo(''); }}
+              className="text-indigo-600 hover:text-indigo-700 font-semibold"
+            >
+              Back to sign in
+            </button>
           )}
         </div>
 
