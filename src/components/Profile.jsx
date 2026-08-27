@@ -44,6 +44,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { useAuth } from './auth/AuthProvider';
+import ChangePasswordForm from './auth/ChangePasswordForm';
 import { PrimAppIcon } from '@/components/PrimLogo';
 import { pushSupported, pushPermission, enablePush, disablePush, isPushEnabled, sendTestPush } from '@/lib/push';
 import {
@@ -84,6 +85,7 @@ const SECTIONS = [
   { id: 'identity',     label: 'Identity',     icon: UserIcon,   phase: 1 },
   { id: 'subscription', label: 'Subscription', icon: CreditCard, phase: 1 },
   { id: 'sender',       label: 'Email sender', icon: Mail,       phase: 1 },
+  { id: 'security',     label: 'Security',     icon: ShieldCheck, phase: 1 },
   { id: 'notifications', label: 'Notifications', icon: Bell,      phase: 1 },
   { id: 'appearance',   label: 'Appearance',   icon: Palette,    phase: 2 },
   { id: 'preferences',  label: 'Preferences',  icon: Sliders,    phase: 2 },
@@ -375,6 +377,7 @@ export default function Profile({ open, onClose, initialSection }) {
                       agentName={agentProfile.displayName}
                     />
                   )}
+                  {active === 'security' && <ChangePasswordForm email={authUser?.email} />}
                   {active === 'notifications' && <NotificationsSection />}
                   {active === 'appearance' && (
                     <AppearanceSection
@@ -394,7 +397,7 @@ export default function Profile({ open, onClose, initialSection }) {
           </div>
 
           {/* Footer — sticky save bar. Subscription is read-only; everything else can be edited. */}
-          {!loading && active !== 'subscription' && (
+          {!loading && active !== 'subscription' && active !== 'security' && (
             <div className="border-t border-slate-200 bg-slate-50/80 backdrop-blur-sm px-6 py-3 flex items-center justify-end gap-3 flex-shrink-0">
               <AnimatePresence>
                 {savedFlash && (
