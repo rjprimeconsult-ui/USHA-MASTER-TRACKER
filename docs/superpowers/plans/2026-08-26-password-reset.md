@@ -10,6 +10,10 @@
 
 **Read the spec first.** Every "why" in this plan is §-referenced to it. The spec is normative on behavior; this plan is normative on sequence.
 
+**Before Task 1 — create the branch:** `git checkout -b feature/password-reset`.
+Every task commits to this branch; nothing lands on main until Juan's merge
+decision at Task 7.4.
+
 **House rules that bind every task:**
 - supabase-js NEVER rejects a failed query — it resolves `{ data, error }`. Check `error` explicitly.
 - UI-lane zero-call assertions need `await act(async () => {})` BEFORE asserting (the runner yields a microtask before calling the API).
@@ -144,6 +148,16 @@ test('resetRedirectTarget: absent marketingUrl → origin wins', () => {
   assert.equal(resetRedirectTarget({ origin: MKT, marketingUrl: undefined, appOrigin: APP }), MKT);
   assert.equal(resetRedirectTarget({ origin: MKT, marketingUrl: '', appOrigin: APP }), MKT);
 });
+
+// PINS a known config hazard, not a desirable behavior: appUrl() falls back
+// to the MARKETING origin when NEXT_PUBLIC_SITE_URL is absent (appUrl.mjs
+// cutover-era comment; middleware.js uses the app origin — they disagree).
+// If that env var ever vanishes, the rule maps marketing → marketing and the
+// token burns. The env var is set in dev/preview/prod today; this test
+// documents what breaks if that stops being true.
+test('resetRedirectTarget: marketing appOrigin passes through unchanged (env-absence hazard, documented)', () => {
+  assert.equal(resetRedirectTarget({ origin: MKT, marketingUrl: MKT, appOrigin: MKT }), MKT);
+});
 ```
 
 - [ ] **Step 1.2: Run to verify failure**
@@ -250,10 +264,89 @@ git commit -m "feat(auth): pure password-reset phase logic + redirect rule (spec
 
 ---
 
-### Task 2: `AuthProvider` — recovery detection
+### Task 2: `AuthProvider` — recovery detection (UI lane, TDD)
 
 **Files:**
 - Modify: `src/components/auth/AuthProvider.jsx`
+- Create: `src/components/auth/AuthProvider.test.jsx`
+
+- [ ] **Step 2.0: Write the failing tests** — `src/components/auth/AuthProvider.test.jsx`. This is the architecture's linchpin (spec §3: the sniff is the PRIMARY detection path); it does not ship untested:
+
+```jsx
+/**
+ * AuthProvider recovery detection (spec §3) — both paths:
+ *   PRIMARY: synchronous hash sniff at first render (the event is racy)
+ *   BACKUP:  the PASSWORD_RECOVERY auth event
+ * Deleting the sniff or typo'ing 'type=recovery' must go red HERE — every
+ * other suite mocks AuthProvider away.
+ */
+import { test, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, act } from '@testing-library/react';
+
+const listeners = vi.hoisted(() => ({ cb: null }));
+vi.mock('@/lib/supabase', () => ({
+  supabase: {
+    auth: {
+      getSession: vi.fn(() => Promise.resolve({ data: { session: null } })),
+      onAuthStateChange: vi.fn((cb) => {
+        listeners.cb = cb;
+        return { data: { subscription: { unsubscribe: vi.fn() } } };
+      }),
+      signOut: vi.fn(),
+    },
+  },
+  supabaseConfigured: () => true,
+}));
+
+import { AuthProvider, useAuth } from './AuthProvider';
+
+const flush = () => act(async () => {});
+
+function Probe() {
+  const { recovery, clearRecovery } = useAuth();
+  return (
+    <>
+      <div data-testid="recovery">{String(recovery)}</div>
+      <button onClick={clearRecovery}>clear</button>
+    </>
+  );
+}
+
+beforeEach(() => { vi.clearAllMocks(); listeners.cb = null; });
+afterEach(() => { window.history.replaceState(null, '', '/'); });
+
+test('hash sniff: type=recovery in the URL at first render → recovery true', async () => {
+  window.history.replaceState(null, '', '/#access_token=x&type=recovery');
+  render(<AuthProvider><Probe /></AuthProvider>);
+  expect(screen.getByTestId('recovery').textContent).toBe('true'); // BEFORE any flush — synchronous
+  await flush();
+});
+
+test('no recovery hash → recovery false', async () => {
+  render(<AuthProvider><Probe /></AuthProvider>);
+  await flush();
+  expect(screen.getByTestId('recovery').textContent).toBe('false');
+});
+
+test('PASSWORD_RECOVERY event (backup path) → recovery true', async () => {
+  render(<AuthProvider><Probe /></AuthProvider>);
+  await flush();
+  act(() => { listeners.cb('PASSWORD_RECOVERY', { user: { id: 'u1' } }); });
+  expect(screen.getByTestId('recovery').textContent).toBe('true');
+});
+
+test('other events do NOT set recovery; clearRecovery clears it', async () => {
+  window.history.replaceState(null, '', '/#type=recovery');
+  render(<AuthProvider><Probe /></AuthProvider>);
+  await flush();
+  act(() => { listeners.cb('SIGNED_IN', { user: { id: 'u1' } }); });
+  expect(screen.getByTestId('recovery').textContent).toBe('true'); // unaffected
+  act(() => { screen.getByRole('button', { name: 'clear' }).click(); });
+  expect(screen.getByTestId('recovery').textContent).toBe('false');
+});
+```
+
+Run: `npx vitest run src/components/auth/AuthProvider.test.jsx` → FAIL (no `recovery` in context yet).
 
 - [ ] **Step 2.1: Implement both detection paths + `clearRecovery`.** Replace the component body per spec §3 (belt and braces). Full new file content:
 
@@ -297,6 +390,9 @@ export function AuthProvider({ children }) {
     });
     // Listen for auth state changes (sign in / sign out / token refresh /
     // password recovery — the BACKUP recovery signal, see sniff above)
+    // Note (spec §6.2): a recovery link clicked while a DIFFERENT user is
+    // signed in replaces that session without a prompt (supabase-js
+    // _saveSession). Accepted on record; nothing here fights it.
     const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'PASSWORD_RECOVERY') setRecovery(true);
       setUser(session?.user || null);
@@ -322,14 +418,16 @@ export function AuthProvider({ children }) {
 export const useAuth = () => useContext(AuthContext);
 ```
 
-- [ ] **Step 2.2: Verify nothing broke and prerender survives**
+- [ ] **Step 2.2: Run the new suite** — `npx vitest run src/components/auth/AuthProvider.test.jsx` → PASS.
+
+- [ ] **Step 2.3: Verify nothing broke and prerender survives**
 
 Run: `npm run test:all` → both lanes green. Then `npm run build` → exits 0 (this is the prerender-guard check; a bare `window` read fails here, not in tests).
 
-- [ ] **Step 2.3: Commit**
+- [ ] **Step 2.4: Commit**
 
 ```bash
-git add src/components/auth/AuthProvider.jsx
+git add src/components/auth/AuthProvider.jsx src/components/auth/AuthProvider.test.jsx
 git commit -m "feat(auth): recovery detection — hash sniff + PASSWORD_RECOVERY event (spec §3)"
 ```
 
@@ -341,9 +439,7 @@ git commit -m "feat(auth): recovery detection — hash sniff + PASSWORD_RECOVERY
 - Create: `src/components/auth/RecoveryScreen.jsx`
 - Create: `src/components/auth/RecoveryScreen.test.jsx`
 
-- [ ] **Step 3.1: Resolve spec §6.3 FIRST** — does GoTrue enforce aal2 server-side for `updateUser` on MFA accounts? Check the installed source:
-
-Run: `grep -n "aal" node_modules/@supabase/auth-js/dist/main/GoTrueClient.js | head -20` and inspect the `updateUser`/`_useSession` area. Record the finding (either way) in the RecoveryScreen header comment in Step 3.3. Do not skip: the comment is a spec deliverable.
+- [ ] **Step 3.1: Spec §6.3 comment** — whether GoTrue enforces aal2 server-side for `updateUser` on MFA accounts is a SERVER property; the client bundle cannot answer it. Write the RecoveryScreen header comment now as: "Server-side aal2 enforcement for updateUser is UNVERIFIED until the Task 7.3 live pass — until then, treat this client gate as the only gate." Then, during Task 7.3, the enrolled-admin live test answers it empirically (the challenge screen appears first by design; to test the server, attempt the updateUser REST call at aal1 with the recovery session's token) — update the comment with the finding in the same session.
 
 - [ ] **Step 3.2: Write the failing tests** — `src/components/auth/RecoveryScreen.test.jsx`:
 
@@ -560,11 +656,18 @@ export default function RecoveryScreen({ onDone }) {
       return;
     }
     setBusy(true); setError('');
-    const { error: err } = await supabase.auth.updateUser({ password: pw });
-    setBusy(false);
-    if (err) { setError(err.message || 'Could not update the password. Try again.'); return; }
-    setSaved(true);
-    setTimeout(() => onDone(), 1500); // inline success dwell, then the normal gate chain (spec §4c.2)
+    try {
+      const { error: err } = await supabase.auth.updateUser({ password: pw });
+      if (err) { setError(err.message || 'Could not update the password. Try again.'); return; }
+      setSaved(true);
+      setTimeout(() => onDone(), 1500); // inline success dwell, then the normal gate chain (spec §4c.2)
+    } catch (e) {
+      // A rejected call (network drop on a phone) must not strand the screen
+      // with a permanently disabled button — this form is the only way in.
+      setError(e?.message || 'Network problem — try again.');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const signOut = async () => { await supabase.auth.signOut(); window.location.reload(); };
@@ -682,18 +785,32 @@ import { test, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, act, fireEvent } from '@testing-library/react';
 
 const authState = vi.hoisted(() => ({ value: { user: null, loading: false, recovery: false, clearRecovery: vi.fn(), signOut: vi.fn() } }));
+// AuthGate reads usePathname/useSearchParams; outside an App Router provider
+// both return null and SignInScreen crashes on searchParams.get (AuthGate.jsx:68).
+vi.mock('next/navigation', () => ({
+  usePathname: () => '/',
+  useSearchParams: () => new URLSearchParams(),
+}));
 vi.mock('./AuthProvider', () => ({ useAuth: () => authState.value }));
 vi.mock('@/lib/supabase', () => ({
   supabase: { auth: { signInWithPassword: vi.fn(), signUp: vi.fn(), resetPasswordForEmail: vi.fn() } },
   supabaseConfigured: () => true,
 }));
 vi.mock('./RecoveryScreen', () => ({ default: () => <div data-testid="recovery-screen" /> }));
+// Partial mock: sentinel resetRedirectTarget so the wiring test can prove the
+// call site actually routes through the rule — a naive
+// redirectTo: window.location.origin implementation must FAIL that test.
+vi.mock('@/lib/passwordReset.mjs', async (importOriginal) => {
+  const real = await importOriginal();
+  return { ...real, resetRedirectTarget: vi.fn(() => 'https://sentinel.example') };
+});
 vi.mock('../motion/ConstellationBackground', () => ({ default: () => null }));
 vi.mock('./MigrationPrompt', () => ({ default: () => null }));
 vi.mock('./LegalAcceptanceGate', () => ({ default: () => null }));
 vi.mock('./MfaGate', () => ({ default: ({ children }) => children }));
 
 import { supabase } from '@/lib/supabase';
+import { resetRedirectTarget } from '@/lib/passwordReset.mjs';
 import AuthGate from './AuthGate';
 
 const flush = () => act(async () => {});
@@ -724,7 +841,7 @@ test('Forgot password button is type=button — clicking never fires signInWithP
   expect(supabase.auth.signInWithPassword).not.toHaveBeenCalled();
 });
 
-test('forgot mode: enumeration-safe copy on success AND on user-not-found', async () => {
+test('forgot mode: enumeration-safe copy on success', async () => {
   render(<AuthGate>x</AuthGate>);
   await flush();
   fireEvent.click(screen.getByRole('button', { name: /forgot password/i }));
@@ -732,13 +849,30 @@ test('forgot mode: enumeration-safe copy on success AND on user-not-found', asyn
   fireEvent.click(screen.getByRole('button', { name: /send reset link/i }));
   await flush();
   expect(screen.getByText(/if an account exists/i)).toBeTruthy();
-  // user-not-found-shaped error reads identically
-  supabase.auth.resetPasswordForEmail.mockResolvedValue({ data: null, error: { message: 'User not found', status: 400 } });
-  // fresh render to reset the cooldown
-  authState.value = { ...authState.value };
 });
 
-test('redirectTo goes through the marketing-host rule (payload pinned)', async () => {
+test('forgot mode: user-not-found reads IDENTICALLY (enumeration-safe)', async () => {
+  supabase.auth.resetPasswordForEmail.mockResolvedValue({ data: null, error: { message: 'User not found', status: 400 } });
+  const { unmount } = render(<AuthGate>x</AuthGate>);
+  await flush();
+  fireEvent.click(screen.getByRole('button', { name: /forgot password/i }));
+  fireEvent.change(screen.getByPlaceholderText(/you@example.com/i), { target: { value: 'nobody@b.co' } });
+  fireEvent.click(screen.getByRole('button', { name: /send reset link/i }));
+  await flush();
+  expect(screen.getByText(/if an account exists/i)).toBeTruthy();
+  expect(screen.queryByText(/not found/i)).toBeNull();
+  unmount();
+});
+
+test('forgot mode heading: reset copy, NOT the signup pitch', async () => {
+  render(<AuthGate>x</AuthGate>);
+  await flush();
+  fireEvent.click(screen.getByRole('button', { name: /forgot password/i }));
+  expect(screen.getByText(/reset your password/i)).toBeTruthy();
+  expect(screen.queryByText(/create your account/i)).toBeNull();
+});
+
+test('redirectTo is WIRED through resetRedirectTarget (sentinel pin)', async () => {
   render(<AuthGate>x</AuthGate>);
   await flush();
   fireEvent.click(screen.getByRole('button', { name: /forgot password/i }));
@@ -746,8 +880,14 @@ test('redirectTo goes through the marketing-host rule (payload pinned)', async (
   fireEvent.click(screen.getByRole('button', { name: /send reset link/i }));
   await flush();
   const [, opts] = supabase.auth.resetPasswordForEmail.mock.calls[0];
-  // jsdom origin is localhost → passes through the rule untouched
-  expect(opts.redirectTo).toBe(window.location.origin);
+  // The sentinel proves the call site routes through the rule; a naive
+  // redirectTo: window.location.origin implementation fails here.
+  expect(opts.redirectTo).toBe('https://sentinel.example');
+  expect(resetRedirectTarget).toHaveBeenCalledWith({
+    origin: window.location.origin,
+    marketingUrl: process.env.NEXT_PUBLIC_MARKETING_URL,
+    appOrigin: expect.any(String),
+  });
 });
 
 test('expired hash: notice renders, mode STAYS signin, hash cleared', async () => {
@@ -841,6 +981,7 @@ test('60s cooldown: second send within the window is refused', async () => {
 ```
 
    - Forgot mode renders ONLY the email field + a "Send reset link" submit button (`disabled={busy || cooldown}`), the notice/info/error blocks, and a "Back to sign in" `type="button"` link. Hide the password field and the signup toggle in this mode.
+   - **Headings** (AuthGate.jsx:144-151): the h2/subtitle pair is currently a signin/signup ternary — extend it so forgot mode shows "Reset your password" / "Enter your email and we'll send you a reset link." (Without this, forgot mode is titled "Create your account".)
    - Render `linkNotice` (amber style, same visual family as the error block) above the form when non-empty.
 4. `src/lib/supabase.js` — add to the auth options block (comment only, no behavior change):
 
@@ -982,9 +1123,11 @@ import { newPasswordIssue } from '@/lib/passwordReset.mjs';
  * its session without revoking the singleton's server-side refresh token.
  */
 function verifyClient() {
+  // Same placeholder rule as src/lib/supabase.js: createClient THROWS on an
+  // empty url, and local-only mode (no env) can still reach this form.
   return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'public-anon-key-placeholder',
     { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: 'prim-pw-verify' } },
   );
 }
@@ -1005,6 +1148,11 @@ export default function ChangePasswordForm({ email }) {
       setError(issue === 'too_short' ? 'New password must be at least 6 characters.' : "Those passwords don't match.");
       return;
     }
+    if (!email) {
+      // Wiring bug, not a user error — do not blame their password for it.
+      setError('Could not determine your account email. Reload and try again.');
+      return;
+    }
     setBusy(true); setError('');
     try {
       const throwaway = verifyClient();
@@ -1022,6 +1170,9 @@ export default function ChangePasswordForm({ email }) {
       }
       setSaved(true);
       setCurrent(''); setPw(''); setConfirm('');
+    } catch (e) {
+      // Never swallow: a rejected call surfaces, and busy always resets.
+      setError(e?.message || 'Network problem — try again.');
     } finally {
       setBusy(false);
     }
@@ -1078,8 +1229,8 @@ export default function ChangePasswordForm({ email }) {
 
 - [ ] **Step 5.5: Wire into Profile.jsx** (four precise edits — read each site first, line numbers may have drifted):
 
-1. Lucide import block (lines 22-45): add `ShieldCheck` if not present.
-2. `SECTIONS` array (~line 83): after the `sender` entry add
+1. Lucide import block (lines 22-45): `ShieldCheck` is already imported (line 36) — verify, add only if missing.
+2. `SECTIONS` array (~line 81-88): after the `sender` entry add
    `{ id: 'security', label: 'Security', icon: ShieldCheck, phase: 1 },`
    (`phase` is inert — kept for convention only.)
 3. Content chain (~line 347-390): after the `{active === 'sender' && …}` block add
@@ -1112,6 +1263,8 @@ No files shipped — this task PROVES the tests bite. For each mutation: apply, 
 - [ ] **M4:** In `ChangePasswordForm`, swap the throwaway for the singleton (`supabase.auth.signInWithPassword(...)`). ChangePasswordForm suite → session-preservation test must FAIL. Revert.
 - [ ] **M5:** Delete the current-password pre-check (call `updateUser` directly). ChangePasswordForm wrong-password test must FAIL. Revert.
 - [ ] **M6:** In `resetRequestMessage`, return the rate-limit copy for user-not-found errors. Node lane → enumeration-safety test must FAIL. Revert.
+- [ ] **M7:** At the AuthGate call site, replace the `resetRedirectTarget(...)` argument with `window.location.origin`. AuthGate suite → sentinel wiring test must FAIL. Revert.
+- [ ] **M8:** In `AuthProvider`'s `sniffRecoveryHash`, change `'type=recovery'` to `'type=recover'`. AuthProvider suite → hash-sniff test must FAIL. Revert.
 - [ ] **Confirm tree is clean after reverts:** `git status` shows no unstaged changes; `npm run test:all` green.
 - [ ] Record the mutation results (which test killed which mutant) in the final commit message or PR notes.
 
@@ -1119,7 +1272,7 @@ No files shipped — this task PROVES the tests bite. For each mutation: apply, 
 
 ### Task 7: Branch, CI, operator config, live pass
 
-- [ ] **Step 7.1:** All work should be on branch `feature/password-reset` (create at Task 1 start: `git checkout -b feature/password-reset`). Push: `git push -u origin feature/password-reset`. CI runs on every branch push — confirm green (node lane, UI lane, build, lint).
+- [ ] **Step 7.1:** Push the branch (created before Task 1): `git push -u origin feature/password-reset`. CI runs on every branch push — confirm green (node lane, UI lane, build, lint).
 - [ ] **Step 7.2: STOP — operator (Juan) does spec §7 config before any live testing:**
   - Supabase → Authentication → URL Configuration: Site URL → `https://app.primtracker.com`; allowlist `https://app.primtracker.com/**`, `http://localhost:3000/**`, `https://*-rjprimeconsult-9217s-projects.vercel.app/**`; REMOVE `https://www.primtracker.com/**`.
   - Note prior values first; afterwards send a test signup confirmation to verify that flow still lands.
