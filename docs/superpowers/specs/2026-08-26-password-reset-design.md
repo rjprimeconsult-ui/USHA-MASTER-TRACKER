@@ -3,8 +3,9 @@
 **Date:** 2026-08-26 · **Trigger:** support ticket #4 ("I forgot my password on my
 mac and I want to log in on both") · **Approved approach:** in-place gates, no new
 route (Juan, 2026-08-26). MFA-enrolled accounts must clear the TOTP challenge
-before setting a new password (Juan's decision A, 2026-08-26). · **Rev 3** after two
-adversarial review rounds (r1: 2 blockers + 4 majors; r2: 3 majors).
+before setting a new password (Juan's decision A, 2026-08-26). · **Rev 4** after three
+adversarial review rounds (r1: 2 blockers + 4 majors; r2: 3 majors; r3: 2
+majors on the rev-3 edits themselves, fixed here).
 
 ## 1. Problem
 
@@ -37,20 +38,26 @@ recovery link must therefore land on the **app origin** — a link that falls
 back to the marketing host renders the landing page while `detectSessionInUrl`
 silently burns the single-use token in the hash.
 
-- **`redirectTo` uses `appUrl()`** (`src/lib/appUrl.mjs` — already the repo's
-  "single source of truth for the app origin", resolving to
-  `NEXT_PUBLIC_SITE_URL` = `https://app.primtracker.com`), NOT
-  `window.location.origin`. Review r2 proved the origin is not "correct by
-  construction": `AuthGate` wraps every route on BOTH hosts (`layout.js:45`),
-  and a non-public path on the marketing host (e.g. a stale
-  `www.primtracker.com/leads` bookmark — no custom not-found exists) renders
-  `SignInScreen` on the `www` origin, whose `window.location.origin` the
-  cutover-era allowlist would honor, landing the link on the marketing
-  root and burning the token. `appUrl()` makes the target host-independent.
-  Config hardening in §7 removes the `www` allowlist entry as defense in
-  depth. Dev note: `appUrl()` must resolve to `http://localhost:3000` under
-  local dev (it reads `NEXT_PUBLIC_SITE_URL`; verify `.env.local`'s dev value
-  or fall back to `window.location.origin` ONLY when the env var is absent).
+- **`redirectTo` rule: use `window.location.origin` UNLESS it is the
+  marketing origin — then use `appUrl()`.** Neither primitive alone is
+  right. r2 proved `window.location.origin` alone is wrong in prod:
+  `AuthGate` wraps every route on BOTH hosts (`layout.js:45`), and a
+  non-public path on the marketing host (a stale `www.primtracker.com/leads`
+  bookmark — no custom not-found exists) renders `SignInScreen` on the `www`
+  origin, whose redirect the cutover-era allowlist would honor, burning the
+  token on the landing page. r3 proved `appUrl()` alone is wrong everywhere
+  else: `NEXT_PUBLIC_SITE_URL` is set to the PRODUCTION app origin in the
+  dev env pull and on preview deploys, so `appUrl()` on localhost or a
+  branch preview emails a link pointing at prod — making local testing and
+  §8's live pass impossible. The browser already knows the right origin in
+  every environment except the marketing host, so the rule is a pure,
+  node-testable helper in `passwordReset.mjs` (fourth helper, §5):
+  `resetRedirectTarget({ origin, marketingUrl, appOrigin })` → `origin`
+  unless `origin` matches the marketing origin (compare via the same
+  host-classification idea as `hostRouting.mjs`; `NEXT_PUBLIC_MARKETING_URL`
+  supplies the marketing origin), in which case `appOrigin` (= `appUrl()`).
+  Config hardening in §7 still removes the `www` allowlist entry as defense
+  in depth.
 
 **Recovery detection — belt and braces, because the event alone is racy:**
 supabase-js consumes the hash and emits `PASSWORD_RECOVERY` from a
@@ -77,7 +84,7 @@ mount effect — subscription order vs. dispatch is not guaranteed, and
 
 `recovery` + `clearRecovery()` are exposed via the auth context. The flag is
 **in-memory only** — a hard reload after the hash is consumed drops into a
-normal signed-in session, which is accepted (§9.5): the link was honored and
+normal signed-in session, which is accepted (§9.3): the link was honored and
 Profile → Security covers them.
 
 - **`AuthGate.jsx`**: when `user && recovery`, render `<RecoveryScreen />`
@@ -101,7 +108,8 @@ Profile → Security covers them.
 link".
 
 - Calls `supabase.auth.resetPasswordForEmail(email, { redirectTo:
-  appUrl() })` (§3 — host-independent app origin).
+  resetRedirectTarget({ origin: window.location.origin, marketingUrl:
+  process.env.NEXT_PUBLIC_MARKETING_URL, appOrigin: appUrl() }) })` (§3).
 - **Success copy is enumeration-safe and unconditional:** "If an account exists
   for that email, a reset link is on the way. Check spam too." Shown for
   success AND for user-not-found-shaped errors; only rate-limit errors
@@ -206,7 +214,7 @@ Reuses `verifiedTotpFactor` (imported from `mfa.mjs`; tolerant of bare-array /
 `{totp}` / `{all}` shapes).
 
 - `recoveryPhase({ recovering, currentLevel, nextLevel, factors, lookupFailed })`
-  → `'none' | 'challenge' | 'set' | 'blocked'`. Truth table, first match wins:
+  → `'none' | 'loading' | 'challenge' | 'set' | 'blocked'`. Truth table, first match wins:
 
   | # | Condition | Result | Why |
   |---|---|---|---|
@@ -225,6 +233,11 @@ Reuses `verifiedTotpFactor` (imported from `mfa.mjs`; tolerant of bare-array /
 - `resetRequestMessage(error)` → maps a `resetPasswordForEmail` result to the
   enumeration-safe copy vs the rate-limit copy (§4a).
 - `recoveryErrorFromHash(hash)` → `null | 'expired'` — the §4b parser, pure.
+- `resetRedirectTarget({ origin, marketingUrl, appOrigin })` → the §3
+  redirect rule: `origin` unless it is the marketing origin, else
+  `appOrigin`. Marketing comparison is by host (tolerate scheme/trailing
+  slash variants); a null/absent `marketingUrl` means no marketing host is
+  configured and `origin` wins.
 
 ## 6. Recorded platform dependencies (code comments required)
 
@@ -249,8 +262,11 @@ Reuses `verifiedTotpFactor` (imported from `mfa.mjs`; tolerant of bare-array /
      `www.primtracker.com`. The Site URL is the fallback when `redirectTo`
      isn't allowlisted; pointed at the marketing host it burns recovery
      tokens on the landing page (§3).
-   - **Redirect allowlist** must contain `https://app.primtracker.com/**` and
-     `http://localhost:3000/**` (dev).
+   - **Redirect allowlist** must contain `https://app.primtracker.com/**`,
+     `http://localhost:3000/**` (dev), and the Vercel preview pattern
+     `https://*-rjprimeconsult-9217s-projects.vercel.app/**` (so §8's live
+     pass on a branch preview gets its link back to the preview, not prod —
+     r3 finding; remove the preview entry after launch if unwanted).
    - **Remove `https://www.primtracker.com/**` from the redirect allowlist**
      (or confirm it was never added). The subdomain cutover checklist said to
      keep it "during transition" — the transition is over, and while it
@@ -273,7 +289,10 @@ Reuses `verifiedTotpFactor` (imported from `mfa.mjs`; tolerant of bare-array /
   boundaries (5/6 chars, mismatch); `resetRequestMessage` incl. 429;
   `recoveryErrorFromHash` on real hash fixtures — fixtures must match
   GoTrue's actual error fragment shape (`error`, `error_code`,
-  `error_description`; NO `type` param).
+  `error_description`; NO `type` param); `resetRedirectTarget` — app
+  origin passes through, marketing origin (scheme/slash variants) maps to
+  appOrigin, localhost and `*.vercel.app` preview origins pass through,
+  absent marketingUrl passes origin through.
 - **UI lane** (vitest+RTL jsdom, matching `vitest.config.mjs` include
   `src/**/*.{test,spec}.{jsx,tsx}`; conventions per the header of
   `src/components/auth/LegalAcceptanceGate.test.jsx` and
@@ -288,7 +307,9 @@ Reuses `verifiedTotpFactor` (imported from `mfa.mjs`; tolerant of bare-array /
   client never replaces the singleton session (assert singleton's
   signInWithPassword NOT called), success path. AuthGate — forgot mode
   enumeration-safe copy on success and on user-not-found; expired-hash notice
-  + mode pre-switch; Forgot button `type="button"` (assert clicking it does
+  renders while mode STAYS `'signin'` (asserting the §4b no-auto-switch
+  rule — a pre-switch would dump stale signup-confirmation clicks into
+  password reset); Forgot button `type="button"` (assert clicking it does
   not fire signInWithPassword).
 - **Mutation checks** (manual, house rule): delete row 2 (loading guard) →
   first-paint test goes red; neuter row 4 (aal2 → set) → challenge-loop test
