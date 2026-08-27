@@ -322,7 +322,8 @@ test('hash sniff: type=recovery in the URL at first render → recovery true', a
   await flush();
 });
 
-test('no recovery hash → recovery false', async () => {
+test('no recovery hash → recovery false (incl. a non-recovery type param)', async () => {
+  window.history.replaceState(null, '', '/#access_token=x&type=signup');
   render(<AuthProvider><Probe /></AuthProvider>);
   await flush();
   expect(screen.getByTestId('recovery').textContent).toBe('false');
@@ -612,9 +613,10 @@ import { MfaChallenge } from './MfaGate';
  *               retry or re-enter from a fresh link; a locked-out operator
  *               on a signed-in session cannot.
  *
- * [Record §6.3 finding here after Step 3.1 — does GoTrue enforce aal2
- *  server-side for updateUser on MFA accounts? Either way this client gate
- *  is required; state which role it plays.]
+ * Spec §6.3: server-side aal2 enforcement for updateUser is UNVERIFIED
+ * until the Task 7.3 live pass — until then, treat this client gate as the
+ * only gate. (Update this sentence with the live-pass finding in the same
+ * session that runs it.)
  */
 export default function RecoveryScreen({ onDone }) {
   const [lookup, setLookup] = useState({ currentLevel: null, nextLevel: null, factors: null, lookupFailed: false });
@@ -817,11 +819,17 @@ const flush = () => act(async () => {});
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // .env.local is NOT loaded into the vitest process (and CI has no .env at
+  // all) — stub the marketing origin so the sentinel-args assertion below can
+  // pin a LITERAL. Without this, marketingUrl is undefined on both sides and
+  // toHaveBeenCalledWith treats a DROPPED key as equal to explicit undefined
+  // — the exact omission that would no-op the spec §3 rule would pass.
+  vi.stubEnv('NEXT_PUBLIC_MARKETING_URL', 'https://www.primtracker.com');
   authState.value = { user: null, loading: false, recovery: false, clearRecovery: vi.fn(), signOut: vi.fn() };
   supabase.auth.resetPasswordForEmail.mockResolvedValue({ data: {}, error: null });
   window.history.replaceState(null, '', '/');
 });
-afterEach(() => { window.history.replaceState(null, '', '/'); });
+afterEach(() => { vi.unstubAllEnvs(); window.history.replaceState(null, '', '/'); });
 
 test('user + recovery → RecoveryScreen instead of the app', async () => {
   authState.value = { ...authState.value, user: { id: 'u1' }, recovery: true };
@@ -885,7 +893,7 @@ test('redirectTo is WIRED through resetRedirectTarget (sentinel pin)', async () 
   expect(opts.redirectTo).toBe('https://sentinel.example');
   expect(resetRedirectTarget).toHaveBeenCalledWith({
     origin: window.location.origin,
-    marketingUrl: process.env.NEXT_PUBLIC_MARKETING_URL,
+    marketingUrl: 'https://www.primtracker.com', // literal — a dropped/misnamed arg goes red
     appOrigin: expect.any(String),
   });
 });
@@ -1011,7 +1019,7 @@ git commit -m "feat(auth): forgot-password mode, expired-link notice, recovery s
 **Files:**
 - Create: `src/components/auth/ChangePasswordForm.jsx`
 - Create: `src/components/auth/ChangePasswordForm.test.jsx`
-- Modify: `src/components/Profile.jsx` (SECTIONS ~line 83, content chain ~line 347-390, footer ~line 397, lucide import block lines 22-45)
+- Modify: `src/components/Profile.jsx` (SECTIONS ~line 81-88, content chain ~line 347-390, footer ~line 397, lucide import block lines 22-45 — ShieldCheck already at line 36)
 
 - [ ] **Step 5.1: Write the failing tests** — `src/components/auth/ChangePasswordForm.test.jsx`:
 
@@ -1264,7 +1272,7 @@ No files shipped — this task PROVES the tests bite. For each mutation: apply, 
 - [ ] **M5:** Delete the current-password pre-check (call `updateUser` directly). ChangePasswordForm wrong-password test must FAIL. Revert.
 - [ ] **M6:** In `resetRequestMessage`, return the rate-limit copy for user-not-found errors. Node lane → enumeration-safety test must FAIL. Revert.
 - [ ] **M7:** At the AuthGate call site, replace the `resetRedirectTarget(...)` argument with `window.location.origin`. AuthGate suite → sentinel wiring test must FAIL. Revert.
-- [ ] **M8:** In `AuthProvider`'s `sniffRecoveryHash`, change `'type=recovery'` to `'type=recover'`. AuthProvider suite → hash-sniff test must FAIL. Revert.
+- [ ] **M8:** In `AuthProvider`'s `sniffRecoveryHash`, change `'type=recovery'` to `'typ=recovery'`. AuthProvider suite → hash-sniff test must FAIL. Revert. (NOT `'type=recover'` — that is a PREFIX of the real literal and `.includes()` still matches it; the mutant survives.)
 - [ ] **Confirm tree is clean after reverts:** `git status` shows no unstaged changes; `npm run test:all` green.
 - [ ] Record the mutation results (which test killed which mutant) in the final commit message or PR notes.
 
@@ -1281,6 +1289,7 @@ No files shipped — this task PROVES the tests bite. For each mutation: apply, 
   - Juan's enrolled admin account: recovery link shows the TOTP challenge BEFORE the set form.
   - Profile → Security password change on the admin account, then hit an admin surface (e.g. tickets) → still works (aal2 preserved).
   - An expired link (reuse a consumed one) → generic expired notice on the sign-in card, mode stays signin.
+  - **§6.3 server-enforcement probe:** on the enrolled admin's recovery session, BEFORE clearing the TOTP challenge, attempt the updateUser REST call directly with that aal1 session token (PUT {SUPABASE_URL}/auth/v1/user with the new password). Record whether GoTrue refuses (aal2 enforced server-side) or accepts (our challenge is the only gate) — then update the RecoveryScreen §6.3 header comment with the finding, same session.
 - [ ] **Step 7.4:** Merge decision is Juan's (SEND/PUBLISH gate — merging deploys to prod). Announcement via `[announce]` commit-message convention if he wants one.
 
 ---
