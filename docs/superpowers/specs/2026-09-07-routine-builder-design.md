@@ -1,12 +1,14 @@
 # Routine Builder — design
 
-**Date:** 2026-09-07 · **Rev 8 (2026-09-08)** — self-contained: every rule is stated here
+**Date:** 2026-09-07 · **Rev 9 (2026-09-08)** — self-contained: every rule is stated here
 (prior revisions are history only: rev 4 `f3c5de6`, rev 5 `19a205e`, rev 6 `876d06b`, rev 7
-`1d0f340`; on any conflict this document wins). Rev 5 added the live layer; its three
-review rounds (4 lenses each) found 3 + 3 + 4 blockers, ~16 + 12 + 23 majors, ~11 + 32 + 19
-minors — all folded in. Rev 8 replaces rev 7's server write path (an atomic SQL function
-instead of a row upsert), keys frozen appointments by start time, and makes the make-up
-offer a derived value that never mutates the agent's decision. · **Operator decisions
+`1d0f340`, rev 8 `e4b6bfb`; on any conflict this document wins). Rev 5 added the live
+layer; its three review rounds (4 lenses each) found 3 + 3 + 4 blockers, ~16 + 12 + 23
+majors, ~11 + 32 + 19 minors — all folded in. Rev 8 replaced rev 7's server write path (an
+atomic SQL function instead of a row upsert), keyed frozen appointments by start time, and
+made the make-up offer a derived value that never mutates the agent's decision; a targeted
+2-lens verify of that delta found 0 blockers, 5 majors, 9 minors — folded into rev 9
+(expected-version CAS, per-start live items, cooldown slot sets, remainder-sized make-ups). · **Operator decisions
 (Juan):** blocks ARE wired to live Prospects data, read-only (2026-09-08) · one routine,
 the same every day · separate top-level tab (2026-09-08) + one PRIM starter + Blank ·
 web-push at block time (agent-set lead, default 5 min — accepted deviation from "at block
@@ -131,15 +133,20 @@ addDays(today, −7)`, drops tombstones older than 7 days, clamps `makeup.durati
 array. **The tick never reads-then-writes the `routine_day_v1` row and never calls
 `.upsert`/`.update` on `user_kv`**; it writes only `appt` (freeze) and `owed` (refresh)
 records through **`routine_day_write(p_user uuid, p_records jsonb) returns text[]`**
-(§6b.4): for each incoming record, **append if no element with that `id` exists
-(a tombstoned element counts as existing); replace if one exists and its `updatedAt` is
-strictly older than the incoming `updatedAt`; otherwise skip**; returns the ids written.
-The tick stamps a frozen `appt` with `updatedAt` = the appointment's start instant (never
-newer than any client write of that id, so a client Held or tombstone always wins) and a
-refreshed `owed` with `updatedAt` = the instant it read the row in Phase B (so a decision
-the agent saved after that read rejects the replace; the next tick retries with fresh
-data). At midnight nothing runs: a record whose `day` is not today is simply not today's;
-an `owed` on a past day with `minutes > 0` **is** an expired, counted record.
+(§6b.4). Each incoming record may carry **`expect`** — the stored element's `updatedAt`
+exactly as the tick read it in Phase B, or `null`. For each incoming record the function
+**appends if no element with that `id` exists (a tombstoned element counts as existing);
+otherwise replaces iff `expect` is non-null and equals the stored element's `updatedAt`
+(text equality — an expected-version compare-and-swap); otherwise skips**; `expect` is
+stripped before storing; the ids written are returned. Frozen `appt` records carry no
+`expect` (append-only; `updatedAt` = the appointment's start instant, so a client Held or
+tombstone of the same id is never touched). A refreshed `owed` carries `expect` = the
+stored `updatedAt` as read (null when absent) and `updatedAt` = the read instant, so any
+client write that landed after the tick's read — whatever clock stamped it — makes the
+stored `updatedAt` differ from `expect` and the replace is rejected; the next tick reads
+the decision and refreshes under it. At midnight nothing runs: a record whose `day` is
+not today is simply not today's; an `owed` on a past day with `minutes > 0` **is** an
+expired, counted record.
 
 ### 4c. `routine_settings_v1` — object, last-write-wins
 
@@ -283,8 +290,10 @@ select cron.schedule('prim-routine-tick', '* * * * *', $$
    yesterday/today/tomorrow — the tick then applies `parseAppointmentTime` per agent
    zone) **and** `stage` ∈ that user's `appointmentStages` **and** `archivedAt` is null
    or absent. **No attach/appt clause: frozen and attached items need no prospect row**
-   (§7h.1). The blob itself is never transferred (100–500 KB per agent per minute
-   otherwise). Every read checks `error`; a failed log read aborts 500. Values arrive
+   (§7h.1). Shape: `FOREACH u IN ARRAY p_user_ids LOOP BEGIN … RETURN QUERY … EXCEPTION
+   WHEN OTHERS THEN RAISE WARNING … END; END LOOP; RETURN;` — the OUT column `user_id`
+   must be qualified in the body (`user_kv.user_id = u`) to avoid the ambiguity error.
+   The blob itself is never transferred (100–500 KB per agent per minute otherwise). Every read checks `error`; a failed log read aborts 500. Values arrive
    parsed; legacy strings via `try { JSON.parse } catch { null }`; bad shapes → empty,
    `bad_shape`, never abort. Blocks/day/settings sanitized. A non-`composeEligible`
    agent's rows are never queried (test-pinned).
@@ -324,8 +333,14 @@ select cron.schedule('prim-routine-tick', '* * * * *', $$
      while still inside grace).
    **Due iff `fireAt ≤ now + 45 s` AND `now < startAt + min(10, floor(segDurationMin/2))
    min` AND `now < endAt`.** Aged-out reminders never fire, never stamp. **Cooldown on fire
-   instants**: skip iff a row for the same `(user_id, block_id)` with a different
-   `fire_key`, status `claimed|sent`, and `|candidate.fireAt − row.fire_at_utc| ≤ 15 min`.
+   instants**: skip iff a log row whose `block_id` is in the candidate's **slot set**, with
+   a different `fire_key`, status `claimed|sent`, and `|candidate.fireAt − row.fire_at_utc|
+   ≤ 15 min`. The slot set is `{block_id}` for every candidate, widened so a placeholder
+   and the appointment that occupies it never both push for one slot: for an
+   `appt`-category block, `{blockId} ∪ {appt:<pid> for every attach record today, live or
+   tombstoned, whose blockId is that block}`; for an attached or derived item,
+   `{appt:<pid>} ∪ {blockId of every attach record today, live or tombstoned, for that
+   prospect}`.
 4. **Freeze (server side, every `composeEligible` agent, every tick):**
    - For each item of `todaysAppointments` with `instant ≤ now` and **no `appt` record
      with its id (live or tombstoned)** → an `appt` record `{ id: day|appt|prospectId|
@@ -334,16 +349,20 @@ select cron.schedule('prim-routine-tick', '* * * * *', $$
    - `realized = composeDay({ …, appointments: items.filter(a => a.instant <= now) })`
      (started appointments only — time is lost once the meeting has happened); then
      `reconcileOwed(stored, realized)` (§7h.3) → the `owed` record to write or `null`,
-     stamped `updatedAt = readAt`.
+     stamped `updatedAt = readAt` and `expect = stored?.updatedAt ?? null` (§4b).
    - All of an agent's records go in **one `supa.rpc('routine_day_write', { p_user,
      p_records })`** call; `error` checked (`freeze_failed`, the agent's sends still
      proceed); `frozen` = the returned ids' count. A second tick with unchanged inputs
      makes no call. **`supabase/routine-day-write-function.sql`** (plpgsql, `security
-     definer`, `set search_path = public`, same revoke/grant lines as §6b.1): normalizes
-     the stored value (`string` → cast; non-array → `'[]'`), then one `insert … on
-     conflict (user_id, key) do update` whose new value = stored elements with any
-     replaced ids swapped for the incoming record + appended incoming records whose id
-     is absent; a legacy/empty row is created. The row is never read by the tick.
+     definer`, `set search_path = public`, same revoke/grant lines as §6b.1), in order:
+     (1) `insert into public.user_kv (user_id, key, value) values (p_user,
+     'routine_day_v1', '[]'::jsonb) on conflict (user_id, key) do nothing` — the row
+     always exists before it is locked, so even an agent's first-ever record is
+     serialized against a concurrent client save; (2) `select value into v_stored … for
+     update`; (3) normalize (`string` → cast; non-array → `'[]'`); (4) apply the
+     append/replace rules of §4b (`expect` stripped from stored records); (5) `update …
+     set value = v_new, updated_at = now()` and return the written ids. The row is
+     never read by the tick outside this function.
 5. **Claim before send (`sendEligible` only):** `supa.from('routine_push_log').upsert(rows,
    { onConflict:'user_id,fire_key', ignoreDuplicates:true }).select('fire_key')`.
    postgrest-js 2.110 sets `Prefer: resolution=ignore-duplicates`; PostgREST maps it to
@@ -405,15 +424,23 @@ appointment never pushes. Head eaten → reminder for the surviving segment, key
 across ticks and across the derived→frozen transition (same geometry). Whole block eaten
 → no candidate. Make-up hit by a later appointment → re-split; its minutes reduce
 `recovered`; the offer returns. Attached prospect who also has a derived item at the
-same start → one item (the attached geometry). Two attaches for one prospect → one item
-(earliest `startMin`, then newest `updatedAt`). A 10-min block at T+6 → aged out
-(half-duration grace). **Appointment booked at 8:00 for 14:00 and cancelled at 9:00 from
+same start → one item (the attached geometry); at a different start → two items. Two
+attaches for one prospect on two blocks → two items (one per block start; two live
+blocks never share a start). **Attached push at 13:55, then "Remove from today" at
+14:05 or "Detach" at 13:57** → the placeholder's own candidate is inside the attach's
+slot set → `cooldown`, no second push; the reverse (placeholder push at 13:55, attach
+at 13:57) → absorbed the same way; an attach at 10:30 for a 14:00 block → fires at
+13:55. A 10-min block at T+6 → aged out (half-duration grace). **Appointment booked at 8:00 for 14:00 and cancelled at 9:00 from
 the Prospects tab with Routine never opened** → nothing was frozen, `realized` stays 0,
 the day ends uncounted. **Two collisions on a day the agent never opened** → the tick's
 second freeze (14:00) raises `owed.minutes` from 30 to 60 (`reconcileOwed` replaces
 `minutes/byBlock` only). **Agent Skips at 10:00:20; the tick read the row at 10:00:05 and
-writes at 10:00:40** → the tick's `owed` carries `updatedAt` 10:00:05 < the client's →
-rejected; the 10:01 tick reads the decision and refreshes minutes under it. On the
+writes at 10:00:40** → the stored `updatedAt` is now the client's 10:00:20, the tick's
+`expect` is the earlier value → rejected; the 10:01 tick reads the decision and refreshes
+minutes under it. **Skip stamped 10:00:50 on a slow phone, landing at 10:01:10; tick
+readAt 10:01:05** → same outcome (`expect` ≠ stored), whatever the phone's clock says.
+**Post-start nudge:** frozen 10:00–10:30; the agent corrects the time to 10:05 at 10:02
+→ the live 10:05 item overlaps the frozen interval → absorbed, one card. On the
 spring-forward day the client composes in local minutes and the tick in instants — the
 one hour of divergence is accepted (once a year, 02:00–03:00, no agent block hours).
 
@@ -436,7 +463,10 @@ governs both) rendering `<Timeline/>` or `<MobileRoutineList/>` under a shared
 recomputed on the clock and on any change to blocks, day records, or prospects
 (memoized on those + the minute). **Client-side freeze:** on any compose, an appointment
 item with `instant ≤ now` and no `appt` record with its id (live or tombstoned) → the
-client writes one (same rule as the tick; whichever runs first wins by id). `RoutineHeader`:
+client writes one (same rule as the tick; whichever runs first wins by id). **Client-side
+owed refresh:** on every compose the client also runs `reconcileOwed(stored, realized)`
+and saves a non-null result (`updatedAt = now`) — the same rule as the tick, so a make-up
+removed at 23:59 is counted without a tick. `RoutineHeader`:
 title, timezone chip, **Bell = `settings.remindersEnabled`** (turning it ON while
 `devicePushOn === false` calls `enablePush()` first; if permission is denied the flag
 still saves and the strip explains), settings gear → `RoutineSettingsSheet` (timezone,
@@ -569,12 +599,17 @@ placeholder → "Attach prospect (today)":** a native `<select>` — options = n
 prospects with **no live `attach` record today whose block is live**; group 1: stage ∈
 `appointmentStages`, A–Z; group 2: every other stage except SOLD and LOST, A–Z; "— none
 —" first — choosing writes an `attach` record (**never `prospectId` or a name into the
-block**). A prospect who also has a derived item may be chosen; the block's geometry
-then wins for that start. **Make-up → "Remove make-up"** (tombstone; no Skip today).
-**Frozen appointment (desktop popover, phone long-press) → "Remove from today"**
-(tombstones the `appt` record and, when `source === 'attached'`, the attach record too;
-the tombstone suppresses both that frozen copy and any live item at the same start — the
-card returns only if the appointment's time changes). **Phone list (< 640 px,
+block**) **and, in the same commit, un-deletes (`deletedAt: null`, `updatedAt: now`) any
+tombstoned `appt` record at (prospectId, block.startMin)** so an explicit attach always
+yields a card. A prospect who also has a derived item may be chosen; the block's
+geometry wins at the same start, and a derived item at a different start stays a second
+card. **Make-up → "Remove make-up"** (tombstone; no Skip today). **Frozen appointment
+(desktop popover, phone long-press) → "Remove from today"** (tombstones the `appt` record
+and, when `source === 'attached'`, the attach record too; the tombstone suppresses both
+that frozen copy and any live item at the same start — the card returns only if the
+appointment's time changes or the prospect is attached again). **Removing a frozen card
+also removes its displaced minutes from `realized` — the agent decides (decision 5); the
+tick never re-freezes the tombstoned id.** **Phone list (< 640 px,
 `MobileRoutineList.jsx`):** the shared NowCard; rows = 4 px category stripe, time column,
 title, Bell + minute, a 28 px right-thumb checkbox; a rose "now" divider; "+ Add block"
 FAB → `PaletteSheet`; **follow-up row** = title + "14 due" in the time column (tap the
@@ -605,16 +640,22 @@ prospectId, name, startMin, durationMin, instant, source, frozen, heldAt }`, key
    tz)`) — regardless of the prospect's current stage, time, or archive state, and
    without needing a prospect row. This keeps a finished appointment on the timeline
    after the agent moves the prospect on.
-2. **The live item** for a prospect — an **attach** record for today on a live `appt`
-   block (the block's geometry; two attaches → earliest `startMin`, then newest
-   `updatedAt`; an attach whose block is tombstoned yields nothing; no prospect row
-   needed), else **derived** — `!archivedAt`, `stage ∈ settings.appointmentStages`,
-   `parseAppointmentTime(...).day === localDayKey(now, tz)`, `durationMin: 30` — is an
-   item **iff no `appt` record (live or tombstoned) exists for that prospect at that
-   `startMin`**. A live item whose `instant ≤ now` is what the freeze (§6b.4, §7a) turns
-   into a frozen record; the next compose renders it under rule 1.
+2. **Live items, one per (prospectId, startMin).** Every live `attach` record for today
+   on a live `appt` block yields a live item at that block's start (block geometry,
+   `source: 'attached'`; an attach whose block is tombstoned yields nothing; no prospect
+   row needed). The **derived** time — `!archivedAt`, `stage ∈
+   settings.appointmentStages`, `parseAppointmentTime(...).day === localDayKey(now, tz)`,
+   `durationMin: 30` — yields a live item at its own start unless an attach item for
+   that prospect already exists at the same `startMin`. A live item is dropped when **an
+   `appt` record (live or tombstoned) exists at its (prospectId, startMin)**, or when its
+   interval overlaps a live frozen record of the same prospect (the frozen card absorbs a
+   post-start nudge; a second card appears only when the new start lies outside every
+   live frozen interval for that prospect). A live item whose `instant ≤ now` is what the
+   freeze (§6b.4, §7a) turns into a frozen record; the next compose renders it under
+   rule 1.
 So a no-show at 10:00 rebooked for 14:00 yields two cards; a pre-start time edit moves
-the one card. `name` is resolved from `prospects` at render (fallback: the placeholder
+the one card; a 10:00 derived time plus an attach to the 14:00 block yields two cards.
+`name` is resolved from `prospects` at render (fallback: the placeholder
 block's own name, or "Appointment"); the tick never uses it. A placeholder block with a
 live attach is not rendered as a routine block. Appointments ignore `activeDays`.
 **Rendering (figure/ground inversion):** **the only white surface on the timeline** —
@@ -662,9 +703,12 @@ unrecovered, markers }`:
   `unrecovered = max(0, Σ displacedByBlock − recovered)`.
 - **Two composes on the client, one on the tick.** `projected` = `composeDay` over
   **all** of today's items (frozen + live, future included) — drives rendering, the
-  offer, the note, `dayDone`, and `makeupMin = max(10, ceil5(projected.unrecovered))`.
-  `realized` = `composeDay` over items with `instant ≤ now` only — the minutes actually
-  lost so far; this is what is stored and counted. At midnight the two are equal.
+  offer, the note, `dayDone`, and **`makeupMin = max(10, ceil5(projected.unrecovered −
+  (decidedMinutes ?? 0)))`** — a make-up is sized to the undecided remainder, so a
+  skipped 30 followed by a second 30-minute loss offers 30, not 60 (the starter's
+  45-minute lunch could never host 60). `realized` = `composeDay` over items with
+  `instant ≤ now` only — the minutes actually lost so far; this is what is stored and
+  counted. At midnight the two are equal.
 - **Loss markers** (from `projected`): one "−30m" per appointment interval per displaced
   routine block, amber text (`text-amber-600 dark:text-amber-400` — amber text means
   routine time lost and nothing else), **on the preceding segment if it is ≥ 40 px, else
@@ -674,16 +718,27 @@ unrecovered, markers }`:
   **compose never changes `status`.** `reconcileOwed(stored, realized, now)` (pure,
   shared by client and tick) → the record to write or `null`: absent and
   `realized.unrecovered === 0` → `null`; absent and `> 0` → `{ minutes, byBlock, status:
-  'open', decidedAt:null, decidedMinutes:null }`; present and `minutes` or `byBlock`
-  differ → the stored record with only `minutes/byBlock/updatedAt` replaced; else `null`.
-  **Skip** → `status:'skipped', decidedAt: now, decidedMinutes: projected.unrecovered`;
-  **Accept** → `status:'accepted', decidedAt: now, decidedMinutes: 0` (the make-up is
-  sized to cover the projected total). **`offerOpen = projected.unrecovered >
-  (decidedMinutes ?? 0)`** — derived, never stored. Walk: skip at 30 → note; a second
-  collision → 45 > 30 → offer; that appointment cancelled → 30 → note again (status still
-  `skipped`); 45 again → offer; skip at 45 → note. Accept at 30 → projected 0 → nothing;
-  make-up hit by 20 → 20 > 0 → offer; remove the make-up → 30 > 0 → offer. A
-  cancelled-then-rebooked appointment never re-offers a total the agent already skipped.
+  'open', decidedAt:null, decidedMinutes:null }`; present and **differing** → the stored
+  record with only `minutes/byBlock/updatedAt` replaced; else `null`. **"Differing"** =
+  `stored.minutes !== realized.unrecovered`, or the key sets of `stored.byBlock` and
+  `realized.displacedByBlock` differ, or any shared key's numeric value differs —
+  **order-independent, never a string comparison of the object** (Postgres jsonb
+  reorders object keys; a `JSON.stringify` compare would rewrite the record every
+  minute). **Skip / Accept operate on the stored record and create it when absent** —
+  `{ minutes: realized.unrecovered, byBlock: realized.displacedByBlock, status, decidedAt:
+  now, decidedMinutes, updatedAt: now }` (`minutes` may be 0: a decision recorded before
+  the loss is realized; reconcile raises it at the start freeze). **Skip** →
+  `status:'skipped', decidedMinutes: projected.unrecovered`; **Accept** →
+  `status:'accepted', decidedMinutes: max(0, projected.unrecovered − makeupMin)` (0 when
+  nothing was skipped before). **`offerOpen = projected.unrecovered > (decidedMinutes ??
+  0)`** — derived, never stored. Walk: skip at 30 → note; a second collision → 45 > 30 →
+  offer for 15; that appointment cancelled → 30 → note again (status still `skipped`);
+  45 again → offer; skip at 45 → note. Fresh accept at 30 → decidedMinutes 0, projected 0
+  → nothing; make-up hit by 20 → 20 > 0 → offer for 20; remove the make-up → 30 > 0 →
+  offer for 30. Skip at 30 then a second 30 → offer for 30 at 12:30–13:00; Accept →
+  decidedMinutes 30, projected 30 → nothing; make-up hit by 20 → 50 > 30 → offer for 20.
+  A cancelled-then-rebooked appointment never re-offers a total the agent already
+  skipped.
 - **`findMakeupSlot(items, live, dayRecords, makeupMin, nowMin)`:** a gap is a run of
   minutes inside the routine's span `[max(nowMin, firstLive.startMin), lastLive.endMin]`
   not covered by an appointment, a make-up, or a routine segment whose block is
@@ -745,12 +800,15 @@ any push; dividers or avatars in the in-block name list (the sheet reuses
   `/icons/prim-192.png`, `/icons/prim-512.png`; plus `/apple-touch-icon.png` (180 px).
   Generated once from `public/prim-mark.png` with `sharp` (0.34.5, present in
   `node_modules` as a Next dependency; not added to `package.json`); PNGs committed.
-- **Service worker (`public/sw.js`), two changes.** (a) `notificationclick`: among the
-  `matchAll` window clients, **prefer the first whose `new URL(client.url).pathname ===
-  '/'`** (the app shell; `/pricing`, `/admin`, and the legal pages mount no LeadTracker
-  listener); when found, **`client.focus(); client.postMessage({ type: 'prim:view',
-  view: 'routine' }); return;`** — no navigation, no reload; **when no such client
-  exists, `self.clients.openWindow(url)` even if other PRIM windows are open**. (b)
+- **Service worker (`public/sw.js`), two changes.** (a) `notificationclick`: **only when
+  `self.location.origin === new URL(url).origin`** (a subscription registered on the
+  www origin before the host split would otherwise focus a marketing tab whose `/` is a
+  rewrite to `/landing`), among the `matchAll` window clients **prefer the first whose
+  `new URL(client.url).pathname === '/'`** (the app shell; `/pricing`, `/admin`, and the
+  legal pages mount no LeadTracker listener); when found, **`client.focus();
+  client.postMessage({ type: 'prim:view', view: 'routine' }); return;`** — no navigation,
+  no reload; **in every other case — origin mismatch or no such client — `self.clients.
+  openWindow(url)` even if other PRIM windows are open**. (b)
   nothing else; `push` and the payload contract (`title/body/tag/url/urgent`) are
   untouched (tripwire). `install` already `skipWaiting`s.
 - **Install strip** (NowCard only): iOS UA && `navigator.standalone === false` → "To get
@@ -835,9 +893,11 @@ function.sql`, `supabase/routine-tick-cron.sql`.
   **identical under `TZ=UTC` and `TZ=America/Chicago`**; `'T23:30'` → 1410 today in every
   zone; zoned `…-05:00` → tomorrow in New York; `'2026-09-08'` and `'…T00:00'` → null;
   `'garbage'` → null. `todaysAppointments`: frozen wins over a stage change at the same
-  start; **frozen 10:00 + live 14:00 → two items**; a pre-start time edit → one item; a
-  tombstoned `appt` suppresses the live item at that start; attach wins over derived at
-  the same start; two attaches → one; an attach whose block is tombstoned → nothing;
+  start; **frozen 10:00 + live 14:00 → two items**; a pre-start time edit → one item;
+  **frozen 10:00 + time edited to 10:05 after start → one item (overlap absorbed)**; a
+  tombstoned `appt` suppresses the live item at that start; attach wins over derived only
+  at the same start — **derived 10:00 + attach 14:00 → two items; two attaches at
+  different starts → two items**; an attach whose block is tombstoned → nothing;
   frozen/attached items need no prospect row; stage filter uses `appointmentStages`;
   SOLD excluded; name fallback; `activeDays` never empties it. `followupQueue`: custom
   id, empty-first, `createdAt` asc tiebreak, "new"/"—", archived excluded, 60-prospect
@@ -849,15 +909,21 @@ function.sql`, `supabase/routine-tick-cron.sql`.
   `displacedByBlock` unchanged, no marker; un-skipped afterwards → same**, make-up over
   Lunch leaves the 13:00–13:15 remnant. `findMakeupSlot`: the three pinned cases,
   over-a-break and over-a-skipped-block placement, afternoon over morning, never before
-  now, `makeupMin` (owed 9 → 10, 33 → 35). `reconcileOwed`: absent+0 → null; absent+30 →
-  open; differing minutes → only minutes/byBlock/updatedAt change (status, decidedAt,
-  decidedMinutes untouched); equal → null. **Offer lifecycle (derived `offerOpen`):**
-  skip@30 → note; 45 → offer; 30 → note (status still `skipped`); 45 → offer; skip@45 →
-  note; accept@30 → nothing; make-up hit 20 → offer; remove make-up → offer; `projected =
-  0` → no line, dayDone reachable. `yesterdayMiss`: `minutes > 0` only (Dial 120 with 30
-  displaced → 30; accepted with an intact make-up → 0 → no line; accepted then removed →
-  counted); `ack`/`done` hide; nouns. `weeklyDisplaced`: seven days ending yesterday,
-  DST week has seven distinct keys. **`routineTick.test.mjs`** — lead 5: due T−5, not
+  now, `makeupMin` (owed 9 → 10, 33 → 35; **skipped 30 then projected 60 → 30**).
+  `reconcileOwed`: absent+0 → null; absent+30 → open; differing minutes → only
+  minutes/byBlock/updatedAt change (status, decidedAt, decidedMinutes untouched); equal →
+  null; **a stored byBlock with the same keys and values in a different order → null**.
+  **Skip with no record and realized 0 → record `{minutes 0, status skipped,
+  decidedMinutes 30}`; the 9:00 freeze then replaces minutes → 30 only.** **Offer
+  lifecycle (derived `offerOpen`):** skip@30 → note; 45 → offer for 15; 30 → note (status
+  still `skipped`); 45 → offer; skip@45 → note; accept@30 → nothing; make-up hit 20 →
+  offer for 20; remove make-up → offer for 30; skip@30 then +30 → offer for 30, accept →
+  decidedMinutes 30, hit 20 → offer for 20; `projected = 0` → no line, dayDone reachable.
+  `yesterdayMiss`: `minutes > 0` only (Dial 120 with 30 displaced → 30; accepted with an
+  intact make-up → 0 → no line; accepted then removed → counted; a removed frozen card →
+  0); `ack`/`done` hide; nouns. `weeklyDisplaced`: seven days ending yesterday, DST week
+  has seven distinct keys, a fixture with a `minutes: 0` day and a tombstoned `owed` →
+  both ignored. **`routineTick.test.mjs`** — lead 5: due T−5, not
   T−6, T+9 "started 9 min ago", not T+11; lead 15 and midnight clamp; 10-min block at
   T+6 aged out; appointment at T−5 with the wall-clock instant; `activeDays` ignored for
   appointments; head-eaten → 8:55 for the 9:00 segment, key stable; whole-eaten → none;
@@ -869,13 +935,20 @@ function.sql`, `supabase/routine-tick-cron.sql`.
   in any payload); `bad_tz` for a missing settings row with appointments + subs, Phase B
   not queried; a non-entitled agent's rows never queried (mocked `.in()` ids); **reminders
   off + no subs → still composed and frozen, nothing sent**; **freeze: first tick → RPC
-  called with the `appt` (updatedAt = start instant) and `owed` (updatedAt = readAt);
-  second tick with unchanged inputs → no RPC call; a later started appointment → `owed`
-  refresh with minutes 60; a stored decided record → only minutes/byBlock differ in the
-  outgoing record; booked-for-14:00-cancelled-at-9:00 → no owed record all day**;
-  Wisconsin vs Florida same 8:30 → different instants; cooldown on instants; retry once,
-  not twice; stale claim; `value` string and array both parse; unparseable →
-  `bad_shape`, others still fire.
+  called with the `appt` (updatedAt = start instant, no `expect`) and `owed` (updatedAt =
+  readAt, `expect` = null); second tick with unchanged inputs → no RPC call, **also when
+  the row's byBlock keys come back reordered**; a later started appointment → `owed`
+  refresh with minutes 60 and `expect` = the stored updatedAt; a stored decided record →
+  only minutes/byBlock differ in the outgoing record; booked-for-14:00-cancelled-at-9:00
+  → no owed record all day**; **cooldown slot sets: attached push at 13:55 then
+  Remove-from-today at 14:05 → placeholder candidate `cooldown`; Detach at 13:57 →
+  `cooldown`; placeholder push at 13:55 then attach at 13:57 → `cooldown`; attach at 10:30
+  for a 14:00 block → fires**; Wisconsin vs Florida same 8:30 → different instants;
+  cooldown on instants; retry once, not twice; stale claim; `value` string and array both
+  parse; unparseable → `bad_shape`, others still fire. **SQL (documented manual checks
+  in the live pass, gate 12b):** `routine_day_write` with a stored `updatedAt` ≠ `expect`
+  → that id absent from the returned array; an absent row → created and locked before
+  the read.
 - **UI lane** (`src/components/routine/*.test.jsx`, `views/RoutineView.test.jsx`):
   RoutineView — zero writes before `loaded`, zero when not entitled, template adoption,
   timezone capture, exactly one of Timeline/MobileRoutineList at 640 px, a drag commit
@@ -888,7 +961,8 @@ function.sql`, `supabase/routine-tick-cron.sql`.
   runs `sanitizeBlocks`; delete → undo; appointment card has no `<svg>`, no bell,
   `border-slate-200`; Held disabled before start, enabled after, un-Held writes `heldAt:
   null`; at 9:42 with a 9:00–9:30 appointment the 9:30 segment shows title + checkbox
-  **and the 8:30–9:00 segment shows a time range only (no dot, no checkbox)**; follow-up
+  **and the 8:30–9:00 segment shows its time range and the −30m marker only (no dot, no
+  checkbox, no title, no ring)**; follow-up
   block ≤ 4 names in `full`, none in `compact`, count slate; "+N more" → sheet with
   `FollowupDueWidget` classes and no amber chip; sheet row → `onOpenProspect(id)` and
   LeadTracker lands on Prospects with that detail open; Accept writes one `makeup`, no
@@ -901,7 +975,8 @@ function.sql`, `supabase/routine-tick-cron.sql`.
   `rpc(` call; **the tick route contains no `.upsert(` or `.update(` targeting `user_kv`
   and no `from('user_kv')` write of any kind**; its profile select contains
   `subscription_tier`; `pushServer.js` has `if (error)` after select and upsert; `sw.js`
-  still reads `title/body/tag/url/urgent` and contains `pathname === '/'`; no sub-daily
+  still reads `title/body/tag/url/urgent` and contains both `pathname === '/'` and
+  `self.location.origin`; no sub-daily
   cron in `vercel.json`; **`Date.parse(` occurs exactly once in `routineLive.mjs`
   (inside `parseAppointmentTime`) and zero times in `routineTick.mjs`**; no `.name` of a
   prospect-derived or `appt`-category item in any payload builder; `#f59e0b` appears
@@ -917,11 +992,15 @@ function.sql`, `supabase/routine-tick-cron.sql`.
   make-up cut as displaced → red; remove the 720 floor → red; remove the span bound → null
   test red; drop `decidedMinutes` from `offerOpen` → the skip-30-45-30 test red; let
   compose mutate `status` → the same test red; count unchecked blocks in `yesterdayMiss`
-  → red; count `minutes = 0` in weekly → red; put any name in a payload → red; write a
-  prospect reference on a block → red; drop the negation guard → "Not Interested" red;
-  freeze from future items → the cancelled-at-9:00 test red; replace the RPC with a row
-  upsert → the tripwire red; gate the freeze on subs → the reminders-off test red;
-  key `appt` by prospect only → the two-cards test red.
+  → red; include today in the weekly window → red; sum a tombstoned `owed` day → red;
+  put any name in a payload → red; write a prospect reference on a block → red; drop the
+  negation guard → "Not Interested" red; freeze from future items → the cancelled-at-9:00
+  test red; replace the RPC with a row upsert → the tripwire red; gate the freeze on subs
+  → the reminders-off test red; key `appt` by prospect only → the two-cards test red;
+  compare byBlock with `JSON.stringify` → the reordered-keys test red; cooldown on the
+  candidate's own `block_id` only → the Remove-at-14:05 test red; size the make-up to the
+  full projected total → the skip-30-then-30 test red; drop the overlap absorption → the
+  10:05-nudge test red.
 - **Live pass (hard gates, in order):** (0) the pg_cron → pg_net → Vault → route chain
   (§11.4); (1) `curl` the tick twice back-to-back with a due block: `claimed ≥ 1` then
   `claimed: 0` — else the claim moves into a `security definer` RPC before anyone gets a
@@ -968,14 +1047,15 @@ function.sql`, `supabase/routine-tick-cron.sql`.
 15. The Prospects tab and the daily email list stage-less and date-only appointments
     that the timeline hides — accepted; the sheet's secondary line explains the former.
 16. The freeze records an appointment at the first compose (client or tick) after it
-    starts; a cancellation after that minute is still counted, one before it is not.
-    Realized minutes are refreshed by every tick, so a day the agent never opened
-    converges on the true total by midnight.
+    starts; a cancellation after that minute is still counted, one before it is not —
+    unless the agent removes the card ("Remove from today"), which un-counts it by
+    design. Realized minutes are refreshed by every tick, so a day the agent never
+    opened converges on the true total by midnight.
 17. `routine_day_write` is the only server write path into `routine_day_v1`; the
     client's merge keeps tick-appended ids, and the tick's `owed` refresh is rejected
-    whenever the agent saved a decision after the tick's read (retried next minute).
-    A client save that lands between the RPC's read and write inside Postgres is
-    serialized by the row lock.
+    whenever the stored `updatedAt` is no longer the one the tick read (retried next
+    minute). The function creates the row empty and locks it before reading, so a
+    concurrent client save is serialized even on the agent's first record.
 18. Every minute the tick transfers appointment rows, not blobs — egress is measured at
     gate 15; if `jsonb_array_elements` over a few hundred agents' arrays proves slow, a
     materialized per-user appointment index is the fallback.
