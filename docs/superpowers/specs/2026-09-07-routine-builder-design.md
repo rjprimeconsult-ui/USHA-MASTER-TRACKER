@@ -1,8 +1,12 @@
 # Routine Builder — design
 
-**Date:** 2026-09-07 · **Rev 9 (2026-09-08)** — self-contained: every rule is stated here
-(prior revisions are history only: rev 4 `f3c5de6`, rev 5 `19a205e`, rev 6 `876d06b`, rev 7
-`1d0f340`, rev 8 `e4b6bfb`; on any conflict this document wins). Rev 5 added the live
+**Date:** 2026-09-07 · **Rev 10 (2026-09-11)** — self-contained: every rule is stated
+here (prior revisions are history only: rev 4 `f3c5de6`, rev 5 `19a205e`, rev 6
+`876d06b`, rev 7 `1d0f340`, rev 8 `e4b6bfb`, rev 9 `ba51392`; on any conflict this
+document wins). **Rev 10 = Juan's read (2026-09-11):** yesterday's line and the weekly
+bar count unchecked routine blocks as well as displaced time (the agent decides whether
+to make it up); custom stages are seeded only when their label reads like a follow-up
+stage (follow up, circle back, check back, pitched / needs app, re-engage, interest). Rev 5 added the live
 layer; its three review rounds (4 lenses each) found 3 + 3 + 4 blockers, ~16 + 12 + 23
 majors, ~11 + 32 + 19 minors — all folded in. Rev 8 replaced rev 7's server write path (an
 atomic SQL function instead of a row upsert), keyed frozen appointments by start time, and
@@ -169,10 +173,15 @@ get nothing): seeded to the three ids, a Settings checklist like the next one.
 defaultProspectSettings()).stages` (the `ProspectsView.jsx:1436` fallback —
 `prospectSettings` is `null` for any agent who never saved one). **Seeding** runs once
 after RoutineView's `loaded` guard: `seedFollowupStages(stages)` = the three defaults
-**+ every stage id not in `DEFAULT_PROSPECT_STAGES` whose label does not match**
-`/\b(won|sold|closed|lost|dead|not|no|never)\b|\b(un|dis)interest/i` (ASSUMPTION —
-honors "plus custom stages"; excludes closed-won and "Not Interested"-type stages; the
-checklist is one tap to correct). `sanitizeSettings`: `activeDays` → unique ints 0–6;
+**+ every stage id not in `DEFAULT_PROSPECT_STAGES` whose label reads like a follow-up
+stage** — matches `FOLLOWUP_WORDS = /follow|circle|check\s*back|call\s*back|callback|
+pitch|needs?\s*app|re-?engage|interest|missed|pending|later|reschedul|no[\s-]*show|
+think|decid/i` **and does not match** `NOT_FOLLOWUP_WORDS = /\b(won|sold|closed|lost|
+dead|not|no|never)\b|\b(un|dis)interest/i` (Juan 2026-09-11: only custom stages worded
+like the set examples — follow-ups, circle back, check back, pitched / needs app,
+re-engage, expressed interest; "Not Interested" and closed-won stages never; anything
+else stays off until the agent ticks it in the checklist). `sanitizeSettings`:
+`activeDays` → unique ints 0–6;
 `defaultMinutesBefore` → nearest of {0, 5, 10, 15}; `timezoneMode` → `'auto'` unless
 `'manual'`; `timezone` kept verbatim; stage lists → unique strings, unknown ids kept
 and ignored at read; `remindersEnabled` → boolean; unknown fields dropped.
@@ -491,12 +500,11 @@ scrolls to it); **Day done** (`behind === null` **and not** `offerOpen && slot`,
 && slot`: "30m of <noun> displaced." (slate-500) + text button "Add 2:00–2:30" (weight
 600, accent) " · " "Skip" (slate-400); (2) **still open** — "<block name> · still open"
 (slate-500; tap scrolls to it); (3) **note** — `projected > 0` and no offer: "30m owed"
-(slate-400, static); (4) **yesterday** — "Yesterday · 30m <noun-y> not made up"
+(slate-400, static); (4) **yesterday** — "Yesterday · 2h 30m of <noun> not done"
 (slate-400) with a 12 px × (20 px hit; 44 on phone). With `projected = 0` lines (1) and
 (3) never render. **Noun table** (from the projected `displacedByBlock` for (1)/(3),
-from the stored `byBlock` for (4)): all `dial` → "dial time" / "dialing"; all `followup`
-→ "follow-up time" / "follow-up"; otherwise "routine time" / "routine time". Minutes ≥
-60 render "1h 25m". Below the meta line, the **reminder strip**, first match:
+from `dayNotDone.byBlock` for (4)): all `dial` → "dial time"; all `followup` →
+"follow-up time"; otherwise "routine time". Minutes ≥ 60 render "1h 25m". Below the meta line, the **reminder strip**, first match:
 `remindersEnabled===false` → "Reminders are off"; iOS && `navigator.standalone===false`
 → the install strip (§8); `Notification.permission === 'denied'` → "Reminders are
 blocked in your browser settings"; `devicePushOn===false` → "Reminders are off on this
@@ -761,23 +769,34 @@ unrecovered, markers }`:
   day:** `live = []` — no splitting, no owed record; appointments still render, freeze,
   and remind.
 
-**7h.4 Yesterday's miss.** `yesterdayMiss(dayRecords, blocks)` (pure) = yesterday's
-`owed.minutes` where `minutes > 0` — **realized, unrecovered displaced time only**
-(`minutes` already nets out an intact make-up, so an accepted-and-kept make-up reads 0
-and an accepted-then-removed one counts; ASSUMPTION per "the block they missed":
-unchecked blocks are never counted). Noun from the stored `byBlock` via the §7b table.
-Rendered once per day as the lowest-priority meta line; hidden when today has an `ack`
-or any `done|skipped` record. Never alters today, never pushes, never nags.
+**7h.4 Yesterday's miss.** `dayNotDone(day, blocks, dayRecords, settings, tz)` (pure) →
+`{ minutes, byBlock }` = routine time not done on that local day, two parts summed
+(Juan 2026-09-11: "count the blocks as well; it's up to the agent whether to make it up
+with the reminder from PRIM"): **(1) displaced** — that day's `owed.minutes` where `> 0`
+(realized, net of an intact make-up: accepted-and-kept reads 0, accepted-then-removed
+counts); **(2) unchecked** — for every routine block that was live on that day
+(`createdAt ≤ day end`, `deletedAt` null or `> day end`, `category ∉ {break, appt}`)
+and every make-up of that day, with **no `done|skipped` record** for it: `durationMin −
+(owed.byBlock[id] ?? 0)` (the displaced part is already in (1)). A skipped block is an
+explicit decision and is not counted; an inactive day (`localWeekday ∉ activeDays`)
+contributes nothing; a day the agent never opened counts the whole routine — that is
+the point. `byBlock` merges both parts per block id and feeds the §7b noun table.
+`yesterdayMiss(...)` = `dayNotDone(addDays(today, −1), …)`. Rendered once per day as the
+lowest-priority meta line — "Yesterday · 2h 30m of <noun> not done" — hidden when today
+has an `ack` or any `done|skipped` record. Never alters today, never pushes, never nags,
+never offers a make-up for yesterday: the line is the reminder, the agent decides.
 
 **7h.5 Weekly look-back.** At the very bottom, on the page background under a 0.5 px
 hairline: collapsed every session — "This week · 2h 10m displaced" (12 px/500 slate-500,
 tabular) + `ChevronRight`; expanded (96 px, FadeIn) = seven 20 px bars on a 44 px band,
 `clamp(2, minutes/150·44, 44)`, slate-300 (dark slate-600), yesterday's bar slate-400,
-"M T W T F S S" 10 px beneath. **Nothing else.** `weeklyDisplaced(dayRecords, tz, now)`
-covers **`addDays(today, −7) … addDays(today, −1)`** (day-key arithmetic; today is never
-included — its record has not expired), summing `owed.minutes` where `minutes > 0`.
-Because the tick freezes every started appointment and refreshes `owed` for every
-entitled agent with a valid zone (§6b.4), a day the agent never opened is still counted.
+"M T W T F S S" 10 px beneath. **Nothing else.** Collapsed copy: "This week · 4h 10m not
+done". `weeklyNotDone(blocks, dayRecords, settings, tz, now)` covers **`addDays(today,
+−7) … addDays(today, −1)`** (day-key arithmetic; today is never included — its day has
+not ended), summing `dayNotDone(day, …).minutes` per day. Because the tick freezes every
+started appointment and refreshes `owed` for every entitled agent with a valid zone
+(§6b.4), and unchecked blocks are derived from the permanent routine plus the day's
+`done` records, a day the agent never opened is still counted.
 
 **What the design refuses to show:** any icon on appointments; stage names on the
 timeline; a phone number or Call button; completion percentages; a colored badge for
@@ -847,7 +866,8 @@ any push; dividers or avatars in the in-block name list (the sheet reuses
 `sanitizeBlocks`, `liveBlocks`, `resolveOverlaps`, `sanitizeDay`, `sanitizeSettings`,
 `seedFollowupStages`, `applyTemplate`, `instantiateTemplate`, `DEFAULT_SETTINGS`) ·
 `routineLive.mjs` (`parseAppointmentTime`, `todaysAppointments`, `followupQueue`,
-`composeDay`, `reconcileOwed`, `findMakeupSlot`, `yesterdayMiss`, `weeklyDisplaced`) ·
+`composeDay`, `reconcileOwed`, `findMakeupSlot`, `dayNotDone`, `yesterdayMiss`,
+`weeklyNotDone`) ·
 `routinePalette.mjs` · `routineTemplates.mjs` · `routineLayout.mjs` · `routineClock.mjs`
 (`nowState`, `blockVisualState`, `formatTime`, `formatMinutes`) · `routineTick.mjs`
 (`computeDue`, `computeFreeze`, `buildPayload`, constants) · `appMetadata.mjs`. Client:
@@ -882,9 +902,11 @@ function.sql`, `supabase/routine-tick-cron.sql`.
   prune, stale-merge keeps a delete, un-delete bumps, deleting an `appt` block tombstones
   its live attaches and Undo restores both, `applyTemplate` all four branches + undo,
   `instantiateTemplate` remind defaults, `seedFollowupStages` seeds "Expressed Interest/
-  Aiming APPT" and "Try to Reengage/Get interest back" and **not** "Re-engaged (won)",
-  "Not Interested", "Uninterested", "No interest", with `prospectSettings=null` → the
-  three defaults, flag flips once. **`routineTemplates.test.mjs`** — collision-free, valid
+  Aiming APPT", "Try to Reengage/Get interest back", "Pitched / needs app", "Circle back
+  Q4", "Check back in Jan", "Call back Friday", "No show – reschedule" and **not**
+  "Re-engaged (won)", "Not Interested", "Uninterested", "No interest", "Referral
+  source", "Hot lead", "Quoted" (no follow-up wording → off until ticked), with
+  `prospectSettings=null` → the three defaults, flag flips once. **`routineTemplates.test.mjs`** — collision-free, valid
   ids, no midnight crossing. **`routineLayout.test.mjs`**, **`routineClock.test.mjs`**
   (four phases with `behind` set/null; at 9:10 with a 9:00–9:30 mid-Dial appointment
   `behind` is null; at 10:31 unchecked it is set; midnight rollover; `spent` opacity only
@@ -919,11 +941,17 @@ function.sql`, `supabase/routine-tick-cron.sql`.
   still `skipped`); 45 → offer; skip@45 → note; accept@30 → nothing; make-up hit 20 →
   offer for 20; remove make-up → offer for 30; skip@30 then +30 → offer for 30, accept →
   decidedMinutes 30, hit 20 → offer for 20; `projected = 0` → no line, dayDone reachable.
-  `yesterdayMiss`: `minutes > 0` only (Dial 120 with 30 displaced → 30; accepted with an
-  intact make-up → 0 → no line; accepted then removed → counted; a removed frozen card →
-  0); `ack`/`done` hide; nouns. `weeklyDisplaced`: seven days ending yesterday, DST week
-  has seven distinct keys, a fixture with a `minutes: 0` day and a tombstoned `owed` →
-  both ignored. **`routineTick.test.mjs`** — lead 5: due T−5, not
+  `dayNotDone` / `yesterdayMiss`: Dial 120 checked with 30 displaced → 30; Dial 120
+  unchecked with 30 displaced → 120 (30 + 90, never double-counted); Dial 120 unchecked,
+  nothing displaced → 120; skipped → 0; a break unchecked → 0; an un-attached `appt`
+  block unchecked → 0; an unchecked make-up → its duration; a block created today →
+  not counted for yesterday; a block deleted today → still counted for yesterday; an
+  inactive day → 0; a day with no records at all → the whole non-break routine;
+  accepted with an intact, checked make-up → 0 → no line; accepted then removed →
+  counted; a removed frozen card → 0 displaced; `ack`/`done` hide; nouns ("dial time"
+  when every contributing block is dial). `weeklyNotDone`: seven days ending yesterday,
+  DST week has seven distinct keys, a fixture with a fully-done day, an inactive day,
+  and a tombstoned `owed` → each contributes 0. **`routineTick.test.mjs`** — lead 5: due T−5, not
   T−6, T+9 "started 9 min ago", not T+11; lead 15 and midnight clamp; 10-min block at
   T+6 aged out; appointment at T−5 with the wall-clock instant; `activeDays` ignored for
   appointments; head-eaten → 8:55 for the 9:00 segment, key stable; whole-eaten → none;
@@ -991,8 +1019,11 @@ function.sql`, `supabase/routine-tick-cron.sql`.
   filter → red; sort `lastContact` desc → red; count breaks or `appt` → red; count a
   make-up cut as displaced → red; remove the 720 floor → red; remove the span bound → null
   test red; drop `decidedMinutes` from `offerOpen` → the skip-30-45-30 test red; let
-  compose mutate `status` → the same test red; count unchecked blocks in `yesterdayMiss`
-  → red; include today in the weekly window → red; sum a tombstoned `owed` day → red;
+  compose mutate `status` → the same test red; drop unchecked blocks from `dayNotDone` →
+  the Dial-120-unchecked test red; count a skipped block → red; count a break → red;
+  double-count the displaced part → the 30 + 90 test red; drop the positive word list
+  from `seedFollowupStages` → "Referral source" red; include today in the weekly window
+  → red; sum a tombstoned `owed` day → red;
   put any name in a payload → red; write a prospect reference on a block → red; drop the
   negation guard → "Not Interested" red; freeze from future items → the cancelled-at-9:00
   test red; replace the RPC with a row upsert → the tripwire red; gate the freeze on subs
