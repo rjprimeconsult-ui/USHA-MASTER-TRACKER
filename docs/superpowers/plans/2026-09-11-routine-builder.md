@@ -1612,8 +1612,9 @@ export function composeDay({ live = [], appointments = [], makeups = [], dayReco
   }
 
   // Overlapping make-ups (same slot, e.g. a re-offer): render once and recover once. Each
-  // make-up is cut by the FULL span of every make-up already processed (priority order =
-  // updatedAt asc, id asc — same tie-break as resolveOverlaps), not just by appointments.
+  // make-up is cut by the APPOINTMENT-CUT (keptA) segments of every make-up already processed —
+  // never the full span — so a prior make-up's sub-MIN_SEG remnant (dropped, unrendered) can't
+  // still cut a later one. Priority order = updatedAt asc, id asc — same tie-break as resolveOverlaps.
   const displacedByMakeup = {};
   let recovered = 0;
   const orderedMk = [...liveMk].sort((a, b) =>
@@ -1626,7 +1627,7 @@ export function composeDay({ live = [], appointments = [], makeups = [], dayReco
     const kept = keptA.flatMap(seg => subtract(seg, priorMk)).filter(([s, e]) => e - s >= MIN_SEG);
     pushSegments('makeup', m, m.id, kept);
     recovered += kept.reduce((n, [s, e]) => n + (e - s), 0);
-    priorMk = unionIntervals([...priorMk, full]);
+    priorMk = unionIntervals([...priorMk, ...keptA]);
   }
 
   for (const a of appointments) items.push({ kind: 'appt', id: `appt|${a.prospectId}|${a.startMin}`, ...a, endMin: Math.min(1440, a.startMin + a.durationMin) }); // a 23:45 appointment never hangs below the lane
