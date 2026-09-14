@@ -136,12 +136,31 @@ test('no profile / unknown feature are denied', () => {
   assert.equal(canAccessBetaFeature('nonexistent_feature', P()).canAccess, false);
 });
 
-test('routine_builder: starter tier, publicGA, complimentary and admin pass, no subscription fails', () => {
+test('routine_builder: starter tier, publicGA, layered access + reason codes', () => {
   assert.equal(BETA_FEATURES.routine_builder.requiredTier, 'starter');
   assert.equal(BETA_FEATURES.routine_builder.publicGA, true);
-  assert.equal(canAccessBetaFeature('routine_builder', { is_admin: true }).canAccess, true);
-  assert.equal(canAccessBetaFeature('routine_builder', { is_complimentary: true }).canAccess, true);
-  assert.equal(canAccessBetaFeature('routine_builder', { email: 'x@y.com', subscription_status: 'canceled' }).canAccess, false);
-  assert.equal(canAccessBetaFeature('routine_builder', null).canAccess, false);
-  assert.equal(canAccessBetaFeature('routine_builder', { email: 'x@y.com', subscription_status: 'active', subscription_tier: 'starter' }).canAccess, true);
+
+  const admin = canAccessBetaFeature('routine_builder', P({ is_admin: true }));
+  assert.equal(admin.canAccess, true);
+  assert.equal(admin.reason, 'admin');
+
+  const comp = canAccessBetaFeature('routine_builder', P({ is_complimentary: true }));
+  assert.equal(comp.canAccess, true);
+  assert.equal(comp.reason, 'complimentary');
+
+  const canceled = canAccessBetaFeature('routine_builder', P({ subscription_status: 'canceled' }));
+  assert.equal(canceled.canAccess, false);
+  assert.equal(canceled.reason, 'no_subscription');
+
+  const noProfile = canAccessBetaFeature('routine_builder', null);
+  assert.equal(noProfile.canAccess, false);
+  assert.equal(noProfile.reason, 'not_signed_in');
+
+  const starter = canAccessBetaFeature('routine_builder', P({ subscription_tier: 'starter' }));
+  assert.equal(starter.canAccess, true);
+  assert.equal(starter.reason, 'tier_match');
+
+  const noTier = canAccessBetaFeature('routine_builder', P({ subscription_tier: null }));
+  assert.equal(noTier.canAccess, false);
+  assert.equal(noTier.reason, 'tier_too_low');
 });
