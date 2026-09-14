@@ -770,22 +770,25 @@ function place(block, placed) {
   return null;
 }
 
-// Live blocks only. Returns { blocks, dropped: [ids] } — never mutates input.
+// Priority placement (spec §4a): blocks are placed in order of (updatedAt asc,
+// id asc). The earliest-updated block keeps its slot; every later block is
+// placed into the free gaps left by those before it — at/after its own start,
+// else shrunk into the largest free gap ≥ 10 min, else dropped. Equal stamps →
+// the greater id yields. Overlap-free and idempotent by construction (the
+// first-conflict-only pairwise scheme the plan originally carried left ~1/3 of
+// random inputs overlapping — caught by the Task 3 code review's fuzz).
+// Resolved moves keep their updatedAt on purpose: bumping it would flip
+// priority on the next merge and ping-pong the block across devices.
 export function resolveOverlaps(live) {
-  const sorted = [...live].sort((a, b) => a.startMin - b.startMin || String(a.id).localeCompare(String(b.id)));
+  const order = [...live].sort((a, b) =>
+    String(a.updatedAt || '').localeCompare(String(b.updatedAt || '')) || String(a.id).localeCompare(String(b.id)));
   const placed = [];
   const dropped = [];
-  const later = (x, y) => (String(x.updatedAt) === String(y.updatedAt) ? String(x.id) > String(y.id) : String(x.updatedAt) > String(y.updatedAt));
-  for (const b of sorted) {
-    const conflict = placed.find(p => overlaps(p, b));
-    if (!conflict) { placed.push(b); continue; }
-    const mover = later(b, conflict) ? b : conflict;
-    const stay = mover === b ? conflict : b;
-    if (mover === conflict) { placed.splice(placed.indexOf(conflict), 1); placed.push(stay); }
-    const moved = place(mover, placed);
-    if (moved) placed.push(moved); else dropped.push(mover.id);
+  for (const b of order) {
+    const moved = place(b, placed);
+    if (moved) placed.push(moved); else dropped.push(b.id);
   }
-  return { blocks: placed.sort((a, b) => a.startMin - b.startMin), dropped };
+  return { blocks: placed.sort((a, b) => a.startMin - b.startMin || String(a.id).localeCompare(String(b.id))), dropped };
 }
 
 export function sanitizeBlocks(blocks, nowIso = new Date().toISOString()) {
