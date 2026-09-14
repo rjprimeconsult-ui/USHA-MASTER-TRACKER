@@ -251,7 +251,7 @@ test('make-up lead follows settings.defaultMinutesBefore; midnight clamp applies
   const m = run({ settings: { ...S, defaultMinutesBefore: 10 }, dayRecords: mk, now: Z('2026-09-08T17:20:00Z'), readAt: 'x' });
   assert.deepEqual(keys(m), [`mk_0000001|2026-09-08|740|${CHI}`]);
   const early = [{ id: 'mk_0000002', kind: 'makeup', day: '2026-09-08', startMin: 3, durationMin: 20, category: 'dial', name: 'Early make-up', ofBlockId: DIAL_AM, updatedAt: 'x', deletedAt: null }];
-  const e = run({ dayRecords: early, now: Z('2026-09-08T05:00:20Z'), readAt: 'x' });
+  const e = run({ settings: { ...S, defaultMinutesBefore: 15 }, dayRecords: early, now: Z('2026-09-08T05:00:20Z'), readAt: 'x' });
   assert.equal(e.due[0].fireMin, 0);
   assert.equal(e.due[0].fireAt, Z('2026-09-08T05:00:00Z'));
 });
@@ -266,7 +266,10 @@ test('an attached block never emits a placeholder, even once its appointment is 
   const attachRec = { id: '2026-09-08|attach|blk_webby00', kind: 'attach', day: '2026-09-08', blockId: 'blk_webby00', prospectId: 'p9', updatedAt: 'x', deletedAt: null };
   const frozen = { id: '2026-09-08|appt|p9|840', kind: 'appt', day: '2026-09-08', prospectId: 'p9', startMin: 840, durationMin: 30, source: 'attached', heldAt: null, updatedAt: 'x', deletedAt: null };
   const r = run({ blocks, dayRecords: [attachRec, frozen], now: Z('2026-09-08T18:55:00Z'), readAt: 'x' });
-  assert.equal(keys(r).some(k => k.startsWith('blk_webby00')), false);
+  // The 870-900 remnant's fireAt is 14:25 local, so at 13:55 it isn't due
+  // regardless of the attachedLive guard — assert on candidates (built before
+  // the due-window filter) so this actually exercises the guard.
+  assert.equal(r.candidates.some(c => c.block_id === 'blk_webby00'), false);
   assert.ok(keys(r).includes(`appt|p9|2026-09-08|835|${CHI}`));
 });
 
