@@ -305,12 +305,46 @@ test('composeDay: overlapping make-ups render once and recover once (priority = 
   assert.equal(partial.recovered, 45); // union of [750,780) and [765,795) is 45 unique minutes, not 60
 });
 
+const mkSegsOf = (r, id) => r.items.filter(i => i.kind === 'makeup' && i.makeupId === id).map(i => [i.startMin, i.endMin]);
+
+test('composeDay: make-up MIN_SEG boundaries mirror the block ones (a sub-10 head is dropped and still counted; a surviving tail renders)', () => {
+  const head = compose({ appointments: [ap('a', 740)], makeups: [mk('mk_0000001', 750, 30)] }); // appt 740–770 leaves exactly a 10-min tail
+  assert.equal(head.recovered, 10); assert.equal(head.displacedByMakeup['mk_0000001'], 20);
+  assert.deepEqual(mkSegsOf(head, 'mk_0000001'), [[770, 780]]);
+
+  const overlap = compose({ makeups: [mk('mk_0000001', 750, 30), mk('mk_0000002', 770, 20)] }); // mk_0000002 overlaps mk_0000001's tail by 10 min
+  assert.equal(overlap.recovered, 40);
+  assert.deepEqual(mkSegsOf(overlap, 'mk_0000002'), [[780, 790]]);
+});
+
+test('composeDay: following-segment marker at the exact 40px boundary (20-min following segment)', () => {
+  const r = compose({ appointments: [ap('a', 525, 85)] });
+  assert.deepEqual(segsOf(r, DIAL_AM), [[510, 525], [610, 630]]);
+  assert.deepEqual(r.markers.filter(m => m.blockId === DIAL_AM).map(m => [m.minutes, m.segmentIndex]), [[85, 1]]);
+});
+
+test('findMakeupSlot: a make-up from a different day never blocks a slot (same day-scoping as the done/skip records)', () => {
+  const slot = findMakeupSlot({ live: starter(), appointments: [ap('a', 540)], makeups: [mk('mk_y', 750, 30, { day: '2026-09-07' })], makeupMin: 30, nowMin: 582, today: TODAY });
+  assert.deepEqual(slot, { startMin: 750, endMin: 780 });
+});
+
+test('composeDay: priorMk accumulates from the appointment-cut (keptA) segments, not the full span — a dropped sub-MIN_SEG remnant cannot cut a later make-up', () => {
+  // appt 745–775 leaves mk_0000001 (750–780) a 5-min remnant [775,780) — dropped (< MIN_SEG) and
+  // unrendered. If priorMk used the FULL span [750,780) instead, mk_0000002 (775–805) would lose
+  // its own first 5 minutes to a segment nobody ever draws (the bug this fix corrects).
+  const r = compose({ appointments: [ap('a', 745, 30)], makeups: [mk('mk_0000001', 750, 30), mk('mk_0000002', 775, 30)] });
+  assert.equal(r.recovered, 30);
+  assert.equal(r.displacedByMakeup['mk_0000001'], 30);
+  assert.deepEqual(mkSegsOf(r, 'mk_0000001'), []);
+  assert.deepEqual(mkSegsOf(r, 'mk_0000002'), [[775, 805]]);
+});
+
 test('composeDay: item ordering and the 1440-minute clamp', () => {
   // NOTE: composeDay's own cutting algorithm makes a segment/appt startMin tie structurally
   // unreachable — any appointment overlapping a block's boundary consumes that boundary before
   // a shared start can render, and abutting appointments merge in apptCuts before cutting. Verified
   // by direct execution: with the default starter template, ap('a', 510) puts the review block's
-  // segment (480–630 → 480–510, untouched) at items[0], not the appt — the appt is simply the only
+  // segment (480–510, untouched) at items[0], not the appt — the appt is simply the only
   // item that ever starts at 510 (DIAL_AM's head is fully consumed). The comparator fix (§ item 3)
   // is defensive/order-stable, matching resolveOverlaps' style, rather than independently observable
   // through composeDay's output. Pinning the true, verified behavior here instead.
