@@ -163,3 +163,46 @@ test('applyTemplate: non-empty + !replace → unchanged; empty → seeded; repla
   const restored = sanitizeBlocks(r3.backup.map(b => ({ ...b, updatedAt: '2026-09-08T16:00:00Z' })), NOW);
   assert.equal(liveBlocks(restored, NOW).length, 1);
 });
+
+test('resolveOverlaps: overlap-free, id partition, idempotent, deterministic (3-block case + seeded fuzz)', () => {
+  const noOverlap = (arr) => { const s = [...arr].sort((x, y) => x.startMin - y.startMin); for (let i = 1; i < s.length; i++) if (s[i].startMin < s[i - 1].startMin + s[i - 1].durationMin) return false; return true; };
+  const b0 = blk({ id: 'blk_b000000', startMin: 940, durationMin: 200, updatedAt: '2026-09-08T02:00:00Z' });
+  const b1 = blk({ id: 'blk_b000001', startMin: 895, durationMin: 50, updatedAt: '2026-09-08T02:00:00Z' });
+  const b2 = blk({ id: 'blk_b000002', startMin: 870, durationMin: 140, updatedAt: '2026-09-08T03:00:00Z' });
+  assert.ok(noOverlap(resolveOverlaps([b0, b1, b2]).blocks));
+  let seed = 12345; const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+  for (let run = 0; run < 300; run++) {
+    const n = 2 + Math.floor(rnd() * 12);
+    const input = Array.from({ length: n }, (_, i) => blk({ id: 'blk_' + String(i).padStart(7, '0'), startMin: Math.floor(rnd() * 280) * 5, durationMin: 10 + Math.floor(rnd() * 30) * 5, updatedAt: `2026-09-08T0${Math.floor(rnd() * 3)}:00:00Z` }));
+    const { blocks, dropped } = resolveOverlaps(input);
+    assert.ok(noOverlap(blocks), `overlap in run ${run}`);
+    assert.deepEqual([...blocks.map(b => b.id), ...dropped].sort(), input.map(b => b.id).sort(), `partition in run ${run}`);
+    assert.deepEqual(resolveOverlaps(blocks).blocks.map(b => [b.id, b.startMin, b.durationMin]), blocks.map(b => [b.id, b.startMin, b.durationMin]), `idempotent in run ${run}`);
+    const shuffled = [...input].sort(() => rnd() - 0.5);
+    assert.deepEqual(resolveOverlaps(shuffled).blocks.map(b => [b.id, b.startMin]), blocks.map(b => [b.id, b.startMin]), `deterministic in run ${run}`);
+    const once = sanitizeBlocks(input, NOW);
+    assert.deepEqual(sanitizeBlocks(once, NOW), once, `sanitizeBlocks idempotent in run ${run}`);
+  }
+});
+
+test('pins: 60-cap tombstones the newest createdAt; a dropped block is tombstoned; mk_ id guard; appt clamp; done status whitelist; invalid today throws; null lead → 5', () => {
+  const many = Array.from({ length: 62 }, (_, i) => blk({ id: 'blk_' + String(i).padStart(7, '0'), startMin: (i * 20) % 1400, durationMin: 10, createdAt: `2026-09-0${i < 31 ? 1 : 2}T${String(i % 24).padStart(2, '0')}:00:00Z` }));
+  assert.deepEqual(sanitizeBlocks(many, NOW).filter(b => b.deletedAt).map(b => b.id).sort(), ['blk_0000046', 'blk_0000047']);
+  const big = blk({ id: 'blk_big0000', startMin: 0, durationMin: 720, updatedAt: '2026-09-08T09:00:00Z' });
+  const big2 = blk({ id: 'blk_big0001', startMin: 720, durationMin: 700, updatedAt: '2026-09-08T09:00:00Z' });
+  const full = blk({ id: 'blk_full000', startMin: 1420, durationMin: 20, updatedAt: '2026-09-08T09:00:00Z' });
+  const extra = blk({ id: 'blk_extra00', startMin: 1425, durationMin: 10, updatedAt: '2026-09-08T12:00:00Z' });
+  assert.equal(sanitizeBlocks([big, big2, full, extra], NOW).find(b => b.id === 'blk_extra00').deletedAt, NOW);
+  const recs = [
+    { id: 'bad_id', kind: 'makeup', day: '2026-09-08', startMin: 750, durationMin: 30, category: 'dial', name: 'x', ofBlockId: 'a', updatedAt: NOW, deletedAt: null },
+    { id: '2026-09-08|appt|p1|2000', kind: 'appt', day: '2026-09-08', prospectId: 'p1', startMin: 2000, durationMin: 9999, source: 'derived', heldAt: null, updatedAt: NOW, deletedAt: null },
+    { id: '2026-09-08|blk_w', kind: 'done', day: '2026-09-08', blockId: 'blk_w', status: 'weird', at: NOW, updatedAt: NOW, deletedAt: null },
+  ];
+  const out = sanitizeDay(recs, '2026-09-08', NOW);
+  assert.deepEqual(out.map(r => r.id), ['2026-09-08|appt|p1|2000']);
+  assert.equal(out[0].startMin, 1439); assert.equal(out[0].durationMin, 720);
+  assert.throws(() => sanitizeDay(recs, undefined, NOW), TypeError);
+  assert.equal(sanitizeSettings({ defaultMinutesBefore: null }).defaultMinutesBefore, 5);
+  assert.deepEqual(sanitizeSettings({ activeDays: [6, 0, 3] }).activeDays, [0, 3, 6]);
+  assert.equal(instantiateTemplate({ paletteId: 'dial', startMin: 510, remind: { enabled: true } }, { now: NOW, defaultMinutesBefore: 15 }).remind.minutesBefore, 15);
+});

@@ -33,7 +33,7 @@ function clampBlock(b) {
   };
   return {
     id: b.id,
-    name: String(b.name ?? pal.name).slice(0, 60),
+    name: (typeof b.name === 'string' && b.name.trim() ? b.name : pal.name).slice(0, 60),
     paletteId: pal.id,
     category,
     startMin, durationMin, remind,
@@ -55,8 +55,6 @@ function dedupeNewest(records) {
   }
   return [...byId.values()];
 }
-
-const overlaps = (a, b) => a.startMin < b.startMin + b.durationMin && b.startMin < a.startMin + a.durationMin;
 
 // Free gaps (as [start, end)) between placed blocks inside [0, 1440).
 function gaps(placed) {
@@ -85,22 +83,23 @@ function place(block, placed) {
   return null;
 }
 
-// Live blocks only. Returns { blocks, dropped: [ids] } — never mutates input.
+// Priority placement (spec §4a): blocks are placed in order of (updatedAt asc,
+// id asc). The earliest-updated block keeps its slot; every later block is
+// placed into the free gaps left by those before it — at/after its own start,
+// else shrunk into the largest free gap ≥ 10 min, else dropped. Equal stamps →
+// the greater id yields. Overlap-free and idempotent by construction. Resolved
+// moves keep their updatedAt on purpose: bumping it would flip priority on the
+// next merge and ping-pong the block across devices.
 export function resolveOverlaps(live) {
-  const sorted = [...live].sort((a, b) => a.startMin - b.startMin || String(a.id).localeCompare(String(b.id)));
+  const order = [...live].sort((a, b) =>
+    String(a.updatedAt || '').localeCompare(String(b.updatedAt || '')) || String(a.id).localeCompare(String(b.id)));
   const placed = [];
   const dropped = [];
-  const later = (x, y) => (String(x.updatedAt) === String(y.updatedAt) ? String(x.id) > String(y.id) : String(x.updatedAt) > String(y.updatedAt));
-  for (const b of sorted) {
-    const conflict = placed.find(p => overlaps(p, b));
-    if (!conflict) { placed.push(b); continue; }
-    const mover = later(b, conflict) ? b : conflict;
-    const stay = mover === b ? conflict : b;
-    if (mover === conflict) { placed.splice(placed.indexOf(conflict), 1); placed.push(stay); }
-    const moved = place(mover, placed);
-    if (moved) placed.push(moved); else dropped.push(mover.id);
+  for (const b of order) {
+    const moved = place(b, placed);
+    if (moved) placed.push(moved); else dropped.push(b.id);
   }
-  return { blocks: placed.sort((a, b) => a.startMin - b.startMin), dropped };
+  return { blocks: placed.sort((a, b) => a.startMin - b.startMin || String(a.id).localeCompare(String(b.id))), dropped };
 }
 
 export function sanitizeBlocks(blocks, nowIso = new Date().toISOString()) {
@@ -108,7 +107,7 @@ export function sanitizeBlocks(blocks, nowIso = new Date().toISOString()) {
   const tombstones = deduped.filter(b => b.deletedAt && !olderThan(b.deletedAt, nowIso, SEVEN_DAYS));
   let live = deduped.filter(b => !b.deletedAt);
   if (live.length > MAX_LIVE) {
-    const byNewest = [...live].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+    const byNewest = [...live].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)) || String(b.id).localeCompare(String(a.id)));
     const extra = new Set(byNewest.slice(0, live.length - MAX_LIVE).map(b => b.id));
     for (const b of live) if (extra.has(b.id)) tombstones.push({ ...b, deletedAt: nowIso, updatedAt: nowIso });
     live = live.filter(b => !extra.has(b.id));
@@ -126,6 +125,7 @@ export function liveBlocks(blocks, nowIso = new Date().toISOString()) {
 const DAY_KINDS = new Set(['done', 'appt', 'attach', 'owed', 'makeup', 'ack']);
 
 export function sanitizeDay(records, today, nowIso = new Date().toISOString()) {
+  if (!DAY_KEY_RE.test(String(today))) throw new TypeError('sanitizeDay: today must be YYYY-MM-DD');
   const floor = addDays(today, -7);
   const out = [];
   for (const r of dedupeNewest(Array.isArray(records) ? records : [])) {
@@ -171,7 +171,7 @@ const uniqStrings = (arr, fallback) => (Array.isArray(arr) ? [...new Set(arr.fil
 
 export function sanitizeSettings(s) {
   if (!s || typeof s !== 'object') return { ...DEFAULT_SETTINGS, activeDays: [...DEFAULT_SETTINGS.activeDays], appointmentStages: [...DEFAULT_SETTINGS.appointmentStages], followupStages: [...DEFAULT_SETTINGS.followupStages] };
-  const lead = Number(s.defaultMinutesBefore);
+  const lead = typeof s.defaultMinutesBefore === 'number' ? s.defaultMinutesBefore : NaN;
   const nearest = [0, 5, 10, 15].reduce((best, v) => (Math.abs(v - lead) < Math.abs(best - lead) ? v : best), 5);
   return {
     version: 1,
@@ -179,7 +179,7 @@ export function sanitizeSettings(s) {
     timezoneMode: s.timezoneMode === 'manual' ? 'manual' : 'auto',
     remindersEnabled: s.remindersEnabled !== false,
     defaultMinutesBefore: Number.isFinite(lead) ? nearest : 5,
-    activeDays: Array.isArray(s.activeDays) ? [...new Set(s.activeDays.map(Number).filter(d => Number.isInteger(d) && d >= 0 && d <= 6))].sort() : [...DEFAULT_SETTINGS.activeDays],
+    activeDays: Array.isArray(s.activeDays) ? [...new Set(s.activeDays.map(Number).filter(d => Number.isInteger(d) && d >= 0 && d <= 6))].sort((a, b) => a - b) : [...DEFAULT_SETTINGS.activeDays],
     appointmentStages: uniqStrings(s.appointmentStages, DEFAULT_SETTINGS.appointmentStages),
     followupStages: uniqStrings(s.followupStages, DEFAULT_SETTINGS.followupStages),
     followupStagesSeeded: s.followupStagesSeeded === true,
@@ -193,7 +193,7 @@ export const FOLLOWUP_WORDS = /follow|circle|check\s*back|call\s*back|callback|p
 // A bare \bno\b would also reject "No show – reschedule", which the positive
 // list deliberately seeds — the lookahead keeps "no" as a negation word except
 // when it heads "no show" / "no-show". (Spec §4c's regex lacks the lookahead
-// and contradicts its own §12 pin; amend §4c in rev 11 — note it in the commit.)
+// and contradicts its own §12 pin; recorded as a plan deviation for spec rev 11 §4c.)
 export const NOT_FOLLOWUP_WORDS = /\b(won|sold|closed|lost|dead|not|never)\b|\bno\b(?![\s-]*show)|\b(un|dis)interest/i;
 // Hand copy of constants.js DEFAULT_PROSPECT_STAGES ids — a node test in Task 13 pins the two equal.
 export const DEFAULT_STAGE_IDS = new Set(['WEBBY_SET', 'WEBBY_CONFIRMED', 'APPOINTMENT_SET', 'MISSED_APPT', 'PENDING_DECISION', 'FOLLOWUP_LATER', 'GHOSTED', 'SOLD', 'LOST']);
@@ -218,7 +218,7 @@ export function instantiateTemplate(entry, { now, defaultMinutesBefore }) {
     category: pal.category,
     startMin: entry.startMin,
     durationMin: entry.durationMin ?? pal.defaultMin,
-    remind: entry.remind ?? { enabled: pal.defaultRemind, minutesBefore: defaultMinutesBefore },
+    remind: { enabled: pal.defaultRemind, minutesBefore: defaultMinutesBefore, ...(entry.remind || {}) },
     note: entry.note ?? '',
     deletedAt: null, createdAt: now, updatedAt: now,
   });
