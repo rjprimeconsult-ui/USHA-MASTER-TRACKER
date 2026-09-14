@@ -86,10 +86,10 @@ test('activeDays never affects appointments (caller passes liveBlocks regardless
 });
 
 test('followupQueue: stage-selected, archived out, lastContact asc with empty first, createdAt asc, ages', () => {
-  const mk = (id, o) => ({ id, name: 'N' + id, stage: 'FOLLOWUP_LATER', archivedAt: null, lastContact: '', createdAt: '2026-09-01T00:00:00Z', ...o });
+  const row = (id, o) => ({ id, name: 'N' + id, stage: 'FOLLOWUP_LATER', archivedAt: null, lastContact: '', createdAt: '2026-09-01T00:00:00Z', ...o });
   const rows = [
-    mk('1', { lastContact: '2026-08-27' }), mk('2', { lastContact: '2026-09-05' }), mk('3', { createdAt: '2026-09-07T00:00:00Z' }),
-    mk('4', { createdAt: '2026-08-01T00:00:00Z' }), mk('5', { archivedAt: 'x' }), mk('6', { stage: 'SOLD' }), mk('7', { stage: 'STAGE_X', lastContact: '2026-09-01' }),
+    row('1', { lastContact: '2026-08-27' }), row('2', { lastContact: '2026-09-05' }), row('3', { createdAt: '2026-09-07T00:00:00Z' }),
+    row('4', { createdAt: '2026-08-01T00:00:00Z' }), row('5', { archivedAt: 'x' }), row('6', { stage: 'SOLD' }), row('7', { stage: 'STAGE_X', lastContact: '2026-09-01' }),
   ];
   const out = followupQueue(rows, ['FOLLOWUP_LATER', 'STAGE_X'], CHI, NOW);
   assert.deepEqual(out.map(r => r.id), ['4', '3', '1', '7', '2']);
@@ -252,6 +252,80 @@ test('yesterdayMiss and weeklyNotDone', () => {
   assert.equal(week.days[6].minutes, 120); assert.equal(week.days[5].minutes, 0); assert.equal(week.days[4].minutes, 0);
   assert.equal(week.days[0].minutes, 495); // never opened → whole routine
   assert.equal(week.total, 495 * 4 + 120);
+});
+
+test('composeDay/findMakeupSlot scope done/skip records and make-ups to `today` (a day-2 bug class, same as nowState)', () => {
+  const doneYesterday = compose({ dayRecords: [{ kind: 'done', blockId: DIAL_AM, status: 'done', day: '2026-09-07', deletedAt: null }] });
+  assert.deepEqual(doneYesterday.items.filter(i => i.blockId === DIAL_AM).map(i => i.done), [null]);
+
+  const withYesterdaySkip = findMakeupSlot({ live: starter(), appointments: [], makeups: [], dayRecords: [{ kind: 'done', blockId: FU_AM, status: 'skipped', day: '2026-09-07', deletedAt: null }], makeupMin: 60, nowMin: 582, today: TODAY });
+  const noRecords = findMakeupSlot({ live: starter(), appointments: [], makeups: [], dayRecords: [], makeupMin: 60, nowMin: 582, today: TODAY });
+  assert.notDeepEqual(withYesterdaySkip, { startMin: 720, endMin: 780 }); // yesterday's skip must not free today's block
+  assert.deepEqual(withYesterdaySkip, noRecords);
+
+  const stale = compose({ appointments: [ap('a', 540)], makeups: [mk('mk_y', 750, 30, { day: '2026-09-07' })] });
+  assert.equal(stale.recovered, 0); assert.equal(stale.unrecovered, 30);
+  assert.deepEqual(stale.items.filter(i => i.kind === 'makeup'), []);
+});
+
+test('composeDay: MIN_SEG boundary (9 survives-dropped vs 10 survives) and the 40px marker boundary (39 rejects, 40 accepts, else falls to the following segment)', () => {
+  const exactlyTen = compose({ appointments: [ap('a', 520)] }); // head cut leaves exactly a 10-min (MIN_SEG) piece
+  assert.deepEqual(segsOf(exactlyTen, DIAL_AM), [[510, 520], [550, 630]]);
+  assert.equal(exactlyTen.displacedByBlock[DIAL_AM], 30);
+
+  const exactlyForty = compose({ appointments: [ap('a', 530)] }); // preceding segment is exactly 20 min = 40px, right at the marker threshold
+  assert.deepEqual(segsOf(exactlyForty, DIAL_AM), [[510, 530], [560, 630]]);
+  assert.deepEqual(exactlyForty.markers.filter(m => m.blockId === DIAL_AM).map(m => [m.minutes, m.segmentIndex]), [[30, 0]]);
+
+  const precedingTooSmall = compose({ appointments: [ap('a', 525, 30)] }); // preceding segment is 15 min = 30px (< 40) → rejected; following (75 min) qualifies
+  assert.deepEqual(segsOf(precedingTooSmall, DIAL_AM), [[510, 525], [555, 630]]);
+  assert.deepEqual(precedingTooSmall.markers.filter(m => m.blockId === DIAL_AM).map(m => [m.minutes, m.segmentIndex]), [[30, 1]]);
+});
+
+test('composeDay: Math.max(0, …) clamps (a make-up with no active appointment recovers with nothing to offset; an accepted decision cannot go negative)', () => {
+  const idleMakeup = compose({ makeups: [mk('mk_0000001', 750, 30)] }); // no appointments at all → nothing displaced, but the make-up still "recovers"
+  assert.equal(idleMakeup.recovered, 30); assert.equal(idleMakeup.unrecovered, 0);
+
+  const day = '2026-09-08';
+  const proj = (u) => ({ unrecovered: u, displacedByBlock: u ? { a: u } : {} });
+  const overshoot = applyOwedDecision(null, 'accept', { projected: proj(7), realized: proj(7), makeupMin: 10, nowIso: T0, day }); // makeupMin(10) > projected(7)
+  assert.equal(overshoot.decidedMinutes, 0);
+  assert.equal(offerState(overshoot, proj(0)).offerOpen, false);
+});
+
+test('composeDay: overlapping make-ups render once and recover once (priority = updatedAt asc, id asc, same tie-break as resolveOverlaps); a partial overlap recovers the union', () => {
+  const dup = compose({ appointments: [ap('a', 540)], makeups: [mk('mk_0000001', 750, 30), mk('mk_0000002', 750, 30)] });
+  assert.equal(dup.recovered, 30); assert.equal(dup.unrecovered, 0);
+  const dupMakeupItems = dup.items.filter(i => i.kind === 'makeup');
+  assert.equal(dupMakeupItems.length, 1);
+  assert.ok(dupMakeupItems[0].id.startsWith('mk_0000001#')); // lower id wins the tie, mk_0000002 is fully absorbed
+
+  const partial = compose({ appointments: [ap('a', 540, 60)], makeups: [mk('mk_0000001', 750, 30), mk('mk_0000002', 765, 30)] }); // 60-min appt displaces DIAL_AM by 60
+  assert.equal(partial.displacedByBlock[DIAL_AM], 60);
+  assert.equal(partial.recovered, 45); // union of [750,780) and [765,795) is 45 unique minutes, not 60
+});
+
+test('composeDay: item ordering and the 1440-minute clamp', () => {
+  // NOTE: composeDay's own cutting algorithm makes a segment/appt startMin tie structurally
+  // unreachable — any appointment overlapping a block's boundary consumes that boundary before
+  // a shared start can render, and abutting appointments merge in apptCuts before cutting. Verified
+  // by direct execution: with the default starter template, ap('a', 510) puts the review block's
+  // segment (480–630 → 480–510, untouched) at items[0], not the appt — the appt is simply the only
+  // item that ever starts at 510 (DIAL_AM's head is fully consumed). The comparator fix (§ item 3)
+  // is defensive/order-stable, matching resolveOverlaps' style, rather than independently observable
+  // through composeDay's output. Pinning the true, verified behavior here instead.
+  const atStart = compose({ appointments: [ap('a', 510)] });
+  const at510 = atStart.items.filter(i => i.startMin === 510);
+  assert.equal(at510.length, 1);
+  assert.equal(at510[0].kind, 'appt');
+
+  const clamped = compose({ appointments: [ap('a', 1425, 30)] });
+  assert.equal(clamped.items.find(i => i.kind === 'appt').endMin, 1440);
+});
+
+test('applyOwedDecision rejects an unknown decision', () => {
+  const proj = (u) => ({ unrecovered: u, displacedByBlock: u ? { a: u } : {} });
+  assert.throws(() => applyOwedDecision(null, 'bogus', { projected: proj(10), realized: proj(10), makeupMin: 10, nowIso: T0, day: '2026-09-08' }), TypeError);
 });
 
 test('part A pins: cross-day appt records never suppress; attach only on appt blocks; tombstoned attach ignored; hh/mm range; 7-day "new" window; apptRecordId', () => {

@@ -128,10 +128,11 @@ const px = (min) => min * 2; // PX_PER_MIN, inlined to keep this module import-l
 // ---------- §7h.3 composeDay ----------
 // `today` is REQUIRED: dayRecords carries 7 days and block ids are permanent, so
 // done records must be scoped to today (same day-2 bug as nowState — Task 4 review).
+// Callers already pass only today's live make-ups, but composeDay scopes defensively — same as dayRecords.
 export function composeDay({ live = [], appointments = [], makeups = [], dayRecords = [], nowMin = 0, today }) {
   if (typeof today !== 'string') throw new TypeError('composeDay: today is required');
   const apptCuts = unionIntervals(appointments.map(a => [a.startMin, Math.min(1440, a.startMin + a.durationMin)]));
-  const liveMk = makeups.filter(m => m && !m.deletedAt);
+  const liveMk = makeups.filter(m => m && !m.deletedAt && m.day === today);
   const mkCuts = unionIntervals(liveMk.map(m => [m.startMin, m.startMin + m.durationMin]));
   const doneById = new Map(dayRecords.filter(r => r && r.kind === 'done' && !r.deletedAt && r.day === today).map(r => [r.blockId, r.status]));
   const displacedByBlock = {};
@@ -172,19 +173,28 @@ export function composeDay({ live = [], appointments = [], makeups = [], dayReco
     pushSegments('segment', b, b.id, segs);
   }
 
+  // Overlapping make-ups (same slot, e.g. a re-offer): render once and recover once. Each
+  // make-up is cut by the FULL span of every make-up already processed (priority order =
+  // updatedAt asc, id asc — same tie-break as resolveOverlaps), not just by appointments.
   const displacedByMakeup = {};
-  for (const m of liveMk) {
+  let recovered = 0;
+  const orderedMk = [...liveMk].sort((a, b) =>
+    String(a.updatedAt || '').localeCompare(String(b.updatedAt || '')) || String(a.id).localeCompare(String(b.id)));
+  let priorMk = [];
+  for (const m of orderedMk) {
     const full = [m.startMin, m.startMin + m.durationMin];
-    const kept = subtract(full, apptCuts).filter(([s, e]) => e - s >= MIN_SEG);
-    displacedByMakeup[m.id] = m.durationMin - kept.reduce((n, [s, e]) => n + (e - s), 0);
+    const keptA = subtract(full, apptCuts).filter(([s, e]) => e - s >= MIN_SEG);
+    displacedByMakeup[m.id] = m.durationMin - keptA.reduce((n, [s, e]) => n + (e - s), 0);
+    const kept = keptA.flatMap(seg => subtract(seg, priorMk)).filter(([s, e]) => e - s >= MIN_SEG);
     pushSegments('makeup', m, m.id, kept);
+    recovered += kept.reduce((n, [s, e]) => n + (e - s), 0);
+    priorMk = unionIntervals([...priorMk, full]);
   }
 
   for (const a of appointments) items.push({ kind: 'appt', id: `appt|${a.prospectId}|${a.startMin}`, ...a, endMin: Math.min(1440, a.startMin + a.durationMin) }); // a 23:45 appointment never hangs below the lane
-  items.sort((x, y) => x.startMin - y.startMin || (x.kind === 'appt' ? -1 : 1));
+  items.sort((x, y) => x.startMin - y.startMin || ((y.kind === 'appt') - (x.kind === 'appt')));
 
   const totalDisplaced = Object.values(displacedByBlock).reduce((n, v) => n + v, 0);
-  const recovered = liveMk.reduce((n, m) => n + (m.durationMin - displacedByMakeup[m.id]), 0);
   const unrecovered = Math.max(0, totalDisplaced - recovered);
   return { items, displacedByBlock, displacedByMakeup, recovered, unrecovered, markers };
 }
@@ -200,7 +210,7 @@ export function findMakeupSlot({ live = [], appointments = [], makeups = [], day
   const skipped = new Set(dayRecords.filter(r => r && r.kind === 'done' && !r.deletedAt && r.status === 'skipped' && r.day === today).map(r => r.blockId));
   const covered = unionIntervals([
     ...appointments.map(a => [a.startMin, a.startMin + a.durationMin]),
-    ...makeups.filter(m => m && !m.deletedAt).map(m => [m.startMin, m.startMin + m.durationMin]),
+    ...makeups.filter(m => m && !m.deletedAt && m.day === today).map(m => [m.startMin, m.startMin + m.durationMin]),
     ...blocks.filter(b => b.category !== 'break' && !skipped.has(b.id)).map(b => [b.startMin, b.startMin + b.durationMin]),
   ]);
   const gaps = subtract([spanStart, spanEnd], covered);
@@ -243,6 +253,7 @@ export function offerState(stored, projected) {
 
 // decision ∈ 'skip' | 'accept'. Creates the record when absent.
 export function applyOwedDecision(stored, decision, { projected, realized, makeupMin, nowIso, day }) {
+  if (decision !== 'skip' && decision !== 'accept') throw new TypeError('applyOwedDecision: unknown decision ' + String(decision));
   const base = stored && !stored.deletedAt ? { ...stored } : {
     id: owedId(day), kind: 'owed', day, minutes: realized.unrecovered, byBlock: cleanByBlock(realized.displacedByBlock),
     status: 'open', decidedAt: null, decidedMinutes: null, deletedAt: null,
@@ -259,6 +270,7 @@ function nounFor(byCategory) {
   return 'routine time';
 }
 
+// settings must be sanitized (sanitizeSettings); undefined activeDays scores every day 0. byBlock/byCategory carry GROSS displaced minutes per block (they feed nounFor and diagnostics); `minutes` is the authoritative total.
 export function dayNotDone({ day, blocks = [], dayRecords = [], settings, tz }) {
   const empty = { minutes: 0, byBlock: {}, byCategory: {}, noun: 'routine time' };
   if (!(settings?.activeDays || []).includes(localWeekday(day))) return empty;
