@@ -103,8 +103,8 @@ test('the two routine arrays are MERGEABLE_KEYS; settings is not', () => {
 });
 
 test('migrateLocalToCloud never overwrites routine_day_v1 (tick-written records live there)', () => {
-  const fn = storageSrc.slice(storageSrc.indexOf('export async function migrateLocalToCloud'));
-  assert.ok(fn.includes('MIGRATE_SKIP') && fn.includes(ROUTINE_DAY_KEY));
+  const fn = storageSrc.slice(storageSrc.indexOf('const MIGRATE_SKIP'));
+  assert.ok(fn.includes('MIGRATE_SKIP') && fn.includes(ROUTINE_DAY_KEY) && fn.includes('export async function migrateLocalToCloud'));
 });
 
 test('feature key literal', () => { assert.equal(ROUTINE_FEATURE_KEY, 'routine_builder'); });
@@ -137,7 +137,7 @@ In `src/lib/storage.js`:
   // keys survive purgeLocalMirror and leak across accounts.
   'routine_blocks_v1', 'routine_day_v1', 'routine_settings_v1',
 ```
-- `migrateLocalToCloud` (L385-401): add a skip set so a stale local mirror can never clobber records the server tick appended:
+- `migrateLocalToCloud` (L385-401): add a skip set so a stale local mirror can never clobber records the server tick appended. **Plan deviation, record in the commit message and propose for spec rev 11 §4:** the spec does not ask for this; it is a defensive guard (the client only writes `routine_day_v1` when signed in, so the local mirror is never the sole copy — skipping it in the one-shot migration loses nothing).
 ```js
 // Keys the SERVER also writes (routine tick → routine_day_write RPC). A stale
 // local mirror must never overwrite them wholesale.
@@ -209,7 +209,7 @@ test('offsetMinutesAt returns local − UTC (NY = −240 EDT, −300 EST)', () =
 });
 
 test('localDayKey / localMinuteOfDay follow the zone, not the server', () => {
-  const t = Z('2026-09-09T03:30:00Z'); // 23:30 Chicago on 09-08
+  const t = Z('2026-09-09T04:30:00Z'); // 23:30 CDT on 09-08 (Chicago is UTC−5 in September)
   assert.equal(localDayKey(t, CHI), '2026-09-08');
   assert.equal(localMinuteOfDay(t, CHI), 23 * 60 + 30);
   assert.equal(localDayKey(t, 'UTC'), '2026-09-09');
@@ -336,7 +336,7 @@ export function zonedTimeToUtc(day, minute, tz) {
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `node --test src/lib/tz.test.mjs` → `pass 8, fail 0`. Then `npm test` → 767 pass.
+Run: `node --test src/lib/tz.test.mjs` → `pass 7, fail 0`. Then `npm test` → 766 pass.
 
 - [ ] **Step 5: Commit**
 
@@ -431,8 +431,8 @@ Run: `node --test src/lib/routinePalette.test.mjs src/lib/routineTemplates.test.
 `src/lib/routinePalette.mjs`:
 ```js
 // Routine Builder palette (spec §7d). One hex per category — used for tint,
-// stripe, and dot. NEVER amber #f59e0b: amber text means "routine time lost"
-// and nothing else (tripwire in sourceInvariants.test.mjs).
+// stripe, and dot. NEVER Tailwind amber-500: amber text means "routine time
+// lost" and nothing else (tripwire in sourceInvariants.test.mjs).
 export const CATEGORIES = ['dial', 'followup', 'text', 'appt', 'review', 'admin', 'learn', 'break', 'custom'];
 
 export const PALETTE = [
@@ -491,7 +491,7 @@ export const TEMPLATES = [STARTER_TEMPLATE, BLANK_TEMPLATE];
 
 - [ ] **Step 4: Run to verify they pass**
 
-Run: `node --test src/lib/routinePalette.test.mjs src/lib/routineTemplates.test.mjs` → 6 pass. `npm test` → 773 pass.
+Run: `node --test src/lib/routinePalette.test.mjs src/lib/routineTemplates.test.mjs` → 6 pass. `npm test` → 772 pass.
 
 - [ ] **Step 5: Commit**
 
@@ -876,8 +876,13 @@ export function sanitizeSettings(s) {
 // Custom stages seed ONLY on follow-up wording (Juan 2026-09-11) AND never on
 // closed-won / not-interested wording.
 export const FOLLOWUP_WORDS = /follow|circle|check\s*back|call\s*back|callback|pitch|needs?\s*app|re-?engage|interest|missed|pending|later|reschedul|no[\s-]*show|think|decid/i;
-export const NOT_FOLLOWUP_WORDS = /\b(won|sold|closed|lost|dead|not|no|never)\b|\b(un|dis)interest/i;
-const DEFAULT_STAGE_IDS = new Set(['WEBBY_SET', 'WEBBY_CONFIRMED', 'APPOINTMENT_SET', 'MISSED_APPT', 'PENDING_DECISION', 'FOLLOWUP_LATER', 'GHOSTED', 'SOLD', 'LOST']);
+// A bare \bno\b would also reject "No show – reschedule", which the positive
+// list deliberately seeds — the lookahead keeps "no" as a negation word except
+// when it heads "no show" / "no-show". (Spec §4c's regex lacks the lookahead
+// and contradicts its own §12 pin; amend §4c in rev 11 — note it in the commit.)
+export const NOT_FOLLOWUP_WORDS = /\b(won|sold|closed|lost|dead|not|never)\b|\bno\b(?![\s-]*show)|\b(un|dis)interest/i;
+// Hand copy of constants.js DEFAULT_PROSPECT_STAGES ids — a node test in Task 13 pins the two equal.
+export const DEFAULT_STAGE_IDS = new Set(['WEBBY_SET', 'WEBBY_CONFIRMED', 'APPOINTMENT_SET', 'MISSED_APPT', 'PENDING_DECISION', 'FOLLOWUP_LATER', 'GHOSTED', 'SOLD', 'LOST']);
 
 export function seedFollowupStages(stages) {
   const out = [...DEFAULT_SETTINGS.followupStages];
@@ -920,7 +925,7 @@ export function applyTemplate(existing, template, { replace = false, now, defaul
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `node --test src/lib/routineModel.test.mjs` → 13 pass. If `resolveOverlaps` shrink test fails on the exact `1420/20` numbers, hand-trace `place()` against `gaps()`: big 0–720, big2 720–1420 → gaps `[[1420,1440]]`; late (700, 60) has no fitting gap → shrink → start 1420, duration `min(60, floor(20/5)*5) = 20`. Fix the implementation, not the test. Then `npm test` → 786 pass.
+Run: `node --test src/lib/routineModel.test.mjs` → 12 pass. If `resolveOverlaps` shrink test fails on the exact `1420/20` numbers, hand-trace `place()` against `gaps()`: big 0–720, big2 720–1420 → gaps `[[1420,1440]]`; late (700, 60) has no fitting gap → shrink → start 1420, duration `min(60, floor(20/5)*5) = 20`. Fix the implementation, not the test. Then `npm test` → 784 pass.
 
 - [ ] **Step 5: Commit**
 
@@ -986,7 +991,8 @@ test('blockVisualState', () => {
 });
 
 // Dial 8:30–10:30 split by a 9:00–9:30 appointment; Break 10:30–10:45.
-const seg = (blockId, s, e, extra = {}) => ({ kind: 'segment', blockId, startMin: s, endMin: e, name: blockId, ...extra });
+const seg = (blockId, s, e, extra = {}) => ({ kind: 'segment', blockId, startMin: s, endMin: e, name: blockId, category: blockId === 'break' ? 'break' : 'dial', ...extra });
+// Breaks never set `behind` (a "Break · still open" line is noise; consistent with §7h.4 excluding breaks) — plan deviation from the literal §7b, propose for rev 11.
 const items = [seg('dial', 510, 540, { isFirst: true }), { kind: 'appt', prospectId: 'p1', startMin: 540, endMin: 570, name: 'Ana' }, seg('dial', 570, 630, { isLast: true }), seg('break', 630, 645, { isFirst: true, isLast: true })];
 const noDone = [];
 
@@ -1034,7 +1040,7 @@ export const topPx = (startMin, boundsStart) => (startMin - boundsStart) * PX_PE
 export const heightPx = (durationMin) => durationMin * PX_PER_MIN;
 export function minuteFromPx(px, boundsStart) {
   const raw = boundsStart + px / PX_PER_MIN;
-  return Math.max(0, Math.min(1440, Math.round(raw / SNAP_MIN) * SNAP_MIN));
+  return Math.max(boundsStart, Math.min(1440, Math.round(raw / SNAP_MIN) * SNAP_MIN)); // clamp to bounds (§7c), never before the canvas
 }
 ```
 
@@ -1074,7 +1080,7 @@ export function nowState({ items = [], dayRecords = [], nowMin, offerBlocked = f
   const firstStart = new Map();
   for (const it of items) {
     const key = it.kind === 'segment' ? it.blockId : it.kind === 'makeup' ? it.makeupId : null;
-    if (!key) continue;
+    if (!key || it.category === 'break') continue; // breaks never set `behind` (see the test note)
     lastEnd.set(key, Math.max(lastEnd.get(key) ?? -1, it.endMin));
     firstStart.set(key, Math.min(firstStart.get(key) ?? 1e9, it.startMin));
   }
@@ -1095,7 +1101,7 @@ export function nowState({ items = [], dayRecords = [], nowMin, offerBlocked = f
 }
 ```
 
-- [ ] **Step 4: Run to verify they pass** — `node --test src/lib/routineLayout.test.mjs src/lib/routineClock.test.mjs` → 6 pass; `npm test` → 792 pass.
+- [ ] **Step 4: Run to verify they pass** — `node --test src/lib/routineLayout.test.mjs src/lib/routineClock.test.mjs` → 6 pass; `npm test` → 790 pass.
 
 - [ ] **Step 5: Commit**
 
@@ -1324,7 +1330,7 @@ export function followupQueue(prospects, stageIds, tz, now) {
 ```
 `Date.parse(` appears exactly once in this file (the zoned branch) and must stay that way — the tripwire in Task 8 counts it. Everything else uses `new Date(x).getTime()`.
 
-- [ ] **Step 4: Run to verify it passes** — `node --test src/lib/routineLive.test.mjs` → 10 pass; `npm test` → 802 pass.
+- [ ] **Step 4: Run to verify it passes** — `node --test src/lib/routineLive.test.mjs` → 10 pass; `npm test` → 800 pass.
 
 - [ ] **Step 5: Commit**
 
@@ -1349,7 +1355,9 @@ import { composeDay, findMakeupSlot, reconcileOwed, offerState, applyOwedDecisio
 import { STARTER_TEMPLATE } from './routineTemplates.mjs';
 import { instantiateTemplate } from './routineModel.mjs';
 
-const T0 = '2026-09-08T12:00:00.000Z';
+// T0 is the blocks' createdAt: it MUST predate the 7-day look-back window
+// (dayNotDone excludes blocks created after the day being scored — §7h.4).
+const T0 = '2026-08-25T12:00:00.000Z';
 const starter = () => STARTER_TEMPLATE.entries.map((e, i) => ({ ...instantiateTemplate(e, { now: T0, defaultMinutesBefore: 5 }), id: 'blk_' + String(i).padStart(7, '0') }));
 const DIAL_AM = 'blk_0000001', TEXT = 'blk_0000003', FU_AM = 'blk_0000004', LUNCH = 'blk_0000005', DIAL_PM = 'blk_0000006';
 const ap = (pid, startMin, durationMin = 30) => ({ prospectId: pid, startMin, durationMin, endMin: startMin + durationMin, instant: 0, source: 'derived', frozen: false, heldAt: null, name: 'N' });
@@ -1373,11 +1381,13 @@ test('composeDay: tail / head / mid / whole; displaced per block; title segment 
 });
 
 test('composeDay: 9-min remnant dropped and counted; unioned overlaps counted once; breaks and appt placeholders contribute 0', () => {
-  const r = compose({ appointments: [ap('a', 621), ap('b', 640, 20)] }); // 10:21–10:51 union
+  const r = compose({ appointments: [ap('a', 621), ap('b', 640, 11)] }); // b (640–651) lies inside a (621–651): union 10:21–10:51, counted once
   assert.deepEqual(segsOf(r, DIAL_AM), [[510, 621]]); assert.equal(r.displacedByBlock[DIAL_AM], 9);
   assert.deepEqual(segsOf(r, TEXT), [[651, 675]]); assert.equal(r.displacedByBlock[TEXT], 6);
   assert.equal(r.displacedByBlock['blk_0000002'], undefined); // break
   assert.equal(r.unrecovered, 15);
+  const rem = compose({ appointments: [ap('a', 519)] }); // 8:39–9:09 leaves a 9-min head 8:30–8:39 → dropped and counted
+  assert.deepEqual(segsOf(rem, DIAL_AM), [[549, 630]]); assert.equal(rem.displacedByBlock[DIAL_AM], 39);
   const live = [...starter(), { id: 'blk_webby00', name: 'Webby', category: 'appt', paletteId: 'webby', startMin: 1100, durationMin: 60, deletedAt: null, remind: { enabled: true, minutesBefore: 5 } }];
   const r2 = composeDay({ live, appointments: [ap('a', 1110)], makeups: [], dayRecords: [], nowMin: 582 });
   assert.equal(r2.displacedByBlock['blk_webby00'], undefined); assert.equal(r2.unrecovered, 0);
@@ -1415,7 +1425,9 @@ test('findMakeupSlot: the three pinned cases, over-a-break/skipped, afternoon fi
   assert.deepEqual(findMakeupSlot({ live: gapLive, appointments: [], makeups: [], dayRecords: [], makeupMin: 30, nowMin: 582 }), { startMin: 720, endMin: 750 });
   assert.equal(slot({ makeupMin: 45, nowMin: 1020 }), null);
   assert.deepEqual(slot({ makeupMin: 15, nowMin: 600 }), { startMin: 750, endMin: 765 });
-  assert.deepEqual(slot({ makeupMin: 60, dayRecords: [{ kind: 'done', blockId: FU_AM, status: 'skipped', deletedAt: null }] }), { startMin: 675, endMin: 735 }); // no afternoon 60 → the morning block skipped today
+  // FU_AM skipped + Lunch (a break) merge into one 11:15–13:15 gap. Pass 1 (12:00 floor) offers 75 min — enough for 60, not for 90 — so 90 falls through to pass 2 and lands on the skipped morning block.
+  assert.deepEqual(slot({ makeupMin: 60, dayRecords: [{ kind: 'done', blockId: FU_AM, status: 'skipped', deletedAt: null }] }), { startMin: 720, endMin: 780 });
+  assert.deepEqual(slot({ makeupMin: 90, dayRecords: [{ kind: 'done', blockId: FU_AM, status: 'skipped', deletedAt: null }] }), { startMin: 675, endMin: 765 });
   // Lunch fully taken by a 45-min make-up and every morning block live → only the two 15-min breaks remain → null
   assert.equal(slot({ makeupMin: 30, makeups: [mk('mk_0000001', 750, 45)] }), null);
 });
@@ -1453,6 +1465,7 @@ test('offer lifecycle (derived offerOpen, remainder-sized make-ups) — spec §7
   assert.equal(offerState({ ...freshAccept }, proj(0)).offerOpen, false);
   assert.equal(offerState(null, proj(0)).offerOpen, false);
   assert.equal(offerState(null, proj(7)).makeupMin, 10);
+  assert.equal(offerState(null, proj(33)).makeupMin, 35);
 });
 
 const dnd = (o) => dayNotDone({ day: '2026-09-07', blocks: starter(), dayRecords: [], settings: { ...DEFAULT_SETTINGS }, tz: CHI, ...o });
@@ -1702,7 +1715,7 @@ export function weeklyNotDone({ blocks, dayRecords, settings, tz, now }) {
 }
 ```
 
-- [ ] **Step 4: Run to verify it passes** — `node --test src/lib/routineLive.test.mjs` → 19 pass. Hand-trace any failure against the spec walk before touching the assertion; the numbers in the tests were traced by three reviewers. `npm test` → 811 pass.
+- [ ] **Step 4: Run to verify it passes** — `node --test src/lib/routineLive.test.mjs` → 19 pass (10 + 9). This exact code and these exact tests were executed together during plan review and passed 19/19 under `TZ=UTC`, `TZ=America/Chicago`, and `TZ=Pacific/Auckland`; a red here means a transcription slip — diff your copy against the plan before changing either side. `npm test` → 809 pass.
 
 - [ ] **Step 5: Commit**
 
@@ -1784,7 +1797,7 @@ test('head-eaten → 8:55 for the 9:00 segment, key stable across ticks and acro
 });
 
 test('already_done, already_held, make-up fires from routine_day_v1 with the default lead', () => {
-  assert.equal(run({ dayRecords: [{ kind: 'done', blockId: DIAL_AM, status: 'skipped', day: '2026-09-08', deletedAt: null }] }).skipped.already_done, 1);
+  assert.equal(run({ dayRecords: [{ id: `2026-09-08|${DIAL_AM}`, kind: 'done', blockId: DIAL_AM, status: 'skipped', day: '2026-09-08', updatedAt: 'x', deletedAt: null }] }).skipped.already_done, 1); // every day record carries its id — sanitizeDay drops idless rows
   const held = [{ id: '2026-09-08|appt|p1|510', kind: 'appt', day: '2026-09-08', prospectId: 'p1', startMin: 510, durationMin: 30, source: 'derived', heldAt: 'x', updatedAt: 'x', deletedAt: null }];
   const h = run({ dayRecords: held, now: Z('2026-09-08T13:26:00Z') });
   assert.equal(h.skipped.already_held, 1);
@@ -1794,7 +1807,8 @@ test('already_done, already_held, make-up fires from routine_day_v1 with the def
 });
 
 test('un-attached appt placeholder reminds name-free; attached → no routine candidate; attached with empty appointmentTime → one appt candidate', () => {
-  const blocks = [...starter(), { ...starter()[0], id: 'blk_webby00', name: 'Ana Diaz webby', category: 'appt', paletteId: 'webby', startMin: 840, durationMin: 60 }];
+  // Drop the 13:15–15:15 Dial so a 14:00 placeholder can be live (two live blocks never overlap — resolveOverlaps would move it).
+  const blocks = [...starter().filter(b => b.id !== 'blk_0000006'), { ...starter()[0], id: 'blk_webby00', name: 'Ana Diaz webby', category: 'appt', paletteId: 'webby', startMin: 840, durationMin: 60 }];
   const un = run({ blocks, now: Z('2026-09-08T18:55:00Z'), readAt: 'x' });
   const c = un.due.find(d => d.block_id === 'blk_webby00');
   assert.ok(c); assert.equal(c.kind, 'placeholder');
@@ -1824,14 +1838,14 @@ test('"then an appointment at 10:00" when the next item is an appointment or an 
 test('cooldown on instants, and slot sets absorb placeholder ↔ attached transitions', () => {
   const now = Z('2026-09-08T13:25:00Z');
   const row = (block_id, fire_key, fire_at_utc, status = 'sent') => ({ block_id, fire_key, fire_at_utc, status });
-  // moved 9:00→9:15 (fireMin 505→520): 15 min apart → absorbed; 9:00→10:30 → 90 → re-arms
+  // Dial moved 8:30→8:45 (fireMin 505→520): 15 min apart → absorbed; 8:30→10:30 → 120 → re-arms
   const moved = starter().map(b => b.id === DIAL_AM ? { ...b, startMin: 525 } : b);
   const a = run({ blocks: moved, logRows: [row(DIAL_AM, `${DIAL_AM}|2026-09-08|505|${CHI}`, '2026-09-08T13:25:00Z')], now: Z('2026-09-08T13:40:00Z'), readAt: 'x' });
   assert.equal(a.skipped.cooldown, 1);
   const far = starter().map(b => b.id === DIAL_AM ? { ...b, startMin: 630 } : b).filter(b => b.id !== 'blk_0000002');
   const b = run({ blocks: far, logRows: [row(DIAL_AM, `${DIAL_AM}|2026-09-08|505|${CHI}`, '2026-09-08T13:25:00Z')], now: Z('2026-09-08T15:25:00Z'), readAt: 'x' });
   assert.equal(b.skipped.cooldown, 0); assert.ok(keys(b).includes(`${DIAL_AM}|2026-09-08|625|${CHI}`));
-  const blocks = [...starter(), { ...starter()[0], id: 'blk_webby00', name: 'Webby', category: 'appt', paletteId: 'webby', startMin: 840, durationMin: 60 }];
+  const blocks = [...starter().filter(b => b.id !== 'blk_0000006'), { ...starter()[0], id: 'blk_webby00', name: 'Webby', category: 'appt', paletteId: 'webby', startMin: 840, durationMin: 60 }]; // no overlap with the afternoon Dial
   const attachRec = { id: '2026-09-08|attach|blk_webby00', kind: 'attach', day: '2026-09-08', blockId: 'blk_webby00', prospectId: 'p9', updatedAt: 'x', deletedAt: null };
   // attached push sent at 13:55; Remove-from-today at 14:05 → placeholder candidate absorbed
   const removed = run({ blocks, dayRecords: [{ ...attachRec, deletedAt: 'y' }, { id: '2026-09-08|appt|p9|840', kind: 'appt', day: '2026-09-08', prospectId: 'p9', startMin: 840, durationMin: 60, source: 'attached', heldAt: null, updatedAt: 'x', deletedAt: 'y' }], logRows: [row('appt:p9', `appt|p9|2026-09-08|835|${CHI}`, '2026-09-08T18:55:00Z')], now: Z('2026-09-08T19:05:00Z'), readAt: 'x' });
@@ -1839,9 +1853,26 @@ test('cooldown on instants, and slot sets absorb placeholder ↔ attached transi
   // placeholder push at 13:55; attach at 13:57 → attached candidate absorbed
   const attachedAfter = run({ blocks, dayRecords: [attachRec], logRows: [row('blk_webby00', `blk_webby00|2026-09-08|835|${CHI}`, '2026-09-08T18:55:00Z')], now: Z('2026-09-08T18:57:00Z'), readAt: 'x' });
   assert.equal(attachedAfter.skipped.cooldown, 1);
+  // attached push at 13:55; Detach at 13:57 → the placeholder's own candidate is absorbed
+  const detached = run({ blocks, dayRecords: [{ ...attachRec, deletedAt: 'y' }], logRows: [row('appt:p9', `appt|p9|2026-09-08|835|${CHI}`, '2026-09-08T18:55:00Z')], now: Z('2026-09-08T18:57:00Z'), readAt: 'x' });
+  assert.equal(detached.skipped.cooldown, 1);
   // attach at 10:30 for a 14:00 block → fires normally at 13:55
   const early = run({ blocks, dayRecords: [attachRec], logRows: [], now: Z('2026-09-08T18:55:00Z'), readAt: 'x' });
   assert.ok(keys(early).includes(`appt|p9|2026-09-08|835|${CHI}`));
+});
+
+test('DST pins (spec §6c): endAt/fireAt are instant offsets from a zonedTimeToUtc start', () => {
+  const NY = 'America/New_York', SN = { ...S, timezone: NY };
+  const b = (startMin, lead = 5) => [{ ...starter()[0], id: 'blk_dst0000', startMin, durationMin: 30, remind: { enabled: true, minutesBefore: lead } }];
+  const a = run({ settings: SN, blocks: b(150), now: Z('2026-03-08T07:25:00Z'), readAt: 'x' }).due[0]; // 02:30 NY in the spring gap
+  assert.deepEqual([a.fireAt, a.startAt, a.endAt], [Z('2026-03-08T07:25:00Z'), Z('2026-03-08T07:30:00Z'), Z('2026-03-08T08:00:00Z')]);
+  assert.equal(run({ settings: SN, blocks: b(180), now: Z('2026-03-08T06:55:00Z'), readAt: 'x' }).due[0].fireAt, Z('2026-03-08T06:55:00Z'));
+  assert.equal(run({ settings: SN, blocks: b(120), now: Z('2026-11-01T06:55:00Z'), readAt: 'x' }).due[0].fireAt, Z('2026-11-01T06:55:00Z'));
+});
+
+test('a 23:50 10-min block seen at 00:03 has ended; there is no previous-day pass', () => {
+  const late = [{ ...starter()[0], id: 'blk_late000', startMin: 1430, durationMin: 10, remind: { enabled: true, minutesBefore: 5 } }];
+  assert.equal(run({ blocks: late, now: Z('2026-09-09T05:03:00Z'), readAt: 'x' }).due.length, 0);
 });
 
 test('freeze: first tick writes appt (updatedAt = start instant, no expect) + owed (updatedAt = readAt, expect null); second tick nothing; later collision refreshes minutes with expect; cancelled-before-start never counts', () => {
@@ -2035,7 +2066,7 @@ export function retryEligible(row, now) {
 }
 ```
 
-- [ ] **Step 4: Run to verify it passes** — `node --test src/lib/routineTick.test.mjs` → 13 pass. `npm test` → 824 pass. Fix implementation on any red; the fixture numbers are spec pins.
+- [ ] **Step 4: Run to verify it passes** — `node --test src/lib/routineTick.test.mjs` → 15 pass. `npm test` → 824 pass. The 13 original tests were executed with this exact implementation during plan review (13/13 under three server TZs); the two appended tests (DST pins, 23:50) were hand-traced only. On a red, hand-trace the rule in the spec before changing either side. Note in the commit message that the spec's §10 names (`computeDue`/`computeFreeze`) are folded into one `tickAgent` export.
 
 - [ ] **Step 5: Commit**
 
@@ -2064,7 +2095,7 @@ const TICK = 'src/app/api/routine/tick/route.js';
 test('routine tick: CRON_SECRET fail-closed, every query result checked, never a direct user_kv write', () => {
   const src = read(TICK);
   assert.ok(src.includes('process.env.CRON_SECRET') && /status: 401/.test(src) && src.includes('if (!expected ||'), 'fail-closed auth block');
-  for (const id of ['sErr', 'pErr', 'subErr', 'logQ.error', 'blocksQ', 'dayQ', 'apptQ', 'fErr', 'cErr', 'rErr', 'uErr', 'hErr']) assert.ok(src.includes(id), `missing error handling anchor ${id}`);
+  for (const id of ['sErr', 'pErr', 'subErr', 'logQ.error', 'blocksQ', 'dayQ', 'apptQ', 'fErr', 'cErr', 'rErr', 'uErr', 'hErr', 'phase B read failed', '.canAccess !== true']) assert.ok(src.includes(id), `missing error handling anchor ${id}`);
   assert.ok(src.includes(".rpc('routine_day_write'") && src.includes(".rpc('routine_appt_rows'"));
   for (const bad of [".from('user_kv').upsert(", ".from('user_kv').update(", ".from('user_kv').delete(", ".from('user_kv').insert("]) assert.ok(!src.includes(bad), `tick must never write user_kv directly: ${bad}`);
   assert.ok(!src.includes("eq('key', 'prospects_v1')"), 'tick must never select the prospects blob');
@@ -2344,7 +2375,11 @@ export async function pruneDeadSubs(supa, userId, dead) {
   if (!Array.isArray(dead) || dead.length === 0) return { ok: true };
   const { data, error } = await supa.from('user_kv').select('value').eq('user_id', userId).eq('key', PUSH_KEY).maybeSingle();
   if (error) return { ok: false, error };
-  const current = Array.isArray(data?.value) ? data.value : [];
+  // Legacy rows may be JSON strings (§4). Never write back from a value that
+  // did not parse to an array — that would wipe every device's subscription.
+  let current = data?.value;
+  if (typeof current === 'string') { try { current = JSON.parse(current); } catch { current = null; } }
+  if (!Array.isArray(current)) return { ok: false, error: new Error('bad_shape') };
   const alive = current.filter((s) => !dead.includes(s?.endpoint));
   const { error: e2 } = await supa.from('user_kv').upsert(
     { user_id: userId, key: PUSH_KEY, value: alive, updated_at: new Date().toISOString() },
@@ -2437,7 +2472,7 @@ export async function GET(req) {
   const eligible = [];
   for (const r of settingsRows) {
     const s = parseValue(r.value);
-    if (s === undefined) summary.skipped.bad_shape++;
+    if (s === undefined) { summary.skipped.bad_shape++; continue; } // counted once (§6b.2)
     const settings = s && typeof s === 'object' ? s : null;
     settingsByUser.set(r.user_id, settings);
     const access = canAccessBetaFeature(ROUTINE_FEATURE_KEY, profiles.get(r.user_id) || null);
@@ -2459,9 +2494,12 @@ export async function GET(req) {
       supa.rpc('routine_appt_rows', { p_user_ids: chunk, p_prefixes: prefixes }),
     ]);
     if (logQ.error) return Response.json({ error: 'log read failed: ' + logQ.error.message }, { status: 500 });
-    if (blocksQ.error) summary.errors.push('blocks read: ' + blocksQ.error.message);
-    if (dayQ.error) summary.errors.push('day read: ' + dayQ.error.message);
-    if (apptQ.error) summary.errors.push('appt rows: ' + apptQ.error.message);
+    // A failed read is NOT an empty input: composing on [] would zero an agent's
+    // realized owed minutes through the CAS. Skip the chunk; next minute retries.
+    if (blocksQ.error || dayQ.error || apptQ.error) {
+      summary.errors.push({ chunk: chunk.length, err: 'phase B read failed: ' + (blocksQ.error || dayQ.error || apptQ.error).message });
+      continue;
+    }
     const blocksBy = new Map((blocksQ.data || []).map((r) => [r.user_id, r.value]));
     const dayBy = new Map((dayQ.data || []).map((r) => [r.user_id, r.value]));
     const logBy = groupBy(logQ.data);
@@ -2731,7 +2769,7 @@ self.addEventListener('notificationclick', (event) => {
   );
 });
 ```
-(`push` handler and its `title/body/tag/url/urgent` reads are untouched. The `view` is derived from the push URL rather than hard-coded so a reminders-cron push — whose URL has no `?view=` — only focuses.)
+(`push` handler and its `title/body/tag/url/urgent` reads are untouched. **Plan deviation, record in the commit message and propose for spec rev 11 §8:** the `view` is derived from the push URL's `?view=` rather than the spec's hard-coded `'routine'`, so a reminders-cron push — whose URL has no `?view=` — only focuses instead of switching tabs.)
 
 - [ ] **Step 4: Run to verify it passes** — `npm test` → 834 pass. `npm run build` must succeed (the `generateMetadata` conversion is the only Next-level change so far); if it fails, the error is in `layout.js` — fix there.
 
@@ -3004,8 +3042,9 @@ test('with projected = 0 no amber class and no offer/note line; reminder strip c
   for (const [strip, text] of [['off', 'Reminders are off'], ['ios', /Add to Home Screen/], ['denied', 'Reminders are blocked in your browser settings'], ['device', 'Reminders are off on this device'], ['tz', "PRIM doesn't know your time zone"], ['days', 'All days off']]) {
     rerender(<NowCard {...base} strip={strip} state={{ phase: 'dayDone', next: null, current: null, behind: null }} />);
     expect(screen.getByText(text)).toBeTruthy();
+    if (strip === 'device') { fireEvent.click(screen.getByRole('button', { name: 'Enable' })); expect(base.onEnable).toHaveBeenCalled(); }
+    else expect(screen.queryByRole('button', { name: 'Enable' })).toBeNull();
   }
-  fireEvent.click(screen.getByRole('button', { name: 'Enable' })); expect(base.onEnable).toHaveBeenCalled();
 });
 
 test('appointment as the current item: Held action, disabled before start', () => {
@@ -3150,8 +3189,8 @@ test('routine UI copy never says behind/missed/streak; amber hex nowhere in rout
     for (const lit of literals) assert.ok(!/\b(behind|missed|streak)\b/i.test(lit), `${f}: forbidden copy in ${lit}`);
   }
   const dir = path.join(process.cwd(), 'src/components/routine');
-  for (const f of readdirSync(dir)) assert.ok(!readFileSync(path.join(dir, f), 'utf8').toLowerCase().includes('#f59e0b'), `${f} uses amber hex`);
-  for (const f of readdirSync(path.join(process.cwd(), 'src/lib')).filter((n) => n.startsWith('routine'))) assert.ok(!read('src/lib/' + f).toLowerCase().includes('#f59e0b'), f);
+  for (const f of readdirSync(dir).filter((n) => !/\.test\.jsx?$/.test(n))) assert.ok(!strip(readFileSync(path.join(dir, f), 'utf8')).toLowerCase().includes('#f59e0b'), `${f} uses amber hex`);
+  for (const f of readdirSync(path.join(process.cwd(), 'src/lib')).filter((n) => n.startsWith('routine') && !n.endsWith('.test.mjs'))) assert.ok(!strip(read('src/lib/' + f)).toLowerCase().includes('#f59e0b'), f);
 });
 ```
 Run `npm test` → green.
@@ -3189,7 +3228,7 @@ git commit -m "feat(routine): components — NOW card, timeline, appointment car
 // 11. Detach on an unstarted attached row tombstones the attach; attaching a prospect to a placeholder whose start has a tombstoned appt record un-deletes it;
 // 12. deleting an appt block tombstones its live attach; Undo restores both.
 ```
-Write each as a concrete test with `await act(async () => {})` flushes and assertions on `mem.get(key)` parsed JSON (the same style as `PendingEmailQueueRunner.test.jsx`).
+Write ALL twelve as concrete tests BEFORE writing the component (the plan's TDD rule; this is the longest task — budget it that way), each with `await act(async () => {})` flushes and assertions on `mem.get(key)` parsed JSON (the same style as `PendingEmailQueueRunner.test.jsx`). Use `vi.useFakeTimers({ shouldAdvanceTime: true })` so the 400 ms debounce and the 30 s clock are controllable with `vi.advanceTimersByTime`.
 
 - [ ] **Step 2: Run to verify they fail** — component missing.
 
@@ -3198,6 +3237,7 @@ Write each as a concrete test with `await act(async () => {})` flushes and asser
 ```jsx
 'use client';
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { Lock } from 'lucide-react';
 import { loadRoutine, saveBlocks, saveDay, saveSettings } from '@/lib/routineStore';
 import { sanitizeBlocks, liveBlocks, sanitizeDay, sanitizeSettings, seedFollowupStages, applyTemplate, instantiateTemplate, dayUid } from '@/lib/routineModel.mjs';
 import { todaysAppointments, composeDay, findMakeupSlot, reconcileOwed, offerState, applyOwedDecision, owedId, apptRecordId, followupQueue, yesterdayMiss, weeklyNotDone } from '@/lib/routineLive.mjs';
@@ -3224,6 +3264,26 @@ import WeeklyLookback from '../routine/WeeklyLookback';
 const upsertById = (arr, recs) => { const m = new Map(arr.map(r => [r.id, r])); for (const r of recs) m.set(r.id, r); return [...m.values()]; };
 const isIOS = () => typeof navigator !== 'undefined' && /iPhone|iPad|iPod/.test(navigator.userAgent);
 
+// Non-entitled card (spec §9): the AgentSettingsPanel.jsx:343-361 treatment, zero storage writes.
+function LockedCard({ reason }) {
+  if (reason === 'tier_too_low' || reason === 'no_subscription') {
+    return (
+      <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-6 text-center">
+        <Lock size={24} className="text-indigo-600 mx-auto mb-3" />
+        <h3 className="font-bold text-slate-900 mb-1">Routine is included with every PRIM plan</h3>
+        <p className="text-sm text-slate-600 mb-4">Start a plan to build your daily routine, see today's appointments on it, and get reminders at block time.</p>
+        <a href="/pricing" className="inline-flex items-center bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-lg">See plans</a>
+      </div>
+    );
+  }
+  return (
+    <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 text-center text-sm text-slate-600">
+      <Lock size={24} className="text-slate-400 mx-auto mb-3" />
+      Routine isn&apos;t available on your account yet.
+    </div>
+  );
+}
+
 export default function RoutineView({ showToast, prospects = [], prospectSettings, onOpenProspect }) {
   const { canAccess, reason, loading: accessLoading } = useBetaFeature('routine_builder');
   const [loaded, setLoaded] = useState(false);
@@ -3246,9 +3306,13 @@ export default function RoutineView({ showToast, prospects = [], prospectSetting
   const stages = (prospectSettings || defaultProspectSettings()).stages;
 
   // ---- writes (spec §7a: immediate for state changes; the editor debounces text) ----
+  // Side effects live OUTSIDE React updaters (StrictMode double-invokes updaters
+  // in dev — a save inside one would write twice). Latest values come from refs.
+  const dayRef = useRef([]); dayRef.current = day;
+  const settingsRef = useRef(settings); settingsRef.current = settings;
   const commitBlocks = useCallback((next) => { const s = sanitizeBlocks(next, new Date().toISOString()); setBlocks(s); saveBlocks(s); return s; }, []);
-  const commitDay = useCallback((updater) => { setDay(prev => { const next = sanitizeDay(updater(prev), today, new Date().toISOString()); saveDay(next); return next; }); }, [today]);
-  const commitSettings = useCallback((patch) => { setSettings(prev => { const next = sanitizeSettings({ ...prev, ...patch }); saveSettings(next); return next; }); }, []);
+  const commitDay = useCallback((updater) => { const next = sanitizeDay(updater(dayRef.current), today, new Date().toISOString()); dayRef.current = next; setDay(next); saveDay(next); return next; }, [today]);
+  const commitSettings = useCallback((patch) => { const next = sanitizeSettings({ ...settingsRef.current, ...patch }); settingsRef.current = next; setSettings(next); saveSettings(next); return next; }, []);
 
   // ---- load (zero writes before loaded; zero when not entitled) ----
   useEffect(() => {
@@ -3306,7 +3370,8 @@ export default function RoutineView({ showToast, prospects = [], prospectSetting
       if (it.frozen || it.instant > now) continue;
       const id = apptRecordId(today, it.prospectId, it.startMin);
       if (existing.has(id)) continue;
-      recs.push({ id, kind: 'appt', day: today, prospectId: it.prospectId, startMin: it.startMin, durationMin: it.durationMin, source: it.source, heldAt: null, updatedAt: stamp, deletedAt: null });
+      // Same rule as the tick (§4b): a frozen appt is stamped at its START instant.
+      recs.push({ id, kind: 'appt', day: today, prospectId: it.prospectId, startMin: it.startMin, durationMin: it.durationMin, source: it.source, heldAt: null, updatedAt: new Date(it.instant).toISOString(), deletedAt: null });
     }
     const owed = reconcileOwed(storedOwed, realized, stamp, today);
     if (owed) recs.push(owed);
@@ -3318,14 +3383,30 @@ export default function RoutineView({ showToast, prospects = [], prospectSetting
   const toggleDone = (blockId) => commitDay(prev => { const cur = prev.find(r => r.id === `${today}|${blockId}` && !r.deletedAt); return upsertById(prev, [doneRecord(blockId, cur?.status === 'done' ? 'cleared' : 'done')]); });
   const skipToday = (blockId) => commitDay(prev => upsertById(prev, [doneRecord(blockId, 'skipped')]));
   const held = (item) => { if (!item.recordId) return; commitDay(prev => upsertById(prev, prev.filter(r => r.id === item.recordId).map(r => ({ ...r, heldAt: r.heldAt ? null : nowIso, updatedAt: new Date().toISOString() })))); };
-  const removeFromToday = (item) => commitDay(prev => { const stamp = new Date().toISOString(); const ids = new Set([item.recordId]); if (item.source === 'attached') for (const r of prev) if (r.kind === 'attach' && r.day === today && !r.deletedAt && r.prospectId === item.prospectId) ids.add(r.id); return prev.map(r => (ids.has(r.id) ? { ...r, deletedAt: stamp, updatedAt: stamp } : r)); });
+  // Tombstones the frozen record and, for an attached item, ONLY the attach whose block starts at this item's start (§7f — two attaches on two blocks stay independent).
+  const removeFromToday = (item) => commitDay(prev => { const stamp = new Date().toISOString(); const ids = new Set([item.recordId]); if (item.source === 'attached') for (const r of prev) if (r.kind === 'attach' && r.day === today && !r.deletedAt && r.prospectId === item.prospectId && live.find(b => b.id === r.blockId)?.startMin === item.startMin) ids.add(r.id); return prev.map(r => (ids.has(r.id) ? { ...r, deletedAt: stamp, updatedAt: stamp } : r)); });
   const detach = (item) => commitDay(prev => prev.map(r => (r.id === item.attachId ? { ...r, deletedAt: nowIso, updatedAt: new Date().toISOString() } : r)));
   const attach = (blockId, prospectId) => { const b = live.find(x => x.id === blockId); if (!b) return; commitDay(prev => { const stamp = new Date().toISOString(); const rec = { id: `${today}|attach|${blockId}`, kind: 'attach', day: today, blockId, prospectId, updatedAt: stamp, deletedAt: null }; const revived = prev.filter(r => r.kind === 'appt' && r.day === today && r.deletedAt && r.prospectId === prospectId && r.startMin === b.startMin).map(r => ({ ...r, deletedAt: null, updatedAt: stamp })); return upsertById(prev, [rec, ...revived]); }); };
   const deleteBlock = (blockId) => { const stamp = new Date().toISOString(); const attachIds = day.filter(r => r.kind === 'attach' && !r.deletedAt && r.blockId === blockId).map(r => r.id); commitBlocks(blocks.map(b => (b.id === blockId ? { ...b, deletedAt: stamp, updatedAt: stamp } : b))); if (attachIds.length) commitDay(prev => prev.map(r => (attachIds.includes(r.id) ? { ...r, deletedAt: stamp, updatedAt: stamp } : r))); if (undo?.timer) clearTimeout(undo.timer); setUndo({ blockId, attachIds, timer: setTimeout(() => setUndo(null), 5000) }); };
   const undoDelete = () => { if (!undo) return; const stamp = new Date().toISOString(); commitBlocks(blocks.map(b => (b.id === undo.blockId ? { ...b, deletedAt: null, updatedAt: stamp } : b))); if (undo.attachIds.length) commitDay(prev => prev.map(r => (undo.attachIds.includes(r.id) ? { ...r, deletedAt: null, updatedAt: stamp } : r))); clearTimeout(undo.timer); setUndo(null); };
   const updateBlock = (blockId, patch) => commitBlocks(blocks.map(b => (b.id === blockId ? { ...b, ...patch, updatedAt: new Date().toISOString() } : b)));
-  const moveBlock = (blockId, startMin) => { const before = live.find(b => b.id === blockId); const next = commitBlocks(blocks.map(b => (b.id === blockId ? { ...b, startMin, updatedAt: new Date().toISOString() } : b))); const after = next.find(b => b.id === blockId); if (!after || after.deletedAt || (after.startMin !== startMin && after.startMin === before?.startMin)) showToast?.('No room there — shrink it or move a neighbor'); };
-  const resizeBlock = (blockId, durationMin) => updateBlock(blockId, { durationMin });
+  // §7c: move → snap, clamp, slide to the NEAREST free gap that fits, else revert + toast. Never shrink, relocate far away, or delete on a drag.
+  const moveBlock = (blockId, startMin) => {
+    const me = live.find(b => b.id === blockId); if (!me) return;
+    const others = live.filter(b => b.id !== blockId);
+    const fits = (s) => s >= 0 && s + me.durationMin <= 1440 && !others.some(o => s < o.startMin + o.durationMin && o.startMin < s + me.durationMin);
+    let target = null;
+    for (let d = 0; d <= 1440 && target == null; d += 5) { if (fits(startMin + d)) target = startMin + d; else if (fits(startMin - d)) target = startMin - d; }
+    if (target == null) { showToast?.('No room there — shrink it or move a neighbor'); return; }
+    if (target !== me.startMin) updateBlock(blockId, { startMin: target });
+  };
+  // §7c: resize → clamp to the next item's start (and the 10–720 range), snapped to 5.
+  const resizeBlock = (blockId, durationMin) => {
+    const me = live.find(b => b.id === blockId); if (!me) return;
+    const next = live.filter(b => b.startMin > me.startMin).sort((a, b) => a.startMin - b.startMin)[0];
+    const max = Math.min(720, (next ? next.startMin : 1440) - me.startMin);
+    updateBlock(blockId, { durationMin: Math.max(10, Math.min(max, Math.round(durationMin / 5) * 5)) });
+  };
   const nextFreeSlot = (durationMin) => { const sorted = [...live].sort((a, b) => a.startMin - b.startMin); let cursor = Math.ceil(nowMin / 5) * 5; for (const b of sorted) { if (b.startMin + b.durationMin <= cursor) continue; if (b.startMin - cursor >= durationMin) return cursor; cursor = Math.max(cursor, b.startMin + b.durationMin); } return cursor + durationMin <= 1440 ? cursor : null; };
   const addFromPalette = (paletteId, startMin = null) => { const p = paletteById(paletteId); if (!p) return; const s = startMin ?? nextFreeSlot(p.defaultMin); if (s == null) { showToast?.('No room today'); return; } const b = instantiateTemplate({ paletteId, startMin: s }, { now: new Date().toISOString(), defaultMinutesBefore: settings.defaultMinutesBefore }); commitBlocks([...blocks, b]); setEditing({ block: b }); };
   const acceptOffer = () => { if (!slot) return; const stamp = new Date().toISOString(); const [bigId] = Object.entries(projected.displacedByBlock).sort((a, b) => b[1] - a[1] || (live.find(x => x.id === a[0])?.startMin ?? 0) - (live.find(x => x.id === b[0])?.startMin ?? 0))[0] || []; const src = live.find(b => b.id === bigId) || { category: 'custom', name: 'Routine' }; const mk = { id: dayUid(), kind: 'makeup', day: today, startMin: slot.startMin, durationMin: offer.makeupMin, category: src.category, name: `${src.name} (make-up)`, ofBlockId: bigId || null, updatedAt: stamp, deletedAt: null }; const owed = applyOwedDecision(storedOwed, 'accept', { projected, realized, makeupMin: offer.makeupMin, nowIso: stamp, day: today }); commitDay(prev => upsertById(prev, [mk, owed])); };
@@ -3389,12 +3470,16 @@ Node lane (`src/lib/navTabs.test.mjs`, new):
 ```js
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { NAV_TABS } from './constants.js';
+import { NAV_TABS, DEFAULT_PROSPECT_STAGES } from './constants.js';
+import { DEFAULT_STAGE_IDS } from './routineModel.mjs';
 test('Routine tab sits right after Overview and uses the CalendarClock icon (spec §9)', () => {
   const ids = NAV_TABS.map(t => t.id);
   assert.equal(ids[ids.indexOf('dashboard') + 1], 'routine');
   assert.deepEqual(NAV_TABS.find(t => t.id === 'routine'), { id: 'routine', label: 'Routine', icon: 'CalendarClock' });
   assert.equal(NAV_TABS.length, 15);
+});
+test('routineModel DEFAULT_STAGE_IDS mirrors constants.js DEFAULT_PROSPECT_STAGES (seeding must not desync)', () => {
+  assert.deepEqual([...DEFAULT_STAGE_IDS].sort(), DEFAULT_PROSPECT_STAGES.map(s => s.id).sort());
 });
 ```
 If `constants.js` cannot load under plain Node (it may import nothing — check with `node -e "import('./src/lib/constants.js')"`), make this a text-level assertion in `sourceInvariants.test.mjs` instead.
@@ -3531,12 +3616,21 @@ Expected: node lane ≥ 830, UI lane ≥ 115, lint 0 errors, build succeeds. Pas
 | 27 | `apptRecordId` without `startMin` | routineLive: two cards |
 | 28 | drop the overlap absorption in `todaysAppointments` | routineLive: 10:05 nudge |
 | 29 | `makeupMin` = full projected (drop `− decided`) | routineLive: skip-30-then-30 |
+| 30 | tick route: remove `ignoreDuplicates: true` from the claim upsert | sourceInvariants (claim-before-send anchor) |
+| 31 | tick route: `access.canAccess !== true` → `false` (everyone entitled) | sourceInvariants (`.canAccess !== true` anchor) |
+| 32 | `tickAgent` also composes `addDays(today, −1)` (a previous-day pass) | routineTick: 23:50 block at 00:03 |
+| 33 | `dayNotDone`: `isDisplaceable` → always true (breaks counted) | routineLive: break unchecked → 0 |
+| 34 | `dayNotDone`: drop `− (byBlock[b.id] \|\| 0)` (double-count) | routineLive: Dial 120 unchecked with 30 displaced → 120 |
+| 35 | `dayNotDone`: drop the `!r.deletedAt` filter on records | routineLive: weekly `days[4] === 0` |
+| 36 | `updateBlock` copies a `prospectId` onto the block | RoutineView UI test #5 |
+| 37 | `seedFollowupStages`: drop the `NOT_FOLLOWUP_WORDS` check | routineModel: "Not Interested" |
 
-Run each with `node --test src/lib/<file>.test.mjs` (node lane only — every mutant here is in a pure module or a tripwire).
+Run each with `node --test src/lib/<file>.test.mjs` (node lane) or `npx vitest run <file>` for #36 (UI lane).
 
 - [ ] **Step 3: Write the live-pass handoff doc** `docs/superpowers/plans/2026-09-11-routine-builder-live-pass.md`:
    - §11 operator steps 0–5 as a checklist with the exact SQL file names and the gate-0 queries.
-   - The 16 gates from spec §12 "Live pass", each with: who does it (Juan / Claude), the exact action, the expected observation, and a checkbox.
+   - Every checkpoint from spec §12 "Live pass" — **18 rows: (0) through (16) plus (12b)** — each with: who does it (Juan / Claude), the exact action, the expected observation, and a checkbox. Gate 0 (pg_cron → pg_net → Vault → route) and 12b (the tick appends `appt` + `owed` while a phone checkbox survives) are the two most likely to be dropped; they are not optional.
+   - The three spec deviations this plan introduces, for Juan to fold into rev 11: §4c `NOT_FOLLOWUP_WORDS` lookahead (Task 3), §7b breaks never set `behind` (Task 4), §8 the SW derives `view` from the push URL (Task 9); plus the defensive `MIGRATE_SKIP` (Task 0).
    - The mutation-check table from Step 2 with the recorded results.
    - The test baselines after Task 14.
 
