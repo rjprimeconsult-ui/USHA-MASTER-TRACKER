@@ -120,18 +120,7 @@ import { BETA_FEATURES } from './featureFlags.js';
 test('ROUTINE_FEATURE_KEY names a registered feature', () => { assert.ok(BETA_FEATURES[ROUTINE_FEATURE_KEY], 'routine_builder must exist in BETA_FEATURES'); });
 ```
 
-Append to `src/lib/featureFlags.test.mjs` (read the file first to match its import style; it imports `BETA_FEATURES, canAccessBetaFeature` from `./featureFlags.js`):
-```js
-test('routine_builder: starter tier, publicGA, complimentary and admin pass, no subscription fails', () => {
-  assert.equal(BETA_FEATURES.routine_builder.requiredTier, 'starter');
-  assert.equal(BETA_FEATURES.routine_builder.publicGA, true);
-  assert.equal(canAccessBetaFeature('routine_builder', { is_admin: true }).canAccess, true);
-  assert.equal(canAccessBetaFeature('routine_builder', { is_complimentary: true }).canAccess, true);
-  assert.equal(canAccessBetaFeature('routine_builder', { email: 'x@y.com', subscription_status: 'canceled' }).canAccess, false);
-  assert.equal(canAccessBetaFeature('routine_builder', null).canAccess, false);
-  assert.equal(canAccessBetaFeature('routine_builder', { email: 'x@y.com', subscription_status: 'active', subscription_tier: 'starter' }).canAccess, true);
-});
-```
+Append to `src/lib/featureFlags.test.mjs` in the file's own style (it has a `P()` profile helper and asserts `reason` codes — read it first): one test `'routine_builder: starter tier, publicGA, every access reason'` asserting `requiredTier === 'starter'`, `publicGA === true`, and `canAccessBetaFeature('routine_builder', …)` → admin `{ true, 'admin' }`, complimentary `{ true, 'complimentary' }`, canceled `{ false, 'no_subscription' }`, `null` profile `{ false, 'not_signed_in' }`, active starter `{ true, 'tier_match' }`, active with `subscription_tier: null` `{ false, 'tier_too_low' }`. (As committed in `89a48ae`.)
 
 - [ ] **Step 3: Run to verify they fail**
 
