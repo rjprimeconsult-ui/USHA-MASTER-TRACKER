@@ -1993,6 +1993,7 @@ export const APPT_DEFAULT_MIN = 30;
 const MIN = 60000;
 
 export function tickAgent({ canAccess, settings: rawSettings, blocks, dayRecords, apptRows, logRows = [], subs = [], now, readAt }) {
+  if (typeof readAt !== 'string') throw new TypeError('tickAgent: readAt is required');
   const skipped = { already_done: 0, already_held: 0, cooldown: 0 };
   const out = { skip: null, composeEligible: false, sendSkip: null, tz: null, today: null, candidates: [], due: [], skipped, freezeRecords: [], items: [] };
   if (canAccess !== true) return { ...out, skip: 'not_entitled' };
@@ -2066,15 +2067,15 @@ export function tickAgent({ canAccess, settings: rawSettings, blocks, dayRecords
   const owed = reconcileOwed(storedOwed, realized, readAt, today);
   if (owed) freezeRecords.push({ ...owed, expect: storedOwed ? storedOwed.updatedAt : null });
 
-  const sendSkip = settings.remindersEnabled === false ? 'disabled' : (!subs || subs.length === 0) ? 'no_subs' : null;
+  const sendSkip = settings.remindersEnabled === false ? 'disabled' : (!Array.isArray(subs) || subs.length === 0) ? 'no_subs' : null;
   return { ...out, composeEligible: true, sendSkip, tz, today, candidates, due, freezeRecords, items: projected.items };
 }
 
 // ---------- §6b.6 payload (name-free by construction) ----------
-function relative(startAt, now) {
+function relative(startAt, now, capMin = Infinity) {
   const n = Math.round(Math.abs(startAt - now) / MIN);
   if (n === 0) return 'starts now';
-  return startAt > now ? `starts in ${n} min` : `started ${n} min ago`;
+  return startAt > now ? `starts in ${Math.min(n, capMin)} min` : `started ${n} min ago`;
 }
 function thenPart(next) {
   if (!next) return '';
@@ -2083,12 +2084,13 @@ function thenPart(next) {
 }
 export function buildPayload(c, next, now, appUrl) {
   const url = `${appUrl}/?view=routine`;
+  const capMin = Number.isFinite(c.fireAt) ? Math.max(1, Math.round((c.startAt - c.fireAt) / MIN)) : Infinity;
   if (c.kind === 'appt' || c.kind === 'placeholder') {
-    const rel = relative(c.startAt, now);
+    const rel = relative(c.startAt, now, capMin);
     const body = rel === 'starts now' ? 'Appointment starts now' : rel.startsWith('starts in') ? `Appointment in ${rel.slice('starts in '.length)}` : `Appointment ${rel}`;
     return { title: 'PRIM', body, tag: c.kind === 'appt' ? `appt-${c.prospectId}` : `routine-${c.block_id}`, url, urgent: false };
   }
-  return { title: `${c.name} ${relative(c.startAt, now)}`, body: `${formatRange(c.segStartMin, c.segEndMin)}${thenPart(next)}`, tag: `routine-${c.block_id}`, url, urgent: false };
+  return { title: `${c.name} ${relative(c.startAt, now, capMin)}`, body: `${formatRange(c.segStartMin, c.segEndMin)}${thenPart(next)}`, tag: `routine-${c.block_id}`, url, urgent: false };
 }
 
 // ---------- §6b.7 stamping ----------
