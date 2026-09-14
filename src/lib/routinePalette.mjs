@@ -1,6 +1,6 @@
 // Routine Builder palette (spec §7d). One hex per category — used for tint,
 // stripe, and dot. NEVER Tailwind amber-500: amber text means "routine time
-// lost" and nothing else (tripwire in sourceInvariants.test.mjs).
+// lost" and nothing else (tripwire lands in sourceInvariants.test.mjs with the components task).
 export const CATEGORIES = ['dial', 'followup', 'text', 'appt', 'review', 'admin', 'learn', 'break', 'custom'];
 
 export const PALETTE = [
@@ -22,5 +22,8 @@ export function paletteById(id) { return BY_ID.get(id) || null; }
 const BY_CATEGORY = new Map();
 for (const p of PALETTE) if (!BY_CATEGORY.has(p.category)) BY_CATEGORY.set(p.category, p);
 // First palette entry of a category — the hex/icon source for a block whose
-// paletteId is unknown (an old id after a palette change).
+// paletteId is unknown (an old id after a palette change). Never null: an
+// unknown category falls back to `custom`. For `appt` the first entry is
+// `webby`, so a stale in-person block renders the Video icon — same hex, so
+// tint/stripe/dot are unaffected.
 export function paletteForCategory(category) { return BY_CATEGORY.get(category) || BY_ID.get('custom'); }

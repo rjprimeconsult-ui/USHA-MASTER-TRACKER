@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { PALETTE, paletteById, CATEGORIES } from './routinePalette.mjs';
+import { PALETTE, paletteById, paletteForCategory, CATEGORIES } from './routinePalette.mjs';
 
 test('10 entries, unique ids, every category whitelisted, one hex each', () => {
   assert.equal(PALETTE.length, 10);
@@ -11,6 +11,7 @@ test('10 entries, unique ids, every category whitelisted, one hex each', () => {
     assert.ok(p.defaultMin >= 10 && p.defaultMin % 5 === 0);
     assert.equal(typeof p.defaultRemind, 'boolean');
     assert.ok(p.why.length > 10);
+    assert.equal(typeof p.name, 'string'); assert.ok(p.name); assert.equal(typeof p.icon, 'string'); assert.ok(p.icon); assert.ok(p.defaultMin <= 720);
   }
 });
 
@@ -23,4 +24,10 @@ test('break is the only category that defaults reminders off; both appt entries 
   assert.equal(paletteById('webby').hex, '#8b5cf6');
   assert.equal(paletteById('inperson').hex, '#8b5cf6');
   assert.equal(paletteById('nope'), null);
+});
+
+test('paletteForCategory: first entry of the category, never null', () => {
+  assert.equal(paletteForCategory('appt').id, 'webby');
+  assert.equal(paletteForCategory('nope').id, 'custom');
+  assert.equal(paletteForCategory(undefined).id, 'custom');
 });
