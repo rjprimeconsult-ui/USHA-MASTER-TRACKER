@@ -997,18 +997,37 @@ const seg = (blockId, s, e, extra = {}) => ({ kind: 'segment', blockId, startMin
 // Breaks never set `behind` (a "Break · still open" line is noise; consistent with §7h.4 excluding breaks) — plan deviation from the literal §7b, propose for rev 11.
 const items = [seg('dial', 510, 540, { isFirst: true }), { kind: 'appt', prospectId: 'p1', startMin: 540, endMin: 570, name: 'Ana' }, seg('dial', 570, 630, { isLast: true }), seg('break', 630, 645, { isFirst: true, isLast: true })];
 const noDone = [];
+const TODAY = '2026-09-08';
+const d = (blockId, status, day = TODAY) => ({ kind: 'done', blockId, status, day, deletedAt: null });
 
 test('nowState phases and the per-block behind rule (spec §7b)', () => {
-  assert.equal(nowState({ items, dayRecords: noDone, nowMin: 400 }).phase, 'upFirst');
-  const at550 = nowState({ items, dayRecords: noDone, nowMin: 550 });
+  assert.equal(nowState({ items, dayRecords: noDone, nowMin: 400, today: TODAY }).phase, 'upFirst');
+  const at550 = nowState({ items, dayRecords: noDone, nowMin: 550, today: TODAY });
   assert.equal(at550.phase, 'now'); assert.equal(at550.current.kind, 'appt'); assert.equal(at550.behind, null); // last segment not ended
-  assert.equal(nowState({ items, dayRecords: noDone, nowMin: 631 }).behind.blockId, 'dial');
-  assert.equal(nowState({ items, dayRecords: [{ kind: 'done', blockId: 'dial', status: 'done' }], nowMin: 631 }).behind, null);
-  assert.equal(nowState({ items, dayRecords: [{ kind: 'done', blockId: 'dial', status: 'skipped' }], nowMin: 700 }).phase, 'dayDone');
-  assert.equal(nowState({ items, dayRecords: [{ kind: 'done', blockId: 'dial', status: 'done' }], nowMin: 700, offerBlocked: true }).phase, 'free');
-  const free = nowState({ items: [seg('a', 480, 500, { isFirst: true, isLast: true }), seg('b', 600, 660, { isFirst: true, isLast: true })], dayRecords: [{ kind: 'done', blockId: 'a', status: 'done' }], nowMin: 520 });
+  assert.equal(nowState({ items, dayRecords: noDone, nowMin: 631, today: TODAY }).behind.blockId, 'dial');
+  assert.equal(nowState({ items, dayRecords: [d('dial', 'done')], nowMin: 631, today: TODAY }).behind, null);
+  assert.equal(nowState({ items, dayRecords: [d('dial', 'skipped')], nowMin: 700, today: TODAY }).phase, 'dayDone');
+  assert.equal(nowState({ items, dayRecords: [d('dial', 'done')], nowMin: 700, today: TODAY, offerBlocked: true }).phase, 'free');
+  const free = nowState({ items: [seg('a', 480, 500, { isFirst: true, isLast: true }), seg('b', 600, 660, { isFirst: true, isLast: true })], dayRecords: [d('a', 'done')], nowMin: 520, today: TODAY });
   assert.equal(free.phase, 'free'); assert.equal(free.next.blockId, 'b');
-  assert.equal(nowState({ items: [], dayRecords: [], nowMin: 500 }).phase, 'dayDone');
+  assert.equal(nowState({ items: [], dayRecords: [], nowMin: 500, today: TODAY }).phase, 'dayDone');
+});
+
+test('nowState: done scoped to today (day-2 bug); tombstoned done ignored; oldest of two wins; make-ups keyed by makeupId; free with no next; boundaries; midnight', () => {
+  assert.equal(nowState({ items, dayRecords: [d('dial', 'done', '2026-09-07')], nowMin: 631, today: TODAY }).behind.blockId, 'dial');
+  assert.equal(nowState({ items, dayRecords: [{ ...d('dial', 'done'), deletedAt: 'x' }], nowMin: 631, today: TODAY }).behind.blockId, 'dial');
+  const two = [seg('a', 480, 500, { isFirst: true, isLast: true }), seg('b', 520, 540, { isFirst: true, isLast: true })];
+  assert.equal(nowState({ items: two, dayRecords: [], nowMin: 600, today: TODAY }).behind.blockId, 'a');
+  assert.equal(nowState({ items: two, dayRecords: [d('a', 'done')], nowMin: 600, today: TODAY }).behind.blockId, 'b');
+  const mk = [{ kind: 'makeup', makeupId: 'mk_0000001', name: 'Dial block (make-up)', category: 'dial', startMin: 750, endMin: 780 }];
+  assert.equal(nowState({ items: mk, dayRecords: [], nowMin: 800, today: TODAY }).behind.blockId, 'mk_0000001');
+  assert.equal(nowState({ items: mk, dayRecords: [d('mk_0000001', 'done')], nowMin: 800, today: TODAY }).behind, null);
+  const late = nowState({ items, dayRecords: [], nowMin: 700, today: TODAY });
+  assert.equal(late.phase, 'free'); assert.equal(late.next, null); assert.equal(late.behind.blockId, 'dial');
+  assert.equal(nowState({ items, dayRecords: [], nowMin: 630, today: TODAY }).behind.blockId, 'dial');
+  assert.equal(nowState({ items, dayRecords: [], nowMin: 510, today: TODAY }).current.blockId, 'dial');
+  assert.throws(() => nowState({ items, dayRecords: [], nowMin: 500 }), TypeError);
+  assert.equal(formatTime(1440), '12:00'); assert.equal(formatTime(-5), '11:55'); assert.equal(formatTime(1445), '12:05');
 });
 ```
 
@@ -1050,7 +1069,8 @@ export function minuteFromPx(px, boundsStart) {
 ```js
 // NOW-card state + block visual state (spec §7b, §7c). Pure.
 export function formatTime(min) {
-  const h24 = Math.floor(min / 60) % 24, m = min % 60;
+  const n = ((Math.round(min) % 1440) + 1440) % 1440; // wraps midnight and negatives (a 00:00 block with a 5-min lead)
+  const h24 = Math.floor(n / 60), m = n % 60;
   const h = h24 % 12 === 0 ? 12 : h24 % 12;
   return `${h}:${String(m).padStart(2, '0')}`;
 }
@@ -1074,36 +1094,38 @@ export function blockVisualState({ startMin, endMin, done, nowMin }) {
 // items = composeDay().items (segments, makeups, appts) sorted by startMin.
 // behind = oldest routine block / make-up whose LAST segment ended with no
 // done|skipped record. Appointments never set it.
-export function nowState({ items = [], dayRecords = [], nowMin, offerBlocked = false }) {
-  const done = new Map(dayRecords.filter(r => r.kind === 'done' && !r.deletedAt).map(r => [r.blockId, r.status]));
+// `today` is REQUIRED: dayRecords carries 7 days and block ids are permanent,
+// so an unscoped done map would let yesterday's checkmark mark today done
+// (caught by the Task 4 code review). Breaks never set `behind` (plan
+// deviation from the literal §7b, recorded for rev 11).
+export function nowState({ items = [], dayRecords = [], nowMin, today, offerBlocked = false }) {
+  if (typeof today !== 'string') throw new TypeError('nowState: today is required');
+  const done = new Map(dayRecords.filter(r => r && r.kind === 'done' && !r.deletedAt && r.day === today).map(r => [r.blockId, r.status]));
   const current = items.find(it => it.startMin <= nowMin && nowMin < it.endMin) || null;
   const next = items.find(it => it.startMin > nowMin) || null;
-  const lastEnd = new Map();
-  const firstStart = new Map();
+  const info = new Map(); // key → { name, startMin (first), endMin (last) }
   for (const it of items) {
     const key = it.kind === 'segment' ? it.blockId : it.kind === 'makeup' ? it.makeupId : null;
-    if (!key || it.category === 'break') continue; // breaks never set `behind` (see the test note)
-    lastEnd.set(key, Math.max(lastEnd.get(key) ?? -1, it.endMin));
-    firstStart.set(key, Math.min(firstStart.get(key) ?? 1e9, it.startMin));
+    if (!key || it.category === 'break') continue;
+    const cur = info.get(key);
+    if (!cur) info.set(key, { name: it.name, startMin: it.startMin, endMin: it.endMin });
+    else { cur.startMin = Math.min(cur.startMin, it.startMin); cur.endMin = Math.max(cur.endMin, it.endMin); }
   }
   let behind = null;
-  for (const [key, end] of lastEnd) {
+  for (const [key, v] of info) {
     const status = done.get(key);
-    if (end <= nowMin && status !== 'done' && status !== 'skipped') {
-      const item = items.find(it => (it.blockId === key || it.makeupId === key));
-      if (!behind || firstStart.get(key) < behind.startMin) behind = { blockId: key, name: item.name, startMin: firstStart.get(key), endMin: end };
-    }
+    if (v.endMin <= nowMin && status !== 'done' && status !== 'skipped' && (!behind || v.startMin < behind.startMin)) behind = { blockId: key, name: v.name, startMin: v.startMin, endMin: v.endMin };
   }
   let phase;
   if (current) phase = 'now';
   else if (next && items[0] && nowMin < items[0].startMin) phase = 'upFirst';
   else if (next) phase = 'free';
-  else phase = (behind || offerBlocked) ? 'free' : 'dayDone';
+  else phase = (behind || offerBlocked) ? 'free' : 'dayDone'; // 'free' with next === null is a real state — NowCard renders "Free" with no "until"
   return { phase, current, next, behind };
 }
 ```
 
-- [ ] **Step 4: Run to verify they pass** — `node --test src/lib/routineLayout.test.mjs src/lib/routineClock.test.mjs` → 6 pass; `npm test` → 790 pass.
+- [ ] **Step 4: Run to verify they pass** — `node --test src/lib/routineLayout.test.mjs src/lib/routineClock.test.mjs` → 7 pass; `npm test` → 794 pass (counts drift with earlier tasks' review additions — 0 failures is the gate).
 
 - [ ] **Step 5: Commit**
 
@@ -1364,7 +1386,8 @@ const starter = () => STARTER_TEMPLATE.entries.map((e, i) => ({ ...instantiateTe
 const DIAL_AM = 'blk_0000001', TEXT = 'blk_0000003', FU_AM = 'blk_0000004', LUNCH = 'blk_0000005', DIAL_PM = 'blk_0000006';
 const ap = (pid, startMin, durationMin = 30) => ({ prospectId: pid, startMin, durationMin, endMin: startMin + durationMin, instant: 0, source: 'derived', frozen: false, heldAt: null, name: 'N' });
 const mk = (id, startMin, durationMin, o = {}) => ({ id, kind: 'makeup', day: '2026-09-08', startMin, durationMin, category: 'dial', name: 'Dial block (make-up)', ofBlockId: DIAL_AM, updatedAt: 'x', deletedAt: null, ...o });
-const compose = (o) => composeDay({ live: starter(), appointments: [], makeups: [], dayRecords: [], nowMin: 582, ...o });
+const TODAY = '2026-09-08';
+const compose = (o) => composeDay({ live: starter(), appointments: [], makeups: [], dayRecords: [], nowMin: 582, today: TODAY, ...o });
 const segsOf = (r, id) => r.items.filter(i => i.kind === 'segment' && i.blockId === id).map(i => [i.startMin, i.endMin]);
 
 test('composeDay: tail / head / mid / whole; displaced per block; title segment = first ending after now', () => {
@@ -1391,7 +1414,7 @@ test('composeDay: 9-min remnant dropped and counted; unioned overlaps counted on
   const rem = compose({ appointments: [ap('a', 519)] }); // 8:39–9:09 leaves a 9-min head 8:30–8:39 → dropped and counted
   assert.deepEqual(segsOf(rem, DIAL_AM), [[549, 630]]); assert.equal(rem.displacedByBlock[DIAL_AM], 39);
   const live = [...starter(), { id: 'blk_webby00', name: 'Webby', category: 'appt', paletteId: 'webby', startMin: 1100, durationMin: 60, deletedAt: null, remind: { enabled: true, minutesBefore: 5 } }];
-  const r2 = composeDay({ live, appointments: [ap('a', 1110)], makeups: [], dayRecords: [], nowMin: 582 });
+  const r2 = composeDay({ live, appointments: [ap('a', 1110)], makeups: [], dayRecords: [], nowMin: 582, today: TODAY });
   assert.equal(r2.displacedByBlock['blk_webby00'], undefined); assert.equal(r2.unrecovered, 0);
 });
 
@@ -1421,15 +1444,15 @@ test('composeDay: make-up cuts are render-only (breaks, skipped blocks, un-skipp
 
 test('findMakeupSlot: the three pinned cases, over-a-break/skipped, afternoon first, never before now', () => {
   const live = starter();
-  const slot = (o) => findMakeupSlot({ live, appointments: [], makeups: [], dayRecords: [], makeupMin: 30, nowMin: 582, ...o });
+  const slot = (o) => findMakeupSlot({ live, appointments: [], makeups: [], dayRecords: [], makeupMin: 30, nowMin: 582, today: TODAY, ...o });
   assert.deepEqual(slot({ appointments: [ap('a', 540)] }), { startMin: 750, endMin: 780 });
   const gapLive = live.filter(b => b.id !== FU_AM).map(b => b.id === TEXT ? { ...b, startMin: 645, durationMin: 60 } : b); // gap 11:45–12:30
-  assert.deepEqual(findMakeupSlot({ live: gapLive, appointments: [], makeups: [], dayRecords: [], makeupMin: 30, nowMin: 582 }), { startMin: 720, endMin: 750 });
+  assert.deepEqual(findMakeupSlot({ live: gapLive, appointments: [], makeups: [], dayRecords: [], makeupMin: 30, nowMin: 582, today: TODAY }), { startMin: 720, endMin: 750 });
   assert.equal(slot({ makeupMin: 45, nowMin: 1020 }), null);
   assert.deepEqual(slot({ makeupMin: 15, nowMin: 600 }), { startMin: 750, endMin: 765 });
   // FU_AM skipped + Lunch (a break) merge into one 11:15–13:15 gap. Pass 1 (12:00 floor) offers 75 min — enough for 60, not for 90 — so 90 falls through to pass 2 and lands on the skipped morning block.
-  assert.deepEqual(slot({ makeupMin: 60, dayRecords: [{ kind: 'done', blockId: FU_AM, status: 'skipped', deletedAt: null }] }), { startMin: 720, endMin: 780 });
-  assert.deepEqual(slot({ makeupMin: 90, dayRecords: [{ kind: 'done', blockId: FU_AM, status: 'skipped', deletedAt: null }] }), { startMin: 675, endMin: 765 });
+  assert.deepEqual(slot({ makeupMin: 60, dayRecords: [{ kind: 'done', blockId: FU_AM, status: 'skipped', day: TODAY, deletedAt: null }] }), { startMin: 720, endMin: 780 });
+  assert.deepEqual(slot({ makeupMin: 90, dayRecords: [{ kind: 'done', blockId: FU_AM, status: 'skipped', day: TODAY, deletedAt: null }] }), { startMin: 675, endMin: 765 });
   // Lunch fully taken by a 45-min make-up and every morning block live → only the two 15-min breaks remain → null
   assert.equal(slot({ makeupMin: 30, makeups: [mk('mk_0000001', 750, 45)] }), null);
 });
@@ -1541,11 +1564,14 @@ const isDisplaceable = (category) => category !== 'break' && category !== 'appt'
 const px = (min) => min * 2; // PX_PER_MIN, inlined to keep this module import-light
 
 // ---------- §7h.3 composeDay ----------
-export function composeDay({ live = [], appointments = [], makeups = [], dayRecords = [], nowMin = 0 }) {
-  const apptCuts = unionIntervals(appointments.map(a => [a.startMin, a.startMin + a.durationMin]));
+// `today` is REQUIRED: dayRecords carries 7 days and block ids are permanent, so
+// done records must be scoped to today (same day-2 bug as nowState — Task 4 review).
+export function composeDay({ live = [], appointments = [], makeups = [], dayRecords = [], nowMin = 0, today }) {
+  if (typeof today !== 'string') throw new TypeError('composeDay: today is required');
+  const apptCuts = unionIntervals(appointments.map(a => [a.startMin, Math.min(1440, a.startMin + a.durationMin)]));
   const liveMk = makeups.filter(m => m && !m.deletedAt);
   const mkCuts = unionIntervals(liveMk.map(m => [m.startMin, m.startMin + m.durationMin]));
-  const doneById = new Map(dayRecords.filter(r => r && r.kind === 'done' && !r.deletedAt).map(r => [r.blockId, r.status]));
+  const doneById = new Map(dayRecords.filter(r => r && r.kind === 'done' && !r.deletedAt && r.day === today).map(r => [r.blockId, r.status]));
   const displacedByBlock = {};
   const markers = [];
   const items = [];
@@ -1602,13 +1628,14 @@ export function composeDay({ live = [], appointments = [], makeups = [], dayReco
 }
 
 // ---------- §7h.3 findMakeupSlot ----------
-export function findMakeupSlot({ live = [], appointments = [], makeups = [], dayRecords = [], makeupMin, nowMin }) {
+export function findMakeupSlot({ live = [], appointments = [], makeups = [], dayRecords = [], makeupMin, nowMin, today }) {
+  if (typeof today !== 'string') throw new TypeError('findMakeupSlot: today is required');
   const blocks = live.filter(b => b && !b.deletedAt).sort((a, b) => a.startMin - b.startMin);
   if (!blocks.length || !(makeupMin > 0)) return null;
   const spanStart = Math.max(nowMin, blocks[0].startMin);
   const spanEnd = Math.max(...blocks.map(b => b.startMin + b.durationMin));
   if (spanEnd - spanStart < makeupMin) return null;
-  const skipped = new Set(dayRecords.filter(r => r && r.kind === 'done' && !r.deletedAt && r.status === 'skipped').map(r => r.blockId));
+  const skipped = new Set(dayRecords.filter(r => r && r.kind === 'done' && !r.deletedAt && r.status === 'skipped' && r.day === today).map(r => r.blockId));
   const covered = unionIntervals([
     ...appointments.map(a => [a.startMin, a.startMin + a.durationMin]),
     ...makeups.filter(m => m && !m.deletedAt).map(m => [m.startMin, m.startMin + m.durationMin]),
@@ -1968,7 +1995,7 @@ export function tickAgent({ canAccess, settings: rawSettings, blocks, dayRecords
   const day = sanitizeDay(dayRecords, today, nowIso);
   const items = todaysAppointments({ prospectRows: apptRows, blocks: live, dayRecords: day, settings, tz, now });
   const makeups = day.filter(r => r.kind === 'makeup' && r.day === today && !r.deletedAt);
-  const projected = composeDay({ live: liveForCompose, appointments: items, makeups, dayRecords: day, nowMin });
+  const projected = composeDay({ live: liveForCompose, appointments: items, makeups, dayRecords: day, nowMin, today });
   const attachesToday = day.filter(r => r.kind === 'attach' && r.day === today); // live + tombstoned
   const attachedLive = new Set(attachesToday.filter(r => !r.deletedAt).map(r => r.blockId));
   const doneById = new Map(day.filter(r => r.kind === 'done' && r.day === today && !r.deletedAt).map(r => [r.blockId, r.status]));
@@ -2021,7 +2048,7 @@ export function tickAgent({ canAccess, settings: rawSettings, blocks, dayRecords
     freezeRecords.push({ id, kind: 'appt', day: today, prospectId: it.prospectId, startMin: it.startMin, durationMin: it.durationMin, source: it.source, heldAt: null, updatedAt: new Date(it.instant).toISOString(), deletedAt: null });
   }
   const started = items.filter(it => it.instant <= now);
-  const realized = composeDay({ live: liveForCompose, appointments: started, makeups, dayRecords: day, nowMin });
+  const realized = composeDay({ live: liveForCompose, appointments: started, makeups, dayRecords: day, nowMin, today });
   const storedOwed = day.find(r => r.kind === 'owed' && r.id === owedId(today) && !r.deletedAt) || null;
   const owed = reconcileOwed(storedOwed, realized, readAt, today);
   if (owed) freezeRecords.push({ ...owed, expect: storedOwed ? storedOwed.updatedAt : null });
@@ -3254,7 +3281,7 @@ test('collapsed copy, expands to seven bars, no numbers on bars', () => {
 
 - [ ] **Step 3: Implement the components.** Read spec §7b–§7h.5 in full before writing each one. Key rules restated:
 
-**`NowCard.jsx`** — `premium-card` sticky (`sticky top-2 z-10`), category tile left (`w-9 h-9 rounded-lg`, category tint; `bg-accent-gradient` only for `appt`), 2 px accent progress bar (`h-[2px]` absolute bottom, width = elapsed % of the current item). Phase copy exactly: upFirst → `"{next.name} · starts {formatTime(next.startMin)} · reminder {formatTime(fireMin)}"` (fireMin = startMin − lead; for appointments lead 5); now → small `NOW` label + `formatRange(current.startMin, current.endMin)`, name, `"{n} min left"`, `" · then {next name or 'an appointment'} at {time}"`; the large Done checkbox (`role="checkbox"`, `aria-label="Done"`, 22 px, emerald when checked → shows `"Done ✓ — then Break at 10:30"` until the block ends); for an appointment current the action is a `<button aria-label="Held">Held</button>` (visible word), rendered only when `started`; free → `"Free until {formatTime(next.startMin)}"` + `"{next.name} · reminder {time}"` + a "Start now" text button calling `onScrollTo(next.id)`; dayDone → `"Day done"` + `"Nothing else on the routine today."`. Meta line: ONE `<div data-meta-line className="text-[11px] mt-2">` chosen in this order — (1) `offer.offerOpen && slot` → `<span className="text-slate-500">{formatMinutes(projected.unrecovered)} of {noun} displaced.</span> <button className="font-semibold text-accent">Add {formatRange(slot.startMin, slot.endMin)}</button> · <button className="text-slate-400">Skip</button>`; (2) `behind` → `<button className="text-slate-500">{behind.name} · still open</button>` (calls `onScrollTo`); (3) `projected.unrecovered > 0` → `<span className="text-slate-400">{formatMinutes(projected.unrecovered)} owed</span>`; (4) `!yesterday.hidden && yesterday.minutes > 0` → `<span className="text-slate-400">Yesterday · {formatMinutes(yesterday.minutes)} of {yesterday.noun} not done</span><button aria-label="Dismiss" className="ml-2 inline-flex h-5 w-5 sm:h-5 sm:w-5 min-h-[44px] sm:min-h-0 …">×</button>`. Noun for (1)/(3): from `projected.displacedByBlock` via `categoryOf(blockId)` prop: all dial → "dial time", all followup → "follow-up time", else "routine time". Strip (below the meta line, `text-[11px] text-slate-500 mt-2`), `strip` prop ∈ `'off'|'ios'|'denied'|'device'|'tz'|'days'|null` with copy: "Reminders are off" / "To get reminders on iPhone: tap Share → Add to Home Screen, then open PRIM from there and turn on notifications." / "Reminders are blocked in your browser settings" / "Reminders are off on this device" + `<button>Enable</button>` / "PRIM doesn't know your time zone" / "All days off". **Copy tripwire:** no literal containing behind / missed / streak.
+**`NowCard.jsx`** — `premium-card` sticky (`sticky top-2 z-10`), category tile left (`w-9 h-9 rounded-lg`, category tint; `bg-accent-gradient` only for `appt`), 2 px accent progress bar (`h-[2px]` absolute bottom, width = elapsed % of the current item). Phase copy exactly: upFirst → `"{next.name} · starts {formatTime(next.startMin)} · reminder {formatTime(fireMin)}"` (fireMin = startMin − lead; for appointments lead 5); now → small `NOW` label + `formatRange(current.startMin, current.endMin)`, name, `"{n} min left"`, `" · then {next name or 'an appointment'} at {time}"`; the large Done checkbox (`role="checkbox"`, `aria-label="Done"`, 22 px, emerald when checked → shows `"Done ✓ — then Break at 10:30"` until the block ends); for an appointment current the action is a `<button aria-label="Held">Held</button>` (visible word), rendered only when `started`; free → `"Free until {formatTime(next.startMin)}"` + `"{next.name} · reminder {time}"` + a "Start now" text button calling `onScrollTo(next.id)` — **but `next` can be `null`** (everything has ended and a block is still open or an offer is pending): then render just `"Free"` with no "until" line and no "Start now" button; dayDone → `"Day done"` + `"Nothing else on the routine today."`. Meta line: ONE `<div data-meta-line className="text-[11px] mt-2">` chosen in this order — (1) `offer.offerOpen && slot` → `<span className="text-slate-500">{formatMinutes(projected.unrecovered)} of {noun} displaced.</span> <button className="font-semibold text-accent">Add {formatRange(slot.startMin, slot.endMin)}</button> · <button className="text-slate-400">Skip</button>`; (2) `behind` → `<button className="text-slate-500">{behind.name} · still open</button>` (calls `onScrollTo`); (3) `projected.unrecovered > 0` → `<span className="text-slate-400">{formatMinutes(projected.unrecovered)} owed</span>`; (4) `!yesterday.hidden && yesterday.minutes > 0` → `<span className="text-slate-400">Yesterday · {formatMinutes(yesterday.minutes)} of {yesterday.noun} not done</span><button aria-label="Dismiss" className="ml-2 inline-flex h-5 w-5 sm:h-5 sm:w-5 min-h-[44px] sm:min-h-0 …">×</button>`. Noun for (1)/(3): from `projected.displacedByBlock` via `categoryOf(blockId)` prop: all dial → "dial time", all followup → "follow-up time", else "routine time". Strip (below the meta line, `text-[11px] text-slate-500 mt-2`), `strip` prop ∈ `'off'|'ios'|'denied'|'device'|'tz'|'days'|null` with copy: "Reminders are off" / "To get reminders on iPhone: tap Share → Add to Home Screen, then open PRIM from there and turn on notifications." / "Reminders are blocked in your browser settings" / "Reminders are off on this device" + `<button>Enable</button>` / "PRIM doesn't know your time zone" / "All days off". **Copy tripwire:** no literal containing behind / missed / streak.
 
 **`AppointmentCard.jsx`** — root `div` with className exactly containing `bg-white border border-slate-200 dark:border-slate-700 rounded-lg` plus `absolute right-[10px]` positioning from `style`; 4 px left stripe via `style={{ boxShadow: 'inset 4px 0 0 #8b5cf6' }}`; row 1: `<input type="checkbox" aria-label="Held" disabled={!started} checked={!!item.heldAt} className="h-[18px] w-[18px] accent-violet-600" />` + `<button className="text-[12px] font-semibold text-slate-900 truncate" onClick={() => onOpenProspect(item.prospectId)}>{item.name}</button>`; row 2 (only when `heightPx ≥ 44`): `<div className="text-[11px] text-slate-500">{formatRange(...)}</div>`. No `<svg>`, no icon, no bell, no label. Long-press/context menu (desktop: a small `…` **text** button on hover, not an icon): frozen → "Remove from today"; attached & not started → "Detach (today)"; derived & not started → none.
 
@@ -3452,12 +3479,12 @@ export default function RoutineView({ showToast, prospects = [], prospectSetting
   const liveForCompose = useMemo(() => (today && settings.activeDays.includes(localWeekday(today)) ? live : []), [live, today, settings.activeDays]);
   const items = useMemo(() => (tz ? todaysAppointments({ prospectRows: prospects, blocks: live, dayRecords: day, settings, tz, now }) : []), [prospects, live, day, settings, tz, minuteKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const makeups = useMemo(() => day.filter(r => r.kind === 'makeup' && r.day === today && !r.deletedAt), [day, today]);
-  const projected = useMemo(() => composeDay({ live: liveForCompose, appointments: items, makeups, dayRecords: day, nowMin }), [liveForCompose, items, makeups, day, nowMin]);
-  const realized = useMemo(() => composeDay({ live: liveForCompose, appointments: items.filter(i => i.instant <= now), makeups, dayRecords: day, nowMin }), [liveForCompose, items, makeups, day, nowMin, now]);
+  const projected = useMemo(() => composeDay({ live: liveForCompose, appointments: items, makeups, dayRecords: day, nowMin, today }), [liveForCompose, items, makeups, day, nowMin, today]);
+  const realized = useMemo(() => composeDay({ live: liveForCompose, appointments: items.filter(i => i.instant <= now), makeups, dayRecords: day, nowMin, today }), [liveForCompose, items, makeups, day, nowMin, now, today]);
   const storedOwed = useMemo(() => day.find(r => r.kind === 'owed' && r.id === owedId(today) && !r.deletedAt) || null, [day, today]);
   const offer = useMemo(() => offerState(storedOwed, projected), [storedOwed, projected]);
-  const slot = useMemo(() => (offer.offerOpen ? findMakeupSlot({ live, appointments: items, makeups, dayRecords: day, makeupMin: offer.makeupMin, nowMin }) : null), [offer, live, items, makeups, day, nowMin]);
-  const state = useMemo(() => nowState({ items: projected.items, dayRecords: day, nowMin, offerBlocked: offer.offerOpen && !!slot }), [projected, day, nowMin, offer, slot]);
+  const slot = useMemo(() => (offer.offerOpen ? findMakeupSlot({ live, appointments: items, makeups, dayRecords: day, makeupMin: offer.makeupMin, nowMin, today }) : null), [offer, live, items, makeups, day, nowMin, today]);
+  const state = useMemo(() => nowState({ items: projected.items, dayRecords: day, nowMin, today, offerBlocked: offer.offerOpen && !!slot }), [projected, day, nowMin, today, offer, slot]);
   const queue = useMemo(() => (tz ? followupQueue(prospects, settings.followupStages, tz, now) : []), [prospects, settings.followupStages, tz, minuteKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const yesterday = useMemo(() => (tz ? yesterdayMiss({ blocks, dayRecords: day, settings, tz, now }) : { minutes: 0, hidden: true, noun: 'routine time' }), [blocks, day, settings, tz, today]); // eslint-disable-line react-hooks/exhaustive-deps
   const week = useMemo(() => (tz ? weeklyNotDone({ blocks, dayRecords: day, settings, tz, now }) : { total: 0, days: [] }), [blocks, day, settings, tz, today]); // eslint-disable-line react-hooks/exhaustive-deps
