@@ -93,7 +93,10 @@ test('"then an appointment at 10:00" when the next item is an appointment or an 
   const ago = buildPayload({ ...dial, startAt: Z('2026-09-08T13:16:00Z') }, { kind: 'segment', name: 'Break', startMin: 630 }, Z('2026-09-08T13:25:00Z'), 'x');
   assert.equal(ago.title, 'Dial block started 9 min ago'); assert.equal(ago.body, '8:30–10:30 · then Break at 10:30');
   assert.ok(!JSON.stringify(p).includes('Ana'));
-  const ap = buildPayload(r.due.find(d => d.block_id === 'appt:p1') || { kind: 'appt', block_id: 'appt:p1', prospectId: 'p1', startAt: Z('2026-09-08T15:30:00Z') }, null, Z('2026-09-08T15:25:00Z'), 'x');
+  const r2 = run({ apptRows: rows, now: Z('2026-09-08T15:25:00Z'), readAt: 'x' });
+  const apCandidate = r2.due.find(d => d.block_id === 'appt:p1');
+  assert.ok(apCandidate);
+  const ap = buildPayload(apCandidate, null, Z('2026-09-08T15:25:00Z'), 'x');
   assert.equal(ap.body, 'Appointment in 5 min'); assert.equal(ap.tag, 'appt-p1');
 });
 
@@ -188,4 +191,88 @@ test('classifySend + retryEligible', () => {
   assert.equal(retryEligible({ status: 'claimed', attempts: 1, created_at: '2026-09-08T13:29:00Z' }, now), false);
   assert.equal(retryEligible({ status: 'sent', attempts: 1, created_at: '2026-09-08T13:25:00Z' }, now), false);
   assert.equal(LOOKAHEAD_SEC, 45); assert.equal(GRACE_MIN, 10);
+});
+
+test('first-surviving-segment rule: a later remnant of an eaten block never re-reminds', () => {
+  const rows = [{ id: 'p1', stage: 'APPOINTMENT_SET', appointmentTime: '2026-09-08T09:00', archivedAt: null }];
+  const r = run({ apptRows: rows, now: Z('2026-09-08T14:25:00Z'), readAt: 'x' });
+  assert.equal(keys(r).some(k => k.startsWith(DIAL_AM)), false);
+});
+
+test("a candidate's own fire_key never cools itself", () => {
+  const row = { block_id: DIAL_AM, fire_key: `${DIAL_AM}|2026-09-08|505|${CHI}`, fire_at_utc: '2026-09-08T13:25:00Z', status: 'claimed' };
+  const r = run({ logRows: [row], now: Z('2026-09-08T13:25:00Z'), readAt: 'x' });
+  assert.ok(keys(r).includes(`${DIAL_AM}|2026-09-08|505|${CHI}`));
+  assert.equal(r.skipped.cooldown, 0);
+});
+
+test('claimed rows cool too, within the 15-minute band only', () => {
+  const row = (block_id, fire_key, fire_at_utc, status = 'sent') => ({ block_id, fire_key, fire_at_utc, status });
+  const moved = starter().map(b => b.id === DIAL_AM ? { ...b, startMin: 525 } : b);
+  const a = run({ blocks: moved, logRows: [row(DIAL_AM, `${DIAL_AM}|2026-09-08|505|${CHI}`, '2026-09-08T13:25:00Z', 'claimed')], now: Z('2026-09-08T13:40:00Z'), readAt: 'x' });
+  assert.equal(a.skipped.cooldown, 1);
+  const b = run({ blocks: moved, logRows: [row(DIAL_AM, `${DIAL_AM}|2026-09-08|505|${CHI}`, '2026-09-08T13:24:00Z', 'claimed')], now: Z('2026-09-08T13:40:00Z'), readAt: 'x' });
+  assert.equal(b.skipped.cooldown, 0);
+  assert.ok(keys(b).includes(`${DIAL_AM}|2026-09-08|520|${CHI}`));
+});
+
+test('inactive day keeps attached appointments alive: compose, freeze, but no routine displacement', () => {
+  const blocks = [...starter().filter(b => b.id !== 'blk_0000006'), { ...starter()[0], id: 'blk_webby00', name: 'Ana Diaz webby', category: 'appt', paletteId: 'webby', startMin: 840, durationMin: 60 }];
+  const attachRec = { id: '2026-09-08|attach|blk_webby00', kind: 'attach', day: '2026-09-08', blockId: 'blk_webby00', prospectId: 'p9', updatedAt: 'x', deletedAt: null };
+  const r = run({ settings: { ...S, activeDays: [] }, blocks, dayRecords: [attachRec], now: Z('2026-09-08T18:55:00Z'), readAt: 'x' });
+  assert.ok(keys(r).includes(`appt|p9|2026-09-08|835|${CHI}`));
+  const rows = [{ id: 'p1', stage: 'APPOINTMENT_SET', appointmentTime: '2026-09-08T09:00', archivedAt: null }];
+  const f = run({ settings: { ...S, activeDays: [] }, apptRows: rows, now: Z('2026-09-08T14:00:30Z'), readAt: 'r' });
+  assert.equal(f.freezeRecords.length, 1);
+  assert.equal(f.freezeRecords[0].kind, 'appt');
+  assert.equal(f.freezeRecords[0].id, '2026-09-08|appt|p1|540');
+});
+
+test('an appt-category next item in "then" copy is name-free', () => {
+  const dial = run({}).due.find(d => d.block_id === DIAL_AM);
+  const next = { kind: 'segment', category: 'appt', name: 'Ana Diaz webby', startMin: 840 };
+  const p = buildPayload(dial, next, Z('2026-09-08T13:25:00Z'), 'x');
+  assert.ok(p.body.endsWith('then an appointment at 2:00'));
+  assert.ok(!JSON.stringify(p).includes('Ana'));
+});
+
+test('classifySend retry-eligible status-code boundaries; retryEligible staleness boundary', () => {
+  assert.deepEqual(classifySend({ sentCount: 0, failures: [{ statusCode: 429 }] }), { status: 'failed', attempts: 1, error: '429' });
+  assert.deepEqual(classifySend({ sentCount: 0, failures: [{ statusCode: 408 }] }), { status: 'failed', attempts: 1, error: '408' });
+  assert.deepEqual(classifySend({ sentCount: 0, failures: [{ statusCode: 500 }] }), { status: 'failed', attempts: 1, error: '500' });
+  assert.deepEqual(classifySend({ sentCount: 0, failures: [{}] }), { status: 'failed', attempts: 1, error: 'no_status' });
+  const now = Z('2026-09-08T13:30:00Z');
+  assert.equal(retryEligible({ status: 'claimed', attempts: 1, created_at: '2026-09-08T13:28:00Z' }, now), true);
+  assert.equal(retryEligible({ status: 'claimed', attempts: 1, created_at: '2026-09-08T13:28:01Z' }, now), false);
+});
+
+test('make-up lead follows settings.defaultMinutesBefore; midnight clamp applies to make-ups too', () => {
+  const mk = [{ id: 'mk_0000001', kind: 'makeup', day: '2026-09-08', startMin: 750, durationMin: 30, category: 'dial', name: 'Dial block (make-up)', ofBlockId: DIAL_AM, updatedAt: 'x', deletedAt: null }];
+  const m = run({ settings: { ...S, defaultMinutesBefore: 10 }, dayRecords: mk, now: Z('2026-09-08T17:20:00Z'), readAt: 'x' });
+  assert.deepEqual(keys(m), [`mk_0000001|2026-09-08|740|${CHI}`]);
+  const early = [{ id: 'mk_0000002', kind: 'makeup', day: '2026-09-08', startMin: 3, durationMin: 20, category: 'dial', name: 'Early make-up', ofBlockId: DIAL_AM, updatedAt: 'x', deletedAt: null }];
+  const e = run({ dayRecords: early, now: Z('2026-09-08T05:00:20Z'), readAt: 'x' });
+  assert.equal(e.due[0].fireMin, 0);
+  assert.equal(e.due[0].fireAt, Z('2026-09-08T05:00:00Z'));
+});
+
+test('done status also counts as already_done', () => {
+  const r = run({ dayRecords: [{ id: `2026-09-08|${DIAL_AM}`, kind: 'done', blockId: DIAL_AM, status: 'done', day: '2026-09-08', updatedAt: 'x', deletedAt: null }] });
+  assert.equal(r.skipped.already_done, 1);
+});
+
+test('an attached block never emits a placeholder, even once its appointment is frozen', () => {
+  const blocks = [...starter().filter(b => b.id !== 'blk_0000006'), { ...starter()[0], id: 'blk_webby00', name: 'Webby', category: 'appt', paletteId: 'webby', startMin: 840, durationMin: 60 }];
+  const attachRec = { id: '2026-09-08|attach|blk_webby00', kind: 'attach', day: '2026-09-08', blockId: 'blk_webby00', prospectId: 'p9', updatedAt: 'x', deletedAt: null };
+  const frozen = { id: '2026-09-08|appt|p9|840', kind: 'appt', day: '2026-09-08', prospectId: 'p9', startMin: 840, durationMin: 30, source: 'attached', heldAt: null, updatedAt: 'x', deletedAt: null };
+  const r = run({ blocks, dayRecords: [attachRec, frozen], now: Z('2026-09-08T18:55:00Z'), readAt: 'x' });
+  assert.equal(keys(r).some(k => k.startsWith('blk_webby00')), false);
+  assert.ok(keys(r).includes(`appt|p9|2026-09-08|835|${CHI}`));
+});
+
+test('lead cap on "starts in" copy; readAt is required; subs must be an array', () => {
+  const dial = run({}).due.find(d => d.block_id === DIAL_AM);
+  assert.equal(buildPayload(dial, null, Z('2026-09-08T13:24:20Z'), 'x').title, 'Dial block starts in 5 min');
+  assert.throws(() => tickAgent({ canAccess: true, settings: S, blocks: [], dayRecords: [], apptRows: [], now: Z('2026-09-08T13:25:00Z') }), TypeError);
+  assert.equal(run({ subs: {} }).sendSkip, 'no_subs');
 });
