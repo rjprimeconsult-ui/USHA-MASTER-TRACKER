@@ -22,5 +22,5 @@ export const topPx = (startMin, boundsStart) => (startMin - boundsStart) * PX_PE
 export const heightPx = (durationMin) => durationMin * PX_PER_MIN;
 export function minuteFromPx(px, boundsStart) {
   const raw = boundsStart + px / PX_PER_MIN;
-  return Math.max(boundsStart, Math.min(1440, Math.round(raw / SNAP_MIN) * SNAP_MIN)); // clamp to bounds (§7c), never before the canvas
+  return Math.max(boundsStart, Math.min(1440, Math.round(raw / SNAP_MIN) * SNAP_MIN)); // clamp to [boundsStart, 1440]: a drop above the canvas lands on its top; a drop below may extend the day (bounds follow the items)
 }

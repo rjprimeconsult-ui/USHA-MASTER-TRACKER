@@ -9,6 +9,7 @@ test('bounds never shrink below the defaults and expand to whole hours', () => {
   assert.deepEqual(bounds([{ startMin: 300, endMin: 330 }]), { start: 300, end: 1260 });
   assert.deepEqual(bounds([{ startMin: 1250, endMin: 1275 }]), { start: 360, end: 1320 });
   assert.deepEqual(bounds([{ startMin: 305, endMin: 1290 }]), { start: 300, end: 1320 });
+  assert.deepEqual(bounds([{ startMin: 1425, endMin: 1455 }]), { start: 360, end: 1440 });
 });
 
 test('pixel math', () => {
