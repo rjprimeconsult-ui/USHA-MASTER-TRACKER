@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseAppointmentTime, todaysAppointments, followupQueue } from './routineLive.mjs';
+import { parseAppointmentTime, todaysAppointments, followupQueue, apptRecordId } from './routineLive.mjs';
 import { DEFAULT_SETTINGS } from './routineModel.mjs';
 
 const CHI = 'America/Chicago', NY = 'America/New_York';
@@ -94,4 +94,182 @@ test('followupQueue: stage-selected, archived out, lastContact asc with empty fi
   const out = followupQueue(rows, ['FOLLOWUP_LATER', 'STAGE_X'], CHI, NOW);
   assert.deepEqual(out.map(r => r.id), ['4', '3', '1', '7', '2']);
   assert.deepEqual(out.map(r => r.age), ['—', 'new', '12d', '7d', '3d']);
+});
+
+import { composeDay, findMakeupSlot, reconcileOwed, offerState, applyOwedDecision, owedId, dayNotDone, yesterdayMiss, weeklyNotDone } from './routineLive.mjs';
+import { STARTER_TEMPLATE } from './routineTemplates.mjs';
+import { instantiateTemplate } from './routineModel.mjs';
+
+// T0 is the blocks' createdAt: it MUST predate the 7-day look-back window
+// (dayNotDone excludes blocks created after the day being scored — §7h.4).
+const T0 = '2026-08-25T12:00:00.000Z';
+const starter = () => STARTER_TEMPLATE.entries.map((e, i) => ({ ...instantiateTemplate(e, { now: T0, defaultMinutesBefore: 5 }), id: 'blk_' + String(i).padStart(7, '0') }));
+const DIAL_AM = 'blk_0000001', TEXT = 'blk_0000003', FU_AM = 'blk_0000004', LUNCH = 'blk_0000005', DIAL_PM = 'blk_0000006';
+const ap = (pid, startMin, durationMin = 30) => ({ prospectId: pid, startMin, durationMin, endMin: startMin + durationMin, instant: 0, source: 'derived', frozen: false, heldAt: null, name: 'N' });
+const mk = (id, startMin, durationMin, o = {}) => ({ id, kind: 'makeup', day: '2026-09-08', startMin, durationMin, category: 'dial', name: 'Dial block (make-up)', ofBlockId: DIAL_AM, updatedAt: 'x', deletedAt: null, ...o });
+const TODAY = '2026-09-08';
+const compose = (o) => composeDay({ live: starter(), appointments: [], makeups: [], dayRecords: [], nowMin: 582, today: TODAY, ...o });
+const segsOf = (r, id) => r.items.filter(i => i.kind === 'segment' && i.blockId === id).map(i => [i.startMin, i.endMin]);
+
+test('composeDay: tail / head / mid / whole; displaced per block; title segment = first ending after now', () => {
+  const tail = compose({ appointments: [ap('a', 600)] });
+  assert.deepEqual(segsOf(tail, DIAL_AM), [[510, 600]]); assert.deepEqual(tail.displacedByBlock, { [DIAL_AM]: 30 }); assert.equal(tail.unrecovered, 30);
+  const head = compose({ appointments: [ap('a', 510)] });
+  assert.deepEqual(segsOf(head, DIAL_AM), [[540, 630]]);
+  const mid = compose({ appointments: [ap('a', 540)] });
+  assert.deepEqual(segsOf(mid, DIAL_AM), [[510, 540], [570, 630]]);
+  const segs = mid.items.filter(i => i.blockId === DIAL_AM);
+  assert.deepEqual(segs.map(s => s.isTitle), [false, true]); assert.deepEqual(segs.map(s => s.isFirst), [true, false]);
+  const whole = compose({ appointments: [ap('a', 510, 120)] });
+  assert.deepEqual(segsOf(whole, DIAL_AM), []); assert.equal(whole.displacedByBlock[DIAL_AM], 120);
+  const past = compose({ appointments: [ap('a', 540)], nowMin: 700 });
+  assert.deepEqual(past.items.filter(i => i.blockId === DIAL_AM).map(s => s.isTitle), [false, true]);
+});
+
+test('composeDay: 9-min remnant dropped and counted; unioned overlaps counted once; breaks and appt placeholders contribute 0', () => {
+  const r = compose({ appointments: [ap('a', 621), ap('b', 640, 11)] }); // b (640–651) lies inside a (621–651): union 10:21–10:51, counted once
+  assert.deepEqual(segsOf(r, DIAL_AM), [[510, 621]]); assert.equal(r.displacedByBlock[DIAL_AM], 9);
+  assert.deepEqual(segsOf(r, TEXT), [[651, 675]]); assert.equal(r.displacedByBlock[TEXT], 6);
+  assert.equal(r.displacedByBlock['blk_0000002'], undefined); // break
+  assert.equal(r.unrecovered, 15);
+  const rem = compose({ appointments: [ap('a', 519)] }); // 8:39–9:09 leaves a 9-min head 8:30–8:39 → dropped and counted
+  assert.deepEqual(segsOf(rem, DIAL_AM), [[549, 630]]); assert.equal(rem.displacedByBlock[DIAL_AM], 39);
+  const live = [...starter(), { id: 'blk_webby00', name: 'Webby', category: 'appt', paletteId: 'webby', startMin: 1100, durationMin: 60, deletedAt: null, remind: { enabled: true, minutesBefore: 5 } }];
+  const r2 = composeDay({ live, appointments: [ap('a', 1110)], makeups: [], dayRecords: [], nowMin: 582, today: TODAY });
+  assert.equal(r2.displacedByBlock['blk_webby00'], undefined); assert.equal(r2.unrecovered, 0);
+});
+
+test('composeDay: two appointments → two markers, one sum; marker on preceding ≥ 40 px else following else omitted', () => {
+  const r = compose({ appointments: [ap('a', 540), ap('b', 600)] });
+  assert.equal(r.displacedByBlock[DIAL_AM], 60);
+  assert.deepEqual(r.markers.filter(m => m.blockId === DIAL_AM).map(m => [m.minutes, m.segmentIndex]), [[30, 0], [30, 1]]);
+  const f = compose({ appointments: [ap('a', 660)] }); // Text 10:45–11:15 → 10:45–11:00 (15 min = 30 px) survives, Follow-up 11:30–12:30
+  assert.deepEqual(f.markers.filter(m => m.blockId === TEXT), []);
+  assert.deepEqual(f.markers.filter(m => m.blockId === FU_AM).map(m => [m.minutes, m.segmentIndex]), [[15, 0]]);
+});
+
+test('composeDay: make-up cuts are render-only (breaks, skipped blocks, un-skipped afterwards); recovered/unrecovered; make-up re-split', () => {
+  const overLunch = compose({ appointments: [ap('a', 540)], makeups: [mk('mk_0000001', 750, 30)] });
+  assert.deepEqual(segsOf(overLunch, LUNCH), [[780, 795]]); assert.equal(overLunch.recovered, 30); assert.equal(overLunch.unrecovered, 0);
+  assert.equal(overLunch.markers.some(m => m.blockId === LUNCH), false);
+  assert.equal(Object.keys(overLunch.displacedByBlock).some(k => k.startsWith('mk_')), false);
+  const skippedFu = compose({ appointments: [ap('a', 540)], makeups: [mk('mk_0000002', 930, 30)], dayRecords: [{ kind: 'done', blockId: 'blk_0000008', status: 'skipped', day: '2026-09-08', deletedAt: null }] });
+  assert.deepEqual(skippedFu.displacedByBlock, { [DIAL_AM]: 30 });
+  const unskipped = compose({ appointments: [ap('a', 540)], makeups: [mk('mk_0000002', 930, 30)] });
+  assert.deepEqual(unskipped.displacedByBlock, { [DIAL_AM]: 30 }); assert.deepEqual(segsOf(unskipped, 'blk_0000008'), [[960, 990]]);
+  const hit = compose({ appointments: [ap('a', 540), ap('b', 765, 15)], makeups: [mk('mk_0000001', 750, 30)] });
+  assert.equal(hit.displacedByMakeup['mk_0000001'], 15); assert.equal(hit.recovered, 15); assert.equal(hit.unrecovered, 15);
+  const gone = compose({ appointments: [ap('a', 540)], makeups: [mk('mk_0000001', 750, 30, { deletedAt: 'x' })] });
+  assert.equal(gone.unrecovered, 30);
+});
+
+test('findMakeupSlot: the three pinned cases, over-a-break/skipped, afternoon first, never before now', () => {
+  const live = starter();
+  const slot = (o) => findMakeupSlot({ live, appointments: [], makeups: [], dayRecords: [], makeupMin: 30, nowMin: 582, today: TODAY, ...o });
+  assert.deepEqual(slot({ appointments: [ap('a', 540)] }), { startMin: 750, endMin: 780 });
+  const gapLive = live.filter(b => b.id !== FU_AM).map(b => b.id === TEXT ? { ...b, startMin: 645, durationMin: 60 } : b); // gap 11:45–12:30
+  assert.deepEqual(findMakeupSlot({ live: gapLive, appointments: [], makeups: [], dayRecords: [], makeupMin: 30, nowMin: 582, today: TODAY }), { startMin: 720, endMin: 750 });
+  assert.equal(slot({ makeupMin: 45, nowMin: 1020 }), null);
+  assert.deepEqual(slot({ makeupMin: 15, nowMin: 600 }), { startMin: 750, endMin: 765 });
+  // FU_AM skipped + Lunch (a break) merge into one 11:15–13:15 gap. Pass 1 (12:00 floor) offers 75 min — enough for 60, not for 90 — so 90 falls through to pass 2 and lands on the skipped morning block.
+  assert.deepEqual(slot({ makeupMin: 60, dayRecords: [{ kind: 'done', blockId: FU_AM, status: 'skipped', day: TODAY, deletedAt: null }] }), { startMin: 720, endMin: 780 });
+  assert.deepEqual(slot({ makeupMin: 90, dayRecords: [{ kind: 'done', blockId: FU_AM, status: 'skipped', day: TODAY, deletedAt: null }] }), { startMin: 675, endMin: 765 });
+  // Lunch fully taken by a 45-min make-up and every morning block live → only the two 15-min breaks remain → null
+  assert.equal(slot({ makeupMin: 30, makeups: [mk('mk_0000001', 750, 45)] }), null);
+});
+
+test('reconcileOwed: absent+0 → null; absent+>0 → open; differ → minutes/byBlock/updatedAt only; equal (even reordered keys) → null', () => {
+  const day = '2026-09-08';
+  assert.equal(reconcileOwed(null, { unrecovered: 0, displacedByBlock: {} }, T0, day), null);
+  const fresh = reconcileOwed(null, { unrecovered: 30, displacedByBlock: { a: 30 } }, T0, day);
+  assert.deepEqual(fresh, { id: `${day}|owed`, kind: 'owed', day, minutes: 30, byBlock: { a: 30 }, status: 'open', decidedAt: null, decidedMinutes: null, updatedAt: T0, deletedAt: null });
+  const decided = { ...fresh, status: 'skipped', decidedAt: T0, decidedMinutes: 30, updatedAt: 'old' };
+  const up = reconcileOwed(decided, { unrecovered: 60, displacedByBlock: { a: 30, b: 30 } }, 'later', day);
+  assert.equal(up.minutes, 60); assert.equal(up.status, 'skipped'); assert.equal(up.decidedMinutes, 30); assert.equal(up.updatedAt, 'later');
+  assert.equal(reconcileOwed({ ...up, byBlock: { b: 30, a: 30 } }, { unrecovered: 60, displacedByBlock: { a: 30, b: 30 } }, 'x', day), null);
+  assert.equal(owedId(day), `${day}|owed`);
+});
+
+test('offer lifecycle (derived offerOpen, remainder-sized make-ups) — spec §7h.3 walk', () => {
+  const day = '2026-09-08';
+  const proj = (u) => ({ unrecovered: u, displacedByBlock: u ? { a: u } : {} });
+  let stored = null;
+  let st = offerState(stored, proj(30)); assert.deepEqual([st.offerOpen, st.makeupMin], [true, 30]);
+  stored = applyOwedDecision(stored, 'skip', { projected: proj(30), realized: proj(0), makeupMin: 30, nowIso: T0, day });
+  assert.deepEqual([stored.status, stored.decidedMinutes, stored.minutes], ['skipped', 30, 0]);
+  st = offerState(stored, proj(30)); assert.equal(st.offerOpen, false);
+  st = offerState(stored, proj(45)); assert.deepEqual([st.offerOpen, st.makeupMin], [true, 15]);
+  st = offerState(stored, proj(30)); assert.equal(st.offerOpen, false);
+  st = offerState(stored, proj(60)); assert.deepEqual([st.offerOpen, st.makeupMin], [true, 30]);
+  stored = applyOwedDecision(stored, 'accept', { projected: proj(60), realized: proj(30), makeupMin: 30, nowIso: T0, day });
+  assert.deepEqual([stored.status, stored.decidedMinutes], ['accepted', 30]);
+  assert.equal(offerState(stored, proj(30)).offerOpen, false); // make-up recovered 30
+  st = offerState(stored, proj(50)); assert.deepEqual([st.offerOpen, st.makeupMin], [true, 20]); // make-up hit by 20
+  st = offerState(stored, proj(60)); assert.deepEqual([st.offerOpen, st.makeupMin], [true, 30]); // make-up removed
+  const freshAccept = applyOwedDecision(null, 'accept', { projected: proj(30), realized: proj(30), makeupMin: 30, nowIso: T0, day });
+  assert.deepEqual([freshAccept.status, freshAccept.decidedMinutes, freshAccept.minutes], ['accepted', 0, 30]);
+  assert.equal(offerState({ ...freshAccept }, proj(0)).offerOpen, false);
+  assert.equal(offerState(null, proj(0)).offerOpen, false);
+  assert.equal(offerState(null, proj(7)).makeupMin, 10);
+  assert.equal(offerState(null, proj(33)).makeupMin, 35);
+});
+
+const dnd = (o) => dayNotDone({ day: '2026-09-07', blocks: starter(), dayRecords: [], settings: { ...DEFAULT_SETTINGS }, tz: CHI, ...o });
+const doneRec = (blockId, status = 'done', day = '2026-09-07') => ({ id: `${day}|${blockId}`, kind: 'done', day, blockId, status, updatedAt: 'x', deletedAt: null });
+const owedRec = (minutes, byBlock, day = '2026-09-07', o = {}) => ({ id: `${day}|owed`, kind: 'owed', day, minutes, byBlock, status: 'open', decidedAt: null, decidedMinutes: null, updatedAt: 'x', deletedAt: null, ...o });
+const allDone = (day = '2026-09-07') => starter().map(b => doneRec(b.id, 'done', day));
+
+test('dayNotDone: displaced + unchecked, never double-counted; skipped/break/appt/inactive → 0; created-later excluded, deleted-later included', () => {
+  assert.equal(dnd({ dayRecords: allDone() }).minutes, 0);
+  assert.equal(dnd({ dayRecords: [...allDone(), owedRec(30, { [DIAL_AM]: 30 })] }).minutes, 30);
+  const uncheckedDial = allDone().filter(r => r.blockId !== DIAL_AM);
+  assert.equal(dnd({ dayRecords: [...uncheckedDial, owedRec(30, { [DIAL_AM]: 30 })] }).minutes, 120);
+  assert.equal(dnd({ dayRecords: uncheckedDial }).minutes, 120);
+  assert.equal(dnd({ dayRecords: uncheckedDial }).byCategory.dial, 120);
+  assert.equal(dnd({ dayRecords: [...uncheckedDial.filter(r => r.blockId !== DIAL_AM), doneRec(DIAL_AM, 'skipped')] }).minutes, 0);
+  assert.equal(dnd({ dayRecords: allDone().filter(r => r.blockId !== 'blk_0000002') }).minutes, 0); // break unchecked
+  const total = dnd({}).minutes; // whole non-break routine: 30+120+30+75+120+60+45+15 = 495
+  assert.equal(total, 495);
+  assert.equal(dnd({ day: '2026-09-06', settings: { ...DEFAULT_SETTINGS, activeDays: [1, 2, 3, 4, 5] } }).minutes, 0); // Sunday, inactive → 0
+  const createdToday = starter().map(b => ({ ...b, createdAt: '2026-09-08T14:00:00Z' }));
+  assert.equal(dnd({ blocks: createdToday }).minutes, 0);
+  const deletedToday = starter().map(b => ({ ...b, deletedAt: '2026-09-08T14:00:00Z' }));
+  assert.equal(dnd({ blocks: deletedToday }).minutes, 495);
+  const withMakeup = [...allDone(), { id: 'mk_0000009', kind: 'makeup', day: '2026-09-07', startMin: 750, durationMin: 30, category: 'dial', name: 'x', ofBlockId: DIAL_AM, updatedAt: 'x', deletedAt: null }];
+  assert.equal(dnd({ dayRecords: withMakeup }).minutes, 30);
+  assert.equal(dnd({ dayRecords: [...withMakeup, doneRec('mk_0000009')] }).minutes, 0);
+});
+
+test('yesterdayMiss and weeklyNotDone', () => {
+  const now = Z('2026-09-08T14:42:00Z');
+  const recs = [...allDone('2026-09-07').filter(r => r.blockId !== DIAL_AM), owedRec(30, { [DIAL_AM]: 30 })];
+  const y = yesterdayMiss({ blocks: starter(), dayRecords: recs, settings: DEFAULT_SETTINGS, tz: CHI, now });
+  assert.equal(y.minutes, 120); assert.equal(y.hidden, false); assert.equal(y.noun, 'dial time');
+  assert.equal(yesterdayMiss({ blocks: starter(), dayRecords: [...recs, { id: '2026-09-08|ack', kind: 'ack', day: '2026-09-08', updatedAt: 'x', deletedAt: null }], settings: DEFAULT_SETTINGS, tz: CHI, now }).hidden, true);
+  assert.equal(yesterdayMiss({ blocks: starter(), dayRecords: [...recs, doneRec('blk_0000000', 'done', '2026-09-08')], settings: DEFAULT_SETTINGS, tz: CHI, now }).hidden, true);
+  const week = weeklyNotDone({ blocks: starter(), dayRecords: [...recs, ...allDone('2026-09-06'), owedRec(20, {}, '2026-09-05', { deletedAt: 'x' }), ...allDone('2026-09-05')], settings: { ...DEFAULT_SETTINGS, activeDays: [0, 1, 2, 3, 4, 5, 6] }, tz: CHI, now });
+  assert.deepEqual(week.days.map(d => d.day), ['2026-09-01', '2026-09-02', '2026-09-03', '2026-09-04', '2026-09-05', '2026-09-06', '2026-09-07']);
+  assert.equal(week.days[6].minutes, 120); assert.equal(week.days[5].minutes, 0); assert.equal(week.days[4].minutes, 0);
+  assert.equal(week.days[0].minutes, 495); // never opened → whole routine
+  assert.equal(week.total, 495 * 4 + 120);
+});
+
+test('part A pins: cross-day appt records never suppress; attach only on appt blocks; tombstoned attach ignored; hh/mm range; 7-day "new" window; apptRecordId', () => {
+  const yday = { ...frozen('a', 600), day: '2026-09-07', id: apptRecordId('2026-09-07', 'a', 600) };
+  const cross = ta({ prospectRows: [p('a')], dayRecords: [yday] });
+  assert.equal(cross.length, 1); assert.equal(cross[0].frozen, false);
+  assert.deepEqual(ta({ blocks: [blk('w', 600, { category: 'dial' })], dayRecords: [attach('w', 'a')] }), []);
+  assert.deepEqual(ta({ blocks: [blk('w', 600)], dayRecords: [attach('w', 'a', { deletedAt: 'x' })] }), []);
+  assert.equal(parseAppointmentTime('2026-09-08T25:00', CHI), null);
+  assert.equal(parseAppointmentTime('2026-09-08T10:60', CHI), null);
+  assert.equal(apptRecordId('2026-09-08', 'p1', 600), '2026-09-08|appt|p1|600');
+  const mk7 = (id, createdAt) => ({ id, name: 'N' + id, stage: 'FOLLOWUP_LATER', archivedAt: null, lastContact: '', createdAt });
+  const sixDays = new Date(NOW - (6 * 24 + 23) * 3600000).toISOString();
+  const eightDays = new Date(NOW - (7 * 24 + 1) * 3600000).toISOString();
+  // DEVIATION from task spec text: the literal spec asserted ['new', '—'], but sixDays (167h
+  // ago) is chronologically LATER than eightDays (169h ago), so under the pre-existing,
+  // already-pinned createdAt-ascending tie-break (see the 'createdAt asc' test above, unchanged),
+  // eightDays ('b') sorts first. Verified independently in Node outside this module; part A's
+  // sort is correct and untouched. Flagged for the operator to confirm.
+  assert.deepEqual(followupQueue([mk7('a', sixDays), mk7('b', eightDays)], ['FOLLOWUP_LATER'], CHI, NOW).map(r => r.age), ['—', 'new']);
 });
