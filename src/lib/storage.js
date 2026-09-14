@@ -180,6 +180,8 @@ const MERGEABLE_KEYS = new Set([
   'business_income_v1',
   'investments_v2',
   'activities_v1',
+  'routine_blocks_v1',
+  'routine_day_v1',
 ]);
 
 // Per-session baseline: every record id this session has loaded or
@@ -381,11 +383,18 @@ const APP_KEYS = [
   // agent A's acceptance and never be prompted — i.e. we'd have no assent
   // from B at all, which is the whole point of the gate.
   'legal_acceptance_v1',
+  // Routine Builder (spec 2026-09-07 §4). MUST be registered: unregistered
+  // keys survive purgeLocalMirror and leak across accounts.
+  'routine_blocks_v1', 'routine_day_v1', 'routine_settings_v1',
 ];
+// Keys the SERVER also writes (routine tick → routine_day_write RPC). A stale
+// local mirror must never overwrite them wholesale.
+const MIGRATE_SKIP = new Set(['routine_day_v1']);
 export async function migrateLocalToCloud() {
   if (!cloudActive()) throw new Error('Not signed in');
   let migrated = 0, skipped = 0;
   for (const key of APP_KEYS) {
+    if (MIGRATE_SKIP.has(key)) { skipped++; continue; }
     const raw = localGet(key);
     if (raw == null) { skipped++; continue; }
     try {

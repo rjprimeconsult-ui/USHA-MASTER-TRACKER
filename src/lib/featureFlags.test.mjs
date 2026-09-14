@@ -135,3 +135,13 @@ test('no profile / unknown feature are denied', () => {
   assert.equal(canAccessBetaFeature('followup_drafts', null).canAccess, false);
   assert.equal(canAccessBetaFeature('nonexistent_feature', P()).canAccess, false);
 });
+
+test('routine_builder: starter tier, publicGA, complimentary and admin pass, no subscription fails', () => {
+  assert.equal(BETA_FEATURES.routine_builder.requiredTier, 'starter');
+  assert.equal(BETA_FEATURES.routine_builder.publicGA, true);
+  assert.equal(canAccessBetaFeature('routine_builder', { is_admin: true }).canAccess, true);
+  assert.equal(canAccessBetaFeature('routine_builder', { is_complimentary: true }).canAccess, true);
+  assert.equal(canAccessBetaFeature('routine_builder', { email: 'x@y.com', subscription_status: 'canceled' }).canAccess, false);
+  assert.equal(canAccessBetaFeature('routine_builder', null).canAccess, false);
+  assert.equal(canAccessBetaFeature('routine_builder', { email: 'x@y.com', subscription_status: 'active', subscription_tier: 'starter' }).canAccess, true);
+});

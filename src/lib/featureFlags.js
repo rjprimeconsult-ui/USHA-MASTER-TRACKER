@@ -98,6 +98,15 @@ export const BETA_FEATURES = {
     // email feature") alongside the per-agent sender-identity build.
     publicGA: true,
   },
+  // Routine Builder — spec docs/superpowers/specs/2026-09-07-routine-builder-design.md §9.
+  // All paid tiers day one (operator decision); complimentary + admin pass via the
+  // existing layers above.
+  routine_builder: {
+    name: 'Routine Builder',
+    requiredTier: 'starter',
+    betaAllowlist: [],
+    publicGA: true,
+  },
 };
 
 /**
