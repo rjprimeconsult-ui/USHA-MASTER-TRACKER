@@ -1618,7 +1618,7 @@ export function composeDay({ live = [], appointments = [], makeups = [], dayReco
     pushSegments('makeup', m, m.id, kept);
   }
 
-  for (const a of appointments) items.push({ kind: 'appt', id: `appt|${a.prospectId}|${a.startMin}`, ...a, endMin: a.startMin + a.durationMin });
+  for (const a of appointments) items.push({ kind: 'appt', id: `appt|${a.prospectId}|${a.startMin}`, ...a, endMin: Math.min(1440, a.startMin + a.durationMin) }); // a 23:45 appointment never hangs below the lane
   items.sort((x, y) => x.startMin - y.startMin || (x.kind === 'appt' ? -1 : 1));
 
   const totalDisplaced = Object.values(displacedByBlock).reduce((n, v) => n + v, 0);
