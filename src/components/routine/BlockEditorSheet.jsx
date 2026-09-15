@@ -35,12 +35,24 @@ const toHHMM = (min) => `${p2(Math.floor((min || 0) / 60))}:${p2((min || 0) % 60
 const fromHHMM = (s) => { const m = /^(\d{1,2}):(\d{2})/.exec(s || ''); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
 
 const label = 'block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1';
-const field = 'w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-accent';
+const field = 'w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-accent'; // bare bg-white / border-slate-200 — the .dark remap is the house palette
 const btnQuiet = 'rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50';
 const btnDanger = 'rounded-lg border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-600 transition hover:bg-rose-50 dark:border-rose-900/50';
 
 function Popover({ anchor, onClose, children }) {
   const ref = useRef(null);
+  // Focus lands on the first field (fallback: first button) once mounted; the
+  // element that opened the popover (the block) gets focus back on unmount.
+  useEffect(() => {
+    const prev = typeof document !== 'undefined' ? document.activeElement : null;
+    const el = ref.current;
+    const first = el?.querySelector('input, select, textarea') || el?.querySelector('button');
+    const t = setTimeout(() => first?.focus(), 0);
+    return () => {
+      clearTimeout(t);
+      if (prev && typeof prev.focus === 'function' && document.contains(prev)) prev.focus({ preventScroll: true });
+    };
+  }, []);
   useLayoutEffect(() => {
     const el = ref.current; if (!el) return;
     const H = el.offsetHeight || 420;
@@ -67,7 +79,7 @@ function Popover({ anchor, onClose, children }) {
       role="dialog"
       aria-label="Edit block"
       style={{ position: 'fixed', top: 8, left: 8, width: POP_W, zIndex: 90 }}
-      className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl shadow-2xl"
+      className="bg-white border border-slate-200 rounded-xl shadow-2xl"
     >
       {children}
     </div>,
@@ -83,11 +95,25 @@ function Editor({
   const timer = useRef(null);
   const saveRef = useRef(onSave);
   useEffect(() => { saveRef.current = onSave; });
+  // The time input commits on blur / Enter (never per keystroke — Chrome updates
+  // the value per segment while typing). A typed-but-not-blurred value is folded
+  // into the close/unmount flush so it is never lost.
+  const startDraft = useRef(null);
+  const blockStart = useRef(block.startMin);
+  useEffect(() => { blockStart.current = block.startMin; });
+  const takeStart = useCallback(() => {
+    if (startDraft.current == null) return null;
+    const m = fromHHMM(startDraft.current);
+    startDraft.current = null;
+    return m != null && m !== blockStart.current ? m : null;
+  }, []);
   const flush = useCallback(() => {
     if (timer.current) { clearTimeout(timer.current); timer.current = null; }
     const p = pending.current; pending.current = {};
+    const m = takeStart();
+    if (m != null) p.startMin = m;
     if (Object.keys(p).length) saveRef.current?.(p);
-  }, []);
+  }, [takeStart]);
   useEffect(() => () => flush(), [flush]); // unmount flushes
   const queueText = (patch) => {
     pending.current = { ...pending.current, ...patch };
@@ -98,6 +124,12 @@ function Editor({
 
   const [name, setName] = useState(block.name || '');
   const [note, setNote] = useState(block.note || '');
+  const [startText, setStartText] = useState(null); // null = not editing → show the block's value
+  const commitStart = () => {
+    const m = takeStart();
+    setStartText(null);
+    if (m != null) saveRef.current?.({ startMin: m });
+  };
   const pal = paletteById(block.paletteId) || paletteForCategory(block.category);
   const leadValue = block.remind?.enabled === false ? 'off' : String(Number.isFinite(block.remind?.minutesBefore) ? block.remind.minutesBefore : defaultMinutesBefore);
   const durations = DURATIONS.includes(block.durationMin) ? DURATIONS : [...DURATIONS, block.durationMin].sort((a, b) => a - b);
@@ -162,8 +194,10 @@ function Editor({
               id={`rb-start-${block.id}`}
               type="time"
               step="300"
-              value={toHHMM(block.startMin)}
-              onChange={(e) => { const m = fromHHMM(e.target.value); if (m != null) onSave?.({ startMin: m }); }}
+              value={startText ?? toHHMM(block.startMin)}
+              onChange={(e) => { startDraft.current = e.target.value; setStartText(e.target.value); }}
+              onBlur={commitStart}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitStart(); } }}
               className={field}
             />
           </div>

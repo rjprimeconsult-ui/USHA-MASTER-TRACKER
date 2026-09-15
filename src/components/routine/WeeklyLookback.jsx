@@ -23,7 +23,7 @@ export default function WeeklyLookback({ week }) {
   const days = week?.days || [];
   const total = week?.total || 0;
   return (
-    <div className="border-t border-slate-200/60 pt-3 mt-6">
+    <div className="border-t border-slate-200/60 dark:border-slate-700/60 pt-3 mt-6">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}

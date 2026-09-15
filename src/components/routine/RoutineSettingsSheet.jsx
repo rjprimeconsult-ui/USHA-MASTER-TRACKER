@@ -22,7 +22,7 @@ const LEADS = [0, 5, 10, 15];
 const deviceZone = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || null; } catch { return null; } };
 
 const label = 'block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1.5';
-const field = 'w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-accent';
+const field = 'w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-accent'; // bare bg-white / border-slate-200 — the .dark remap is the house palette
 const seg = (active) => `h-8 rounded-lg px-3 text-[12px] font-semibold transition ${active ? 'bg-accent-gradient text-white' : 'border border-slate-200 dark:border-slate-700 text-slate-600 hover:bg-slate-50'}`;
 const chip = (active) => `h-8 w-8 rounded-full text-[11px] font-semibold transition ${active ? 'bg-accent-gradient text-white' : 'border border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-slate-50'}`;
 
@@ -117,7 +117,7 @@ export default function RoutineSettingsSheet({ open, settings, stages = [], onCh
         <StageChecklist id="rs-appt" title="Appointment stages" stages={stages} selected={s.appointmentStages} onToggle={(id) => toggleIn('appointmentStages', id)} />
         <StageChecklist id="rs-fu" title="Follow-up stages" stages={stages} selected={s.followupStages} onToggle={(id) => toggleIn('followupStages', id)} />
 
-        <div className="border-t border-slate-200/60 pt-4">
+        <div className="border-t border-slate-200/60 dark:border-slate-700/60 pt-4">
           <button type="button" onClick={onStartOver} className="w-full rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
             Start over from a template
           </button>

@@ -50,7 +50,8 @@ export default function Timeline({
 
   useEffect(() => {
     if (!scrollRequest?.id || !laneRef.current) return;
-    const el = laneRef.current.querySelector(`[data-item-id^="${CSS.escape(String(scrollRequest.id))}"]`);
+    const id = CSS.escape(String(scrollRequest.id));
+    const el = laneRef.current.querySelector(`[data-item-id="${id}"], [data-item-id^="${id}#"]`); // exact id or its segments — never b10 for b1
     el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
     if (el && typeof el.focus === 'function') el.focus({ preventScroll: true });
   }, [scrollRequest]);
@@ -68,7 +69,11 @@ export default function Timeline({
 
   const handleDrag = useCallback((item, { dy, done, cancelled }) => {
     const ownerId = item.blockId ?? item.makeupId;
-    if (!done) { setDrag({ ownerId, mode: 'move', dy: snapPx(dy) }); return; }
+    if (!done) {
+      const snapped = snapPx(dy);
+      setDrag((prev) => (prev && prev.ownerId === ownerId && prev.mode === 'move' && prev.dy === snapped ? prev : { ownerId, mode: 'move', dy: snapped }));
+      return;
+    }
     setDrag(null);
     if (cancelled) return;
     const delta = snapMin(dy);
@@ -77,7 +82,11 @@ export default function Timeline({
 
   const handleResize = useCallback((item, { dy, done, cancelled }) => {
     const ownerId = item.blockId ?? item.makeupId;
-    if (!done) { setDrag({ ownerId, mode: 'resize', dy: snapPx(dy) }); return; }
+    if (!done) {
+      const snapped = snapPx(dy);
+      setDrag((prev) => (prev && prev.ownerId === ownerId && prev.mode === 'resize' && prev.dy === snapped ? prev : { ownerId, mode: 'resize', dy: snapped }));
+      return;
+    }
     setDrag(null);
     if (cancelled) return;
     const delta = snapMin(dy);

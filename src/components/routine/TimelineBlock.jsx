@@ -47,21 +47,26 @@ export default function TimelineBlock({
   const lead = leadMinutes(item);
   const range = formatRange(item.startMin, item.endMin);
 
+  // A drag (finished OR cancelled by Escape) is followed by the browser's trailing
+  // click. draggedRef is reset on every pointerdown, set once the drag activates,
+  // and consumed exactly once by that click — so a cancelled drag never opens the
+  // editor and a plain click always does.
   const draggedRef = useRef(false);
   const drag = usePointerDrag({
     onStart: () => { draggedRef.current = true; },
     onMove: ({ mode, dy }) => (mode === 'move' ? onDrag : onResize)?.(item, { dy, done: false, cancelled: false }),
-    onEnd: ({ mode, dy, cancelled }) => {
-      (mode === 'move' ? onDrag : onResize)?.(item, { dy, done: true, cancelled });
-      setTimeout(() => { draggedRef.current = false; }, 0); // the click that follows a drag is swallowed once
-    },
+    onEnd: ({ mode, dy, cancelled }) => (mode === 'move' ? onDrag : onResize)?.(item, { dy, done: true, cancelled }),
   });
   const draggable = !!item.isFirst;
   const resizable = !!item.isLast;
 
-  const onClick = () => {
-    if (draggedRef.current) return;
-    onOpen?.(item);
+  const onRootPointerDown = (e) => {
+    draggedRef.current = false;
+    if (draggable) drag.start('move')(e);
+  };
+  const onClick = (e) => {
+    if (draggedRef.current) { draggedRef.current = false; return; }
+    onOpen?.(item, e.currentTarget.getBoundingClientRect());
   };
   const onKeyDown = (e) => {
     if (e.target !== e.currentTarget) return; // the checkbox and inner buttons handle their own keys
@@ -70,7 +75,7 @@ export default function TimelineBlock({
       const sign = e.key === 'ArrowUp' ? -1 : 1;
       const step = e.shiftKey ? 15 : 5;
       onKey?.(item, { kind: e.altKey ? 'resize' : 'move', delta: sign * step });
-    } else if (e.key === 'Enter') { e.preventDefault(); onOpen?.(item); }
+    } else if (e.key === 'Enter') { e.preventDefault(); onOpen?.(item, e.currentTarget.getBoundingClientRect()); }
     else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); onDelete?.(item); }
     else if (e.key === ' ') { e.preventDefault(); onToggle?.(ownerId); }
   };
@@ -96,7 +101,7 @@ export default function TimelineBlock({
       data-item-id={item.id}
       onClick={onClick}
       onKeyDown={onKeyDown}
-      onPointerDown={draggable ? drag.start('move') : undefined}
+      onPointerDown={onRootPointerDown}
       {...(draggable || resizable ? drag.handlers : {})}
       className={`absolute left-0 right-0 select-none overflow-hidden rounded-lg outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-accent ${ringed ? 'ring-1 ring-accent' : ''} ${drag.dragging ? 'z-20 shadow-lg cursor-grabbing' : 'cursor-pointer'}`}
       style={{
@@ -180,7 +185,7 @@ export default function TimelineBlock({
       {resizable && (
         <div
           aria-hidden="true"
-          onPointerDown={(e) => { e.stopPropagation(); drag.start('resize')(e); }}
+          onPointerDown={(e) => { e.stopPropagation(); draggedRef.current = false; drag.start('resize')(e); }}
           className="absolute bottom-0 left-0 right-0 h-[6px] cursor-ns-resize"
           style={{ touchAction: 'none' }}
         />

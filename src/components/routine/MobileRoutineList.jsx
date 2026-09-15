@@ -13,7 +13,7 @@
  * Rows deliberately keep the default touch-action: a long-press must not block
  * the page from scrolling, and a scroll gesture cancels the press (pointercancel).
  */
-import { useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Bell, Plus, X } from 'lucide-react';
 import { GlassModal } from '@/components/motion/MotionPrimitives';
 import { formatTime, formatRange, formatMinutes } from '@/lib/routineClock.mjs';
@@ -27,22 +27,32 @@ const stop = (e) => e.stopPropagation();
 const lookup = (m, k) => (m instanceof Map ? m.get(k) : m?.[k]);
 
 // Long-press via usePointerDrag's start (pointer capture, 4 px threshold cancels)
-// plus a 500 ms timer. The click that follows a fired press is swallowed once.
+// plus a 500 ms timer. The timer only ARMS the press; the menu opens from
+// pointerup, after the finger lifts — a sheet mounted while the finger is still
+// down gets the release click hit-tested onto its overlay (iOS Safari) and closes
+// itself. The click that follows a fired press is swallowed once.
 function useLongPress(onFire) {
   const timer = useRef(null);
   const fired = useRef(false);
-  const clear = () => { if (timer.current) { clearTimeout(timer.current); timer.current = null; } };
+  const fireRef = useRef(onFire);
+  useEffect(() => { fireRef.current = onFire; });
+  const clear = useCallback(() => { if (timer.current) { clearTimeout(timer.current); timer.current = null; } }, []);
+  useEffect(() => clear, [clear]); // unmount clears the timer
   const drag = usePointerDrag({ onStart: clear, onEnd: clear });
   return {
     onPointerDown: (e) => {
       drag.start('press')(e);
       fired.current = false;
       clear();
-      timer.current = setTimeout(() => { timer.current = null; fired.current = true; onFire(); }, LONG_PRESS_MS);
+      timer.current = setTimeout(() => { timer.current = null; fired.current = true; }, LONG_PRESS_MS);
     },
     onPointerMove: drag.handlers.onPointerMove,
-    onPointerUp: (e) => { clear(); drag.handlers.onPointerUp(e); },
-    onPointerCancel: (e) => { clear(); drag.handlers.onPointerCancel(e); },
+    onPointerUp: (e) => {
+      clear();
+      drag.handlers.onPointerUp(e);
+      if (fired.current) fireRef.current?.();
+    },
+    onPointerCancel: (e) => { clear(); fired.current = false; drag.handlers.onPointerCancel(e); },
     onClickCapture: (e) => { if (fired.current) { fired.current = false; e.preventDefault(); e.stopPropagation(); } },
     onContextMenu: (e) => e.preventDefault(),
   };

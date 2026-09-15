@@ -15,7 +15,7 @@ const metaLines = (c) => c.querySelectorAll('[data-meta-line]').length;
 
 test('phases: upFirst / now with Done checkbox / free / dayDone; exactly one meta line per state', () => {
   const { container, rerender } = render(<NowCard {...base} state={{ phase: 'upFirst', next: seg, current: null, behind: null }} />);
-  expect(screen.getByText(/Morning|Dial block/)).toBeTruthy(); expect(screen.getByText(/starts 8:30/)).toBeTruthy(); expect(metaLines(container)).toBe(0);
+  expect(screen.getByText(/Dial block/)).toBeTruthy(); expect(screen.getByText(/starts 8:30/)).toBeTruthy(); expect(metaLines(container)).toBe(0);
   rerender(<NowCard {...base} state={{ phase: 'now', current: seg, next: { kind: 'segment', name: 'Break', startMin: 630 }, behind: null }} />);
   expect(screen.getByText('NOW')).toBeTruthy(); expect(screen.getByText(/then Break at 10:30/)).toBeTruthy();
   fireEvent.click(screen.getByRole('checkbox', { name: /done/i })); expect(base.onDone).toHaveBeenCalledWith('b1');
@@ -57,6 +57,7 @@ test('appointment as the current item: Held action, disabled before start', () =
   const appt = { kind: 'appt', prospectId: 'p1', name: 'Ana Diaz', startMin: 600, endMin: 630, instant: 1, frozen: true, heldAt: null };
   const { rerender } = render(<NowCard {...base} state={{ phase: 'now', current: appt, next: null, behind: null }} started />);
   fireEvent.click(screen.getByRole('button', { name: 'Held' })); expect(base.onHeld).toHaveBeenCalledWith(appt);
-  rerender(<NowCard {...base} state={{ phase: 'upFirst', current: null, next: { ...appt, frozen: false }, behind: null }} started={false} />);
-  expect(screen.queryByRole('button', { name: 'Held' })).toBeNull();
+  rerender(<NowCard {...base} state={{ phase: 'now', current: appt, next: null, behind: null }} started={false} />);
+  expect(screen.getByText('Ana Diaz')).toBeTruthy(); // still the current item…
+  expect(screen.queryByRole('button', { name: 'Held' })).toBeNull(); // …but Held is withheld until it has started (§7g)
 });

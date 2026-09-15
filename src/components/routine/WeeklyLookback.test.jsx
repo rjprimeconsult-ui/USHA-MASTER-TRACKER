@@ -15,3 +15,11 @@ test('collapsed copy, expands to seven bars, no numbers on bars', () => {
   expect(bars[6].style.height).toBe('35.2px'); expect(bars[0].style.height).toBe('2px');
   expect(container.textContent.includes('120')).toBe(false);
 });
+
+test('bar height clamps at 44 px for a day over 150 minutes', () => {
+  const week = { total: 200, days: Array.from({ length: 7 }, (_, i) => ({ day: `2026-09-0${i + 1}`, minutes: i === 2 ? 200 : 0 })) };
+  const { container } = render(<WeeklyLookback week={week} />);
+  fireEvent.click(screen.getByRole('button'));
+  expect(container.querySelectorAll('[data-bar]')[2].style.height).toBe('44px');
+  expect(container.textContent.includes('200')).toBe(false);
+});
