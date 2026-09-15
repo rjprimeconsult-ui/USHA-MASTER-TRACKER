@@ -3778,7 +3778,9 @@ git commit -m "feat(routine): RoutineView — load guard, clock, compose, client
 
 **Files:**
 - Modify: `src/lib/constants.js:216-235` (NAV_TABS), `src/components/LeadTracker.jsx` (lines 3-5 import, 94 ICONS, ~357 effects, ~306 state, 2426-2448 ProspectsView props, 2516 new ViewMount), `src/components/views/ProspectsView.jsx:1409-1436` (props) + effect
-- Test: `src/lib/navTabs.test.mjs` (new; `constants.js` loads under plain Node — verified), `src/lib/sourceInvariants.test.mjs` (append the wiring tripwire)
+- Test: `src/lib/navTabs.test.mjs` (new; `constants.js` loads under plain Node — verified),
+  `src/components/LeadTracker.deeplink.test.jsx` (new), `src/components/views/ProspectsView.openById.test.jsx`
+  (new), `src/lib/sourceInvariants.test.mjs` (append the icon-pair check only — see Step 1)
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -3800,20 +3802,53 @@ test('routineModel DEFAULT_STAGE_IDS mirrors constants.js DEFAULT_PROSPECT_STAGE
 ```
 If `constants.js` cannot load under plain Node (it may import nothing — check with `node -e "import('./src/lib/constants.js')"`), make this a text-level assertion in `sourceInvariants.test.mjs` instead.
 
-UI lane — a text-level test is enough for the wiring (LeadTracker is too heavy to render in jsdom); add to `sourceInvariants.test.mjs`:
+UI lane — **render the real shell.** An earlier draft of this plan said "a text-level test is
+enough for the wiring (LeadTracker is too heavy to render in jsdom)". That premise is false and
+was measured: `LeadTracker` mounts in jsdom with eight `vi.mock` lines (`@/lib/storage` — include
+`prefetch` — `@/lib/supabase`, `./auth/AuthProvider`, `@/lib/subscription` via `importOriginal`,
+`@/lib/useBetaFeature`, `@/lib/realtimeSync`, and stubs for `./views/RoutineView` and
+`./views/TeamView`) plus a `global.ResizeObserver` stub, at roughly 40 ms per case.
+
+It matters because the text tripwire was blind. Fourteen single-point mutants were run against
+it and **only four died** — the NAV_TABS data and a toast string. The `allowed()` guard, its
+`team` clause, the listener TARGET (`navigator.serviceWorker` → `window`, which silently kills
+every warm deep link), the listener teardown, `setView('prospects')` inside `openProspect`, and the ProspectsView
+open-by-id effect *in its entirety* all survived with every gate green — the last because
+`pv.includes('openProspectId')` is satisfied by the prop destructuring alone.
+
+Write two behaviour suites instead, asserting on what an agent sees (which tab is lit, whether
+the detail bubble opened) and on `window.location`, never on source text:
+
+- **`src/components/LeadTracker.deeplink.test.jsx`** — `?view=routine` lights the tab, mounts it
+  and removes ONLY the `view` param (a sibling `keep=1` must survive); `?view=<not a tab>` changes
+  nothing; `?view=team` un-entitled is refused *and keeps its param*, then is honoured when the
+  entitlement flips; a stub SW container (`Object.defineProperty(navigator, 'serviceWorker',
+  { value: new EventTarget(), configurable: true })` that counts add/remove) receives an
+  `Event('message')` with `.data = { type:'prim:view', view:'routine' }` and switches the tab —
+  this is the case that pins the listener target — with the count back to 0 after `unmount()`;
+  and the RoutineView stub's `onOpenProspect` switches to Prospects *and* opens that prospect
+  (seed `prospects_v1` through the storage mock so the chain runs end to end).
+- **`src/components/views/ProspectsView.openById.test.jsx`** — needs only the `ResizeObserver`
+  stub. A known id opens the bubble ("Primary Information" is a heading unique to it, and it
+  portals to `document.body`) and consumes once; an unknown id and an archived id each consume
+  once and open nothing; clearing the prop is not a new request, and re-requesting the same id is.
+
+Keep in `sourceInvariants.test.mjs` only the icon pair — two edits in two places that must agree,
+and the one thing a behaviour test reports as an opaque "Element type is invalid". Read the member
+LISTS, not a fixed layout, so a reformat cannot turn it red:
 ```js
-test('LeadTracker wires the Routine tab: icon import + ICONS map + ViewMount + deep link + openProspect + ProspectsView props', () => {
+test('LeadTracker imports CalendarClock AND maps it in ICONS (spec §9 — both, or the Routine tab renders an undefined element type)', () => {
   const src = read('src/components/LeadTracker.jsx');
-  assert.ok(/import \{[^}]*\bCalendarClock\b[^}]*\} from 'lucide-react'/.test(src), 'lucide import');
-  assert.ok(/const ICONS = \{[^}]*\bCalendarClock\b/.test(src), 'ICONS map');
-  assert.ok(src.includes("<ViewMount visible={view === 'routine'} viewKey=\"routine\">") && src.includes('<RoutineView'), 'ViewMount');
-  assert.ok(src.includes("window.history.replaceState(null, '', window.location.pathname)"), 'deep link cleans the URL');
-  assert.ok(src.includes("'prim:view'"), 'SW message listener');
-  assert.ok(src.includes('pendingProspectId') && src.includes('openProspectId={pendingProspectId}') && src.includes('onOpenConsumed='), 'prospect opener plumbing');
-  const pv = read('src/components/views/ProspectsView.jsx');
-  assert.ok(pv.includes('openProspectId') && pv.includes('onOpenConsumed'), 'ProspectsView props');
+  const members = (re) => (src.match(re)?.[1] || '').split(',').map((x) => x.split(' as ')[0].trim());
+  assert.ok(members(/import\s*\{([^}]*)\}\s*from\s*'lucide-react'/).includes('CalendarClock'), 'lucide-react import');
+  assert.ok(members(/const ICONS\s*=\s*\{([^}]*)\}/).includes('CalendarClock'), 'ICONS map');
 });
 ```
+
+**Standing rule — clean a URL surgically.** Never `replaceState(null, '', window.location.pathname)`:
+that drops the whole query string, including params another component still owes an answer to.
+Read through `new URL(window.location.href)`, `searchParams.delete()` your own key, and write back
+`url.toString()` — the house pattern at `ImpersonationBanner.jsx:23-26`.
 
 - [ ] **Step 2: Run to verify they fail.**
 
@@ -3842,11 +3877,24 @@ test('LeadTracker wires the Routine tab: icon import + ICONS map + ViewMount + d
     const allowed = (id) => NAV_TABS.some(t => t.id === id) && (id !== 'team' || teamEntitled);
     const go = (id) => { if (allowed(id)) setView(id); };
     try {
-      const v = new URLSearchParams(window.location.search).get('view');
-      if (v) { go(v); window.history.replaceState(null, '', window.location.pathname); }
+      const url = new URL(window.location.href);
+      const v = url.searchParams.get('view');
+      // A REAL tab the agent is not entitled to YET keeps its param: the profile is
+      // still loading, teamEntitled is false, and this effect re-runs on the flip to
+      // honour it then. Everything else is answered now. Only `view` is removed —
+      // session_id / impersonating / anything else survives (ImpersonationBanner.jsx:23).
+      const awaitingEntitlement = !!v && NAV_TABS.some(t => t.id === v) && !allowed(v);
+      if (v && !awaitingEntitlement) {
+        go(v);
+        url.searchParams.delete('view');
+        window.history.replaceState({}, '', url.toString());
+      }
     } catch { /* ignore */ }
     const onMsg = (e) => { if (e?.data?.type === 'prim:view' && typeof e.data.view === 'string') go(e.data.view); };
-    const sw = typeof navigator !== 'undefined' ? navigator.serviceWorker : null;
+    // Guarded: `navigator.serviceWorker` throws on access in some hardened webviews, and
+    // that must cost the deep link, not the whole app shell.
+    let sw = null;
+    try { sw = typeof navigator !== 'undefined' ? navigator.serviceWorker : null; } catch { /* no SW here */ }
     sw?.addEventListener?.('message', onMsg);
     return () => sw?.removeEventListener?.('message', onMsg);
   }, [teamEntitled]);
