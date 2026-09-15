@@ -3518,8 +3518,15 @@ git commit -m "feat(routine): components — NOW card, timeline, appointment car
 // 10. Held on a started appointment stamps heldAt; Held is disabled before start; "Remove from today" tombstones the appt record (and the attach when attached);
 // 11. Detach on an unstarted attached row tombstones the attach; attaching a prospect to a placeholder whose start has a tombstoned appt record un-deletes it;
 // 12. deleting an appt block tombstones its live attach; Undo restores both.
+// 13. (review addition — nothing else drives a drag) a drag commits ONE blocks write at the snapped
+//     start; a resize clamps to the next block's start; a drag into a packed hour reverts with the
+//     toast 'No room there — shrink it or move a neighbor' and zero writes;
+// 14. (review addition) entitlement lost mid-session: a pending 400 ms rename flushed by the
+//     editor's unmount, and an enablePush() still in flight when canAccess flips, both write NOTHING.
 ```
-Write ALL twelve as concrete tests BEFORE writing the component (the plan's TDD rule; this is the longest task — budget it that way), each with `await act(async () => {})` flushes and assertions on `mem.get(key)` parsed JSON (the same style as `PendingEmailQueueRunner.test.jsx`). Use `vi.useFakeTimers({ shouldAdvanceTime: true })` so the 400 ms debounce and the 30 s clock are controllable with `vi.advanceTimersByTime`.
+Write them ALL as concrete tests BEFORE writing the component (the plan's TDD rule; this is the longest task — budget it that way), with assertions on `mem.get(key)` parsed JSON (the same style as `PendingEmailQueueRunner.test.jsx`).
+
+**Timers — two corrections from the Task 12 review, both load-bearing:** (1) `vi.useFakeTimers({ toFake: ['setTimeout','clearTimeout','setInterval','clearInterval','Date'] })` — Vitest 4 fakes `Intl` by DEFAULT (a mirrored fake implementation), which detaches the `resolvedOptions` spy from the constructor the view calls, and 5 of the 12 cases then silently run in the machine's real zone. (2) NO `shouldAdvanceTime`: leave `Date.now()` frozen between explicit `vi.advanceTimersByTime` calls so every stamp in a case is deterministic. Wait on CONDITIONS, never on a fixed number of `act` flushes — `const until = (fn) => vi.waitFor(async () => { await act(async () => {}); return fn(); })`; a negative assertion ("zero writes") must follow a positive wait that proves the async chain finished. RTL's `waitFor` cannot be used with this combination (it does not detect these fake timers, so its own timeout never fires and it hangs); `vi.waitFor` advances them itself.
 
 - [ ] **Step 2: Run to verify they fail** — component missing.
 
@@ -3527,7 +3534,7 @@ Write ALL twelve as concrete tests BEFORE writing the component (the plan's TDD 
 
 ```jsx
 'use client';
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from 'react';
 import { Lock } from 'lucide-react';
 import { loadRoutine, saveBlocks, saveDay, saveSettings } from '@/lib/routineStore';
 import { sanitizeBlocks, liveBlocks, sanitizeDay, sanitizeSettings, seedFollowupStages, applyTemplate, instantiateTemplate, dayUid } from '@/lib/routineModel.mjs';
@@ -3600,11 +3607,22 @@ export default function RoutineView({ showToast, prospects = [], prospectSetting
   // ---- writes (spec §7a: immediate for state changes; the editor debounces text) ----
   // Side effects live OUTSIDE React updaters (StrictMode double-invokes updaters
   // in dev — a save inside one would write twice). Latest values come from refs.
+  const blocksRef = useRef([]);  // like dayRef: the newest SAVED document, written by the load path and the commits
   const dayRef = useRef([]); dayRef.current = day;
   const settingsRef = useRef(settings); settingsRef.current = settings;
-  const commitBlocks = useCallback((next) => { const s = sanitizeBlocks(next, new Date().toISOString()); setBlocks(s); saveBlocks(s); return s; }, []);
-  const commitDay = useCallback((updater) => { const next = sanitizeDay(updater(dayRef.current), today, new Date().toISOString()); dayRef.current = next; setDay(next); saveDay(next); return next; }, [today]);
-  const commitSettings = useCallback((patch) => { const next = sanitizeSettings({ ...settingsRef.current, ...patch }); settingsRef.current = next; setSettings(next); saveSettings(next); return next; }, []);
+  // §9: EVERY commit gates on entitlement read through a ref, NOT on the `entitled` value each
+  // useCallback closed over — a helper captured by a child fires after canAccess flips false (the
+  // editor's 400 ms debounce flushed on unmount; an in-flight enablePush) and would write to a
+  // locked account. The assignment MUST be useLayoutEffect, never useEffect: layout creates run in
+  // the same commit that unmounts the editor, BEFORE that child's passive cleanup fires its flush,
+  // whereas React runs every passive destroy for a commit before any passive create — a useEffect
+  // assignment still reads the stale `true`. (A render-phase `ref.current = x` also works but costs
+  // a react-hooks/refs warning, and this task's lint gate is zero warnings from touched files.)
+  const entitledRef = useRef(canAccess === true);
+  useLayoutEffect(() => { entitledRef.current = canAccess === true; });
+  const commitBlocks = useCallback((next) => { if (!entitledRef.current) return blocksRef.current; const s = sanitizeBlocks(next, new Date().toISOString()); setBlocks(s); saveBlocks(s); return s; }, []);
+  const commitDay = useCallback((updater) => { if (!entitledRef.current || !today) return dayRef.current; const next = sanitizeDay(updater(dayRef.current), today, new Date().toISOString()); dayRef.current = next; setDay(next); saveDay(next); return next; }, [today]);
+  const commitSettings = useCallback((patch) => { if (!entitledRef.current) return settingsRef.current; const next = sanitizeSettings({ ...settingsRef.current, ...patch }); settingsRef.current = next; setSettings(next); saveSettings(next); return next; }, []);
 
   // ---- load (zero writes before loaded; zero when not entitled) ----
   useEffect(() => {
@@ -3683,12 +3701,18 @@ export default function RoutineView({ showToast, prospects = [], prospectSetting
   const undoDelete = () => { if (!undo) return; const stamp = new Date().toISOString(); commitBlocks(blocks.map(b => (b.id === undo.blockId ? { ...b, deletedAt: null, updatedAt: stamp } : b))); if (undo.attachIds.length) commitDay(prev => prev.map(r => (undo.attachIds.includes(r.id) ? { ...r, deletedAt: null, updatedAt: stamp } : r))); clearTimeout(undo.timer); setUndo(null); };
   const updateBlock = (blockId, patch) => commitBlocks(blocks.map(b => (b.id === blockId ? { ...b, ...patch, updatedAt: new Date().toISOString() } : b)));
   // §7c: move → snap, clamp, slide to the NEAREST free gap that fits, else revert + toast. Never shrink, relocate far away, or delete on a drag.
+  // SPEC DEVIATION (rev 11, §7c): the slide MUST be bounded — the block keeps ≥ 5 min under the
+  // pointer (`maxSlide = durationMin - 5`) — or the revert-and-toast branch is unreachable. With an
+  // unbounded ±1440 search the dragged block is excluded from `others`, so its own slot always fits,
+  // `target` is never null, and the whole else-branch is dead text; worse, a drop onto a packed hour
+  // teleports the block up to an hour away, which §7c's own "never relocate far away" forbids.
   const moveBlock = (blockId, startMin) => {
     const me = live.find(b => b.id === blockId); if (!me) return;
     const others = live.filter(b => b.id !== blockId);
     const fits = (s) => s >= 0 && s + me.durationMin <= 1440 && !others.some(o => s < o.startMin + o.durationMin && o.startMin < s + me.durationMin);
+    const maxSlide = Math.max(5, me.durationMin - 5);
     let target = null;
-    for (let d = 0; d <= 1440 && target == null; d += 5) { if (fits(startMin + d)) target = startMin + d; else if (fits(startMin - d)) target = startMin - d; }
+    for (let d = 0; d <= maxSlide && target == null; d += 5) { if (fits(startMin + d)) target = startMin + d; else if (d && fits(startMin - d)) target = startMin - d; }
     if (target == null) { showToast?.('No room there — shrink it or move a neighbor'); return; }
     if (target !== me.startMin) updateBlock(blockId, { startMin: target });
   };
@@ -3737,7 +3761,7 @@ export default function RoutineView({ showToast, prospects = [], prospectSetting
 ```
 Notes for the implementer: `Timeline` receives `tiers` computed per block (`full` if any of its segments is `state.current` or `state.next`; `compact` for other future blocks; `spent` for past) and `visuals` from `blockVisualState` per block using the block's title segment's start and its last segment's end; `followupRows`/`followupCount` go to every `followup`-category title segment (`queue.slice(0, 4)` and `queue.length`). Editor saves: `onSave(patch)` → `updateBlock(block.id, patch)`; make-up editor → `removeMakeup`; frozen editor → `removeFromToday`. The block editor's attach options: `prospects.filter(p => !p.archivedAt && !day.some(r => r.kind === 'attach' && r.day === today && !r.deletedAt && r.prospectId === p.id && live.some(b => b.id === r.blockId)))` grouped by `settings.appointmentStages.includes(p.stage)` and excluding `SOLD`/`LOST` from group 2, sorted A–Z.
 
-- [ ] **Step 4: Run to verify** — `npm run test:ui` → all green. `npm run lint` → 0 errors (the memo deps warnings are the repo's accepted pattern; do not disable rules beyond the marked lines).
+- [ ] **Step 4: Run to verify** — `npm run test:ui` → all green (154 with the 14 cases above). `npm test` → 860 / 0, unchanged. `npm run lint` → 0 errors and no warning from a touched file (the memo deps warnings are the repo's accepted pattern; do not disable rules beyond the marked lines). Then run the RoutineView suite ~100× consecutively: a fixed-flush-budget suite passes in isolation and fails under load, so the repeat run is the real gate on the timer rules above.
 
 - [ ] **Step 5: Commit**
 
