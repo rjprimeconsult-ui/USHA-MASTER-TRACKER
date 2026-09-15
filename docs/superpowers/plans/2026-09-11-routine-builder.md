@@ -2151,6 +2151,7 @@ test('pushServer checks error after select and upsert and returns failures', () 
   const src = read('src/lib/pushServer.js');
   assert.ok(src.includes('if (error)') && src.includes('if (e2)'));
   assert.ok(src.includes('failures'));
+  assert.ok(count(src, /return \{ ok: false, error/g) >= 2, 'prune returns failures instead of throwing');
 });
 
 test('routineLive has exactly one Date.parse (parseAppointmentTime); routineTick has none', () => {
@@ -2274,7 +2275,7 @@ grant execute on function public.routine_appt_rows(uuid[], text[]) to service_ro
 -- Routine Builder — atomic per-record write into routine_day_v1 (spec §4b, §6b.4).
 -- Spec: docs/superpowers/specs/2026-09-07-routine-builder-design.md
 -- The tick NEVER rewrites the user_kv row. For each incoming record:
---   * append if no element with that id exists (a tombstone counts as existing);
+--   * append if no element with that id exists in the stored array or earlier in this batch;
 --   * replace iff rec.expect is non-null and equals the stored element's updatedAt
 --     (expected-version CAS — a client write that landed after the tick's read
 --     changes updatedAt and the replace is rejected);
@@ -2338,7 +2339,7 @@ begin
   for rec in select * from jsonb_array_elements(p_records) loop
     v_id := rec ->> 'id';
     if v_id is null then continue; end if;
-    if not exists (select 1 from jsonb_array_elements(v_stored) s where (s ->> 'id') = v_id) then
+    if not exists (select 1 from jsonb_array_elements(v_new) s where (s ->> 'id') = v_id) then
       v_new := v_new || jsonb_build_array(rec - 'expect');
       v_written := array_append(v_written, v_id);
     end if;
@@ -2611,10 +2612,15 @@ export async function GET(req) {
         }
 
         // Step 6: send one push per item; step 7: stamp.
+        let live = subs;
         for (const { d, attempts } of toSend) {
           const payload = buildPayload(d, d.next, now, appUrl());
-          const r = await sendPushAll(subs, payload);
-          if (r.dead.length) { const pr = await pruneDeadSubs(supa, userId, r.dead); if (!pr.ok) summary.skipped.prune_failed++; }
+          const r = await sendPushAll(live, payload);
+          if (r.dead.length) {
+            const pr = await pruneDeadSubs(supa, userId, r.dead);
+            if (!pr.ok) summary.skipped.prune_failed++;
+            live = live.filter((s) => !r.dead.includes(s?.endpoint));
+          }
           const cls = classifySend({ sentCount: r.sentCount, failures: r.failures, allDead: r.sentCount === 0 && r.failures.length === 0 && r.dead.length > 0 });
           const stamp = { status: cls.status, attempts: cls.status === 'sent' ? attempts : Math.max(attempts, cls.attempts), error: cls.error };
           if (cls.status === 'sent') stamp.sent_at = new Date().toISOString();
@@ -2631,7 +2637,7 @@ export async function GET(req) {
   // Step 8: housekeeping at minute 7 of each hour.
   if (new Date(now).getUTCMinutes() === 7) {
     const { error: hErr } = await supa.from('routine_push_log').delete().lt('created_at', new Date(now - 30 * DAY_MS).toISOString());
-    if (hErr) summary.errors.push('housekeeping: ' + hErr.message);
+    if (hErr) summary.errors.push({ err: 'housekeeping: ' + hErr.message });
   }
   return Response.json(summary);
 }
