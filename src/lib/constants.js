@@ -219,13 +219,14 @@ export const NAV_TABS = [
   { id: 'team',         label: 'View My Team',  icon: 'Users' },
   { id: 'closed',       label: 'Closed Deals',  icon: 'CheckSquare' },
   { id: 'dashboard',    label: 'Overview',      icon: 'LayoutDashboard' },
-  // Routine Builder (spec 2026-09-07 §9) — directly after Overview.
-  { id: 'routine',      label: 'Routine',       icon: 'CalendarClock' },
   { id: 'associations', label: 'Associations',  icon: 'Repeat' },
-  // Middle-block order per Juan (2026-07-22): Portal Clients → Prospects →
-  // Pipeline → Blasts → Platforms → Books. Consumers navigate by id, so
-  // reordering here is purely visual.
+  // Middle-block order per Juan (2026-07-22, amended 2026-09-15): Portal Clients →
+  // Routine → Prospects → Pipeline → Blasts → Platforms → Books. Consumers navigate
+  // by id, so reordering here is purely visual.
   { id: 'leads',        label: 'Portal Clients', icon: 'Users' },
+  // Routine Builder — spec 2026-09-07 §9 placed this directly after Overview; Juan moved
+  // it here on 2026-09-15 to sit with the two tabs it reads from. Deviation for rev 11.
+  { id: 'routine',      label: 'Routine',       icon: 'CalendarClock' },
   { id: 'prospects',    label: 'Prospects',     icon: 'UserPlus' },
   { id: 'pipeline',     label: 'Pipeline',      icon: 'Columns' },
   { id: 'blasts',       label: 'Blasts',        icon: 'Send' },
