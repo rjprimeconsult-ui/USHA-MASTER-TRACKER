@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
-  Calculator, Repeat, CheckSquare, LayoutDashboard, Users, Columns, Upload, Settings, Sparkles, DollarSign, BookOpen, LogOut, UserPlus, User as UserIcon, FileText, Merge, Send,
+  Calculator, CalendarClock, Repeat, CheckSquare, LayoutDashboard, Users, Columns, Upload, Settings, Sparkles, DollarSign, BookOpen, LogOut, UserPlus, User as UserIcon, FileText, Merge, Send,
 } from 'lucide-react';
 import { PrimAppIcon } from '@/components/PrimLogo';
 import { storage, onStorageError } from '@/lib/storage';
@@ -32,6 +32,7 @@ import PlatformExpensesView from './views/PlatformExpensesView';
 import BusinessBooksView from './views/BusinessBooksView';
 import ReportsView from './views/ReportsView';
 import ProspectsView from './views/ProspectsView';
+import RoutineView from './views/RoutineView';
 import CommissionCalculator from './views/CommissionCalculator';
 import BlastsView from './views/BlastsView';
 import { normalizeBlastPayload, upsertBlast, normPlatform } from '@/lib/blastLog.mjs';
@@ -91,7 +92,7 @@ const TeamView = nextDynamic(() => import('./views/TeamView'), {
   loading: () => <div className="text-sm text-slate-400 p-4">Loading team…</div>,
 });
 
-const ICONS = { Calculator, Repeat, CheckSquare, LayoutDashboard, Users, Columns, Upload, DollarSign, BookOpen, UserPlus, FileText, Send };
+const ICONS = { Calculator, CalendarClock, Repeat, CheckSquare, LayoutDashboard, Users, Columns, Upload, DollarSign, BookOpen, UserPlus, FileText, Send };
 
 // Normalise an AI-returned datetime to the "YYYY-MM-DDTHH:mm" form that
 // <input type="datetime-local"> requires (handles space-separated, seconds, zone).
@@ -259,10 +260,44 @@ export default function LeadTracker() {
   const { user: authUser } = useAuth();
   const [loaded, setLoaded] = useState(false);
   const [view, setView] = useState('cpa');
+  // Open-by-id across tabs (Routine → Prospects, spec §9). The id is queued here and
+  // consumed by ProspectsView once, so a second visit to the tab never re-opens it.
+  const [pendingProspectId, setPendingProspectId] = useState(null);
+  const openProspect = useCallback((id) => { setPendingProspectId(id); setView('prospects'); }, []);
   // Team-tier gate for the "View My Team" tab. Client-side filter only — the
   // /api/team/* endpoints enforce the real entitlement server-side.
   const { profile: subProfile, loading: subLoading } = useSubscription();
   const teamEntitled = !!(subProfile?.is_admin || subProfile?.subscription_tier === 'team');
+
+  // Deep link into a tab: `?view=<id>` on mount (push tap cold start) and the
+  // service worker's `prim:view` message (push tap with PRIM already open).
+  // Spec 2026-09-07 §9. Only ids in the user's filtered tab list are honoured.
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const allowed = (id) => NAV_TABS.some(t => t.id === id) && (id !== 'team' || teamEntitled);
+    const go = (id) => { if (allowed(id)) setView(id); };
+    try {
+      const url = new URL(window.location.href);
+      const v = url.searchParams.get('view');
+      // A REAL tab the agent is not entitled to YET keeps its param: the profile is
+      // still loading, teamEntitled is false, and this effect re-runs on the flip to
+      // honour it then. Everything else is answered now. Only `view` is removed —
+      // session_id / impersonating / anything else survives (ImpersonationBanner.jsx:23).
+      const awaitingEntitlement = !!v && NAV_TABS.some(t => t.id === v) && !allowed(v);
+      if (v && !awaitingEntitlement) {
+        go(v);
+        url.searchParams.delete('view');
+        window.history.replaceState({}, '', url.toString());
+      }
+    } catch { /* ignore */ }
+    const onMsg = (e) => { if (e?.data?.type === 'prim:view' && typeof e.data.view === 'string') go(e.data.view); };
+    // Guarded: `navigator.serviceWorker` throws on access in some hardened webviews, and
+    // that must cost the deep link, not the whole app shell.
+    let sw = null;
+    try { sw = typeof navigator !== 'undefined' ? navigator.serviceWorker : null; } catch { /* no SW here */ }
+    sw?.addEventListener?.('message', onMsg);
+    return () => sw?.removeEventListener?.('message', onMsg);
+  }, [teamEntitled]);
   // Pro-tier gate for personalized follow-up drafts. Client-side display
   // filter only — /api/followup-draft enforces the real entitlement
   // server-side with the same canAccessBetaFeature check.
@@ -2444,6 +2479,8 @@ export default function LeadTracker() {
             followupDrafts={followupDrafts}
             onSaveDraft={saveFollowupDraft}
             draftsEntitled={draftsEntitled}
+            openProspectId={pendingProspectId}
+            onOpenConsumed={() => setPendingProspectId(null)}
           />
         </ViewMount>
         <ViewMount visible={view === 'books'} viewKey="books">
@@ -2513,6 +2550,9 @@ export default function LeadTracker() {
             onApplySalesReport={applySalesReport}
             onBackfill={backfillFromExcel}
           />
+        </ViewMount>
+        <ViewMount visible={view === 'routine'} viewKey="routine">
+          <RoutineView showToast={showToast} prospects={prospects} prospectSettings={prospectSettings} onOpenProspect={openProspect} />
         </ViewMount>
       </main>
 

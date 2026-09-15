@@ -180,6 +180,8 @@ const MERGEABLE_KEYS = new Set([
   'business_income_v1',
   'investments_v2',
   'activities_v1',
+  'routine_blocks_v1',
+  'routine_day_v1',
 ]);
 
 // Per-session baseline: every record id this session has loaded or
@@ -346,7 +348,8 @@ export const storage = {
 
 /**
  * Bulk migration helper — uploads ALL non-empty localStorage keys to the cloud
- * for the currently signed-in user. Returns { migrated: count, skipped: count }.
+ * for the currently signed-in user, except keys in `MIGRATE_SKIP` (server-written;
+ * see below). Returns { migrated: count, skipped: count }.
  *
  * Used by the AuthGate's "Upload your local data to cloud" prompt.
  */
@@ -381,11 +384,21 @@ const APP_KEYS = [
   // agent A's acceptance and never be prompted — i.e. we'd have no assent
   // from B at all, which is the whole point of the gate.
   'legal_acceptance_v1',
+  // Routine Builder (spec 2026-09-07 §4). MUST be registered: unregistered
+  // keys survive purgeLocalMirror and leak across accounts.
+  'routine_blocks_v1', 'routine_day_v1', 'routine_settings_v1',
 ];
+// Keys the SERVER also writes (the routine tick appends single records through
+// the routine_day_write RPC — spec §4b / §6b.4). A stale local mirror must never
+// overwrite them wholesale. Safe to skip: the client only writes this key when
+// signed in, so the local mirror is never the sole copy. Counted as `skipped`
+// (MigrationPrompt only displays `migrated`).
+const MIGRATE_SKIP = new Set(['routine_day_v1']);
 export async function migrateLocalToCloud() {
   if (!cloudActive()) throw new Error('Not signed in');
   let migrated = 0, skipped = 0;
   for (const key of APP_KEYS) {
+    if (MIGRATE_SKIP.has(key)) { skipped++; continue; }
     const raw = localGet(key);
     if (raw == null) { skipped++; continue; }
     try {
