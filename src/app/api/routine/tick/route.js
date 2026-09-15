@@ -63,6 +63,7 @@ export async function GET(req) {
   const profiles = new Map();
   const subsByUser = new Map();
   for (const chunk of chunks(userIds, CHUNK)) {
+    // literal on purpose: sourceInvariants' selectStrings() only reads literal .select('…') arguments
     const { data: pRows, error: pErr } = await supa.from('profiles').select('id, email, subscription_status, subscription_tier, trial_ends_at, is_complimentary, is_admin, past_due_since').in('id', chunk);
     if (pErr) return Response.json({ error: pErr.message }, { status: 500 });
     for (const p of pRows || []) profiles.set(p.id, p);
