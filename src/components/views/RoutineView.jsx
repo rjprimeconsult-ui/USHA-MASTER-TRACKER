@@ -416,7 +416,9 @@ export default function RoutineView({ showToast, prospects = [], prospectSetting
     const p = paletteById(paletteId);
     if (!p) return;
     const s = startMin == null ? nextFreeSlot(p.defaultMin) : nearestFit(startMin, p.defaultMin, live, slideWindow(p.defaultMin));
-    if (s == null) { showToast?.('No room today'); return; }
+    // §7c: the click path fails because the DAY is full; a drop / '+ hh:mm' pill fails because the
+    // pointed-at hour is, and gets the same copy every other positional gesture gets.
+    if (s == null) { showToast?.(startMin == null ? 'No room today' : 'No room there — shrink it or move a neighbor'); return; }
     const b = instantiateTemplate({ paletteId, startMin: s }, { now: stampNow(), defaultMinutesBefore: settings.defaultMinutesBefore });
     commitBlocks((prev) => [...prev, b]);
     setShowCanvas(true);

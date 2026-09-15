@@ -635,3 +635,50 @@ test('14. entitlement lost mid-session: neither the editor unmount flush nor an 
   expect(writes(ROUTINE_SETTINGS_KEY)).toBe(0);
   expect(read(ROUTINE_SETTINGS_KEY).remindersEnabled).toBe(false);
 });
+
+test('15. a positional add that finds no fit says "No room there" (§7c); the palette click keeps "No room today"; neither writes', async () => {
+  // Carry-forward from the Task 12 review: a drop / "+ hh:mm" pill is POSITIONAL — it fails
+  // because the pointed-at hour is full, not because the day is. §7c scopes "No room today" to
+  // the palette-click path and gives every positional gesture the shrink-or-move copy.
+  const showToast = vi.fn();
+  settingsReady();
+  seedBlocks([
+    mk({ id: 'blk_pack01', name: 'Follow-up queue', paletteId: 'followup', category: 'followup', startMin: 600, durationMin: 120 }), // 10:00–12:00
+    mk({ id: 'blk_pack02', name: 'Apps & underwriting', paletteId: 'admin', category: 'admin', startMin: 720, durationMin: 120 }),   // 12:00–14:00
+  ]);
+  const a = mount({ showToast });
+  await loaded();
+
+  // Drop a 15-minute Break at 11:40, inside two back-to-back blocks: its ±10 min slide window
+  // (durationMin − 5, so it still covers the pointed-at minute) finds nothing → the positional
+  // copy. 14:00 onward is wide open, so "No room today" would be a lie.
+  // The lane's getBoundingClientRect is all-zero in jsdom, so clientY IS the offset from
+  // bounds.start (360 = 6:00) at 2 px/min: (700 − 360) × 2.
+  fireEvent.drop(a.container.querySelector('[data-item-id="blk_pack01#0"]'), {
+    clientY: 680,
+    dataTransfer: { types: ['text/prim-palette'], getData: () => 'break' },
+  });
+  await until(() => expect(showToast).toHaveBeenCalledWith('No room there — shrink it or move a neighbor'));
+  await settle();
+  expect(showToast).not.toHaveBeenCalledWith('No room today');
+  expect(writes(ROUTINE_BLOCKS_KEY)).toBe(0);
+  a.unmount();
+
+  // The click path (startMin == null) keeps "No room today" — here the day really is full from
+  // the next 5-minute mark (9:45) to midnight.
+  mem.clear();
+  setItem.mockClear();
+  showToast.mockClear();
+  settingsReady();
+  seedBlocks([
+    mk({ id: 'blk_full01', startMin: 585, durationMin: 720 }),   // 9:45–21:45
+    mk({ id: 'blk_full02', startMin: 1305, durationMin: 135 }),  // 21:45–24:00
+  ]);
+  mount({ showToast });
+  await loaded();
+  fireEvent.click(screen.getByRole('button', { name: 'Break' }));
+  await until(() => expect(showToast).toHaveBeenCalledWith('No room today'));
+  await settle();
+  expect(showToast).not.toHaveBeenCalledWith('No room there — shrink it or move a neighbor');
+  expect(writes(ROUTINE_BLOCKS_KEY)).toBe(0);
+});
