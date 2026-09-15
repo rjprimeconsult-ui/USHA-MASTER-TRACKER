@@ -201,6 +201,12 @@ test('vercel.json keeps only daily crons (never sub-daily — Hobby build fails)
   for (const c of cfg.crons || []) { const [min, hour] = c.schedule.split(' '); assert.ok(min !== '*' && hour !== '*', `sub-daily cron: ${c.schedule}`); }
 });
 
+test('sw.js: payload contract untouched; notificationclick picks the "/" client on the app origin and otherwise opens a window', () => {
+  const src = read('public/sw.js');
+  for (const k of ['data.title', 'data.body', 'data.tag', 'data.url', 'data.urgent']) assert.ok(src.includes(k), k);
+  assert.ok(src.includes("pathname === '/'") && src.includes('self.location.origin') && src.includes("'prim:view'") && src.includes('openWindow'));
+});
+
 test('routine SQL functions are security definer, legacy-string safe, and service-role only', () => {
   for (const f of ['supabase/routine-appt-rows-function.sql', 'supabase/routine-day-write-function.sql']) {
     const src = read(f).toLowerCase();

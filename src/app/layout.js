@@ -5,6 +5,7 @@ import { AuthProvider } from "@/components/auth/AuthProvider";
 import AuthGate from "@/components/auth/AuthGate";
 import ThemeProvider from "@/components/ThemeProvider";
 import { classifyHost } from '@/lib/hostRouting.mjs';
+import { buildAppMetadata } from '@/lib/appMetadata.mjs';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -23,10 +24,14 @@ const sora = Sora({
   weight: ["400", "500", "600"],
 });
 
-export const metadata = {
-  title: "PRIM — Performance, Revenue & Investment Manager",
-  description: "Multi-channel agent tracker for leads, commissions, and CPA.",
-};
+// Manifest + Apple web-app tags only on the app host (spec 2026-09-07 §8).
+// Same role resolution as RootLayout below — middleware header first.
+export async function generateMetadata() {
+  const h = await headers();
+  const role = h.get('x-prim-role')
+    || classifyHost(h.get('x-forwarded-host') || h.get('host') || '', { marketingSplitEnabled: process.env.MARKETING_SPLIT_ENABLED === '1' });
+  return buildAppMetadata(role);
+}
 
 export default async function RootLayout({ children }) {
   const h = await headers(); // Next 16: headers() is async
