@@ -53,10 +53,11 @@ test('fails closed without CRON_SECRET / wrong bearer', async () => {
   expect((await GET(req())).status).toBe(401);
   vi.stubEnv('CRON_SECRET', 'other');
   expect((await GET(req())).status).toBe(401);
-  // An unset CRON_SECRET must never be satisfied by an empty-token header —
-  // `Bearer ${expected}` would equal 'Bearer ' if expected were '' unguarded.
-  vi.stubEnv('CRON_SECRET', '');
-  expect((await GET(req('Bearer '))).status).toBe(401);
+  // An unset CRON_SECRET must never be satisfied by the literal string
+  // 'Bearer undefined' — the guard `if (!expected || …)` is what stops this
+  // from matching when the header renders the unset env var literally.
+  vi.stubEnv('CRON_SECRET', undefined);
+  expect((await GET(req('Bearer undefined'))).status).toBe(401);
 });
 
 test('a due block on an entitled Central agent is claimed, sent, and stamped once; a bad_tz agent with subs is never Phase-B queried; a non-entitled id never reaches .in()', async () => {
