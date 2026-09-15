@@ -109,11 +109,10 @@ export default function NowCard({
 
         <div className="flex-1 min-w-0">
           {phase === 'upFirst' && next && (
-            <>
-              <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Up first</div>
-              <div className="text-[14px] font-semibold text-slate-900 truncate">{next.name}</div>
-              <div className="text-[11px] text-slate-500">starts {formatTime(next.startMin)}{reminderClause}</div>
-            </>
+            // One pinned line (spec §7b): "{name} · starts {time} · reminder {time}" — no label.
+            <div className="truncate text-[12px] text-slate-500">
+              <span className="text-[14px] font-semibold text-slate-900">{next.name}</span> · starts {formatTime(next.startMin)}{reminderClause}
+            </div>
           )}
           {phase === 'now' && current && (
             <>
