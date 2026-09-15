@@ -214,6 +214,9 @@ function Editor({
           </div>
         </div>
 
+        {/* No per-record lead exists for a make-up (§4b gives it no `remind`): the tick reminds it
+            at settings.defaultMinutesBefore, so offering the control would be a dead field. */}
+        {!isMakeup && (
         <div>
           <label htmlFor={`rb-lead-${block.id}`} className={label}>Reminder</label>
           <select
@@ -228,6 +231,7 @@ function Editor({
             {LEADS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
           </select>
         </div>
+        )}
 
         <div>
           <label htmlFor={`rb-note-${block.id}`} className={label}>Note</label>

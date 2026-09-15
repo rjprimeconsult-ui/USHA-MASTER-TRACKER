@@ -62,6 +62,7 @@ export default function AppointmentCard({ item, style, onHeld, onOpenProspect, o
   if (compact) {
     return (
       <div
+        data-item-id={item.id}
         className="bg-white border border-slate-200 dark:border-slate-700 rounded-lg flex items-center gap-3 px-3 py-2.5"
         style={{ ...style, boxShadow: `inset 4px 0 0 ${APPT_STRIPE}` }}
       >
@@ -74,6 +75,7 @@ export default function AppointmentCard({ item, style, onHeld, onOpenProspect, o
 
   return (
     <div
+      data-item-id={item.id}
       className="group absolute left-0 right-[10px] bg-white border border-slate-200 dark:border-slate-700 rounded-lg overflow-visible px-2.5 py-1.5"
       style={{ ...style, boxShadow: `inset 4px 0 0 ${APPT_STRIPE}` }}
     >
