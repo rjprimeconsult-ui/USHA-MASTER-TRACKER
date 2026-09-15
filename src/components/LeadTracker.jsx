@@ -277,11 +277,24 @@ export default function LeadTracker() {
     const allowed = (id) => NAV_TABS.some(t => t.id === id) && (id !== 'team' || teamEntitled);
     const go = (id) => { if (allowed(id)) setView(id); };
     try {
-      const v = new URLSearchParams(window.location.search).get('view');
-      if (v) { go(v); window.history.replaceState(null, '', window.location.pathname); }
+      const url = new URL(window.location.href);
+      const v = url.searchParams.get('view');
+      // A REAL tab the agent is not entitled to YET keeps its param: the profile is
+      // still loading, teamEntitled is false, and this effect re-runs on the flip to
+      // honour it then. Everything else is answered now. Only `view` is removed —
+      // session_id / impersonating / anything else survives (ImpersonationBanner.jsx:23).
+      const awaitingEntitlement = !!v && NAV_TABS.some(t => t.id === v) && !allowed(v);
+      if (v && !awaitingEntitlement) {
+        go(v);
+        url.searchParams.delete('view');
+        window.history.replaceState({}, '', url.toString());
+      }
     } catch { /* ignore */ }
     const onMsg = (e) => { if (e?.data?.type === 'prim:view' && typeof e.data.view === 'string') go(e.data.view); };
-    const sw = typeof navigator !== 'undefined' ? navigator.serviceWorker : null;
+    // Guarded: `navigator.serviceWorker` throws on access in some hardened webviews, and
+    // that must cost the deep link, not the whole app shell.
+    let sw = null;
+    try { sw = typeof navigator !== 'undefined' ? navigator.serviceWorker : null; } catch { /* no SW here */ }
     sw?.addEventListener?.('message', onMsg);
     return () => sw?.removeEventListener?.('message', onMsg);
   }, [teamEntitled]);
