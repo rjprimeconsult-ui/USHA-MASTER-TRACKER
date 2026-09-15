@@ -2266,7 +2266,7 @@ end;
 $$;
 
 revoke execute on function public.routine_appt_rows(uuid[], text[]) from public, anon, authenticated;
-grant  execute on function public.routine_appt_rows(uuid[], text[]) to service_role;
+grant execute on function public.routine_appt_rows(uuid[], text[]) to service_role;
 ```
 
 `supabase/routine-day-write-function.sql`:
@@ -2351,7 +2351,7 @@ end;
 $$;
 
 revoke execute on function public.routine_day_write(uuid, jsonb) from public, anon, authenticated;
-grant  execute on function public.routine_day_write(uuid, jsonb) to service_role;
+grant execute on function public.routine_day_write(uuid, jsonb) to service_role;
 ```
 
 `supabase/routine-tick-cron.sql` — copy §6a verbatim, with this header:
@@ -2464,7 +2464,6 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-const PROFILE_COLS = 'id, email, subscription_status, subscription_tier, trial_ends_at, is_complimentary, is_admin, past_due_since';
 const CHUNK = 100;
 const DAY_MS = 86400000;
 
@@ -2503,7 +2502,8 @@ export async function GET(req) {
   const profiles = new Map();
   const subsByUser = new Map();
   for (const chunk of chunks(userIds, CHUNK)) {
-    const { data: pRows, error: pErr } = await supa.from('profiles').select(PROFILE_COLS).in('id', chunk);
+    // literal on purpose: sourceInvariants' selectStrings() only reads literal .select('…') arguments
+    const { data: pRows, error: pErr } = await supa.from('profiles').select('id, email, subscription_status, subscription_tier, trial_ends_at, is_complimentary, is_admin, past_due_since').in('id', chunk);
     if (pErr) return Response.json({ error: pErr.message }, { status: 500 });
     for (const p of pRows || []) profiles.set(p.id, p);
     const { data: subRows, error: subErr } = await supa.from('user_kv').select('user_id, value').eq('key', PUSH_SUBS_KEY).in('user_id', chunk);
