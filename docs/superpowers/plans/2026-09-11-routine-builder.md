@@ -2944,7 +2944,9 @@ git commit -m "feat(routine): PWA manifest + icons via generateMetadata, SW noti
 
 **Files:**
 - Create: `src/lib/routineStore.js`, `src/lib/useMediaQuery.js`, `src/lib/usePointerDrag.js`
-- Test: `src/lib/routineStore.test.jsx` (vitest — it imports `storage`), `src/lib/useMediaQuery.test.jsx`
+- Test: `src/lib/routineStore.test.jsx` (vitest — it imports `storage`), `src/lib/useMediaQuery.test.jsx`, `src/lib/usePointerDrag.test.jsx`
+
+**Plan deviation (Task 10 quality review, 2026-09-14):** the original drop shipped with no test coverage for `usePointerDrag.js` and two real defects a fresh-context review caught: (1) the `window` `keydown` listener and in-flight drag state leaked past unmount (no cleanup effect) and (2) `finish`/`onPointerMove` closed over the `onStart`/`onMove`/`onEnd` props directly, so a parent re-render mid-drag rebuilt `onPointerUp`/`onPointerCancel` with a *new* `finish` but the stale `window` `keydown` listener from `start()` still called the *old* `finish`, and — worse — if the parent's `onEnd` reference changed mid-drag, `[onEnd]` in `finish`'s deps meant a fresh `finish` closure existed but nothing rebound the live drag's `s.onKey`, so Escape could reach a stale `onEnd`. Fixed by routing all three callbacks through a `cbs` ref (updated every render, read at call time) and adding an unmount effect that force-cancels an in-flight drag. `useMediaQuery.js` is rewritten on `useSyncExternalStore` to kill the `react-hooks/set-state-in-effect` lint warning from calling `setMatches` synchronously inside the effect body — same public behavior (SSR-safe, `false` until hydrated), no test changes needed for the original test. `routineStore.test.jsx`'s second test also had a dead assertion (`mem.set('leads_v5', ...)` against a key `loadRoutine` never reads) which is removed; a third test was added, backed by a new `fail` hoisted `Set` the mock's `getItem` checks, proving `loadRoutine` degrades safely on both corrupt settings JSON and a throwing storage read (never rejects).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -2952,9 +2954,10 @@ git commit -m "feat(routine): PWA manifest + icons via generateMetadata, SW noti
 ```jsx
 import { test, expect, vi, beforeEach } from 'vitest';
 const mem = vi.hoisted(() => new Map());
+const fail = vi.hoisted(() => new Set());
 vi.mock('@/lib/storage', () => ({
   storage: {
-    getItem: async (k) => (mem.has(k) ? mem.get(k) : null),
+    getItem: async (k) => { if (fail.has(k)) throw new Error('boom'); return mem.has(k) ? mem.get(k) : null; },
     setItem: async (k, v) => { mem.set(k, v); return true; },
     removeItem: async (k) => { mem.delete(k); },
   },
@@ -2962,7 +2965,7 @@ vi.mock('@/lib/storage', () => ({
 import { loadRoutine, saveBlocks, saveDay, saveSettings } from './routineStore';
 import { ROUTINE_BLOCKS_KEY, ROUTINE_DAY_KEY, ROUTINE_SETTINGS_KEY } from './routineKeys.mjs';
 
-beforeEach(() => mem.clear());
+beforeEach(() => { mem.clear(); fail.clear(); });
 const NOW = '2026-09-08T15:00:00.000Z';
 
 test('loadRoutine: empty store → [] / [] / default settings (timezone null)', async () => {
@@ -2975,13 +2978,20 @@ test('save* write strings; loadRoutine sanitizes and tolerates corrupt JSON', as
   expect(typeof mem.get(ROUTINE_BLOCKS_KEY)).toBe('string');
   await saveDay([{ id: '2026-09-08|blk_aaaaaaa', kind: 'done', day: '2026-09-08', blockId: 'blk_aaaaaaa', status: 'done', at: NOW, updatedAt: NOW, deletedAt: null }]);
   await saveSettings({ timezone: 'America/Chicago', defaultMinutesBefore: 12, junk: true });
-  mem.set('leads_v5', '{not json');
   const r = await loadRoutine({ today: '2026-09-08', nowIso: NOW });
   expect(r.blocks[0].startMin).toBe(480); expect(r.day.length).toBe(1); expect(r.settings.defaultMinutesBefore).toBe(10); expect('junk' in r.settings).toBe(false);
   mem.set(ROUTINE_DAY_KEY, '{oops');
   const r2 = await loadRoutine({ today: '2026-09-08', nowIso: NOW });
   expect(r2.day).toEqual([]);
   expect(mem.has(ROUTINE_SETTINGS_KEY)).toBe(true);
+});
+
+test('corrupt settings default safely; a throwing storage read never rejects loadRoutine', async () => {
+  mem.set(ROUTINE_SETTINGS_KEY, '{oops');
+  const r = await loadRoutine({ today: '2026-09-08', nowIso: NOW });
+  expect(r.settings.timezone).toBe(null);
+  fail.add(ROUTINE_BLOCKS_KEY);
+  await expect(loadRoutine({ today: '2026-09-08', nowIso: NOW })).resolves.toMatchObject({ blocks: [] });
 });
 ```
 
@@ -3000,9 +3010,127 @@ test('reads matchMedia and follows change events', () => {
   expect(result.current).toBe(true);
   unmount(); expect(listener).toBe(null);
 });
+
+test('query change re-subscribes: old listener removed, new one added', () => {
+  const added = []; const removed = [];
+  vi.stubGlobal('matchMedia', (q) => ({
+    matches: false,
+    media: q,
+    addEventListener: () => { added.push(q); },
+    removeEventListener: () => { removed.push(q); },
+  }));
+  const { rerender } = renderHook(({ query }) => useMediaQuery(query), { initialProps: { query: '(min-width: 640px)' } });
+  expect(added).toEqual(['(min-width: 640px)']);
+  rerender({ query: '(min-width: 768px)' });
+  expect(removed).toEqual(['(min-width: 640px)']);
+  expect(added).toEqual(['(min-width: 640px)', '(min-width: 768px)']);
+});
 ```
 
-- [ ] **Step 2: Run to verify they fail** — `npx vitest run src/lib/routineStore.test.jsx src/lib/useMediaQuery.test.jsx` → module-not-found.
+`src/lib/usePointerDrag.test.jsx` (added Task 10 quality review — no test file shipped with the original drop; see the plan-deviation note above):
+```jsx
+import { test, expect, vi } from 'vitest';
+import { renderHook, act } from '@testing-library/react';
+import { usePointerDrag } from './usePointerDrag';
+
+const el = () => ({ setPointerCapture: vi.fn(), releasePointerCapture: vi.fn() });
+const ev = (x, y, o = {}) => ({ button: 0, pointerId: 1, clientX: x, clientY: y, currentTarget: o.target, ...o });
+const escape = () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+
+function setup(opts = {}) {
+  const onStart = vi.fn(), onMove = vi.fn(), onEnd = vi.fn(), target = el();
+  const hook = renderHook((p) => usePointerDrag({ onStart, onMove, onEnd, ...p }), { initialProps: opts });
+  const down = (x = 100, y = 100, o = {}) => act(() => hook.result.current.start(o.mode || 'move')(ev(x, y, { target, ...o })));
+  const move = (x, y, o = {}) => act(() => hook.result.current.handlers.onPointerMove(ev(x, y, { target, ...o })));
+  const up = () => act(() => hook.result.current.handlers.onPointerUp(ev(0, 0, { target })));
+  const cancel = () => act(() => hook.result.current.handlers.onPointerCancel(ev(0, 0, { target })));
+  return { ...hook, onStart, onMove, onEnd, target, down, move, up, cancel };
+}
+
+test('2 px move ignored; 6 px starts+moves; pointerup ends cancelled=false', () => {
+  const t = setup();
+  t.down(100, 100);
+  expect(t.target.setPointerCapture).toHaveBeenCalledWith(1);
+  t.move(102, 100);
+  expect(t.onStart).not.toHaveBeenCalled(); expect(t.onMove).not.toHaveBeenCalled(); expect(t.result.current.dragging).toBe(false);
+  t.move(106, 100);
+  expect(t.onStart).toHaveBeenCalledWith({ mode: 'move' });
+  expect(t.onMove).toHaveBeenLastCalledWith({ mode: 'move', dx: 6, dy: 0 });
+  expect(t.result.current.dragging).toBe(true);
+  t.up();
+  expect(t.onEnd).toHaveBeenCalledWith({ mode: 'move', dx: 6, dy: 0, cancelled: false });
+  expect(t.result.current.dragging).toBe(false);
+  expect(t.target.releasePointerCapture).toHaveBeenCalledWith(1);
+});
+
+test('click without movement: no onStart/onEnd, dragging stays false', () => {
+  const t = setup();
+  t.down(); t.up();
+  expect(t.onStart).not.toHaveBeenCalled(); expect(t.onEnd).not.toHaveBeenCalled(); expect(t.result.current.dragging).toBe(false);
+});
+
+test('Escape mid-drag cancels; later pointerup and Escape are no-ops', () => {
+  const t = setup();
+  t.down(100, 100); t.move(110, 100);
+  act(() => { escape(); });
+  expect(t.onEnd).toHaveBeenCalledTimes(1);
+  expect(t.onEnd).toHaveBeenCalledWith({ mode: 'move', dx: 10, dy: 0, cancelled: true });
+  expect(t.result.current.dragging).toBe(false);
+  t.up(); act(() => { escape(); });
+  expect(t.onEnd).toHaveBeenCalledTimes(1);
+});
+
+test('button 2 ignored; undefined button + touch allowed; mode passes through', () => {
+  const t = setup();
+  t.down(0, 0, { button: 2 }); t.move(50, 50);
+  expect(t.onStart).not.toHaveBeenCalled();
+  t.down(0, 0, { button: undefined, pointerType: 'touch', mode: 'resize' }); t.move(50, 50);
+  expect(t.onStart).toHaveBeenCalledWith({ mode: 'resize' });
+  t.up();
+  expect(t.onEnd).toHaveBeenCalledWith({ mode: 'resize', dx: 50, dy: 50, cancelled: false });
+});
+
+test('pointercancel -> cancelled=true; foreign pointerId ignored; custom threshold honoured', () => {
+  const t = setup({ threshold: 10 });
+  t.down(0, 0);
+  t.move(50, 50, { pointerId: 2 }); expect(t.onStart).not.toHaveBeenCalled();
+  t.move(9, 9); expect(t.onStart).not.toHaveBeenCalled();
+  t.move(10, 0); expect(t.onStart).toHaveBeenCalledTimes(1);
+  t.cancel();
+  expect(t.onEnd).toHaveBeenCalledWith({ mode: 'move', dx: 10, dy: 0, cancelled: true });
+});
+
+test('unmount mid-drag ends the drag and removes the window listener', () => {
+  const t = setup();
+  t.down(0, 0); t.move(20, 0);
+  t.unmount();
+  expect(t.onEnd).toHaveBeenCalledWith({ mode: 'move', dx: 20, dy: 0, cancelled: true });
+  act(() => { escape(); });
+  expect(t.onEnd).toHaveBeenCalledTimes(1);
+  expect(t.target.releasePointerCapture).toHaveBeenCalledTimes(1);
+});
+
+test('parent re-render with a new onEnd mid-drag: drag survives, Escape uses the LATEST onEnd', () => {
+  const target = el(); const first = vi.fn(); const second = vi.fn();
+  const hook = renderHook(({ onEnd }) => usePointerDrag({ onEnd }), { initialProps: { onEnd: first } });
+  act(() => hook.result.current.start('move')(ev(0, 0, { target })));
+  act(() => hook.result.current.handlers.onPointerMove(ev(10, 0, { target })));
+  hook.rerender({ onEnd: second });
+  expect(first).not.toHaveBeenCalled(); expect(hook.result.current.dragging).toBe(true);
+  act(() => { escape(); });
+  expect(second).toHaveBeenCalledTimes(1); expect(first).not.toHaveBeenCalled();
+});
+
+test('second pointerdown mid-drag cancels the first instead of orphaning it', () => {
+  const t = setup();
+  t.down(0, 0); t.move(20, 0);
+  t.down(0, 0, { pointerId: 7 });
+  expect(t.onEnd).toHaveBeenCalledTimes(1);
+  expect(t.target.releasePointerCapture).toHaveBeenCalledTimes(1);
+});
+```
+
+- [ ] **Step 2: Run to verify they fail** — `npx vitest run src/lib/routineStore.test.jsx src/lib/useMediaQuery.test.jsx src/lib/usePointerDrag.test.jsx` → module-not-found.
 
 - [ ] **Step 3: Implement**
 
@@ -3034,39 +3162,43 @@ export async function saveDay(records) { await storage.setItem(ROUTINE_DAY_KEY, 
 export async function saveSettings(settings) { const safe = sanitizeSettings(settings); await storage.setItem(ROUTINE_SETTINGS_KEY, JSON.stringify(safe)); return safe; }
 ```
 
-`src/lib/useMediaQuery.js`:
+`src/lib/useMediaQuery.js` (rewritten on `useSyncExternalStore` in the Task 10 quality review — see the plan-deviation note above; the original `useState`+`useEffect` version called `setMatches` synchronously in the effect body, which `react-hooks/set-state-in-effect` flags):
 ```js
 'use client';
-import { useEffect, useState } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
 // One breakpoint split for the whole view (spec §7a): 640 = Tailwind `sm:` =
-// the breakpoint GlassModal's `sheet` keys on. Guarded for SSR.
+// the breakpoint GlassModal's `sheet` keys on. Server snapshot (false) hydrates,
+// then React re-renders with the live value — no mismatch, no setState-in-effect.
+const canQuery = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function';
 export function useMediaQuery(query) {
-  const [matches, setMatches] = useState(() => (typeof window !== 'undefined' && window.matchMedia ? window.matchMedia(query).matches : false));
-  useEffect(() => {
-    if (typeof window === 'undefined' || !window.matchMedia) return undefined;
+  const subscribe = useCallback((onChange) => {
+    if (!canQuery()) return () => {};
     const mql = window.matchMedia(query);
-    const update = (e) => setMatches(e.matches);
-    setMatches(mql.matches);
-    mql.addEventListener('change', update);
-    return () => mql.removeEventListener('change', update);
+    mql.addEventListener('change', onChange);
+    return () => mql.removeEventListener('change', onChange);
   }, [query]);
-  return matches;
+  return useSyncExternalStore(subscribe, () => (canQuery() ? window.matchMedia(query).matches : false), () => false);
 }
 ```
 
-`src/lib/usePointerDrag.js`:
+`src/lib/usePointerDrag.js` (rewritten in the Task 10 quality review to close two real defects — see the plan-deviation note above: a leaked `window` `keydown` listener on unmount mid-drag, and Escape reaching a stale `onEnd` after a parent re-render mid-drag. Callbacks now read through a `cbs` ref instead of being closed over directly, and an unmount effect force-cancels an in-flight drag):
 ```js
 'use client';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 /**
- * Pointer-capture drag (spec §7c): 4 px threshold, Escape cancels, touch-capable,
- * no library. Usage:
+ * Pointer-capture drag (spec §7c): 4 px threshold, Escape cancels, touch-capable
+ * (the draggable element MUST set `touch-action: none`, or the browser fires
+ * pointercancel after a few px), no library. Usage:
  *   const drag = usePointerDrag({ onMove: ({ dx, dy }) => …, onEnd: ({ dx, dy, cancelled }) => … });
- *   <div onPointerDown={drag.start('move')} />   // the string is passed back as `mode`
+ *   <div onPointerDown={drag.start('move')} {...drag.handlers} style={{ touchAction: 'none' }} />
+ * Callbacks are read through a ref so a parent re-render mid-drag never cancels
+ * the drag and Escape always reaches the latest onEnd. Unmount mid-drag cancels.
  */
 export function usePointerDrag({ onStart, onMove, onEnd, threshold = 4 } = {}) {
   const ref = useRef(null);
   const [dragging, setDragging] = useState(false);
+  const cbs = useRef({ onStart, onMove, onEnd, threshold });
+  useEffect(() => { cbs.current = { onStart, onMove, onEnd, threshold }; });
 
   const finish = useCallback((cancelled) => {
     const s = ref.current; if (!s) return;
@@ -3074,11 +3206,12 @@ export function usePointerDrag({ onStart, onMove, onEnd, threshold = 4 } = {}) {
     try { s.target.releasePointerCapture(s.pointerId); } catch { /* already released */ }
     window.removeEventListener('keydown', s.onKey);
     setDragging(false);
-    if (s.active) onEnd?.({ mode: s.mode, dx: s.dx, dy: s.dy, cancelled });
-  }, [onEnd]);
+    if (s.active) cbs.current.onEnd?.({ mode: s.mode, dx: s.dx, dy: s.dy, cancelled });
+  }, []);
 
   const start = useCallback((mode) => (e) => {
     if (e.button != null && e.button !== 0) return;
+    if (ref.current) finish(true); // a second pointer never orphans the first drag
     const target = e.currentTarget;
     const s = { mode, pointerId: e.pointerId, target, x0: e.clientX, y0: e.clientY, dx: 0, dy: 0, active: false, onKey: null };
     s.onKey = (ke) => { if (ke.key === 'Escape') finish(true); };
@@ -3089,16 +3222,18 @@ export function usePointerDrag({ onStart, onMove, onEnd, threshold = 4 } = {}) {
 
   const onPointerMove = useCallback((e) => {
     const s = ref.current; if (!s || e.pointerId !== s.pointerId) return;
+    const cb = cbs.current;
     s.dx = e.clientX - s.x0; s.dy = e.clientY - s.y0;
     if (!s.active) {
-      if (Math.abs(s.dx) < threshold && Math.abs(s.dy) < threshold) return;
-      s.active = true; setDragging(true); onStart?.({ mode: s.mode });
+      if (Math.abs(s.dx) < cb.threshold && Math.abs(s.dy) < cb.threshold) return;
+      s.active = true; setDragging(true); cb.onStart?.({ mode: s.mode });
     }
-    onMove?.({ mode: s.mode, dx: s.dx, dy: s.dy });
-  }, [onMove, onStart, threshold]);
+    cb.onMove?.({ mode: s.mode, dx: s.dx, dy: s.dy });
+  }, []);
 
   const onPointerUp = useCallback(() => finish(false), [finish]);
   const onPointerCancel = useCallback(() => finish(true), [finish]);
+  useEffect(() => () => finish(true), [finish]); // unmount mid-drag cancels
 
   // Spread `handlers` on the element that received onPointerDown.
   return { start, dragging, handlers: { onPointerMove, onPointerUp, onPointerCancel } };
