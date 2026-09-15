@@ -2776,10 +2776,11 @@ import { buildAppMetadata, BASE_METADATA } from './appMetadata.mjs';
 test('marketing role gets no manifest / apple metadata; app role does (spec §8)', () => {
   const m = buildAppMetadata('marketing');
   assert.equal(m.title, BASE_METADATA.title); assert.equal('manifest' in m, false); assert.equal('appleWebApp' in m, false);
+  assert.equal('icons' in m, false);
   const a = buildAppMetadata('app');
   assert.equal(a.manifest, '/manifest.webmanifest');
   assert.deepEqual(a.appleWebApp, { capable: true, statusBarStyle: 'default', title: 'PRIM' });
-  assert.deepEqual(a.icons, { apple: '/apple-touch-icon.png' });
+  assert.deepEqual(a.icons, { icon: [{ url: '/icon.svg', type: 'image/svg+xml', sizes: 'any' }], apple: '/apple-touch-icon.png' });
   assert.deepEqual(buildAppMetadata(undefined).manifest, '/manifest.webmanifest');
 });
 
@@ -2830,7 +2831,10 @@ export function buildAppMetadata(role) {
     ...BASE_METADATA,
     manifest: '/manifest.webmanifest',
     appleWebApp: { capable: true, statusBarStyle: 'default', title: 'PRIM' },
-    icons: { apple: '/apple-touch-icon.png' },
+    // Next 16 only merges the file-convention icon (src/app/icon.svg) when
+    // metadata.icons is falsy — `icons: { apple }` alone silently drops the
+    // SVG favicon on the app host (Task 9 quality-review regression fix).
+    icons: { icon: [{ url: '/icon.svg', type: 'image/svg+xml', sizes: 'any' }], apple: '/apple-touch-icon.png' },
   };
 }
 ```
@@ -2839,16 +2843,21 @@ export function buildAppMetadata(role) {
 ```js
 import { buildAppMetadata } from '@/lib/appMetadata.mjs';
 
+// set by middleware (authoritative — honors flag + preview override); falls
+// back to classifyHost (safety net) when the header is absent.
+function resolveRole(h) {
+  return h.get('x-prim-role')
+    || classifyHost(h.get('x-forwarded-host') || h.get('host') || '', { marketingSplitEnabled: process.env.MARKETING_SPLIT_ENABLED === '1' });
+}
+
 // Manifest + Apple web-app tags only on the app host (spec 2026-09-07 §8).
 // Same role resolution as RootLayout below — middleware header first.
 export async function generateMetadata() {
   const h = await headers();
-  const role = h.get('x-prim-role')
-    || classifyHost(h.get('x-forwarded-host') || h.get('host') || '', { marketingSplitEnabled: process.env.MARKETING_SPLIT_ENABLED === '1' });
-  return buildAppMetadata(role);
+  return buildAppMetadata(resolveRole(h));
 }
 ```
-(Put the import with the other imports at the top; keep `RootLayout` unchanged.)
+(Put the import with the other imports at the top. **Plan deviation (Task 9 quality review):** `RootLayout`'s inline role-resolution — `h.get('x-prim-role') || classifyHost(...)` — duplicated the block above; it now calls the shared `resolveRole(h)` helper instead. Behavior is identical, only the duplication is removed.)
 
 `public/manifest.webmanifest`:
 ```json
@@ -2888,7 +2897,7 @@ Run: `node scripts/make-pwa-icons.mjs` → `icons written from …`. Open each P
 ```js
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const url = (event.notification.data && event.notification.data.url) || 'https://www.primtracker.com';
+  const url = (event.notification.data && event.notification.data.url) || (self.location.origin + '/');
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
       // Only a window on the APP origin can receive the in-app view switch. A
@@ -2907,9 +2916,7 @@ self.addEventListener('notificationclick', (event) => {
           try { pathname = new URL(client.url).pathname; } catch { pathname = null; }
           // Prefer the app shell ("/"): /pricing, /admin and the legal pages mount no listener.
           if (pathname === '/' && 'focus' in client) {
-            client.focus();
-            if (view && typeof client.postMessage === 'function') client.postMessage({ type: 'prim:view', view });
-            return;
+            return client.focus().then((c) => { if (view && c && typeof c.postMessage === 'function') c.postMessage({ type: 'prim:view', view }); });
           }
         }
       }
@@ -2918,7 +2925,7 @@ self.addEventListener('notificationclick', (event) => {
   );
 });
 ```
-(`push` handler and its `title/body/tag/url/urgent` reads are untouched. **Plan deviation, record in the commit message and propose for spec rev 11 §8:** the `view` is derived from the push URL's `?view=` rather than the spec's hard-coded `'routine'`, so a reminders-cron push — whose URL has no `?view=` — only focuses instead of switching tabs.)
+(`push` handler and its `title/body/tag/url/urgent` reads are untouched. **Plan deviation, record in the commit message and propose for spec rev 11 §8:** the `view` is derived from the push URL's `?view=` rather than the spec's hard-coded `'routine'`, so a reminders-cron push — whose URL has no `?view=` — only focuses instead of switching tabs. **Plan deviation (Task 9 quality review):** two more fixes on top of the above — (a) `client.focus()` is chained (`return client.focus().then(...)`) instead of fire-and-forget, so `event.waitUntil` actually waits for the `postMessage` step rather than resolving early; (b) the fallback default URL is `self.location.origin + '/'` instead of the hard-coded marketing origin, since every real sender already passes an absolute app URL and the default should never point at `www` post-cutover.)
 
 - [ ] **Step 4: Run to verify it passes** — `npm test` → 834 pass. `npm run build` must succeed (the `generateMetadata` conversion is the only Next-level change so far); if it fails, the error is in `layout.js` — fix there.
 
