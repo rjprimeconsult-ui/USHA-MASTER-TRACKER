@@ -17,7 +17,7 @@
  *     sets state, and saves — outside any updater. Every save goes through
  *     the sanitizers; no prospect id or name ever lands in routine_blocks_v1.
  */
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from 'react';
 import { Lock, X } from 'lucide-react';
 import { loadRoutine, saveBlocks, saveDay, saveSettings } from '@/lib/routineStore';
 import { sanitizeBlocks, liveBlocks, sanitizeDay, sanitizeSettings, seedFollowupStages, applyTemplate, instantiateTemplate, dayUid } from '@/lib/routineModel.mjs';
@@ -59,15 +59,23 @@ const warnSave = (what) => (e) => { console.warn(`routine: ${what} save failed`,
 const cssEscape = (s) => (typeof CSS !== 'undefined' && typeof CSS.escape === 'function' ? CSS.escape(String(s)) : String(s).replace(/["\\]/g, '\\$&'));
 
 // A start that fits `durationMin` among `others`, nearest to `wanted` in 5-minute steps (§7c); null when none.
-function nearestFit(wanted, durationMin, others) {
+// `maxSlide` bounds the search: a drag is a positional gesture, so the block must land still
+// overlapping the interval the agent pointed at. Without a bound the search ALWAYS succeeds (a
+// placed block's own slot fits, since `others` excludes it), which both made §7c's "else revert +
+// toast" dead code and let a drop onto a packed hour teleport the block an hour away — the Task 11
+// carry-forward's "never relocate far away on a drag".
+function nearestFit(wanted, durationMin, others, maxSlide = Infinity) {
   const start = snap5(Math.max(0, Math.min(1440 - durationMin, wanted)));
   const fits = (s) => s >= 0 && s + durationMin <= 1440 && !others.some((o) => s < o.startMin + o.durationMin && o.startMin < s + durationMin);
-  for (let d = 0; d <= 1440; d += 5) {
+  const limit = Math.min(1440, maxSlide);
+  for (let d = 0; d <= limit; d += 5) {
     if (fits(start + d)) return start + d;
     if (d && fits(start - d)) return start - d;
   }
   return null;
 }
+// The block keeps at least 5 minutes under the pointer.
+const slideWindow = (durationMin) => Math.max(5, durationMin - 5);
 
 // Non-entitled card (spec §9): the AgentSettingsPanel.jsx:343-361 treatment, zero storage writes.
 function LockedCard({ reason }) {
@@ -111,16 +119,26 @@ export default function RoutineView({ showToast, prospects = [], prospectSetting
   const isDesktop = useMediaQuery('(min-width: 640px)');
   const isDark = useIsDark();
 
-  // Latest documents for the commit helpers — written ONLY by the load path and
-  // the commits themselves, so they are never read or written during render.
+  // Latest documents for the commit helpers — written ONLY by the load path and the commits
+  // themselves (never during render), so a handler always reads the newest saved document.
   const blocksRef = useRef([]);
   const dayRef = useRef([]);
   const settingsRef = useRef(settings);
   const toastTimer = useRef(null);
   const scrollN = useRef(0);
+  const bellBusy = useRef(false);
   // The load effect reads showToast through a ref so an inline parent callback can never restart an in-flight load.
   const showToastRef = useRef(showToast);
   useEffect(() => { showToastRef.current = showToast; });
+  // Entitlement is read through a ref, because a commit helper captured by a child can fire
+  // AFTER canAccess flips false — the editor's 400 ms debounce flushed on unmount, or an
+  // in-flight enablePush() — and would otherwise write to a locked account (spec §9).
+  // useLayoutEffect, not useEffect: layout creates run in the SAME commit that unmounts the
+  // editor, BEFORE that child's passive cleanup fires its flush, so the ref is already false
+  // when the captured onSave lands. A passive (useEffect) assignment runs too late — React
+  // runs every destroy for a commit before any create. Pinned by case 14.
+  const entitledRef = useRef(entitled);
+  useLayoutEffect(() => { entitledRef.current = entitled; });
 
   const nowIso = new Date(now).toISOString();
   const tz = isValidTimeZone(settings.timezone) ? settings.timezone : null;
@@ -131,30 +149,30 @@ export default function RoutineView({ showToast, prospects = [], prospectSetting
 
   // ---- commits (spec §7a: immediate; the editor debounces its own text fields) ----
   const commitBlocks = useCallback((next) => {
-    if (!entitled) return blocksRef.current;
+    if (!entitledRef.current) return blocksRef.current;
     const raw = typeof next === 'function' ? next(blocksRef.current) : next;
     const s = sanitizeBlocks(raw, stampNow());
     blocksRef.current = s;
     setBlocks(s);
     saveBlocks(s).catch(warnSave('blocks'));
     return s;
-  }, [entitled]);
+  }, []);
   const commitDay = useCallback((updater) => {
-    if (!entitled || !today) return dayRef.current;
+    if (!entitledRef.current || !today) return dayRef.current;
     const s = sanitizeDay(updater(dayRef.current), today, stampNow());
     dayRef.current = s;
     setDay(s);
     saveDay(s).catch(warnSave('day'));
     return s;
-  }, [entitled, today]);
+  }, [today]);
   const commitSettings = useCallback((patch) => {
-    if (!entitled) return settingsRef.current;
+    if (!entitledRef.current) return settingsRef.current;
     const s = sanitizeSettings({ ...settingsRef.current, ...patch });
     settingsRef.current = s;
     setSettings(s);
     saveSettings(s).catch(warnSave('settings'));
     return s;
-  }, [entitled]);
+  }, []);
 
   // ---- load: zero writes before loaded; zero when not entitled ----
   useEffect(() => {
@@ -191,7 +209,7 @@ export default function RoutineView({ showToast, prospects = [], prospectSetting
       tick(); arm();
       isPushEnabled().then((on) => setDevicePushOn(!!on)).catch(() => setDevicePushOn(false));
     };
-    arm();
+    if (!document.hidden) arm(); // a load that resolves on a backgrounded tab must not tick until it is shown
     document.addEventListener('visibilitychange', onVis);
     return () => { disarm(); document.removeEventListener('visibilitychange', onVis); };
   }, [loaded, entitled]);
@@ -355,7 +373,7 @@ export default function RoutineView({ showToast, prospects = [], prospectSetting
   const moveBlock = (blockId, startMin) => {
     const me = live.find((b) => b.id === blockId);
     if (!me) return;
-    const target = nearestFit(startMin, me.durationMin, live.filter((b) => b.id !== blockId));
+    const target = nearestFit(startMin, me.durationMin, live.filter((b) => b.id !== blockId), slideWindow(me.durationMin));
     if (target == null) { showToast?.('No room there — shrink it or move a neighbor'); return; }
     if (target !== me.startMin) updateBlock(blockId, { startMin: target });
   };
@@ -397,7 +415,7 @@ export default function RoutineView({ showToast, prospects = [], prospectSetting
   const addFromPalette = (paletteId, startMin = null) => {
     const p = paletteById(paletteId);
     if (!p) return;
-    const s = startMin == null ? nextFreeSlot(p.defaultMin) : nearestFit(startMin, p.defaultMin, live);
+    const s = startMin == null ? nextFreeSlot(p.defaultMin) : nearestFit(startMin, p.defaultMin, live, slideWindow(p.defaultMin));
     if (s == null) { showToast?.('No room today'); return; }
     const b = instantiateTemplate({ paletteId, startMin: s }, { now: stampNow(), defaultMinutesBefore: settings.defaultMinutesBefore });
     commitBlocks((prev) => [...prev, b]);
@@ -431,10 +449,17 @@ export default function RoutineView({ showToast, prospects = [], prospectSetting
   };
   // §7a: the Bell is settings.remindersEnabled; turning it ON while the device is off calls enablePush() first —
   // the flag still saves if permission is denied (the strip explains).
+  // The latch is required, not defensive: the second tap of a double-tap would read the same
+  // pre-await remindersEnabled, recompute the same `next`, and run enablePush() twice — two taps
+  // from OFF would end ON.
   const toggleBell = async () => {
-    const next = !settingsRef.current.remindersEnabled;
-    if (next && devicePushOn === false) await enableDevice();
-    commitSettings({ remindersEnabled: next });
+    if (bellBusy.current) return;
+    bellBusy.current = true;
+    try {
+      const next = !settingsRef.current.remindersEnabled;
+      if (next && devicePushOn === false) await enableDevice();
+      commitSettings({ remindersEnabled: next });
+    } finally { bellBusy.current = false; }
   };
   const undoReplace = () => {
     const backup = settingsRef.current.lastReplacedBackup;
