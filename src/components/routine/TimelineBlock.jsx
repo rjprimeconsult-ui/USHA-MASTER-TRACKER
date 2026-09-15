@@ -133,7 +133,25 @@ export default function TimelineBlock({
             />
             <span className="min-w-0 truncate text-[12px] font-medium text-slate-900">{item.name}</span>
             {visual === 'past-unchecked' && <span data-dot className="inline-block h-[6px] w-[6px] shrink-0 rounded-full bg-slate-400" />}
-            {isFollowup && <span className="shrink-0 text-[12px] font-semibold text-slate-400 tabular-nums">{countText}</span>}
+            {/* The count opens the names sheet, the way the phone row's "N due" button does
+                (MobileRoutineList). Without this, a follow-up block that is neither current nor
+                next has no route to its names at all: §7h.2 renders name rows on the `full` tier
+                only, and the sheet's other two doors — tapping a name and "+N more" — live inside
+                those rows. Stays slate-400 per §7h.2 ("never amber"); only the cursor and the
+                hover tint mark it as live. */}
+            {isFollowup && (count > 0 ? (
+              <button
+                type="button"
+                aria-label={`Show ${count} follow-up${count === 1 ? '' : 's'}`}
+                onClick={(e) => { e.stopPropagation(); onNames?.(); }}
+                onPointerDown={stop}
+                className="shrink-0 cursor-pointer text-[12px] font-semibold text-slate-400 tabular-nums transition-colors hover:text-accent"
+              >
+                {countText}
+              </button>
+            ) : (
+              <span className="shrink-0 text-[12px] font-semibold text-slate-400 tabular-nums">{countText}</span>
+            ))}
             {markerEl}
             <span className="ml-auto shrink-0" style={{ color: pal.hex }} aria-hidden="true"><Icon size={16} /></span>
           </div>
