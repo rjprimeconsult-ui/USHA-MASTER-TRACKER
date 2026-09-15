@@ -205,6 +205,8 @@ test('sw.js: payload contract untouched; notificationclick picks the "/" client 
   const src = read('public/sw.js');
   for (const k of ['data.title', 'data.body', 'data.tag', 'data.url', 'data.urgent']) assert.ok(src.includes(k), k);
   assert.ok(src.includes("pathname === '/'") && src.includes('self.location.origin') && src.includes("'prim:view'") && src.includes('openWindow'));
+  assert.ok(src.indexOf('self.location.origin') < src.indexOf("pathname === '/'"), 'origin guard precedes the app-shell pick');
+  assert.ok(src.includes("self.location.origin + '/'"), 'default url is the app origin');
 });
 
 test('routine SQL functions are security definer, legacy-string safe, and service-role only', () => {

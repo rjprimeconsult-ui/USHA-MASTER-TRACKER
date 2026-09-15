@@ -24,20 +24,23 @@ const sora = Sora({
   weight: ["400", "500", "600"],
 });
 
+// set by middleware (authoritative — honors flag + preview override); falls
+// back to classifyHost (safety net) when the header is absent.
+function resolveRole(h) {
+  return h.get('x-prim-role')
+    || classifyHost(h.get('x-forwarded-host') || h.get('host') || '', { marketingSplitEnabled: process.env.MARKETING_SPLIT_ENABLED === '1' });
+}
+
 // Manifest + Apple web-app tags only on the app host (spec 2026-09-07 §8).
 // Same role resolution as RootLayout below — middleware header first.
 export async function generateMetadata() {
   const h = await headers();
-  const role = h.get('x-prim-role')
-    || classifyHost(h.get('x-forwarded-host') || h.get('host') || '', { marketingSplitEnabled: process.env.MARKETING_SPLIT_ENABLED === '1' });
-  return buildAppMetadata(role);
+  return buildAppMetadata(resolveRole(h));
 }
 
 export default async function RootLayout({ children }) {
   const h = await headers(); // Next 16: headers() is async
-  const role = h.get('x-prim-role') // set by middleware (authoritative — honors flag + preview override)
-    || classifyHost(h.get('x-forwarded-host') || h.get('host') || '',
-         { marketingSplitEnabled: process.env.MARKETING_SPLIT_ENABLED === '1' }); // safety-net fallback
+  const role = resolveRole(h);
   const isMarketingHost = role === 'marketing';
   return (
     <html

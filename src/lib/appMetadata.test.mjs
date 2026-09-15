@@ -6,10 +6,11 @@ import { buildAppMetadata, BASE_METADATA } from './appMetadata.mjs';
 test('marketing role gets no manifest / apple metadata; app role does (spec §8)', () => {
   const m = buildAppMetadata('marketing');
   assert.equal(m.title, BASE_METADATA.title); assert.equal('manifest' in m, false); assert.equal('appleWebApp' in m, false);
+  assert.equal('icons' in m, false);
   const a = buildAppMetadata('app');
   assert.equal(a.manifest, '/manifest.webmanifest');
   assert.deepEqual(a.appleWebApp, { capable: true, statusBarStyle: 'default', title: 'PRIM' });
-  assert.deepEqual(a.icons, { apple: '/apple-touch-icon.png' });
+  assert.deepEqual(a.icons, { icon: [{ url: '/icon.svg', type: 'image/svg+xml', sizes: 'any' }], apple: '/apple-touch-icon.png' });
   assert.deepEqual(buildAppMetadata(undefined).manifest, '/manifest.webmanifest');
 });
 

@@ -22,7 +22,7 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const url = (event.notification.data && event.notification.data.url) || 'https://www.primtracker.com';
+  const url = (event.notification.data && event.notification.data.url) || (self.location.origin + '/');
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
       // Only a window on the APP origin can receive the in-app view switch. A
@@ -41,9 +41,7 @@ self.addEventListener('notificationclick', (event) => {
           try { pathname = new URL(client.url).pathname; } catch { pathname = null; }
           // Prefer the app shell ("/"): /pricing, /admin and the legal pages mount no listener.
           if (pathname === '/' && 'focus' in client) {
-            client.focus();
-            if (view && typeof client.postMessage === 'function') client.postMessage({ type: 'prim:view', view });
-            return;
+            return client.focus().then((c) => { if (view && c && typeof c.postMessage === 'function') c.postMessage({ type: 'prim:view', view }); });
           }
         }
       }

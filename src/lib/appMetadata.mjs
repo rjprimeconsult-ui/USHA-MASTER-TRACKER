@@ -12,6 +12,6 @@ export function buildAppMetadata(role) {
     ...BASE_METADATA,
     manifest: '/manifest.webmanifest',
     appleWebApp: { capable: true, statusBarStyle: 'default', title: 'PRIM' },
-    icons: { apple: '/apple-touch-icon.png' },
+    icons: { icon: [{ url: '/icon.svg', type: 'image/svg+xml', sizes: 'any' }], apple: '/apple-touch-icon.png' },
   };
 }
