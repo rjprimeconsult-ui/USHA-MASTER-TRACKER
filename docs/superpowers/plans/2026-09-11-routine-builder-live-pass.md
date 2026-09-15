@@ -15,8 +15,8 @@ to hide a silent failure. They are not optional.**
 
 | Gate | Result |
 |---|---|
-| Node lane (`npm test`) | 863 pass / 0 fail |
-| UI lane (`npm run test:ui`) | 164 pass / 0 fail, 24 files |
+| Node lane (`npm test`) | 864 pass / 0 fail |
+| UI lane (`npm run test:ui`) | 169 pass / 0 fail, 24 files |
 | `npm run lint` | 0 errors, 72 warnings |
 | `npm run build` | succeeds |
 
@@ -47,6 +47,14 @@ Do these in order. Steps 1–3 are one Supabase session.
       only thing standing between a renamed secret and a scheduler that looks healthy
       while sending nothing. To re-run it later:
       `select cron.unschedule('prim-routine-tick');` first.
+
+      **Note on `routine-day-write-function.sql`:** it begins with
+      `drop function if exists public.routine_day_write(uuid, jsonb);` and recreates the
+      function with a third argument, `p_floor`, which carries the 7-day retention onto the
+      server. The drop is deliberate — Postgres cannot change a signature in place. The new
+      argument defaults to null, so the order does not matter: run the SQL before or after
+      the deploy and nothing breaks either way.
+- [ ] **4. Gate 0.** Two minutes after step 3, run the two queries in §3 below.
 - [ ] **5. iPhone.** Check the manifest icons on a Home Screen install (see gate 5).
 
 ---
@@ -134,7 +142,51 @@ catches a breach at the layer that matters.
 
 ---
 
-## 5. Spec deviations to fold into rev 11
+## 5. The final review, and what it changed
+
+After every task was built and reviewed, a five-lens whole-branch review ran over what a
+per-task review structurally cannot see: whether the browser and the cron job write
+identical records, the end-to-end data lifecycle, the cross-cutting invariants, the diff as
+a whole, and what the spec asks for that nobody built. Every lens returned **ship with
+nits**. No Critical finding. Four real defects were found and fixed:
+
+1. **The day document was pruned against the wrong timezone.** The load path computed its
+   7-day floor from the *device* zone while every later write used the *configured* zone, so
+   an agent whose device ran ahead of their setting lost the oldest day still inside the
+   window — and the next save made that deletion permanent. This was the one genuine data-loss
+   path in the build. The prune now runs only after the configured zone is resolved.
+2. **Nothing pruned the document server-side.** Retention was enforced only by the client's
+   write path, so an agent who set up a routine once and then worked out of another tab
+   accumulated records forever while the tick re-read the whole document every minute. The
+   SQL function now takes a floor and drops stale elements inside the lock it already holds.
+3. **A spec line could never render.** The follow-up sheet's `· appt 10:00` secondary line
+   resolved its time from the stage-filtered appointment list, so it was unreachable for
+   exactly the stage-less appointments it exists to explain. It now reads the prospect record.
+4. **A block could vanish with no notice.** Spec §4a requires a `No room for <name>` toast
+   when a block cannot be placed anywhere; the model swallowed the dropped list, so the block
+   was tombstoned silently. The agent is now told.
+
+Five tripwires were also hardened. Each of them passed while the invariant it names was
+broken — including the one guarding against a wholesale `user_kv` overwrite and the one
+keeping two `security definer` functions off `authenticated`. Every hardening was verified
+by re-applying the mutation and confirming it now fails.
+
+**Known and deliberately not fixed.** None of these blocks the pass; they are recorded so
+you are not surprised:
+
+- `restoreBlock` un-tombstones attach records even when the block cannot be placed. The
+  records persist but nothing downstream reads them. Two lines to guard if it bothers you.
+- `applyTemplate` can drop a block silently, because its internal sanitize call predates the
+  new callback. Unreachable with the two shipped templates.
+- The follow-up sheet's time lookup is O(queue × prospects) per render — roughly 5 to 10 ms
+  at 3,000 prospects.
+- There is no data to backfill on first deploy, since this feature has never shipped. If a
+  document ever does grow stale later, `select routine_day_write(u, '[]'::jsonb, '<floor>')`
+  runs the prune with no writes.
+
+---
+
+## 6. Spec deviations to fold into rev 11
 
 Each of these is a place the build had to depart from the spec text, with the reason.
 
@@ -163,7 +215,7 @@ Each of these is a place the build had to depart from the spec text, with the re
 
 ---
 
-## 6. Two things that will bite on another machine
+## 7. Two things that will bite on another machine
 
 **OneDrive dehydration.** This repo lives under OneDrive with the sync client not running,
 so `node_modules` files can be cloud placeholders that throw `UNKNOWN` or `ERR_DLOPEN` on
