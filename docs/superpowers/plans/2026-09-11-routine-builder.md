@@ -692,6 +692,7 @@ const SEVEN_DAYS = 7 * 86400000;
 const MAX_LIVE = 60;
 const MIN_DUR = 10;
 const MAX_DUR = 720;
+const DAY_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function base36(n) {
   let s = '';
@@ -718,7 +719,7 @@ function clampBlock(b) {
   };
   return {
     id: b.id,
-    name: String(b.name ?? pal.name).slice(0, 60),
+    name: (typeof b.name === 'string' && b.name.trim() ? b.name : pal.name).slice(0, 60),
     paletteId: pal.id,
     category,
     startMin, durationMin, remind,
@@ -740,8 +741,6 @@ function dedupeNewest(records) {
   }
   return [...byId.values()];
 }
-
-const overlaps = (a, b) => a.startMin < b.startMin + b.durationMin && b.startMin < a.startMin + a.durationMin;
 
 // Free gaps (as [start, end)) between placed blocks inside [0, 1440).
 function gaps(placed) {
@@ -774,11 +773,9 @@ function place(block, placed) {
 // id asc). The earliest-updated block keeps its slot; every later block is
 // placed into the free gaps left by those before it — at/after its own start,
 // else shrunk into the largest free gap ≥ 10 min, else dropped. Equal stamps →
-// the greater id yields. Overlap-free and idempotent by construction (the
-// first-conflict-only pairwise scheme the plan originally carried left ~1/3 of
-// random inputs overlapping — caught by the Task 3 code review's fuzz).
-// Resolved moves keep their updatedAt on purpose: bumping it would flip
-// priority on the next merge and ping-pong the block across devices.
+// the greater id yields. Overlap-free and idempotent by construction. Resolved
+// moves keep their updatedAt on purpose: bumping it would flip priority on the
+// next merge and ping-pong the block across devices.
 export function resolveOverlaps(live) {
   const order = [...live].sort((a, b) =>
     String(a.updatedAt || '').localeCompare(String(b.updatedAt || '')) || String(a.id).localeCompare(String(b.id)));
@@ -791,18 +788,27 @@ export function resolveOverlaps(live) {
   return { blocks: placed.sort((a, b) => a.startMin - b.startMin || String(a.id).localeCompare(String(b.id))), dropped };
 }
 
-export function sanitizeBlocks(blocks, nowIso = new Date().toISOString()) {
+// `onDropped` (optional) receives the NAMES of the blocks resolveOverlaps could not place
+// anywhere, so a caller can honour §4a's last resort — tombstone AND toast "No room for
+// <name>". A callback rather than a second return value or an out-parameter: every one of
+// this function's existing call sites passes two arguments and reads a plain array back
+// (liveBlocks, applyTemplate x2, routineStore, the view's commitBlocks, a dozen tests), and
+// none of them has to change. The 60-live cap tombstones through a different rule and stays
+// silent — §4a scopes the toast to the resolver.
+export function sanitizeBlocks(blocks, nowIso = new Date().toISOString(), onDropped = null) {
   const deduped = dedupeNewest(Array.isArray(blocks) ? blocks : []).map(clampBlock);
   const tombstones = deduped.filter(b => b.deletedAt && !olderThan(b.deletedAt, nowIso, SEVEN_DAYS));
   let live = deduped.filter(b => !b.deletedAt);
   if (live.length > MAX_LIVE) {
-    const byNewest = [...live].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+    const byNewest = [...live].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)) || String(b.id).localeCompare(String(a.id)));
     const extra = new Set(byNewest.slice(0, live.length - MAX_LIVE).map(b => b.id));
     for (const b of live) if (extra.has(b.id)) tombstones.push({ ...b, deletedAt: nowIso, updatedAt: nowIso });
     live = live.filter(b => !extra.has(b.id));
   }
   const { blocks: resolved, dropped } = resolveOverlaps(live);
-  for (const id of dropped) { const b = live.find(x => x.id === id); tombstones.push({ ...b, deletedAt: nowIso, updatedAt: nowIso }); }
+  const droppedNames = [];
+  for (const id of dropped) { const b = live.find(x => x.id === id); tombstones.push({ ...b, deletedAt: nowIso, updatedAt: nowIso }); droppedNames.push(b.name); }
+  if (droppedNames.length && typeof onDropped === 'function') onDropped(droppedNames);
   return [...resolved, ...tombstones].sort((a, b) => a.startMin - b.startMin);
 }
 
@@ -814,11 +820,12 @@ export function liveBlocks(blocks, nowIso = new Date().toISOString()) {
 const DAY_KINDS = new Set(['done', 'appt', 'attach', 'owed', 'makeup', 'ack']);
 
 export function sanitizeDay(records, today, nowIso = new Date().toISOString()) {
+  if (!DAY_KEY_RE.test(String(today))) throw new TypeError('sanitizeDay: today must be YYYY-MM-DD');
   const floor = addDays(today, -7);
   const out = [];
   for (const r of dedupeNewest(Array.isArray(records) ? records : [])) {
     if (!DAY_KINDS.has(r.kind)) continue;
-    if (typeof r.day !== 'string' || r.day < floor) continue;
+    if (typeof r.day !== 'string' || !DAY_KEY_RE.test(r.day) || r.day < floor) continue;
     const deletedAt = isoOrNull(r.deletedAt);
     if (deletedAt && olderThan(deletedAt, nowIso, SEVEN_DAYS)) continue;
     const rec = { ...r, deletedAt, updatedAt: isoOrNull(r.updatedAt) || '1970-01-01T00:00:00.000Z' };
@@ -859,7 +866,7 @@ const uniqStrings = (arr, fallback) => (Array.isArray(arr) ? [...new Set(arr.fil
 
 export function sanitizeSettings(s) {
   if (!s || typeof s !== 'object') return { ...DEFAULT_SETTINGS, activeDays: [...DEFAULT_SETTINGS.activeDays], appointmentStages: [...DEFAULT_SETTINGS.appointmentStages], followupStages: [...DEFAULT_SETTINGS.followupStages] };
-  const lead = Number(s.defaultMinutesBefore);
+  const lead = typeof s.defaultMinutesBefore === 'number' ? s.defaultMinutesBefore : NaN;
   const nearest = [0, 5, 10, 15].reduce((best, v) => (Math.abs(v - lead) < Math.abs(best - lead) ? v : best), 5);
   return {
     version: 1,
@@ -867,7 +874,7 @@ export function sanitizeSettings(s) {
     timezoneMode: s.timezoneMode === 'manual' ? 'manual' : 'auto',
     remindersEnabled: s.remindersEnabled !== false,
     defaultMinutesBefore: Number.isFinite(lead) ? nearest : 5,
-    activeDays: Array.isArray(s.activeDays) ? [...new Set(s.activeDays.map(Number).filter(d => Number.isInteger(d) && d >= 0 && d <= 6))].sort() : [...DEFAULT_SETTINGS.activeDays],
+    activeDays: Array.isArray(s.activeDays) ? [...new Set(s.activeDays.map(Number).filter(d => Number.isInteger(d) && d >= 0 && d <= 6))].sort((a, b) => a - b) : [...DEFAULT_SETTINGS.activeDays],
     appointmentStages: uniqStrings(s.appointmentStages, DEFAULT_SETTINGS.appointmentStages),
     followupStages: uniqStrings(s.followupStages, DEFAULT_SETTINGS.followupStages),
     followupStagesSeeded: s.followupStagesSeeded === true,
@@ -881,7 +888,7 @@ export const FOLLOWUP_WORDS = /follow|circle|check\s*back|call\s*back|callback|p
 // A bare \bno\b would also reject "No show – reschedule", which the positive
 // list deliberately seeds — the lookahead keeps "no" as a negation word except
 // when it heads "no show" / "no-show". (Spec §4c's regex lacks the lookahead
-// and contradicts its own §12 pin; amend §4c in rev 11 — note it in the commit.)
+// and contradicts its own §12 pin; recorded as a plan deviation for spec rev 11 §4c.)
 export const NOT_FOLLOWUP_WORDS = /\b(won|sold|closed|lost|dead|not|never)\b|\bno\b(?![\s-]*show)|\b(un|dis)interest/i;
 // Hand copy of constants.js DEFAULT_PROSPECT_STAGES ids — a node test in Task 13 pins the two equal.
 export const DEFAULT_STAGE_IDS = new Set(['WEBBY_SET', 'WEBBY_CONFIRMED', 'APPOINTMENT_SET', 'MISSED_APPT', 'PENDING_DECISION', 'FOLLOWUP_LATER', 'GHOSTED', 'SOLD', 'LOST']);
@@ -906,7 +913,7 @@ export function instantiateTemplate(entry, { now, defaultMinutesBefore }) {
     category: pal.category,
     startMin: entry.startMin,
     durationMin: entry.durationMin ?? pal.defaultMin,
-    remind: entry.remind ?? { enabled: pal.defaultRemind, minutesBefore: defaultMinutesBefore },
+    remind: { enabled: pal.defaultRemind, minutesBefore: defaultMinutesBefore, ...(entry.remind || {}) },
     note: entry.note ?? '',
     deletedAt: null, createdAt: now, updatedAt: now,
   });
@@ -2283,7 +2290,24 @@ grant execute on function public.routine_appt_rows(uuid[], text[]) to service_ro
 -- `expect` is stripped before storing. Returns the ids written. The row is
 -- created empty and locked BEFORE it is read so an agent's first-ever record is
 -- serialised against a concurrent client save.
-create or replace function public.routine_day_write(p_user uuid, p_records jsonb)
+--
+-- p_floor ('YYYY-MM-DD', the tick passes addDays(today, -7)) enforces §4b's 7-day retention
+-- on the SERVER as well: Pass 1 drops every stored element older than it instead of copying
+-- it forward. Without it only the client's write path ever prunes, so an agent who sets a
+-- routine up once and then works out of another tab accumulates an `appt` record per started
+-- appointment plus the day's `owed` record every day, forever — and the tick re-reads that
+-- whole jsonb every minute and Pass 1 rebuilds it element by element, so the cost is
+-- quadratic in bytes and unbounded. The row is already locked by the `for update` below, so
+-- the prune costs no extra round trip and cannot race a client save. Null prunes nothing.
+--
+-- RUN THIS FILE WHOLE, and note the DROP: `create or replace` cannot change a signature, and
+-- p_floor makes this routine_day_write(uuid, jsonb, text) where the first release was
+-- (uuid, jsonb). Dropping also drops that function's grants, which is why the revoke/grant
+-- at the foot of the file are part of the same run. p_floor defaults to null so a still-
+-- deployed older caller keeps working (without the prune) until the new route ships.
+drop function if exists public.routine_day_write(uuid, jsonb);
+
+create or replace function public.routine_day_write(p_user uuid, p_records jsonb, p_floor text default null)
 returns text[]
 language plpgsql
 security definer
@@ -2318,8 +2342,14 @@ begin
   end if;
   if v_stored is null or jsonb_typeof(v_stored) <> 'array' then v_stored := '[]'::jsonb; end if;
 
-  -- Pass 1: keep every stored element, replacing where the CAS matches.
+  -- Pass 1: keep every stored element, replacing where the CAS matches — except the ones
+  -- the retention floor has passed, which are dropped here instead of copied into v_new.
+  -- An incoming record sharing a pruned id is still appended by Pass 2 (it is not in v_new),
+  -- so a live record is never lost to the prune.
   for el in select * from jsonb_array_elements(v_stored) loop
+    if p_floor is not null and (el ->> 'day') is not null and (el ->> 'day') < p_floor then
+      continue;
+    end if;
     v_replaced := false;
     for rec in select * from jsonb_array_elements(p_records) loop
       if (rec ->> 'id') is not null and (rec ->> 'id') = (el ->> 'id') then
@@ -2351,8 +2381,8 @@ begin
 end;
 $$;
 
-revoke execute on function public.routine_day_write(uuid, jsonb) from public, anon, authenticated;
-grant execute on function public.routine_day_write(uuid, jsonb) to service_role;
+revoke execute on function public.routine_day_write(uuid, jsonb, text) from public, anon, authenticated;
+grant execute on function public.routine_day_write(uuid, jsonb, text) to service_role;
 ```
 
 `supabase/routine-tick-cron.sql` — copy §6a verbatim, with this header:
@@ -2456,7 +2486,7 @@ export async function pruneDeadSubs(supa, userId, dead) {
 import { createClient } from '@supabase/supabase-js';
 import { canAccessBetaFeature } from '@/lib/featureFlags';
 import { appUrl } from '@/lib/appUrl.mjs';
-import { isValidTimeZone } from '@/lib/tz.mjs';
+import { isValidTimeZone, addDays } from '@/lib/tz.mjs';
 import { tickAgent, buildPayload, classifySend, retryEligible, LOG_WINDOW_MIN } from '@/lib/routineTick.mjs';
 import { ROUTINE_BLOCKS_KEY, ROUTINE_DAY_KEY, ROUTINE_SETTINGS_KEY, PUSH_SUBS_KEY, ROUTINE_FEATURE_KEY } from '@/lib/routineKeys.mjs';
 import { pushConfigured, sendPushAll, pruneDeadSubs } from '@/lib/pushServer';
@@ -2572,8 +2602,12 @@ export async function GET(req) {
         summary.skipped.already_held += res.skipped.already_held;
 
         // Step 4: freeze — one RPC per agent, only when there is something to write.
+        // p_floor carries §4b's 7-day retention into the function: without it nothing
+        // server-side ever prunes routine_day_v1 and the jsonb this tick re-reads every
+        // minute grows without bound (the client's write path is the only other pruner,
+        // and an agent who never opens the tab never runs it).
         if (res.freezeRecords.length) {
-          const { data: written, error: fErr } = await supa.rpc('routine_day_write', { p_user: userId, p_records: res.freezeRecords });
+          const { data: written, error: fErr } = await supa.rpc('routine_day_write', { p_user: userId, p_records: res.freezeRecords, p_floor: addDays(res.today, -7) });
           if (fErr) { summary.freeze_failed++; summary.errors.push({ user_id: userId, err: 'freeze: ' + fErr.message }); }
           else summary.frozen += Array.isArray(written) ? written.length : 0;
         }
@@ -2969,8 +3003,19 @@ beforeEach(() => { mem.clear(); fail.clear(); });
 const NOW = '2026-09-08T15:00:00.000Z';
 
 test('loadRoutine: empty store → [] / [] / default settings (timezone null)', async () => {
-  const r = await loadRoutine({ today: '2026-09-08', nowIso: NOW });
-  expect(r.blocks).toEqual([]); expect(r.day).toEqual([]); expect(r.settings.timezone).toBe(null); expect(r.settings.activeDays).toEqual([0, 1, 2, 3, 4, 5, 6]);
+  const r = await loadRoutine({ nowIso: NOW });
+  expect(r.blocks).toEqual([]); expect(r.dayRaw).toEqual([]); expect(r.settings.timezone).toBe(null); expect(r.settings.activeDays).toEqual([0, 1, 2, 3, 4, 5, 6]);
+});
+
+// The day array comes back RAW so the caller can prune it against the SETTINGS zone; a
+// sanitize here would have to guess one. Pinned because the guess used to be the device's,
+// and a device zone one day ahead deleted the oldest still-in-window day on the next save.
+test('loadRoutine returns the day array unsanitized — nothing older than today−7 is pruned here', async () => {
+  const stale = { id: '2020-01-01|blk_aaaaaaa', kind: 'done', day: '2020-01-01', blockId: 'blk_aaaaaaa', status: 'done', at: NOW, updatedAt: NOW, deletedAt: null };
+  await saveDay([stale, { id: 'junk', kind: 'nonsense' }]);
+  const r = await loadRoutine({ nowIso: NOW });
+  expect(r.dayRaw).toEqual([stale, { id: 'junk', kind: 'nonsense' }]);
+  expect(r.day).toBeUndefined();
 });
 
 test('save* write strings; loadRoutine sanitizes and tolerates corrupt JSON', async () => {
@@ -2978,20 +3023,20 @@ test('save* write strings; loadRoutine sanitizes and tolerates corrupt JSON', as
   expect(typeof mem.get(ROUTINE_BLOCKS_KEY)).toBe('string');
   await saveDay([{ id: '2026-09-08|blk_aaaaaaa', kind: 'done', day: '2026-09-08', blockId: 'blk_aaaaaaa', status: 'done', at: NOW, updatedAt: NOW, deletedAt: null }]);
   await saveSettings({ timezone: 'America/Chicago', defaultMinutesBefore: 12, junk: true });
-  const r = await loadRoutine({ today: '2026-09-08', nowIso: NOW });
-  expect(r.blocks[0].startMin).toBe(480); expect(r.day.length).toBe(1); expect(r.settings.defaultMinutesBefore).toBe(10); expect('junk' in r.settings).toBe(false);
+  const r = await loadRoutine({ nowIso: NOW });
+  expect(r.blocks[0].startMin).toBe(480); expect(r.dayRaw.length).toBe(1); expect(r.settings.defaultMinutesBefore).toBe(10); expect('junk' in r.settings).toBe(false);
   mem.set(ROUTINE_DAY_KEY, '{oops');
-  const r2 = await loadRoutine({ today: '2026-09-08', nowIso: NOW });
-  expect(r2.day).toEqual([]);
+  const r2 = await loadRoutine({ nowIso: NOW });
+  expect(r2.dayRaw).toEqual([]);
   expect(mem.has(ROUTINE_SETTINGS_KEY)).toBe(true);
 });
 
 test('corrupt settings default safely; a throwing storage read never rejects loadRoutine', async () => {
   mem.set(ROUTINE_SETTINGS_KEY, '{oops');
-  const r = await loadRoutine({ today: '2026-09-08', nowIso: NOW });
+  const r = await loadRoutine({ nowIso: NOW });
   expect(r.settings.timezone).toBe(null);
   fail.add(ROUTINE_BLOCKS_KEY);
-  await expect(loadRoutine({ today: '2026-09-08', nowIso: NOW })).resolves.toMatchObject({ blocks: [] });
+  await expect(loadRoutine({ nowIso: NOW })).resolves.toMatchObject({ blocks: [] });
 });
 ```
 
@@ -3138,22 +3183,31 @@ test('second pointerdown mid-drag cancels the first instead of orphaning it', ()
 ```js
 /**
  * Routine Builder storage adapter (spec §4). Three user_kv documents; every
- * read is sanitized, every write is a JSON string. The two arrays are in
- * MERGEABLE_KEYS, so a save merges newest-wins by record id (mergeStore.mjs).
+ * write is a JSON string. The two arrays are in MERGEABLE_KEYS, so a save
+ * merges newest-wins by record id (mergeStore.mjs).
+ *
+ * Blocks and settings are sanitized here. The day array is NOT — see loadRoutine.
  */
 import { storage } from './storage';
 import { ROUTINE_BLOCKS_KEY, ROUTINE_DAY_KEY, ROUTINE_SETTINGS_KEY } from './routineKeys.mjs';
-import { sanitizeBlocks, sanitizeDay, sanitizeSettings } from './routineModel.mjs';
+import { sanitizeBlocks, sanitizeSettings } from './routineModel.mjs';
 
 async function readJson(key) {
   try { const raw = await storage.getItem(key); return raw ? JSON.parse(raw) : null; } catch { return null; }
 }
 
-export async function loadRoutine({ today, nowIso }) {
+// Returns `dayRaw` UNSANITIZED, on purpose. sanitizeDay prunes everything older than
+// `today − 7` (§4b) and `today` depends on routine_settings_v1.timezone — which this call
+// is what reads. Sanitizing here would have to guess a zone (the device's), and whenever
+// that guess runs ahead of the configured zone the floor lands a day late: the oldest
+// still-in-window day is dropped and the next commitDay persists the deletion. The caller
+// sanitizes once the settings zone is resolved, so the prune floor and every later
+// commitDay share one zone (RoutineView's load effect).
+export async function loadRoutine({ nowIso }) {
   const [blocksRaw, dayRaw, settingsRaw] = await Promise.all([readJson(ROUTINE_BLOCKS_KEY), readJson(ROUTINE_DAY_KEY), readJson(ROUTINE_SETTINGS_KEY)]);
   return {
     blocks: sanitizeBlocks(Array.isArray(blocksRaw) ? blocksRaw : [], nowIso),
-    day: sanitizeDay(Array.isArray(dayRaw) ? dayRaw : [], today, nowIso),
+    dayRaw: Array.isArray(dayRaw) ? dayRaw : [],
     settings: sanitizeSettings(settingsRaw),
   };
 }
