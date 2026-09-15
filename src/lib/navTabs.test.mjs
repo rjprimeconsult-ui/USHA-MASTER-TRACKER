@@ -7,9 +7,12 @@ import assert from 'node:assert/strict';
 import { NAV_TABS, DEFAULT_PROSPECT_STAGES } from './constants.js';
 import { DEFAULT_STAGE_IDS } from './routineModel.mjs';
 
-test('Routine tab sits right after Overview and uses the CalendarClock icon (spec §9)', () => {
+test('Routine tab sits between Portal Clients and Prospects and uses the CalendarClock icon', () => {
+  // Spec §9 put it directly after Overview; Juan moved it here on 2026-09-15 so it sits with
+  // the two tabs it reads from. Recorded as a rev-11 deviation in the live-pass doc.
   const ids = NAV_TABS.map(t => t.id);
-  assert.equal(ids[ids.indexOf('dashboard') + 1], 'routine');
+  assert.equal(ids[ids.indexOf('leads') + 1], 'routine');
+  assert.equal(ids[ids.indexOf('routine') + 1], 'prospects');
   assert.deepEqual(NAV_TABS.find(t => t.id === 'routine'), { id: 'routine', label: 'Routine', icon: 'CalendarClock' });
   assert.equal(NAV_TABS.length, 15);
 });
