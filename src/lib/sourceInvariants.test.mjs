@@ -168,9 +168,21 @@ const TICK = 'src/app/api/routine/tick/route.js';
 test('routine tick: CRON_SECRET fail-closed, every query result checked, never a direct user_kv write', () => {
   const src = read(TICK);
   assert.ok(src.includes('process.env.CRON_SECRET') && /status: 401/.test(src) && src.includes('if (!expected ||'), 'fail-closed auth block');
-  for (const id of ['sErr', 'pErr', 'subErr', 'logQ.error', 'blocksQ', 'dayQ', 'apptQ', 'fErr', 'cErr', 'rErr', 'uErr', 'hErr', 'phase B read failed', '.canAccess !== true']) assert.ok(src.includes(id), `missing error handling anchor ${id}`);
+  // The REFUSAL, not the name. `const { data, error: sErr } = …` alone satisfies
+  // src.includes('sErr'), so all eight of these stayed green with their `if (…)` blocks
+  // deleted: the tripwire named the variable and checked nothing about it.
+  for (const id of ['sErr', 'pErr', 'subErr', 'fErr', 'cErr', 'rErr', 'uErr', 'hErr']) assert.ok(src.includes(`if (${id})`), `${id} is destructured but never refused — the gate is the \`if (${id})\` block, not the identifier`);
+  for (const id of ['logQ.error', 'blocksQ', 'dayQ', 'apptQ', 'phase B read failed', '.canAccess !== true']) assert.ok(src.includes(id), `missing error handling anchor ${id}`);
   assert.ok(src.includes(".rpc('routine_day_write'") && src.includes(".rpc('routine_appt_rows'"));
-  for (const bad of [".from('user_kv').upsert(", ".from('user_kv').update(", ".from('user_kv').delete(", ".from('user_kv').insert("]) assert.ok(!src.includes(bad), `tick must never write user_kv directly: ${bad}`);
+  // routine_day_write prunes only what p_floor tells it to: drop the argument and §4b's
+  // 7-day retention stops being enforced server-side at all, and routine_day_v1 grows
+  // without bound for every agent who never opens the tab.
+  assert.ok(/p_floor:\s*addDays\(res\.today,\s*-7\)/.test(src), 'the routine_day_write RPC must pass p_floor: addDays(res.today, -7)');
+  // One normalized matcher instead of four hard-coded single-quoted spellings, which a
+  // double-quoted `.from("user_kv").upsert(` walked straight past. Whitespace is stripped
+  // so a wrapped chain cannot hide either.
+  const directWrite = src.replace(/\s+/g, '').match(/\.from\((['"])user_kv\1\)\.(upsert|update|delete|insert)\(/g);
+  assert.ok(!directWrite, `tick must never write user_kv directly: ${directWrite}`);
   assert.ok(!src.includes("eq('key', 'prospects_v1')"), 'tick must never select the prospects blob');
   assert.ok(selectStrings(src).some((s) => s.includes('subscription_tier') && s.includes('past_due_since')), 'profile SELECT must carry the 8 gate columns');
   assert.ok(src.includes('ignoreDuplicates: true'), 'claim-before-send');
@@ -198,25 +210,55 @@ test('payload builder is name-free: fixed appointment copy, "an appointment" for
 
 test('vercel.json keeps only daily crons (never sub-daily — Hobby build fails)', () => {
   const cfg = JSON.parse(read('vercel.json'));
-  for (const c of cfg.crons || []) { const [min, hour] = c.schedule.split(' '); assert.ok(min !== '*' && hour !== '*', `sub-daily cron: ${c.schedule}`); }
+  // Both fields must be a FIXED integer. Rejecting a bare '*' was never the invariant:
+  // '*/5 3 * * *' and '0-30 3 * * *' are sub-daily too, and both passed.
+  for (const c of cfg.crons || []) {
+    const [min, hour] = String(c.schedule).split(' ');
+    assert.ok(/^\d+$/.test(min) && /^\d+$/.test(hour), `sub-daily cron: ${c.schedule} — minute and hour must each be one fixed integer`);
+  }
 });
 
 test('sw.js: payload contract untouched; notificationclick picks the "/" client on the app origin and otherwise opens a window', () => {
   const src = read('public/sw.js');
   for (const k of ['data.title', 'data.body', 'data.tag', 'data.url', 'data.urgent']) assert.ok(src.includes(k), k);
-  assert.ok(src.includes("pathname === '/'") && src.includes('self.location.origin') && src.includes("'prim:view'") && src.includes('openWindow'));
-  assert.ok(src.indexOf('self.location.origin') < src.indexOf("pathname === '/'"), 'origin guard precedes the app-shell pick');
+  assert.ok(src.includes("pathname === '/'") && src.includes("'prim:view'") && src.includes('openWindow'));
+  // Anchor on the GUARD itself. The first `self.location.origin` in this file is the
+  // default-url fallback, which already sits above the app-shell pick — so the ordering
+  // assertion held with the whole cross-origin check deleted, and a subscription registered
+  // on www would have focused a marketing tab whose "/" is a rewrite to /landing.
+  const guard = src.indexOf('target.origin === self.location.origin');
+  const gate = src.indexOf('if (sameOrigin)');
+  const pick = src.indexOf("pathname === '/'");
+  assert.ok(guard >= 0, 'the cross-origin guard (target.origin === self.location.origin) is gone');
+  assert.ok(gate > guard && pick > gate, 'the guard must be computed, then GATE the app-shell pick');
   assert.ok(src.includes("self.location.origin + '/'"), 'default url is the app origin');
 });
 
 test('routine SQL functions are security definer, legacy-string safe, and service-role only', () => {
   for (const f of ['supabase/routine-appt-rows-function.sql', 'supabase/routine-day-write-function.sql']) {
-    const src = read(f).toLowerCase();
-    for (const needle of ['security definer', 'jsonb_typeof', 'revoke execute', 'grant execute', 'to service_role', 'set search_path = public']) assert.ok(src.includes(needle), `${f} missing ${needle}`);
+    const src = read(f).toLowerCase().replace(/\s+/g, ' ');
+    for (const needle of ['security definer', 'jsonb_typeof', 'set search_path = public']) assert.ok(src.includes(needle), `${f} missing ${needle}`);
+    // Bind the grants to the signature THIS file creates, rather than to "a revoke appears
+    // somewhere in it". A new function is PUBLIC-executable by default, so a revoke/grant
+    // left on a stale signature (p_floor made routine_day_write 3-ary) both errors on the
+    // operator's hand-run and leaves a security-definer writer callable by every role.
+    const decl = src.match(/create (?:or replace )?function (public\.\w+) ?\(([^)]*)\)/);
+    assert.ok(decl, `${f}: no create function`);
+    const types = decl[2].split(',').map((a) => a.trim().split(' ')[1]).filter(Boolean);
+    const sig = `${decl[1]}(${types.join(', ')})`;
+    const sigRe = `${decl[1].replace('.', '\\.')} ?\\( ?${types.map((t) => t.replace(/[[\]]/g, '\\$&')).join(' ?, ?')} ?\\)`;
+    const revoked = src.match(new RegExp(`revoke execute on function ${sigRe} from ([^;]*);`));
+    assert.ok(revoked, `${f}: no "revoke execute" on ${sig} — a revoke on any other signature leaves this one PUBLIC-executable`);
+    for (const who of ['public', 'anon', 'authenticated']) assert.ok(new RegExp(`\\b${who}\\b`).test(revoked[1]), `${f}: the revoke on ${sig} must strip ${who}`);
+    assert.ok(new RegExp(`grant execute on function ${sigRe} to [^;]*\\bservice_role\\b`).test(src), `${f}: no "grant execute … to service_role" on ${sig}`);
   }
   const w = read('supabase/routine-day-write-function.sql').toLowerCase();
   assert.ok(w.includes('on conflict (user_id, key) do nothing') && w.includes('for update'), 'row created empty and locked before read');
   assert.ok(w.includes("'expect'"), 'expected-version CAS');
+  // §4b retention, server side. `create or replace` cannot change a signature, so the drop
+  // is part of the contract — and the operator runs this file by hand.
+  assert.ok(w.includes('drop function if exists public.routine_day_write(uuid, jsonb);'), 'the signature change needs an explicit drop — create or replace cannot do it');
+  assert.ok(/if p_floor is not null and \(el ->> 'day'\) is not null and \(el ->> 'day'\) < p_floor then/.test(w), 'Pass 1 must SKIP stored elements older than p_floor, not copy them forward');
   assert.ok(read('supabase/routine-tick-cron.sql').includes("'prim-routine-tick'"));
 });
 
