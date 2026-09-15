@@ -161,3 +161,52 @@ test('every admin route enforces MFA server-side (WISP gap #1 residual)', () => 
     assert.ok(src.includes('is_admin'), `${p} must still check is_admin`);
   }
 });
+
+// ---- Routine Builder tripwires (spec §12) ----
+const TICK = 'src/app/api/routine/tick/route.js';
+
+test('routine tick: CRON_SECRET fail-closed, every query result checked, never a direct user_kv write', () => {
+  const src = read(TICK);
+  assert.ok(src.includes('process.env.CRON_SECRET') && /status: 401/.test(src) && src.includes('if (!expected ||'), 'fail-closed auth block');
+  for (const id of ['sErr', 'pErr', 'subErr', 'logQ.error', 'blocksQ', 'dayQ', 'apptQ', 'fErr', 'cErr', 'rErr', 'uErr', 'hErr', 'phase B read failed', '.canAccess !== true']) assert.ok(src.includes(id), `missing error handling anchor ${id}`);
+  assert.ok(src.includes(".rpc('routine_day_write'") && src.includes(".rpc('routine_appt_rows'"));
+  for (const bad of [".from('user_kv').upsert(", ".from('user_kv').update(", ".from('user_kv').delete(", ".from('user_kv').insert("]) assert.ok(!src.includes(bad), `tick must never write user_kv directly: ${bad}`);
+  assert.ok(!src.includes("eq('key', 'prospects_v1')"), 'tick must never select the prospects blob');
+  assert.ok(selectStrings(src).some((s) => s.includes('subscription_tier') && s.includes('past_due_since')), 'profile SELECT must carry the 8 gate columns');
+  assert.ok(src.includes('ignoreDuplicates: true'), 'claim-before-send');
+});
+
+test('pushServer checks error after select and upsert and returns failures', () => {
+  const src = read('src/lib/pushServer.js');
+  assert.ok(src.includes('if (error)') && src.includes('if (e2)'));
+  assert.ok(src.includes('failures'));
+});
+
+test('routineLive has exactly one Date.parse (parseAppointmentTime); routineTick has none', () => {
+  assert.equal(count(read('src/lib/routineLive.mjs'), /Date\.parse\(/g), 1);
+  assert.equal(count(read('src/lib/routineTick.mjs'), /Date\.parse\(/g), 0);
+});
+
+test('payload builder is name-free: fixed appointment copy, "an appointment" for next items', () => {
+  const src = read('src/lib/routineTick.mjs');
+  const fn = src.slice(src.indexOf('export function buildPayload'));
+  assert.ok(fn.includes("title: 'PRIM'") && fn.includes("'Appointment"));
+  assert.ok(src.includes("'an appointment'"));
+  assert.ok(!/prospect(Name|\.name)/.test(fn));
+});
+
+test('vercel.json keeps only daily crons (never sub-daily — Hobby build fails)', () => {
+  const cfg = JSON.parse(read('vercel.json'));
+  for (const c of cfg.crons || []) { const [min, hour] = c.schedule.split(' '); assert.ok(min !== '*' && hour !== '*', `sub-daily cron: ${c.schedule}`); }
+});
+
+test('routine SQL functions are security definer, legacy-string safe, and service-role only', () => {
+  for (const f of ['supabase/routine-appt-rows-function.sql', 'supabase/routine-day-write-function.sql']) {
+    const src = read(f).toLowerCase();
+    for (const needle of ['security definer', 'jsonb_typeof', 'revoke execute', 'grant execute', 'to service_role', 'set search_path = public']) assert.ok(src.includes(needle), `${f} missing ${needle}`);
+  }
+  const w = read('supabase/routine-day-write-function.sql').toLowerCase();
+  assert.ok(w.includes('on conflict (user_id, key) do nothing') && w.includes('for update'), 'row created empty and locked before read');
+  assert.ok(w.includes("'expect'"), 'expected-version CAS');
+  assert.ok(read('supabase/routine-tick-cron.sql').includes("'prim-routine-tick'"));
+});
