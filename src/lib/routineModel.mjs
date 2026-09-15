@@ -102,7 +102,14 @@ export function resolveOverlaps(live) {
   return { blocks: placed.sort((a, b) => a.startMin - b.startMin || String(a.id).localeCompare(String(b.id))), dropped };
 }
 
-export function sanitizeBlocks(blocks, nowIso = new Date().toISOString()) {
+// `onDropped` (optional) receives the NAMES of the blocks resolveOverlaps could not place
+// anywhere, so a caller can honour §4a's last resort — tombstone AND toast "No room for
+// <name>". A callback rather than a second return value or an out-parameter: every one of
+// this function's existing call sites passes two arguments and reads a plain array back
+// (liveBlocks, applyTemplate x2, routineStore, the view's commitBlocks, a dozen tests), and
+// none of them has to change. The 60-live cap tombstones through a different rule and stays
+// silent — §4a scopes the toast to the resolver.
+export function sanitizeBlocks(blocks, nowIso = new Date().toISOString(), onDropped = null) {
   const deduped = dedupeNewest(Array.isArray(blocks) ? blocks : []).map(clampBlock);
   const tombstones = deduped.filter(b => b.deletedAt && !olderThan(b.deletedAt, nowIso, SEVEN_DAYS));
   let live = deduped.filter(b => !b.deletedAt);
@@ -113,7 +120,9 @@ export function sanitizeBlocks(blocks, nowIso = new Date().toISOString()) {
     live = live.filter(b => !extra.has(b.id));
   }
   const { blocks: resolved, dropped } = resolveOverlaps(live);
-  for (const id of dropped) { const b = live.find(x => x.id === id); tombstones.push({ ...b, deletedAt: nowIso, updatedAt: nowIso }); }
+  const droppedNames = [];
+  for (const id of dropped) { const b = live.find(x => x.id === id); tombstones.push({ ...b, deletedAt: nowIso, updatedAt: nowIso }); droppedNames.push(b.name); }
+  if (droppedNames.length && typeof onDropped === 'function') onDropped(droppedNames);
   return [...resolved, ...tombstones].sort((a, b) => a.startMin - b.startMin);
 }
 

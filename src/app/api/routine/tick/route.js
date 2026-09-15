@@ -16,7 +16,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { canAccessBetaFeature } from '@/lib/featureFlags';
 import { appUrl } from '@/lib/appUrl.mjs';
-import { isValidTimeZone } from '@/lib/tz.mjs';
+import { isValidTimeZone, addDays } from '@/lib/tz.mjs';
 import { tickAgent, buildPayload, classifySend, retryEligible, LOG_WINDOW_MIN } from '@/lib/routineTick.mjs';
 import { ROUTINE_BLOCKS_KEY, ROUTINE_DAY_KEY, ROUTINE_SETTINGS_KEY, PUSH_SUBS_KEY, ROUTINE_FEATURE_KEY } from '@/lib/routineKeys.mjs';
 import { pushConfigured, sendPushAll, pruneDeadSubs } from '@/lib/pushServer';
@@ -132,8 +132,12 @@ export async function GET(req) {
         summary.skipped.already_held += res.skipped.already_held;
 
         // Step 4: freeze — one RPC per agent, only when there is something to write.
+        // p_floor carries §4b's 7-day retention into the function: without it nothing
+        // server-side ever prunes routine_day_v1 and the jsonb this tick re-reads every
+        // minute grows without bound (the client's write path is the only other pruner,
+        // and an agent who never opens the tab never runs it).
         if (res.freezeRecords.length) {
-          const { data: written, error: fErr } = await supa.rpc('routine_day_write', { p_user: userId, p_records: res.freezeRecords });
+          const { data: written, error: fErr } = await supa.rpc('routine_day_write', { p_user: userId, p_records: res.freezeRecords, p_floor: addDays(res.today, -7) });
           if (fErr) { summary.freeze_failed++; summary.errors.push({ user_id: userId, err: 'freeze: ' + fErr.message }); }
           else summary.frozen += Array.isArray(written) ? written.length : 0;
         }

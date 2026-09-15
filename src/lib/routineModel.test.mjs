@@ -206,3 +206,28 @@ test('pins: 60-cap tombstones the newest createdAt; a dropped block is tombstone
   assert.deepEqual(sanitizeSettings({ activeDays: [6, 0, 3] }).activeDays, [0, 3, 6]);
   assert.equal(instantiateTemplate({ paletteId: 'dial', startMin: 510, remind: { enabled: true } }, { now: NOW, defaultMinutesBefore: 15 }).remind.minutesBefore, 15);
 });
+
+// §4a's last resort is "tombstone + toast «No room for <name>»" — the toast half needs the
+// names out of sanitizeBlocks. The optional callback is additive: every 2-argument call site
+// (liveBlocks, applyTemplate, routineStore, the view, this file) is untouched.
+test('sanitizeBlocks reports the blocks resolveOverlaps could not place, by name (spec §4a)', () => {
+  const big = blk({ id: 'blk_big0000', name: 'Morning', startMin: 0, durationMin: 720, updatedAt: '2026-09-08T09:00:00Z' });
+  const big2 = blk({ id: 'blk_big0001', name: 'Evening', startMin: 720, durationMin: 700, updatedAt: '2026-09-08T09:00:00Z' });
+  const full = blk({ id: 'blk_full000', name: 'Wrap up', startMin: 1420, durationMin: 20, updatedAt: '2026-09-08T09:00:00Z' });
+  const extra = blk({ id: 'blk_extra00', name: 'Stretch', startMin: 1425, durationMin: 10, updatedAt: '2026-09-08T12:00:00Z' });
+  const seen = [];
+  const out = sanitizeBlocks([big, big2, full, extra], NOW, (names) => seen.push(names));
+  assert.deepEqual(seen, [['Stretch']]);
+  assert.equal(out.find(b => b.id === 'blk_extra00').deletedAt, NOW);
+
+  // nothing dropped → the callback never fires (a toast per save would be noise)
+  const quiet = [];
+  sanitizeBlocks([big, big2], NOW, (names) => quiet.push(names));
+  assert.deepEqual(quiet, []);
+
+  // the 60-cap is NOT a "no room" drop: §4a scopes the toast to resolveOverlaps
+  const many = Array.from({ length: 62 }, (_, i) => blk({ id: 'blk_' + String(i).padStart(7, '0'), startMin: (i * 20) % 1400, durationMin: 10, createdAt: `2026-09-0${i < 31 ? 1 : 2}T${String(i % 24).padStart(2, '0')}:00:00Z` }));
+  const capped = [];
+  sanitizeBlocks(many, NOW, (names) => capped.push(names));
+  assert.deepEqual(capped, []);
+});

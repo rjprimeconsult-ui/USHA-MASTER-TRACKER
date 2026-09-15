@@ -15,8 +15,19 @@ beforeEach(() => { mem.clear(); fail.clear(); });
 const NOW = '2026-09-08T15:00:00.000Z';
 
 test('loadRoutine: empty store → [] / [] / default settings (timezone null)', async () => {
-  const r = await loadRoutine({ today: '2026-09-08', nowIso: NOW });
-  expect(r.blocks).toEqual([]); expect(r.day).toEqual([]); expect(r.settings.timezone).toBe(null); expect(r.settings.activeDays).toEqual([0, 1, 2, 3, 4, 5, 6]);
+  const r = await loadRoutine({ nowIso: NOW });
+  expect(r.blocks).toEqual([]); expect(r.dayRaw).toEqual([]); expect(r.settings.timezone).toBe(null); expect(r.settings.activeDays).toEqual([0, 1, 2, 3, 4, 5, 6]);
+});
+
+// The day array comes back RAW so the caller can prune it against the SETTINGS zone; a
+// sanitize here would have to guess one. Pinned because the guess used to be the device's,
+// and a device zone one day ahead deleted the oldest still-in-window day on the next save.
+test('loadRoutine returns the day array unsanitized — nothing older than today−7 is pruned here', async () => {
+  const stale = { id: '2020-01-01|blk_aaaaaaa', kind: 'done', day: '2020-01-01', blockId: 'blk_aaaaaaa', status: 'done', at: NOW, updatedAt: NOW, deletedAt: null };
+  await saveDay([stale, { id: 'junk', kind: 'nonsense' }]);
+  const r = await loadRoutine({ nowIso: NOW });
+  expect(r.dayRaw).toEqual([stale, { id: 'junk', kind: 'nonsense' }]);
+  expect(r.day).toBeUndefined();
 });
 
 test('save* write strings; loadRoutine sanitizes and tolerates corrupt JSON', async () => {
@@ -24,18 +35,18 @@ test('save* write strings; loadRoutine sanitizes and tolerates corrupt JSON', as
   expect(typeof mem.get(ROUTINE_BLOCKS_KEY)).toBe('string');
   await saveDay([{ id: '2026-09-08|blk_aaaaaaa', kind: 'done', day: '2026-09-08', blockId: 'blk_aaaaaaa', status: 'done', at: NOW, updatedAt: NOW, deletedAt: null }]);
   await saveSettings({ timezone: 'America/Chicago', defaultMinutesBefore: 12, junk: true });
-  const r = await loadRoutine({ today: '2026-09-08', nowIso: NOW });
-  expect(r.blocks[0].startMin).toBe(480); expect(r.day.length).toBe(1); expect(r.settings.defaultMinutesBefore).toBe(10); expect('junk' in r.settings).toBe(false);
+  const r = await loadRoutine({ nowIso: NOW });
+  expect(r.blocks[0].startMin).toBe(480); expect(r.dayRaw.length).toBe(1); expect(r.settings.defaultMinutesBefore).toBe(10); expect('junk' in r.settings).toBe(false);
   mem.set(ROUTINE_DAY_KEY, '{oops');
-  const r2 = await loadRoutine({ today: '2026-09-08', nowIso: NOW });
-  expect(r2.day).toEqual([]);
+  const r2 = await loadRoutine({ nowIso: NOW });
+  expect(r2.dayRaw).toEqual([]);
   expect(mem.has(ROUTINE_SETTINGS_KEY)).toBe(true);
 });
 
 test('corrupt settings default safely; a throwing storage read never rejects loadRoutine', async () => {
   mem.set(ROUTINE_SETTINGS_KEY, '{oops');
-  const r = await loadRoutine({ today: '2026-09-08', nowIso: NOW });
+  const r = await loadRoutine({ nowIso: NOW });
   expect(r.settings.timezone).toBe(null);
   fail.add(ROUTINE_BLOCKS_KEY);
-  await expect(loadRoutine({ today: '2026-09-08', nowIso: NOW })).resolves.toMatchObject({ blocks: [] });
+  await expect(loadRoutine({ nowIso: NOW })).resolves.toMatchObject({ blocks: [] });
 });

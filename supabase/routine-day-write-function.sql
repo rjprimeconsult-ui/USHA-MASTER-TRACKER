@@ -9,7 +9,24 @@
 -- `expect` is stripped before storing. Returns the ids written. The row is
 -- created empty and locked BEFORE it is read so an agent's first-ever record is
 -- serialised against a concurrent client save.
-create or replace function public.routine_day_write(p_user uuid, p_records jsonb)
+--
+-- p_floor ('YYYY-MM-DD', the tick passes addDays(today, -7)) enforces §4b's 7-day retention
+-- on the SERVER as well: Pass 1 drops every stored element older than it instead of copying
+-- it forward. Without it only the client's write path ever prunes, so an agent who sets a
+-- routine up once and then works out of another tab accumulates an `appt` record per started
+-- appointment plus the day's `owed` record every day, forever — and the tick re-reads that
+-- whole jsonb every minute and Pass 1 rebuilds it element by element, so the cost is
+-- quadratic in bytes and unbounded. The row is already locked by the `for update` below, so
+-- the prune costs no extra round trip and cannot race a client save. Null prunes nothing.
+--
+-- RUN THIS FILE WHOLE, and note the DROP: `create or replace` cannot change a signature, and
+-- p_floor makes this routine_day_write(uuid, jsonb, text) where the first release was
+-- (uuid, jsonb). Dropping also drops that function's grants, which is why the revoke/grant
+-- at the foot of the file are part of the same run. p_floor defaults to null so a still-
+-- deployed older caller keeps working (without the prune) until the new route ships.
+drop function if exists public.routine_day_write(uuid, jsonb);
+
+create or replace function public.routine_day_write(p_user uuid, p_records jsonb, p_floor text default null)
 returns text[]
 language plpgsql
 security definer
@@ -44,8 +61,14 @@ begin
   end if;
   if v_stored is null or jsonb_typeof(v_stored) <> 'array' then v_stored := '[]'::jsonb; end if;
 
-  -- Pass 1: keep every stored element, replacing where the CAS matches.
+  -- Pass 1: keep every stored element, replacing where the CAS matches — except the ones
+  -- the retention floor has passed, which are dropped here instead of copied into v_new.
+  -- An incoming record sharing a pruned id is still appended by Pass 2 (it is not in v_new),
+  -- so a live record is never lost to the prune.
   for el in select * from jsonb_array_elements(v_stored) loop
+    if p_floor is not null and (el ->> 'day') is not null and (el ->> 'day') < p_floor then
+      continue;
+    end if;
     v_replaced := false;
     for rec in select * from jsonb_array_elements(p_records) loop
       if (rec ->> 'id') is not null and (rec ->> 'id') = (el ->> 'id') then
@@ -77,5 +100,5 @@ begin
 end;
 $$;
 
-revoke execute on function public.routine_day_write(uuid, jsonb) from public, anon, authenticated;
-grant execute on function public.routine_day_write(uuid, jsonb) to service_role;
+revoke execute on function public.routine_day_write(uuid, jsonb, text) from public, anon, authenticated;
+grant execute on function public.routine_day_write(uuid, jsonb, text) to service_role;

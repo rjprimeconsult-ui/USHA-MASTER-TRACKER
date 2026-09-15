@@ -21,7 +21,7 @@ import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } fr
 import { Lock, X } from 'lucide-react';
 import { loadRoutine, saveBlocks, saveDay, saveSettings } from '@/lib/routineStore';
 import { sanitizeBlocks, liveBlocks, sanitizeDay, sanitizeSettings, seedFollowupStages, applyTemplate, instantiateTemplate, dayUid } from '@/lib/routineModel.mjs';
-import { todaysAppointments, composeDay, findMakeupSlot, reconcileOwed, offerState, applyOwedDecision, owedId, apptRecordId, followupQueue, yesterdayMiss, weeklyNotDone } from '@/lib/routineLive.mjs';
+import { todaysAppointments, composeDay, findMakeupSlot, reconcileOwed, offerState, applyOwedDecision, owedId, apptRecordId, followupQueue, yesterdayMiss, weeklyNotDone, parseAppointmentTime } from '@/lib/routineLive.mjs';
 import { isValidTimeZone, localDayKey, localMinuteOfDay, localWeekday } from '@/lib/tz.mjs';
 import { nowState, blockVisualState } from '@/lib/routineClock.mjs';
 import { bounds as laneBoundsOf } from '@/lib/routineLayout.mjs';
@@ -48,6 +48,9 @@ const IDLE_STATE = Object.freeze({ phase: 'free', current: null, next: null, beh
 const NO_YESTERDAY = Object.freeze({ minutes: 0, byBlock: {}, byCategory: {}, noun: 'routine time', hidden: true });
 const NO_WEEK = Object.freeze({ total: 0, days: [] });
 const DELETE_UNDO_MS = 5000;
+// A day key whose 7-day floor (1969-12-25) can never prune anything — the load path's
+// stand-in for "no zone resolved yet", where sanitizeDay must validate but not prune.
+const EPOCH_DAY = '1970-01-01';
 const REPLACE_UNDO_MS = 10000;
 
 const stampNow = () => new Date().toISOString();
@@ -151,7 +154,11 @@ export default function RoutineView({ showToast, prospects = [], prospectSetting
   const commitBlocks = useCallback((next) => {
     if (!entitledRef.current) return blocksRef.current;
     const raw = typeof next === 'function' ? next(blocksRef.current) : next;
-    const s = sanitizeBlocks(raw, stampNow());
+    // §4a's last resort: a block resolveOverlaps cannot place anywhere is tombstoned. Telling
+    // the agent WHICH one is the rest of that rule — a block that vanishes with no notice is
+    // indistinguishable from a bug. Read through the ref so commitBlocks keeps its empty deps
+    // (an inline parent showToast would otherwise give every child a new callback per render).
+    const s = sanitizeBlocks(raw, stampNow(), (names) => { for (const n of names) showToastRef.current?.(`No room for ${n}`); });
     blocksRef.current = s;
     setBlocks(s);
     saveBlocks(s).catch(warnSave('blocks'));
@@ -180,15 +187,24 @@ export default function RoutineView({ showToast, prospects = [], prospectSetting
     let alive = true;
     (async () => {
       const dz = deviceZone();
-      const probeTz = isValidTimeZone(dz) ? dz : 'UTC';
-      const r = await loadRoutine({ today: localDayKey(Date.now(), probeTz), nowIso: stampNow() });
+      const loadIso = stampNow();
+      const r = await loadRoutine({ nowIso: loadIso });
       if (!alive) return;
       let s = r.settings;
       let zoneChanged = false;
       if (s.timezoneMode === 'auto' && isValidTimeZone(dz) && s.timezone !== dz) { zoneChanged = !!s.timezone; s = { ...s, timezone: dz }; }
       if (!s.followupStagesSeeded) s = { ...s, followupStages: seedFollowupStages(stages), followupStagesSeeded: true };
-      blocksRef.current = r.blocks; dayRef.current = r.day; settingsRef.current = s;
-      setBlocks(r.blocks); setDay(r.day); setSettings(s); setLoaded(true);
+      // The day array is pruned at `today − 7` (§4b), so its floor MUST come from the same
+      // zone every later commitDay uses — the one that is only resolved on the line above.
+      // Pruning against the DEVICE zone instead (a day ahead for a travelling agent, or for
+      // anyone whose manual setting differs) drops the oldest still-in-window day here, and
+      // the next commitDay writes that deletion to the cloud: silent, permanent loss.
+      // With no zone at all there is no `today` and commitDay is a no-op, so the load
+      // validates without pruning and the first commit after a zone exists prunes for real.
+      const zone = isValidTimeZone(s.timezone) ? s.timezone : null;
+      const day = sanitizeDay(r.dayRaw, zone ? localDayKey(Date.now(), zone) : EPOCH_DAY, loadIso);
+      blocksRef.current = r.blocks; dayRef.current = day; settingsRef.current = s;
+      setBlocks(r.blocks); setDay(day); setSettings(s); setLoaded(true);
       // The only settings write that is not an explicit edit: the one-time capture / seeding.
       if (s !== r.settings) saveSettings(s).catch(warnSave('settings'));
       if (zoneChanged) showToastRef.current?.(`Time zone updated to ${dz}`);
@@ -492,6 +508,18 @@ export default function RoutineView({ showToast, prospects = [], prospectSetting
     if (typeof document !== 'undefined') document.querySelector(`[data-item-id="${esc}"], [data-item-id^="${esc}#"]`)?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
   };
   const openProspect = (id) => { setNamesOpen(false); onOpenProspect?.(id); };
+  // §7h.2 secondary line. Spec risk #15 puts this line here to explain the appointments the
+  // TIMELINE hides — the ones whose stage is outside appointmentStages — so the time cannot
+  // come from `items`, which is that same stage-filtered list and would leave the line
+  // unreachable for exactly the population it was written for. Read the prospect's own
+  // wall-clock, in the routine's zone, and only when it lands today; `items` stays as the
+  // fallback for a frozen or attached card, which carries no appointmentTime of its own.
+  const apptTimeOf = (id) => {
+    const p = prospects.find((x) => x && x.id === id);
+    const parsed = tz && p ? parseAppointmentTime(p.appointmentTime, tz) : null;
+    if (parsed && parsed.day === today) return parsed.minute;
+    return items.find((i) => i.prospectId === id)?.startMin ?? null;
+  };
 
   // ---- editor subject (derived from the live documents, so a deleted block closes the sheet) ----
   const editingRec = editing ? (editing.kind === 'makeup' ? makeups.find((m) => m.id === editing.id) : live.find((b) => b.id === editing.id)) || null : null;
@@ -602,7 +630,7 @@ export default function RoutineView({ showToast, prospects = [], prospectSetting
         open={namesOpen}
         rows={queue}
         stageLabelOf={(id) => stages.find((s) => s.id === id)?.label || id}
-        apptTimeOf={(id) => items.find((i) => i.prospectId === id)?.startMin ?? null}
+        apptTimeOf={apptTimeOf}
         onOpenProspect={openProspect}
         onClose={() => setNamesOpen(false)}
       />

@@ -129,6 +129,7 @@ const stubMatchMedia = () => {
 };
 
 let tzSpy;
+let deviceTz; // what Intl reports for the DEVICE — settings may carry a different zone
 beforeAll(() => {
   const proto = window.Element.prototype;
   if (!proto.setPointerCapture) proto.setPointerCapture = () => {};
@@ -146,9 +147,10 @@ beforeEach(() => {
   stubMatchMedia();
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });
   vi.setSystemTime(new Date(NOW_ISO));
+  deviceTz = 'America/Chicago';
   const real = Intl.DateTimeFormat.prototype.resolvedOptions;
   tzSpy = vi.spyOn(Intl.DateTimeFormat.prototype, 'resolvedOptions').mockImplementation(function resolved() {
-    return { ...real.call(this), timeZone: 'America/Chicago' };
+    return { ...real.call(this), timeZone: deviceTz };
   });
 });
 afterEach(() => {
@@ -681,4 +683,68 @@ test('15. a positional add that finds no fit says "No room there" (§7c); the pa
   await settle();
   expect(showToast).not.toHaveBeenCalledWith('No room there — shrink it or move a neighbor');
   expect(writes(ROUTINE_BLOCKS_KEY)).toBe(0);
+});
+
+test('16. the day document is pruned against the SETTINGS zone, not the device zone (§4b)', async () => {
+  // A travelling agent: the phone reports Pacific/Auckland (UTC+12), the routine is pinned to
+  // America/Chicago by hand. At 14:42Z it is already 2026-09-09 in Auckland but still
+  // 2026-09-08 in Chicago, so the DEVICE floor (today−7 = 09-02) sits a day ahead of the real
+  // one (09-01). Sanitizing the day array during the load against the device key dropped
+  // 2026-09-01 from state, and the next commitDay wrote that deletion to the cloud — silent,
+  // permanent loss of a day of records. The prune floor and every commitDay must share one zone.
+  deviceTz = 'Pacific/Auckland';
+  seedSettings({ timezone: 'America/Chicago', timezoneMode: 'manual', followupStagesSeeded: true, remindersEnabled: true });
+  seedBlocks([mk({ id: 'blk_dial01', startMin: 600, durationMin: 60 })]);
+  const days = ['2026-09-01', '2026-09-02', '2026-09-07'];
+  seedDay(days.map((d) => ({ id: `${d}|blk_old000`, kind: 'done', day: d, blockId: 'blk_old000', status: 'done', at: OLD, updatedAt: OLD, deletedAt: null })));
+
+  mount();
+  await loaded();
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Done' }));
+  await until(() => expect(writes(ROUTINE_DAY_KEY)).toBe(1));
+  expect(read(ROUTINE_DAY_KEY).map((r) => r.day).sort()).toEqual([...days, TODAY]);
+  expect(writes(ROUTINE_SETTINGS_KEY)).toBe(0); // a manual zone is never recaptured from the device
+});
+
+test('17. the follow-up sheet times an appointment the timeline HIDES (stage outside appointmentStages — spec risk #15)', async () => {
+  // §7h.2's secondary line exists to explain exactly this prospect: a follow-up stage carrying
+  // an appointment today that never reaches the timeline, because todaysAppointments filters by
+  // appointmentStages. Resolving the time from `items` (that same filtered list) made the line
+  // unreachable for the whole population it was written for.
+  settingsReady();
+  seedBlocks([mk({ id: 'blk_fu0001', name: 'Follow-up queue', paletteId: 'followup', category: 'followup', startMin: 600, durationMin: 60 })]);
+  mount({ prospects: [prospect('p9', 'Cara Lee', 'PENDING_DECISION', '2026-09-08T10:00')] });
+  await loaded();
+
+  fireEvent.click(screen.getByText('Cara Lee')); // the queue row on the block opens the sheet
+  await until(() => expect(screen.getByText('Follow-up queue · 1 due · by last contact')).toBeTruthy());
+  expect(screen.getByText('Pending Decision · appt 10:00')).toBeTruthy();
+  expect(screen.queryByText('Pending Decision · —')).toBeNull();
+});
+
+test('18. a block the resolver cannot place anywhere is tombstoned WITH a "No room for <name>" toast (§4a)', async () => {
+  const showToast = vi.fn();
+  settingsReady();
+  seedBlocks([
+    mk({ id: 'blk_aa0001', name: 'Morning', startMin: 0, durationMin: 710 }),   // 0:00–11:50
+    mk({ id: 'blk_bb0001', name: 'Evening', startMin: 720, durationMin: 720 }), // 12:00–24:00
+    mk({ id: 'blk_cc0001', name: 'Stretch', startMin: 710, durationMin: 10 }),  // 11:50–12:00 — the day is packed
+  ]);
+  const { container } = mount({ showToast });
+  await loaded();
+
+  // delete the 10-minute block, then grow its neighbour into the gap it left …
+  fireEvent.keyDown(container.querySelector('[data-item-id="blk_cc0001#0"]'), { key: 'Delete' });
+  await until(() => expect(writes(ROUTINE_BLOCKS_KEY)).toBe(1));
+  const seg = container.querySelector('[data-item-id="blk_aa0001#0"]');
+  fireEvent.pointerDown(seg.querySelector('.cursor-ns-resize'), { button: 0, pointerId: 2, clientX: 10, clientY: 200 });
+  fireEvent.pointerMove(seg, { pointerId: 2, clientX: 10, clientY: 600 });
+  fireEvent.pointerUp(seg, { pointerId: 2 });
+  await until(() => expect(read(ROUTINE_BLOCKS_KEY).find((b) => b.id === 'blk_aa0001').durationMin).toBe(720));
+
+  // … so Undo has nowhere to put it back. §4a: tombstone, and SAY SO — sanitizeBlocks used to
+  // swallow the drop and the block simply vanished.
+  fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+  await until(() => expect(showToast).toHaveBeenCalledWith('No room for Stretch'));
+  expect(read(ROUTINE_BLOCKS_KEY).find((b) => b.id === 'blk_cc0001').deletedAt).toBeTruthy();
 });
