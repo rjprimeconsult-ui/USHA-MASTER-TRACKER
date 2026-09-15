@@ -62,7 +62,7 @@
 - Modify: `src/lib/featureFlags.js:61-101` (BETA_FEATURES)
 - Test: `src/lib/featureFlags.test.mjs` (exists — append), `src/lib/routineKeys.test.mjs` (new)
 
-- [ ] **Step 1: Write `src/lib/routineKeys.mjs`**
+- [x] **Step 1: Write `src/lib/routineKeys.mjs`**
 
 ```js
 // Routine Builder — key literals. NO imports (this file is loaded by the tick
@@ -81,7 +81,7 @@ export const ROUTINE_FEATURE_KEY = 'routine_builder';
 export const ROUTINE_KEYS = [ROUTINE_BLOCKS_KEY, ROUTINE_DAY_KEY, ROUTINE_SETTINGS_KEY];
 ```
 
-- [ ] **Step 2: Write the failing tests**
+- [x] **Step 2: Write the failing tests**
 
 `src/lib/routineKeys.test.mjs`:
 ```js
@@ -122,11 +122,11 @@ test('ROUTINE_FEATURE_KEY names a registered feature', () => { assert.ok(BETA_FE
 
 Append to `src/lib/featureFlags.test.mjs` in the file's own style (it has a `P()` profile helper and asserts `reason` codes — read it first): one test `'routine_builder: starter tier, publicGA, every access reason'` asserting `requiredTier === 'starter'`, `publicGA === true`, and `canAccessBetaFeature('routine_builder', …)` → admin `{ true, 'admin' }`, complimentary `{ true, 'complimentary' }`, canceled `{ false, 'no_subscription' }`, `null` profile `{ false, 'not_signed_in' }`, active starter `{ true, 'tier_match' }`, active with `subscription_tier: null` `{ false, 'tier_too_low' }`. (As committed in `89a48ae`.)
 
-- [ ] **Step 3: Run to verify they fail**
+- [x] **Step 3: Run to verify they fail**
 
 Run: `npm test 2>&1 | findstr /C:"fail"` → expect `fail 4` (or more).
 
-- [ ] **Step 4: Register the keys and the flag**
+- [x] **Step 4: Register the keys and the flag**
 
 In `src/lib/storage.js`:
 - MERGEABLE_KEYS (L176-183): add `'routine_blocks_v1',` and `'routine_day_v1',` after `'activities_v1',`.
@@ -163,11 +163,11 @@ In `src/lib/featureFlags.js` BETA_FEATURES, append after `outreach_emails`:
   },
 ```
 
-- [ ] **Step 5: Run to verify they pass**
+- [x] **Step 5: Run to verify they pass**
 
 Run: `npm test` → expect `pass 759` (754 + 5), `fail 0`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/lib/routineKeys.mjs src/lib/routineKeys.test.mjs src/lib/storage.js src/lib/featureFlags.js src/lib/featureFlags.test.mjs
@@ -183,7 +183,7 @@ git commit -m "feat(routine): register keys, mergeable arrays, migrate skip, rou
 **Files:**
 - Create: `src/lib/tz.mjs`, `src/lib/tz.test.mjs`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```js
 import { test } from 'node:test';
@@ -242,11 +242,11 @@ test('zonedTimeToUtc — an ordinary day, and WI vs FL differ by an hour', () =>
 });
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `node --test src/lib/tz.test.mjs` → expect a module-not-found failure.
 
-- [ ] **Step 3: Implement `src/lib/tz.mjs`**
+- [x] **Step 3: Implement `src/lib/tz.mjs`**
 
 ```js
 // Pure IANA time-zone math for the Routine Builder (spec §5). No imports.
@@ -333,11 +333,11 @@ export function zonedTimeToUtc(day, minute, tz) {
 }
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `node --test src/lib/tz.test.mjs` → `pass 7, fail 0`. Then `npm test` → 766 pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/lib/tz.mjs src/lib/tz.test.mjs
@@ -353,7 +353,7 @@ git commit -m "feat(routine): tz.mjs — zone math with DST pins (spec §5)"
 **Files:**
 - Create: `src/lib/routinePalette.mjs`, `src/lib/routineTemplates.mjs`, `src/lib/routinePalette.test.mjs`, `src/lib/routineTemplates.test.mjs`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `src/lib/routinePalette.test.mjs`:
 ```js
@@ -421,11 +421,11 @@ test('blank has no entries; TEMPLATES lists both', () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `node --test src/lib/routinePalette.test.mjs src/lib/routineTemplates.test.mjs` → module-not-found.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `src/lib/routinePalette.mjs`:
 ```js
@@ -488,11 +488,11 @@ export const BLANK_TEMPLATE = { id: 'blank', name: 'Blank', description: 'Start 
 export const TEMPLATES = [STARTER_TEMPLATE, BLANK_TEMPLATE];
 ```
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `node --test src/lib/routinePalette.test.mjs src/lib/routineTemplates.test.mjs` → 6 pass. `npm test` → 772 pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/lib/routinePalette.mjs src/lib/routineTemplates.mjs src/lib/routinePalette.test.mjs src/lib/routineTemplates.test.mjs
@@ -508,7 +508,7 @@ git commit -m "feat(routine): palette + starter template (spec §7d, §7e)"
 **Files:**
 - Create: `src/lib/routineModel.mjs`, `src/lib/routineModel.test.mjs`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```js
 import { test } from 'node:test';
@@ -677,11 +677,11 @@ test('applyTemplate: non-empty + !replace → unchanged; empty → seeded; repla
 });
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `node --test src/lib/routineModel.test.mjs` → module-not-found.
 
-- [ ] **Step 3: Implement `src/lib/routineModel.mjs`**
+- [x] **Step 3: Implement `src/lib/routineModel.mjs`**
 
 ```js
 // Routine Builder data model (spec §4a, §4b, §4c, §7e). Pure; node-tested.
@@ -925,11 +925,11 @@ export function applyTemplate(existing, template, { replace = false, now, defaul
 }
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `node --test src/lib/routineModel.test.mjs` → 12 pass. If `resolveOverlaps` shrink test fails on the exact `1420/20` numbers, hand-trace `place()` against `gaps()`: big 0–720, big2 720–1420 → gaps `[[1420,1440]]`; late (700, 60) has no fitting gap → shrink → start 1420, duration `min(60, floor(20/5)*5) = 20`. Fix the implementation, not the test. Then `npm test` → 784 pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/lib/routineModel.mjs src/lib/routineModel.test.mjs
@@ -945,7 +945,7 @@ git commit -m "feat(routine): routineModel — sanitizers, overlap resolution, s
 **Files:**
 - Create: `src/lib/routineLayout.mjs`, `src/lib/routineLayout.test.mjs`, `src/lib/routineClock.mjs`, `src/lib/routineClock.test.mjs`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `src/lib/routineLayout.test.mjs`:
 ```js
@@ -1031,9 +1031,9 @@ test('nowState: done scoped to today (day-2 bug); tombstoned done ignored; oldes
 });
 ```
 
-- [ ] **Step 2: Run to verify they fail** — `node --test src/lib/routineLayout.test.mjs src/lib/routineClock.test.mjs` → module-not-found.
+- [x] **Step 2: Run to verify they fail** — `node --test src/lib/routineLayout.test.mjs src/lib/routineClock.test.mjs` → module-not-found.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `src/lib/routineLayout.mjs`:
 ```js
@@ -1125,9 +1125,9 @@ export function nowState({ items = [], dayRecords = [], nowMin, today, offerBloc
 }
 ```
 
-- [ ] **Step 4: Run to verify they pass** — `node --test src/lib/routineLayout.test.mjs src/lib/routineClock.test.mjs` → 7 pass; `npm test` → 794 pass (counts drift with earlier tasks' review additions — 0 failures is the gate).
+- [x] **Step 4: Run to verify they pass** — `node --test src/lib/routineLayout.test.mjs src/lib/routineClock.test.mjs` → 7 pass; `npm test` → 794 pass (counts drift with earlier tasks' review additions — 0 failures is the gate).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/lib/routineLayout.mjs src/lib/routineLayout.test.mjs src/lib/routineClock.mjs src/lib/routineClock.test.mjs
@@ -1143,7 +1143,7 @@ git commit -m "feat(routine): layout geometry + clock/now-state helpers (spec §
 **Files:**
 - Create: `src/lib/routineLive.mjs`, `src/lib/routineLive.test.mjs`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```js
 import { test } from 'node:test';
@@ -1245,9 +1245,9 @@ test('followupQueue: stage-selected, archived out, lastContact asc with empty fi
 });
 ```
 
-- [ ] **Step 2: Run to verify it fails** — `node --test src/lib/routineLive.test.mjs` → module-not-found.
+- [x] **Step 2: Run to verify it fails** — `node --test src/lib/routineLive.test.mjs` → module-not-found.
 
-- [ ] **Step 3: Implement part A of `src/lib/routineLive.mjs`**
+- [x] **Step 3: Implement part A of `src/lib/routineLive.mjs`**
 
 ```js
 // Routine Builder live layer (spec §5 parseAppointmentTime, §7h). Pure; the
@@ -1354,9 +1354,9 @@ export function followupQueue(prospects, stageIds, tz, now) {
 ```
 `Date.parse(` appears exactly once in this file (the zoned branch) and must stay that way — the tripwire in Task 8 counts it. Everything else uses `new Date(x).getTime()`.
 
-- [ ] **Step 4: Run to verify it passes** — `node --test src/lib/routineLive.test.mjs` → 10 pass; `npm test` → 800 pass.
+- [x] **Step 4: Run to verify it passes** — `node --test src/lib/routineLive.test.mjs` → 10 pass; `npm test` → 800 pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/lib/routineLive.mjs src/lib/routineLive.test.mjs
@@ -1372,7 +1372,7 @@ git commit -m "feat(routine): routineLive part A — parseAppointmentTime, today
 **Files:**
 - Modify: `src/lib/routineLive.mjs` (append), `src/lib/routineLive.test.mjs` (append)
 
-- [ ] **Step 1: Append the failing tests**
+- [x] **Step 1: Append the failing tests**
 
 ```js
 import { composeDay, findMakeupSlot, reconcileOwed, offerState, applyOwedDecision, owedId, dayNotDone, yesterdayMiss, weeklyNotDone } from './routineLive.mjs';
@@ -1534,9 +1534,9 @@ test('yesterdayMiss and weeklyNotDone', () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify they fail** — `node --test src/lib/routineLive.test.mjs` → import errors for the new names.
+- [x] **Step 2: Run to verify they fail** — `node --test src/lib/routineLive.test.mjs` → import errors for the new names.
 
-- [ ] **Step 3: Append part B to `src/lib/routineLive.mjs`**
+- [x] **Step 3: Append part B to `src/lib/routineLive.mjs`**
 
 ```js
 // ---------- interval helpers ----------
@@ -1757,9 +1757,9 @@ export function weeklyNotDone({ blocks, dayRecords, settings, tz, now }) {
 }
 ```
 
-- [ ] **Step 4: Run to verify it passes** — `node --test src/lib/routineLive.test.mjs` → 19 pass (10 + 9). This exact code and these exact tests were executed together during plan review and passed 19/19 under `TZ=UTC`, `TZ=America/Chicago`, and `TZ=Pacific/Auckland`; a red here means a transcription slip — diff your copy against the plan before changing either side. `npm test` → 809 pass.
+- [x] **Step 4: Run to verify it passes** — `node --test src/lib/routineLive.test.mjs` → 19 pass (10 + 9). This exact code and these exact tests were executed together during plan review and passed 19/19 under `TZ=UTC`, `TZ=America/Chicago`, and `TZ=Pacific/Auckland`; a red here means a transcription slip — diff your copy against the plan before changing either side. `npm test` → 809 pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/lib/routineLive.mjs src/lib/routineLive.test.mjs
@@ -1775,7 +1775,7 @@ git commit -m "feat(routine): routineLive part B — composeDay, make-up slot, o
 **Files:**
 - Create: `src/lib/routineTick.mjs`, `src/lib/routineTick.test.mjs`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```js
 import { test } from 'node:test';
@@ -1971,9 +1971,9 @@ test('classifySend + retryEligible', () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify it fails** — module-not-found.
+- [x] **Step 2: Run to verify it fails** — module-not-found.
 
-- [ ] **Step 3: Implement `src/lib/routineTick.mjs`**
+- [x] **Step 3: Implement `src/lib/routineTick.mjs`**
 
 ```js
 // Routine tick core (spec §6b). Pure — the route does IO around tickAgent().
@@ -2110,9 +2110,9 @@ export function retryEligible(row, now) {
 }
 ```
 
-- [ ] **Step 4: Run to verify it passes** — `node --test src/lib/routineTick.test.mjs` → 15 pass. `npm test` → 824 pass. The 13 original tests were executed with this exact implementation during plan review (13/13 under three server TZs); the two appended tests (DST pins, 23:50) were hand-traced only. On a red, hand-trace the rule in the spec before changing either side. Note in the commit message that the spec's §10 names (`computeDue`/`computeFreeze`) are folded into one `tickAgent` export.
+- [x] **Step 4: Run to verify it passes** — `node --test src/lib/routineTick.test.mjs` → 15 pass. `npm test` → 824 pass. The 13 original tests were executed with this exact implementation during plan review (13/13 under three server TZs); the two appended tests (DST pins, 23:50) were hand-traced only. On a red, hand-trace the rule in the spec before changing either side. Note in the commit message that the spec's §10 names (`computeDue`/`computeFreeze`) are folded into one `tickAgent` export.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/lib/routineTick.mjs src/lib/routineTick.test.mjs
@@ -2130,7 +2130,7 @@ git commit -m "feat(routine): routineTick — candidates, due window, cooldown s
 - Create: `src/lib/pushServer.js`, `src/app/api/routine/tick/route.js`
 - Modify: `src/lib/sourceInvariants.test.mjs` (append tripwires)
 
-- [ ] **Step 1: Append the failing tripwires to `src/lib/sourceInvariants.test.mjs`**
+- [x] **Step 1: Append the failing tripwires to `src/lib/sourceInvariants.test.mjs`**
 
 ```js
 // ---- Routine Builder tripwires (spec §12) ----
@@ -2184,9 +2184,9 @@ test('routine SQL functions are security definer, legacy-string safe, and servic
 });
 ```
 
-- [ ] **Step 2: Run to verify they fail** — `node --test src/lib/sourceInvariants.test.mjs` → 6 new failures (files missing).
+- [x] **Step 2: Run to verify they fail** — `node --test src/lib/sourceInvariants.test.mjs` → 6 new failures (files missing).
 
-- [ ] **Step 3: Write the four SQL files**
+- [x] **Step 3: Write the four SQL files**
 
 `supabase/routine-push-log-migration.sql`:
 ```sql
@@ -2363,7 +2363,7 @@ grant execute on function public.routine_day_write(uuid, jsonb) to service_role;
 ```
 then the `do $$ … $$;` block and the `select cron.schedule('prim-routine-tick', '* * * * *', $$ … $$);` block exactly as in spec §6a.
 
-- [ ] **Step 4: Write `src/lib/pushServer.js`**
+- [x] **Step 4: Write `src/lib/pushServer.js`**
 
 ```js
 /**
@@ -2435,7 +2435,7 @@ export async function pruneDeadSubs(supa, userId, dead) {
 }
 ```
 
-- [ ] **Step 5: Write `src/app/api/routine/tick/route.js`**
+- [x] **Step 5: Write `src/app/api/routine/tick/route.js`**
 
 ```js
 /**
@@ -2643,7 +2643,7 @@ export async function GET(req) {
 }
 ```
 
-- [ ] **Step 5b: Route-level behavior test** — `src/app/api/routine/tick/route.test.jsx` (Vitest lane; the route imports `@/` aliases and `web-push`). Spec §12 pins route behaviors the text tripwires cannot: a `bad_tz` agent's Phase B rows are never queried, a non-entitled id never reaches `.in()`, an unparseable value counts `bad_shape` while other agents still fire, and the claim → send → stamp flow. Build a thenable chain stub and pin those four:
+- [x] **Step 5b: Route-level behavior test** — `src/app/api/routine/tick/route.test.jsx` (Vitest lane; the route imports `@/` aliases and `web-push`). Spec §12 pins route behaviors the text tripwires cannot: a `bad_tz` agent's Phase B rows are never queried, a non-entitled id never reaches `.in()`, an unparseable value counts `bad_shape` while other agents still fire, and the claim → send → stamp flow. Build a thenable chain stub and pin those four:
 
 ```jsx
 import { test, expect, vi, beforeEach } from 'vitest';
@@ -2742,11 +2742,11 @@ test('a chunk whose blocks read fails is skipped, never composed as empty', asyn
 ```
 Adjust the `phaseBCallsFor` helper if the chain shape differs from the route as written; the assertion it serves is "no Phase-B query carries u2 or u3 in its `.in()` list". `vi.stubEnv` requires Vitest ≥ 0.26 (repo has 4.x).
 
-- [ ] **Step 6: Run the tripwires, the route test, and the full node lane**
+- [x] **Step 6: Run the tripwires, the route test, and the full node lane**
 
 Run: `node --test src/lib/sourceInvariants.test.mjs` → all pass. `npx vitest run src/app/api/routine/tick/route.test.jsx` → 4 pass. `npm test` → 830 pass. `npm run lint` → 0 errors.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add supabase/routine-push-log-migration.sql supabase/routine-appt-rows-function.sql supabase/routine-day-write-function.sql supabase/routine-tick-cron.sql src/lib/pushServer.js src/app/api/routine/tick/route.js src/app/api/routine/tick/route.test.jsx src/lib/sourceInvariants.test.mjs
@@ -2764,7 +2764,7 @@ git commit -m "feat(routine): SQL functions, pushServer, /api/routine/tick, trip
 - Modify: `src/app/layout.js:26-29` (metadata → generateMetadata), `public/sw.js:20-32` (notificationclick)
 - Modify: `src/lib/sourceInvariants.test.mjs` (append)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `src/lib/appMetadata.test.mjs`:
 ```js
@@ -2811,9 +2811,9 @@ test('sw.js: payload contract untouched; notificationclick picks the "/" client 
 });
 ```
 
-- [ ] **Step 2: Run to verify they fail** — `node --test src/lib/appMetadata.test.mjs src/lib/sourceInvariants.test.mjs` → 4 failures.
+- [x] **Step 2: Run to verify they fail** — `node --test src/lib/appMetadata.test.mjs src/lib/sourceInvariants.test.mjs` → 4 failures.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `src/lib/appMetadata.mjs`:
 ```js
@@ -2927,9 +2927,9 @@ self.addEventListener('notificationclick', (event) => {
 ```
 (`push` handler and its `title/body/tag/url/urgent` reads are untouched. **Plan deviation, record in the commit message and propose for spec rev 11 §8:** the `view` is derived from the push URL's `?view=` rather than the spec's hard-coded `'routine'`, so a reminders-cron push — whose URL has no `?view=` — only focuses instead of switching tabs. **Plan deviation (Task 9 quality review):** two more fixes on top of the above — (a) `client.focus()` is chained (`return client.focus().then(...)`) instead of fire-and-forget, so `event.waitUntil` actually waits for the `postMessage` step rather than resolving early; (b) the fallback default URL is `self.location.origin + '/'` instead of the hard-coded marketing origin, since every real sender already passes an absolute app URL and the default should never point at `www` post-cutover.)
 
-- [ ] **Step 4: Run to verify it passes** — `npm test` → 834 pass. `npm run build` must succeed (the `generateMetadata` conversion is the only Next-level change so far); if it fails, the error is in `layout.js` — fix there.
+- [x] **Step 4: Run to verify it passes** — `npm test` → 834 pass. `npm run build` must succeed (the `generateMetadata` conversion is the only Next-level change so far); if it fails, the error is in `layout.js` — fix there.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/lib/appMetadata.mjs src/lib/appMetadata.test.mjs src/app/layout.js public/manifest.webmanifest public/icons/prim-192.png public/icons/prim-512.png public/apple-touch-icon.png scripts/make-pwa-icons.mjs public/sw.js src/lib/sourceInvariants.test.mjs
@@ -2948,7 +2948,7 @@ git commit -m "feat(routine): PWA manifest + icons via generateMetadata, SW noti
 
 **Plan deviation (Task 10 quality review, 2026-09-14):** the original drop shipped with no test coverage for `usePointerDrag.js` and two real defects a fresh-context review caught: (1) the `window` `keydown` listener and in-flight drag state leaked past unmount (no cleanup effect) and (2) `finish`/`onPointerMove` closed over the `onStart`/`onMove`/`onEnd` props directly, so a parent re-render mid-drag rebuilt `onPointerUp`/`onPointerCancel` with a *new* `finish` but the stale `window` `keydown` listener from `start()` still called the *old* `finish`, and — worse — if the parent's `onEnd` reference changed mid-drag, `[onEnd]` in `finish`'s deps meant a fresh `finish` closure existed but nothing rebound the live drag's `s.onKey`, so Escape could reach a stale `onEnd`. Fixed by routing all three callbacks through a `cbs` ref (updated every render, read at call time) and adding an unmount effect that force-cancels an in-flight drag. `useMediaQuery.js` is rewritten on `useSyncExternalStore` to kill the `react-hooks/set-state-in-effect` lint warning from calling `setMatches` synchronously inside the effect body — same public behavior (SSR-safe, `false` until hydrated), no test changes needed for the original test. `routineStore.test.jsx`'s second test also had a dead assertion (`mem.set('leads_v5', ...)` against a key `loadRoutine` never reads) which is removed; a third test was added, backed by a new `fail` hoisted `Set` the mock's `getItem` checks, proving `loadRoutine` degrades safely on both corrupt settings JSON and a throwing storage read (never rejects).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `src/lib/routineStore.test.jsx`:
 ```jsx
@@ -3130,9 +3130,9 @@ test('second pointerdown mid-drag cancels the first instead of orphaning it', ()
 });
 ```
 
-- [ ] **Step 2: Run to verify they fail** — `npx vitest run src/lib/routineStore.test.jsx src/lib/useMediaQuery.test.jsx src/lib/usePointerDrag.test.jsx` → module-not-found.
+- [x] **Step 2: Run to verify they fail** — `npx vitest run src/lib/routineStore.test.jsx src/lib/useMediaQuery.test.jsx src/lib/usePointerDrag.test.jsx` → module-not-found.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `src/lib/routineStore.js` (pattern: `setupChecklist.js`):
 ```js
@@ -3240,9 +3240,9 @@ export function usePointerDrag({ onStart, onMove, onEnd, threshold = 4 } = {}) {
 }
 ```
 
-- [ ] **Step 4: Run to verify** — `npm run test:ui` → 102 pass (99 + 3). `npm test` unchanged.
+- [x] **Step 4: Run to verify** — `npm run test:ui` → 102 pass (99 + 3). `npm test` unchanged.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/lib/routineStore.js src/lib/routineStore.test.jsx src/lib/useMediaQuery.js src/lib/useMediaQuery.test.jsx src/lib/usePointerDrag.js
@@ -3285,7 +3285,7 @@ export const ICONS = { PhoneCall, RotateCcw, MessageSquare, Video, MapPin, Sunri
 | `TemplatePicker` | `{ templates, onPick(template, replace), replaceMode, onUndo, undoAvailable }` |
 | `WeeklyLookback` | `{ week }` (from `weeklyNotDone`) |
 
-- [ ] **Step 1: Write the failing component tests** (behavior only — no styling assertions beyond the spec's pinned classes)
+- [x] **Step 1: Write the failing component tests** (behavior only — no styling assertions beyond the spec's pinned classes)
 
 `NowCard.test.jsx` — cases from spec §12 UI lane:
 ```jsx
@@ -3440,9 +3440,9 @@ test('collapsed copy, expands to seven bars, no numbers on bars', () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify they fail** — `npm run test:ui` → 5 new files failing on import.
+- [x] **Step 2: Run to verify they fail** — `npm run test:ui` → 5 new files failing on import.
 
-- [ ] **Step 3: Implement the components.** Read spec §7b–§7h.5 in full before writing each one. Key rules restated:
+- [x] **Step 3: Implement the components.** Read spec §7b–§7h.5 in full before writing each one. Key rules restated:
 
 **`NowCard.jsx`** — `premium-card` sticky (`sticky top-2 z-10`), category tile left (`w-9 h-9 rounded-lg`, category tint; `bg-accent-gradient` only for `appt`), 2 px accent progress bar (`h-[2px]` absolute bottom, width = elapsed % of the current item). Phase copy exactly: upFirst → `"{next.name} · starts {formatTime(next.startMin)} · reminder {formatTime(fireMin)}"` (fireMin = startMin − lead; for appointments lead 5); now → small `NOW` label + `formatRange(current.startMin, current.endMin)`, name, `"{n} min left"`, `" · then {next name or 'an appointment'} at {time}"`; the large Done checkbox (`role="checkbox"`, `aria-label="Done"`, 22 px, emerald when checked → shows `"Done ✓ — then Break at 10:30"` until the block ends); for an appointment current the action is a `<button aria-label="Held">Held</button>` (visible word), rendered only when `started`; free → `"Free until {formatTime(next.startMin)}"` + `"{next.name} · reminder {time}"` + a "Start now" text button calling `onScrollTo(next.id)` — **but `next` can be `null`** (everything has ended and a block is still open or an offer is pending): then render just `"Free"` with no "until" line and no "Start now" button; dayDone → `"Day done"` + `"Nothing else on the routine today."`. Meta line: ONE `<div data-meta-line className="text-[11px] mt-2">` chosen in this order — (1) `offer.offerOpen && slot` → `<span className="text-slate-500">{formatMinutes(projected.unrecovered)} of {noun} displaced.</span> <button className="font-semibold text-accent">Add {formatRange(slot.startMin, slot.endMin)}</button> · <button className="text-slate-400">Skip</button>`; (2) `behind` → `<button className="text-slate-500">{behind.name} · still open</button>` (calls `onScrollTo`); (3) `projected.unrecovered > 0` → `<span className="text-slate-400">{formatMinutes(projected.unrecovered)} owed</span>`; (4) `!yesterday.hidden && yesterday.minutes > 0` → `<span className="text-slate-400">Yesterday · {formatMinutes(yesterday.minutes)} of {yesterday.noun} not done</span><button aria-label="Dismiss" className="ml-2 inline-flex h-5 w-5 sm:h-5 sm:w-5 min-h-[44px] sm:min-h-0 …">×</button>`. Noun for (1)/(3): from `projected.displacedByBlock` via `categoryOf(blockId)` prop: all dial → "dial time", all followup → "follow-up time", else "routine time". Strip (below the meta line, `text-[11px] text-slate-500 mt-2`), `strip` prop ∈ `'off'|'ios'|'denied'|'device'|'tz'|'days'|null` with copy: "Reminders are off" / "To get reminders on iPhone: tap Share → Add to Home Screen, then open PRIM from there and turn on notifications." / "Reminders are blocked in your browser settings" / "Reminders are off on this device" + `<button>Enable</button>` / "PRIM doesn't know your time zone" / "All days off". **Copy tripwire:** no literal containing behind / missed / streak.
 
@@ -3468,9 +3468,9 @@ test('collapsed copy, expands to seven bars, no numbers on bars', () => {
 
 **`WeeklyLookback.jsx`** — bottom of the page, `border-t border-slate-200/60 pt-3 mt-6`; a `<button>` row: `"This week · {formatMinutes(total)} not done"` (`text-[12px] font-medium text-slate-500 tabular-nums`) + `ChevronRight` (rotates when open); expanded (`FadeIn`, 96 px tall): seven `<div data-bar>` 20 px wide on a 44 px band, `height = clamp(2, minutes / 150 * 44, 44)` px, `bg-slate-300 dark:bg-slate-600`, yesterday's bar (`days[6]`) `bg-slate-400`, letters `"M T W T F S S"` mapped from each `day`'s weekday (`text-[10px] text-slate-400`). Nothing else — no tooltips, no numbers.
 
-- [ ] **Step 4: Run to verify** — `npm run test:ui` → all green (99 + 3 + 5 files' cases). Fix components, not tests, unless a test contradicts the spec.
+- [x] **Step 4: Run to verify** — `npm run test:ui` → all green (99 + 3 + 5 files' cases). Fix components, not tests, unless a test contradicts the spec.
 
-- [ ] **Step 5: Add the copy + amber tripwires** to `src/lib/sourceInvariants.test.mjs`:
+- [x] **Step 5: Add the copy + amber tripwires** to `src/lib/sourceInvariants.test.mjs`:
 ```js
 test('routine UI copy never says behind/missed/streak; amber hex nowhere in routine sources (spec §7b, §7d)', () => {
   const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
@@ -3486,7 +3486,7 @@ test('routine UI copy never says behind/missed/streak; amber hex nowhere in rout
 ```
 Run `npm test` → green.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/components/routine src/lib/sourceInvariants.test.mjs
@@ -3502,7 +3502,7 @@ git commit -m "feat(routine): components — NOW card, timeline, appointment car
 **Files:**
 - Create: `src/components/views/RoutineView.jsx`, `src/components/views/RoutineView.test.jsx`
 
-- [ ] **Step 1: Write the failing tests** (mock `@/lib/storage` in-memory as in Task 10, `@/lib/supabase` stub, `@/lib/push` stub with a controllable `isPushEnabled`, `@/lib/useBetaFeature` via a hoisted holder; fix the clock with `vi.useFakeTimers()` + `vi.setSystemTime(new Date('2026-09-08T14:42:00Z'))`; `Intl.DateTimeFormat().resolvedOptions().timeZone` → stub to `'America/Chicago'` via `vi.spyOn(Intl.DateTimeFormat.prototype, 'resolvedOptions')`):
+- [x] **Step 1: Write the failing tests** (mock `@/lib/storage` in-memory as in Task 10, `@/lib/supabase` stub, `@/lib/push` stub with a controllable `isPushEnabled`, `@/lib/useBetaFeature` via a hoisted holder; fix the clock with `vi.useFakeTimers()` + `vi.setSystemTime(new Date('2026-09-08T14:42:00Z'))`; `Intl.DateTimeFormat().resolvedOptions().timeZone` → stub to `'America/Chicago'` via `vi.spyOn(Intl.DateTimeFormat.prototype, 'resolvedOptions')`):
 
 ```jsx
 // cases (one test each, all from spec §12 UI lane):
@@ -3528,9 +3528,9 @@ Write them ALL as concrete tests BEFORE writing the component (the plan's TDD ru
 
 **Timers — two corrections from the Task 12 review, both load-bearing:** (1) `vi.useFakeTimers({ toFake: ['setTimeout','clearTimeout','setInterval','clearInterval','Date'] })` — Vitest 4 fakes `Intl` by DEFAULT (a mirrored fake implementation), which detaches the `resolvedOptions` spy from the constructor the view calls, and 5 of the 12 cases then silently run in the machine's real zone. (2) NO `shouldAdvanceTime`: leave `Date.now()` frozen between explicit `vi.advanceTimersByTime` calls so every stamp in a case is deterministic. Wait on CONDITIONS, never on a fixed number of `act` flushes — `const until = (fn) => vi.waitFor(async () => { await act(async () => {}); return fn(); })`; a negative assertion ("zero writes") must follow a positive wait that proves the async chain finished. RTL's `waitFor` cannot be used with this combination (it does not detect these fake timers, so its own timeout never fires and it hangs); `vi.waitFor` advances them itself.
 
-- [ ] **Step 2: Run to verify they fail** — component missing.
+- [x] **Step 2: Run to verify they fail** — component missing.
 
-- [ ] **Step 3: Implement `src/components/views/RoutineView.jsx`.** Skeleton (fill in against the spec — every handler below is a spec rule):
+- [x] **Step 3: Implement `src/components/views/RoutineView.jsx`.** Skeleton (fill in against the spec — every handler below is a spec rule):
 
 ```jsx
 'use client';
@@ -3761,9 +3761,9 @@ export default function RoutineView({ showToast, prospects = [], prospectSetting
 ```
 Notes for the implementer: `Timeline` receives `tiers` computed per block (`full` if any of its segments is `state.current` or `state.next`; `compact` for other future blocks; `spent` for past) and `visuals` from `blockVisualState` per block using the block's title segment's start and its last segment's end; `followupRows`/`followupCount` go to every `followup`-category title segment (`queue.slice(0, 4)` and `queue.length`). Editor saves: `onSave(patch)` → `updateBlock(block.id, patch)`; make-up editor → `removeMakeup`; frozen editor → `removeFromToday`. The block editor's attach options: `prospects.filter(p => !p.archivedAt && !day.some(r => r.kind === 'attach' && r.day === today && !r.deletedAt && r.prospectId === p.id && live.some(b => b.id === r.blockId)))` grouped by `settings.appointmentStages.includes(p.stage)` and excluding `SOLD`/`LOST` from group 2, sorted A–Z.
 
-- [ ] **Step 4: Run to verify** — `npm run test:ui` → all green (154 with the 14 cases above). `npm test` → 860 / 0, unchanged. `npm run lint` → 0 errors and no warning from a touched file (the memo deps warnings are the repo's accepted pattern; do not disable rules beyond the marked lines). Then run the RoutineView suite ~100× consecutively: a fixed-flush-budget suite passes in isolation and fails under load, so the repeat run is the real gate on the timer rules above.
+- [x] **Step 4: Run to verify** — `npm run test:ui` → all green (154 with the 14 cases above). `npm test` → 860 / 0, unchanged. `npm run lint` → 0 errors and no warning from a touched file (the memo deps warnings are the repo's accepted pattern; do not disable rules beyond the marked lines). Then run the RoutineView suite ~100× consecutively: a fixed-flush-budget suite passes in isolation and fails under load, so the repeat run is the real gate on the timer rules above.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/components/views/RoutineView.jsx src/components/views/RoutineView.test.jsx
@@ -3782,7 +3782,7 @@ git commit -m "feat(routine): RoutineView — load guard, clock, compose, client
   `src/components/LeadTracker.deeplink.test.jsx` (new), `src/components/views/ProspectsView.openById.test.jsx`
   (new), `src/lib/sourceInvariants.test.mjs` (append the icon-pair check only — see Step 1)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Node lane (`src/lib/navTabs.test.mjs`, new):
 ```js
@@ -3850,9 +3850,9 @@ that drops the whole query string, including params another component still owes
 Read through `new URL(window.location.href)`, `searchParams.delete()` your own key, and write back
 `url.toString()` — the house pattern at `ImpersonationBanner.jsx:23-26`.
 
-- [ ] **Step 2: Run to verify they fail.**
+- [x] **Step 2: Run to verify they fail.**
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `src/lib/constants.js` — insert after the `dashboard` line:
 ```js
@@ -3921,7 +3921,9 @@ Read through `new URL(window.location.href)`, `searchParams.delete()` your own k
 
 - [ ] **Step 4: Verify in the browser.** `npm run test:all` green, `npm run lint` 0 errors, `npm run build` succeeds. Then start the dev server (`.claude/launch.json` → `npm run dev`, port 3000), sign in with the admin test account, and check: the Routine tab renders after Overview; the empty state offers "Agent day" and "Blank"; picking Agent day paints 11 blocks; the strip at 1280 px shows all 15 tabs without wrapping (gate 16); `/?view=routine` lands on the tab and the URL is cleaned. Screenshot the timeline for the commit.
 
-- [ ] **Step 5: Commit**
+  > **Partially done (2026-09-15).** `npm run test:all`, `npm run lint` and `npm run build` are green, and the 1280 px strip was measured in a class-faithful replica (see the live-pass doc, gate 16). The authenticated walkthrough and the screenshot were **deliberately not done** — no agent on this build may sign in anywhere. They are gates for Juan in `2026-09-11-routine-builder-live-pass.md`.
+
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/lib/constants.js src/lib/navTabs.test.mjs src/components/LeadTracker.jsx src/components/views/ProspectsView.jsx src/lib/sourceInvariants.test.mjs
@@ -3938,7 +3940,7 @@ git commit -m "feat(routine): Routine tab, deep link (?view= + prim:view), openP
 - Create: `docs/superpowers/plans/2026-09-11-routine-builder-live-pass.md` (the operator checklist + SQL to paste + the 16 gates)
 - Modify: `docs/superpowers/plans/2026-09-11-routine-builder.md` (this file — tick the boxes)
 
-- [ ] **Step 1: Full green run and record the numbers**
+- [x] **Step 1: Full green run and record the numbers**
 
 ```bash
 npm run test:all
@@ -3947,7 +3949,7 @@ npm run build
 ```
 Expected: node lane ≥ 830, UI lane ≥ 115, lint 0 errors, build succeeds. Paste the three tails into the commit message of Step 4.
 
-- [ ] **Step 2: Mutation checks** — for each line below, apply the mutation, run the named test file, confirm it goes RED, then `git checkout -- <file>` **only for the mutated file** (working tree must be clean before starting: `git status --short` empty). Record PASS/FAIL per mutant in the live-pass doc.
+- [x] **Step 2: Mutation checks** — for each line below, apply the mutation, run the named test file, confirm it goes RED, then `git checkout -- <file>` **only for the mutated file** (working tree must be clean before starting: `git status --short` empty). Record PASS/FAIL per mutant in the live-pass doc.
 
 | # | Mutation (file) | Expected red test |
 |---|---|---|
@@ -3991,14 +3993,14 @@ Expected: node lane ≥ 830, UI lane ≥ 115, lint 0 errors, build succeeds. Pas
 
 Run each with `node --test src/lib/<file>.test.mjs` (node lane) or `npx vitest run <file>` for #36 (UI lane).
 
-- [ ] **Step 3: Write the live-pass handoff doc** `docs/superpowers/plans/2026-09-11-routine-builder-live-pass.md`:
+- [x] **Step 3: Write the live-pass handoff doc** `docs/superpowers/plans/2026-09-11-routine-builder-live-pass.md`:
    - §11 operator steps 0–5 as a checklist with the exact SQL file names and the gate-0 queries.
    - Every checkpoint from spec §12 "Live pass" — **18 rows: (0) through (16) plus (12b)** — each with: who does it (Juan / Claude), the exact action, the expected observation, and a checkbox. Gate 0 (pg_cron → pg_net → Vault → route) and 12b (the tick appends `appt` + `owed` while a phone checkbox survives) are the two most likely to be dropped; they are not optional.
    - The three spec deviations this plan introduces, for Juan to fold into rev 11: §4c `NOT_FOLLOWUP_WORDS` lookahead (Task 3), §7b breaks never set `behind` (Task 4), §8 the SW derives `view` from the push URL (Task 9); plus the defensive `MIGRATE_SKIP` (Task 0).
    - The mutation-check table from Step 2 with the recorded results.
    - The test baselines after Task 14.
 
-- [ ] **Step 4: Commit and push the branch**
+- [x] **Step 4: Commit and push the branch**
 
 ```bash
 git add docs/superpowers/plans/2026-09-11-routine-builder-live-pass.md docs/superpowers/plans/2026-09-11-routine-builder.md
