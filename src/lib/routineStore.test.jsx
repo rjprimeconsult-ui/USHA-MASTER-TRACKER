@@ -1,8 +1,9 @@
 import { test, expect, vi, beforeEach } from 'vitest';
 const mem = vi.hoisted(() => new Map());
+const fail = vi.hoisted(() => new Set());
 vi.mock('@/lib/storage', () => ({
   storage: {
-    getItem: async (k) => (mem.has(k) ? mem.get(k) : null),
+    getItem: async (k) => { if (fail.has(k)) throw new Error('boom'); return mem.has(k) ? mem.get(k) : null; },
     setItem: async (k, v) => { mem.set(k, v); return true; },
     removeItem: async (k) => { mem.delete(k); },
   },
@@ -10,7 +11,7 @@ vi.mock('@/lib/storage', () => ({
 import { loadRoutine, saveBlocks, saveDay, saveSettings } from './routineStore';
 import { ROUTINE_BLOCKS_KEY, ROUTINE_DAY_KEY, ROUTINE_SETTINGS_KEY } from './routineKeys.mjs';
 
-beforeEach(() => mem.clear());
+beforeEach(() => { mem.clear(); fail.clear(); });
 const NOW = '2026-09-08T15:00:00.000Z';
 
 test('loadRoutine: empty store → [] / [] / default settings (timezone null)', async () => {
@@ -23,11 +24,18 @@ test('save* write strings; loadRoutine sanitizes and tolerates corrupt JSON', as
   expect(typeof mem.get(ROUTINE_BLOCKS_KEY)).toBe('string');
   await saveDay([{ id: '2026-09-08|blk_aaaaaaa', kind: 'done', day: '2026-09-08', blockId: 'blk_aaaaaaa', status: 'done', at: NOW, updatedAt: NOW, deletedAt: null }]);
   await saveSettings({ timezone: 'America/Chicago', defaultMinutesBefore: 12, junk: true });
-  mem.set('leads_v5', '{not json');
   const r = await loadRoutine({ today: '2026-09-08', nowIso: NOW });
   expect(r.blocks[0].startMin).toBe(480); expect(r.day.length).toBe(1); expect(r.settings.defaultMinutesBefore).toBe(10); expect('junk' in r.settings).toBe(false);
   mem.set(ROUTINE_DAY_KEY, '{oops');
   const r2 = await loadRoutine({ today: '2026-09-08', nowIso: NOW });
   expect(r2.day).toEqual([]);
   expect(mem.has(ROUTINE_SETTINGS_KEY)).toBe(true);
+});
+
+test('corrupt settings default safely; a throwing storage read never rejects loadRoutine', async () => {
+  mem.set(ROUTINE_SETTINGS_KEY, '{oops');
+  const r = await loadRoutine({ today: '2026-09-08', nowIso: NOW });
+  expect(r.settings.timezone).toBe(null);
+  fail.add(ROUTINE_BLOCKS_KEY);
+  await expect(loadRoutine({ today: '2026-09-08', nowIso: NOW })).resolves.toMatchObject({ blocks: [] });
 });

@@ -1,16 +1,15 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
 // One breakpoint split for the whole view (spec §7a): 640 = Tailwind `sm:` =
-// the breakpoint GlassModal's `sheet` keys on. Guarded for SSR.
+// the breakpoint GlassModal's `sheet` keys on. Server snapshot (false) hydrates,
+// then React re-renders with the live value — no mismatch, no setState-in-effect.
+const canQuery = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function';
 export function useMediaQuery(query) {
-  const [matches, setMatches] = useState(() => (typeof window !== 'undefined' && window.matchMedia ? window.matchMedia(query).matches : false));
-  useEffect(() => {
-    if (typeof window === 'undefined' || !window.matchMedia) return undefined;
+  const subscribe = useCallback((onChange) => {
+    if (!canQuery()) return () => {};
     const mql = window.matchMedia(query);
-    const update = (e) => setMatches(e.matches);
-    setMatches(mql.matches);
-    mql.addEventListener('change', update);
-    return () => mql.removeEventListener('change', update);
+    mql.addEventListener('change', onChange);
+    return () => mql.removeEventListener('change', onChange);
   }, [query]);
-  return matches;
+  return useSyncExternalStore(subscribe, () => (canQuery() ? window.matchMedia(query).matches : false), () => false);
 }
