@@ -219,3 +219,15 @@ test('routine SQL functions are security definer, legacy-string safe, and servic
   assert.ok(w.includes("'expect'"), 'expected-version CAS');
   assert.ok(read('supabase/routine-tick-cron.sql').includes("'prim-routine-tick'"));
 });
+
+test('routine UI copy never says behind/missed/streak; amber hex nowhere in routine sources (spec §7b, §7d)', () => {
+  const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  for (const f of ['src/components/routine/NowCard.jsx', 'src/components/routine/Timeline.jsx', 'src/components/routine/TimelineBlock.jsx', 'src/components/routine/MobileRoutineList.jsx']) {
+    const src = strip(read(f));
+    const literals = src.match(/(['"`])(?:\\.|(?!\1)[^\\])*\1/g) || [];
+    for (const lit of literals) assert.ok(!/\b(behind|missed|streak)\b/i.test(lit), `${f}: forbidden copy in ${lit}`);
+  }
+  const dir = path.join(process.cwd(), 'src/components/routine');
+  for (const f of readdirSync(dir).filter((n) => !/\.test\.jsx?$/.test(n))) assert.ok(!strip(readFileSync(path.join(dir, f), 'utf8')).toLowerCase().includes('#f59e0b'), `${f} uses amber hex`);
+  for (const f of readdirSync(path.join(process.cwd(), 'src/lib')).filter((n) => n.startsWith('routine') && !n.endsWith('.test.mjs'))) assert.ok(!strip(read('src/lib/' + f)).toLowerCase().includes('#f59e0b'), f);
+});
