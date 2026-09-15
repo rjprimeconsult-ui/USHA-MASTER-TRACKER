@@ -219,6 +219,8 @@ export const NAV_TABS = [
   { id: 'team',         label: 'View My Team',  icon: 'Users' },
   { id: 'closed',       label: 'Closed Deals',  icon: 'CheckSquare' },
   { id: 'dashboard',    label: 'Overview',      icon: 'LayoutDashboard' },
+  // Routine Builder (spec 2026-09-07 §9) — directly after Overview.
+  { id: 'routine',      label: 'Routine',       icon: 'CalendarClock' },
   { id: 'associations', label: 'Associations',  icon: 'Repeat' },
   // Middle-block order per Juan (2026-07-22): Portal Clients → Prospects →
   // Pipeline → Blasts → Platforms → Books. Consumers navigate by id, so

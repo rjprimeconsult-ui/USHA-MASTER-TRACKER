@@ -231,3 +231,19 @@ test('routine UI copy never says behind/missed/streak; amber hex nowhere in rout
   for (const f of readdirSync(dir).filter((n) => !/\.test\.jsx?$/.test(n))) assert.ok(!strip(readFileSync(path.join(dir, f), 'utf8')).toLowerCase().includes('#f59e0b'), `${f} uses amber hex`);
   for (const f of readdirSync(path.join(process.cwd(), 'src/lib')).filter((n) => n.startsWith('routine') && !n.endsWith('.test.mjs'))) assert.ok(!strip(read('src/lib/' + f)).toLowerCase().includes('#f59e0b'), f);
 });
+
+test('LeadTracker wires the Routine tab: icon import + ICONS map + ViewMount + deep link + openProspect + ProspectsView props', () => {
+  // LeadTracker is far too heavy to render in jsdom, and the two halves of the
+  // icon wiring fail differently: a missing lucide import is a build error, a
+  // missing ICONS entry is a render throw at runtime only for agents who have
+  // the tab. Reading the source is the gate.
+  const src = read('src/components/LeadTracker.jsx');
+  assert.ok(/import \{[^}]*\bCalendarClock\b[^}]*\} from 'lucide-react'/.test(src), 'lucide import');
+  assert.ok(/const ICONS = \{[^}]*\bCalendarClock\b/.test(src), 'ICONS map');
+  assert.ok(src.includes("<ViewMount visible={view === 'routine'} viewKey=\"routine\">") && src.includes('<RoutineView'), 'ViewMount');
+  assert.ok(src.includes("window.history.replaceState(null, '', window.location.pathname)"), 'deep link cleans the URL');
+  assert.ok(src.includes("'prim:view'"), 'SW message listener');
+  assert.ok(src.includes('pendingProspectId') && src.includes('openProspectId={pendingProspectId}') && src.includes('onOpenConsumed='), 'prospect opener plumbing');
+  const pv = read('src/components/views/ProspectsView.jsx');
+  assert.ok(pv.includes('openProspectId') && pv.includes('onOpenConsumed'), 'ProspectsView props');
+});

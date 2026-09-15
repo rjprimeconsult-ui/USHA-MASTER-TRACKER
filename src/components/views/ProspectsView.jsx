@@ -1429,6 +1429,10 @@ export default function ProspectsView({
   followupDrafts = {},
   onSaveDraft,
   draftsEntitled = null,
+  // Open-by-id from another tab (Routine → prospect, spec §9): the id to open,
+  // and the callback that clears it so the request fires exactly once.
+  openProspectId = null,
+  onOpenConsumed,
   // readOnly: rendered inside the Team leader mirror with ANOTHER user's
   // data — hide every mutate affordance; viewing client records stays.
   readOnly = false,
@@ -1556,6 +1560,14 @@ export default function ProspectsView({
   // The bubble has its own Edit button which switches to the form.
   const onView = (p) => setViewing(p);
   const onEdit = (p) => { setViewing(null); setEditing(p); };
+  // Open-by-id from another tab (Routine → prospect). Unknown or archived ids
+  // are ignored; the request is consumed either way so it never re-fires.
+  useEffect(() => {
+    if (!openProspectId) return;
+    const p = prospects.find(x => x.id === openProspectId && !x.archivedAt);
+    if (p) onView(p);
+    onOpenConsumed?.();
+  }, [openProspectId]); // eslint-disable-line react-hooks/exhaustive-deps
   const onSave = (p) => {
     const isNew = !p.createdAt;
     const final = isNew ? { ...p, createdAt: new Date().toISOString() } : p;
