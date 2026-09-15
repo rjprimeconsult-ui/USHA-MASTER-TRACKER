@@ -70,3 +70,32 @@ test('accent ring on the current segment only: a split block with now inside the
   expect(ringed(roots[0])).toBe(false);
   expect(ringed(roots[1])).toBe(true);
 });
+
+test('the follow-up count opens the names sheet from any tier — the only route on a block that is not current or next', () => {
+  const fb = { ...block, id: 'f1', name: 'Follow-up queue', category: 'followup', paletteId: 'followup', startMin: 675, durationMin: 120 };
+  const item = { kind: 'segment', blockId: 'f1', block: fb, name: fb.name, category: 'followup', startMin: 675, endMin: 795, isTitle: true, index: 0, done: null };
+  const rows = Array.from({ length: 14 }, (_, i) => ({ id: 'p' + i, name: 'Name ' + i, age: `${i}d` }));
+
+  // compact: no name rows and no "+N more", so the count is the only door to the sheet.
+  const onNames = vi.fn();
+  const { container, rerender } = render(<TimelineBlock {...props} item={item} tier="compact" followupRows={rows} followupCount={14} onNames={onNames} />);
+  expect(screen.queryAllByText(/^Name /).length).toBe(0);
+  expect(screen.queryByText('+10 more')).toBeNull();
+  const countBtn = screen.getByRole('button', { name: 'Show 14 follow-ups' });
+  expect(countBtn.className).toContain('text-slate-400');
+  fireEvent.click(countBtn);
+  expect(onNames).toHaveBeenCalledTimes(1);
+  expect(container.querySelectorAll('[class*="amber"]').length).toBe(0);
+
+  // clicking the count must not also open the editor behind it
+  const onOpen = vi.fn();
+  rerender(<TimelineBlock {...props} item={item} tier="compact" followupRows={rows} followupCount={14} onNames={onNames} onOpen={onOpen} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Show 14 follow-ups' }));
+  expect(onOpen).not.toHaveBeenCalled();
+
+  // an empty queue has nothing to show, so the count is inert text
+  rerender(<TimelineBlock {...props} item={item} tier="compact" followupRows={[]} followupCount={0} onNames={onNames} />);
+  // the block root is itself role="button" and carries the block name, so match the count's own label
+  expect(screen.queryByRole('button', { name: /^Show \d+ follow-up/ })).toBeNull();
+  expect(screen.getByText('0')).toBeTruthy();
+});
