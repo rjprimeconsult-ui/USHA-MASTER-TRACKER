@@ -180,6 +180,7 @@ test('pushServer checks error after select and upsert and returns failures', () 
   const src = read('src/lib/pushServer.js');
   assert.ok(src.includes('if (error)') && src.includes('if (e2)'));
   assert.ok(src.includes('failures'));
+  assert.ok(count(src, /return \{ ok: false, error/g) >= 2, 'prune returns failures instead of throwing');
 });
 
 test('routineLive has exactly one Date.parse (parseAppointmentTime); routineTick has none', () => {

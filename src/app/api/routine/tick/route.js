@@ -172,10 +172,15 @@ export async function GET(req) {
         }
 
         // Step 6: send one push per item; step 7: stamp.
+        let live = subs;
         for (const { d, attempts } of toSend) {
           const payload = buildPayload(d, d.next, now, appUrl());
-          const r = await sendPushAll(subs, payload);
-          if (r.dead.length) { const pr = await pruneDeadSubs(supa, userId, r.dead); if (!pr.ok) summary.skipped.prune_failed++; }
+          const r = await sendPushAll(live, payload);
+          if (r.dead.length) {
+            const pr = await pruneDeadSubs(supa, userId, r.dead);
+            if (!pr.ok) summary.skipped.prune_failed++;
+            live = live.filter((s) => !r.dead.includes(s?.endpoint));
+          }
           const cls = classifySend({ sentCount: r.sentCount, failures: r.failures, allDead: r.sentCount === 0 && r.failures.length === 0 && r.dead.length > 0 });
           const stamp = { status: cls.status, attempts: cls.status === 'sent' ? attempts : Math.max(attempts, cls.attempts), error: cls.error };
           if (cls.status === 'sent') stamp.sent_at = new Date().toISOString();
@@ -192,7 +197,7 @@ export async function GET(req) {
   // Step 8: housekeeping at minute 7 of each hour.
   if (new Date(now).getUTCMinutes() === 7) {
     const { error: hErr } = await supa.from('routine_push_log').delete().lt('created_at', new Date(now - 30 * DAY_MS).toISOString());
-    if (hErr) summary.errors.push('housekeeping: ' + hErr.message);
+    if (hErr) summary.errors.push({ err: 'housekeeping: ' + hErr.message });
   }
   return Response.json(summary);
 }

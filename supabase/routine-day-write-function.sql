@@ -1,7 +1,7 @@
 -- Routine Builder — atomic per-record write into routine_day_v1 (spec §4b, §6b.4).
 -- Spec: docs/superpowers/specs/2026-09-07-routine-builder-design.md
 -- The tick NEVER rewrites the user_kv row. For each incoming record:
---   * append if no element with that id exists (a tombstone counts as existing);
+--   * append if no element with that id exists in the stored array or earlier in this batch;
 --   * replace iff rec.expect is non-null and equals the stored element's updatedAt
 --     (expected-version CAS — a client write that landed after the tick's read
 --     changes updatedAt and the replace is rejected);
@@ -65,7 +65,7 @@ begin
   for rec in select * from jsonb_array_elements(p_records) loop
     v_id := rec ->> 'id';
     if v_id is null then continue; end if;
-    if not exists (select 1 from jsonb_array_elements(v_stored) s where (s ->> 'id') = v_id) then
+    if not exists (select 1 from jsonb_array_elements(v_new) s where (s ->> 'id') = v_id) then
       v_new := v_new || jsonb_build_array(rec - 'expect');
       v_written := array_append(v_written, v_id);
     end if;
