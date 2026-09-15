@@ -748,3 +748,31 @@ test('18. a block the resolver cannot place anywhere is tombstoned WITH a "No ro
   await until(() => expect(showToast).toHaveBeenCalledWith('No room for Stretch'));
   expect(read(ROUTINE_BLOCKS_KEY).find((b) => b.id === 'blk_cc0001').deletedAt).toBeTruthy();
 });
+
+test('19. a load that straddles local midnight prunes at the PRE-await day, never ahead of commitDay (§4b)', async () => {
+  // Same zone on both sides this time — what skews here is the INSTANT. It is 23:59:50 in
+  // Chicago on the 7th; the storage read is held open across local midnight. commitDay's
+  // `today` comes from the `now` STATE, which the 30 s clock only starts refreshing after
+  // the load resolves, so a floor taken AFTER the await is a day ahead of the floor the very
+  // next commit will use — and that commit persists the extra day it dropped.
+  vi.setSystemTime(new Date('2026-09-08T04:59:50Z'));
+  seedSettings({ timezone: 'America/Chicago', timezoneMode: 'manual', followupStagesSeeded: true, remindersEnabled: true });
+  seedBlocks([mk({ id: 'blk_late01', startMin: 1380, durationMin: 60 })]); // 23:00–24:00
+  const days = ['2026-08-31', '2026-09-01'];
+  seedDay(days.map((d) => ({ id: `${d}|blk_old000`, kind: 'done', day: d, blockId: 'blk_old000', status: 'done', at: OLD, updatedAt: OLD, deletedAt: null })));
+
+  let release;
+  holder.gate = new Promise((r) => { release = r; });
+  const { container } = mount();
+  await settle();
+  await advance(20000); // midnight passes while loadRoutine is still in flight
+  release();
+  holder.gate = null;
+  await loaded();
+
+  // the block is the current one at 23:59, so NowCard renders a Done control too — scope
+  // to the timeline so this asserts on the prune, never on a selector.
+  fireEvent.click(within(container.querySelector('[data-routine-timeline]')).getByRole('checkbox', { name: 'Done' }));
+  await until(() => expect(writes(ROUTINE_DAY_KEY)).toBe(1));
+  expect(read(ROUTINE_DAY_KEY).map((r) => r.day).sort()).toEqual([...days, '2026-09-07']);
+});

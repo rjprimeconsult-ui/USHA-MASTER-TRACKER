@@ -187,7 +187,8 @@ export default function RoutineView({ showToast, prospects = [], prospectSetting
     let alive = true;
     (async () => {
       const dz = deviceZone();
-      const loadIso = stampNow();
+      const loadAt = Date.now();
+      const loadIso = new Date(loadAt).toISOString();
       const r = await loadRoutine({ nowIso: loadIso });
       if (!alive) return;
       let s = r.settings;
@@ -201,8 +202,12 @@ export default function RoutineView({ showToast, prospects = [], prospectSetting
       // the next commitDay writes that deletion to the cloud: silent, permanent loss.
       // With no zone at all there is no `today` and commitDay is a no-op, so the load
       // validates without pruning and the first commit after a zone exists prunes for real.
+      // `loadAt`, not Date.now(): commitDay's `today` comes from the `now` STATE, which the
+      // 30 s clock has not refreshed while this await was in flight. Taking the day key from
+      // the pre-await instant keeps the two within a render of each other, so a load that
+      // straddles local midnight can never prune a day the next commitDay would still keep.
       const zone = isValidTimeZone(s.timezone) ? s.timezone : null;
-      const day = sanitizeDay(r.dayRaw, zone ? localDayKey(Date.now(), zone) : EPOCH_DAY, loadIso);
+      const day = sanitizeDay(r.dayRaw, zone ? localDayKey(loadAt, zone) : EPOCH_DAY, loadIso);
       blocksRef.current = r.blocks; dayRef.current = day; settingsRef.current = s;
       setBlocks(r.blocks); setDay(day); setSettings(s); setLoaded(true);
       // The only settings write that is not an explicit edit: the one-time capture / seeding.
@@ -512,8 +517,11 @@ export default function RoutineView({ showToast, prospects = [], prospectSetting
   // TIMELINE hides — the ones whose stage is outside appointmentStages — so the time cannot
   // come from `items`, which is that same stage-filtered list and would leave the line
   // unreachable for exactly the population it was written for. Read the prospect's own
-  // wall-clock, in the routine's zone, and only when it lands today; `items` stays as the
-  // fallback for a frozen or attached card, which carries no appointmentTime of its own.
+  // wall-clock, in the routine's zone, and only when it lands today; `items` is the fallback
+  // for a row with no parseable time of its own — a frozen or attached card. Note the order:
+  // a prospect can reach BOTH lists only if one stage id sits in appointmentStages AND
+  // followupStages (both are agent-editable), and then an edited time shows here while the
+  // timeline still shows the frozen card. The record is the newer intent, so the record wins.
   const apptTimeOf = (id) => {
     const p = prospects.find((x) => x && x.id === id);
     const parsed = tz && p ? parseAppointmentTime(p.appointmentTime, tz) : null;
