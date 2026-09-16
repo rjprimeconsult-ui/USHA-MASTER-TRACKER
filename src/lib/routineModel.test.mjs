@@ -268,3 +268,16 @@ test('sanitizeBlocks reports the blocks resolveOverlaps could not place, by name
   sanitizeBlocks(many, NOW, (names) => capped.push(names));
   assert.deepEqual(capped, []);
 });
+
+test('sanitizeBlocks refuses day records: an event can never be laundered into a routine block', () => {
+  const block = { id: 'blk_aaaaaaa', name: 'Dial block', paletteId: 'dial', category: 'dial', startMin: 540, durationMin: 60, remind: { enabled: true, minutesBefore: 5 }, note: '', deletedAt: null, createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z' };
+  const event = { id: 'ev_1234567', kind: 'event', day: '2026-09-16', startMin: 570, durationMin: 30, name: 'Call the landlord', remind: { enabled: true, minutesBefore: 5 }, updatedAt: '2026-09-16T00:00:00.000Z', deletedAt: null };
+  const makeup = { id: 'mk_7654321', kind: 'makeup', day: '2026-09-16', startMin: 750, durationMin: 30, category: 'dial', name: 'Dial block (make-up)', ofBlockId: 'blk_aaaaaaa', updatedAt: '2026-09-16T00:00:00.000Z', deletedAt: null };
+
+  const out = sanitizeBlocks([block, event, makeup], '2026-09-16T12:00:00.000Z');
+  assert.deepEqual(out.map(b => b.id), ['blk_aaaaaaa']);
+  // and the real block is untouched by their presence
+  assert.equal(out[0].startMin, 540);
+  assert.equal(out[0].durationMin, 60);
+  assert.equal(out[0].name, 'Dial block');
+});

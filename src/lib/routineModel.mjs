@@ -111,7 +111,15 @@ export function resolveOverlaps(live) {
 // none of them has to change. The 60-live cap tombstones through a different rule and stays
 // silent — §4a scopes the toast to the resolver.
 export function sanitizeBlocks(blocks, nowIso = new Date().toISOString(), onDropped = null) {
-  const deduped = dedupeNewest(Array.isArray(blocks) ? blocks : []).map(clampBlock);
+  // A day record must never be laundered into a routine block. clampBlock builds its result
+  // from a field whitelist, so an `event` or `makeup` fed in here would come back looking like
+  // a permanent template block with its kind and day silently stripped — which is exactly the
+  // bug one-off events exist to prevent, arriving by the back door. No call site does this
+  // today; the guard makes the isolation structural rather than a matter of call-site
+  // discipline. Keying on `kind` is precise and safe: every day record carries one and no
+  // block ever has, so a legacy block with an unexpected id shape is never at risk.
+  const blockShaped = (Array.isArray(blocks) ? blocks : []).filter((b) => b && !b.kind);
+  const deduped = dedupeNewest(blockShaped).map(clampBlock);
   const tombstones = deduped.filter(b => b.deletedAt && !olderThan(b.deletedAt, nowIso, SEVEN_DAYS));
   let live = deduped.filter(b => !b.deletedAt);
   if (live.length > MAX_LIVE) {
