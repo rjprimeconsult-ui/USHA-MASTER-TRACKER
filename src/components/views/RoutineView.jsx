@@ -20,9 +20,9 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from 'react';
 import { Lock, X } from 'lucide-react';
 import { loadRoutine, saveBlocks, saveDay, saveSettings } from '@/lib/routineStore';
-import { sanitizeBlocks, liveBlocks, sanitizeDay, sanitizeSettings, seedFollowupStages, applyTemplate, instantiateTemplate, dayUid } from '@/lib/routineModel.mjs';
+import { sanitizeBlocks, liveBlocks, sanitizeDay, sanitizeSettings, seedFollowupStages, applyTemplate, instantiateTemplate, dayUid, eventUid } from '@/lib/routineModel.mjs';
 import { todaysAppointments, composeDay, findMakeupSlot, reconcileOwed, offerState, applyOwedDecision, owedId, apptRecordId, followupQueue, yesterdayMiss, weeklyNotDone, parseAppointmentTime } from '@/lib/routineLive.mjs';
-import { isValidTimeZone, localDayKey, localMinuteOfDay, localWeekday } from '@/lib/tz.mjs';
+import { isValidTimeZone, localDayKey, localMinuteOfDay, localWeekday, zonedTimeToUtc } from '@/lib/tz.mjs';
 import { nowState, blockVisualState } from '@/lib/routineClock.mjs';
 import { bounds as laneBoundsOf } from '@/lib/routineLayout.mjs';
 import { paletteById } from '@/lib/routinePalette.mjs';
@@ -36,7 +36,7 @@ import RoutineHeader from '../routine/RoutineHeader';
 import NowCard from '../routine/NowCard';
 import Timeline from '../routine/Timeline';
 import MobileRoutineList from '../routine/MobileRoutineList';
-import BlockPalette from '../routine/BlockPalette';
+import BlockPalette, { EVENT_PALETTE_ID } from '../routine/BlockPalette';
 import BlockEditorSheet from '../routine/BlockEditorSheet';
 import FollowupSheet from '../routine/FollowupSheet';
 import RoutineSettingsSheet from '../routine/RoutineSettingsSheet';
@@ -48,6 +48,9 @@ const IDLE_STATE = Object.freeze({ phase: 'free', current: null, next: null, beh
 const NO_YESTERDAY = Object.freeze({ minutes: 0, byBlock: {}, byCategory: {}, noun: 'routine time', hidden: true });
 const NO_WEEK = Object.freeze({ total: 0, days: [] });
 const DELETE_UNDO_MS = 5000;
+// rev-11 (spec 2026-09-07 §4b/§5): a one-off event's starter duration — editable afterward
+// through the sheet, exactly like a block's.
+const DEFAULT_EVENT_DUR = 30;
 // A day key whose 7-day floor (1969-12-25) can never prune anything — the load path's
 // stand-in for "no zone resolved yet", where sanitizeDay must validate but not prune.
 const EPOCH_DAY = '1970-01-01';
@@ -242,12 +245,20 @@ export default function RoutineView({ showToast, prospects = [], prospectSetting
   const liveForCompose = useMemo(() => (today && settings.activeDays.includes(localWeekday(today)) ? live : []), [live, today, settings.activeDays]);
   const items = useMemo(() => (tz ? todaysAppointments({ prospectRows: prospects, blocks: live, dayRecords: day, settings, tz, now }) : []), [prospects, live, day, settings, tz, now]);
   const makeups = useMemo(() => day.filter((r) => r.kind === 'makeup' && r.day === today && !r.deletedAt), [day, today]);
-  const projected = useMemo(() => (today ? composeDay({ live: liveForCompose, appointments: items, makeups, dayRecords: day, nowMin, today }) : EMPTY_COMPOSE), [liveForCompose, items, makeups, day, nowMin, today]);
+  // rev-11 one-off events (spec 2026-09-07 §4b/§7h.3): a routine_day_v1 record — never a
+  // block — that joins the SAME displacing-cut pipeline as an appointment. Both writers
+  // (this view and the tick) derive it identically. `projected` shows every today's event
+  // (future included, for rendering/reminders); `realized` — same split as appointments —
+  // only counts one whose own start instant has actually passed, so a future event does not
+  // yet count as lost routine time.
+  const events = useMemo(() => day.filter((r) => r.kind === 'event' && r.day === today && !r.deletedAt), [day, today]);
+  const projected = useMemo(() => (today ? composeDay({ live: liveForCompose, appointments: items, makeups, events, dayRecords: day, nowMin, today }) : EMPTY_COMPOSE), [liveForCompose, items, makeups, events, day, nowMin, today]);
   const startedItems = useMemo(() => items.filter((i) => i.instant <= now), [items, now]);
-  const realized = useMemo(() => (today ? composeDay({ live: liveForCompose, appointments: startedItems, makeups, dayRecords: day, nowMin, today }) : EMPTY_COMPOSE), [liveForCompose, startedItems, makeups, day, nowMin, today]);
+  const startedEvents = useMemo(() => (tz && today ? events.filter((e) => zonedTimeToUtc(today, e.startMin, tz) <= now) : []), [events, tz, today, now]);
+  const realized = useMemo(() => (today ? composeDay({ live: liveForCompose, appointments: startedItems, makeups, events: startedEvents, dayRecords: day, nowMin, today }) : EMPTY_COMPOSE), [liveForCompose, startedItems, makeups, startedEvents, day, nowMin, today]);
   const storedOwed = useMemo(() => (today ? day.find((r) => r.kind === 'owed' && r.id === owedId(today) && !r.deletedAt) || null : null), [day, today]);
   const offer = useMemo(() => offerState(storedOwed, projected), [storedOwed, projected]);
-  const slot = useMemo(() => (today && offer.offerOpen ? findMakeupSlot({ live: liveForCompose, appointments: items, makeups, dayRecords: day, makeupMin: offer.makeupMin, nowMin, today }) : null), [offer, liveForCompose, items, makeups, day, nowMin, today]);
+  const slot = useMemo(() => (today && offer.offerOpen ? findMakeupSlot({ live: liveForCompose, appointments: items, makeups, events, dayRecords: day, makeupMin: offer.makeupMin, nowMin, today }) : null), [offer, liveForCompose, items, makeups, events, day, nowMin, today]);
   const state = useMemo(() => (today ? nowState({ items: projected.items, dayRecords: day, nowMin, today, offerBlocked: offer.offerOpen && !!slot }) : IDLE_STATE), [projected, day, nowMin, today, offer, slot]);
   const queue = useMemo(() => (tz ? followupQueue(prospects, settings.followupStages, tz, now) : []), [prospects, settings.followupStages, tz, now]);
   const followup = useMemo(() => ({ rows: queue.slice(0, 4), count: queue.length }), [queue]);
@@ -261,7 +272,7 @@ export default function RoutineView({ showToast, prospects = [], prospectSetting
   const { tiers, visuals } = useMemo(() => {
     const span = new Map();
     for (const it of projected.items) {
-      if (it.kind === 'appt') continue;
+      if (it.kind === 'appt' || it.kind === 'event') continue; // neither has a blockId/makeupId to key on
       const k = it.blockId ?? it.makeupId;
       const prev = span.get(k);
       span.set(k, {
@@ -432,8 +443,37 @@ export default function RoutineView({ showToast, prospects = [], prospectSetting
     }
     return cursor + durationMin <= 1440 ? cursor : null;
   };
+  // rev-11 (spec 2026-09-07 §4b/§5): a one-off event lives ONLY in routine_day_v1 — it is
+  // structurally incapable of editing routine_blocks_v1. Placed AT the clicked/dropped
+  // minute (clamped + snapped only) — never nearestFit, never a slide to a free gap, never
+  // a displacement of a block: that is the bug this feature exists to fix. A bare click
+  // (no minute — the palette chip, not a drop) places it at "now".
+  const addEvent = (startMin = null) => {
+    if (!today) return;
+    const dur = DEFAULT_EVENT_DUR;
+    const s = Math.max(0, Math.min(1440 - dur, snap5(startMin == null ? nowMin : startMin)));
+    const stamp = stampNow();
+    const rec = { id: eventUid(), kind: 'event', day: today, startMin: s, durationMin: dur, name: 'Event', remind: { enabled: true, minutesBefore: settings.defaultMinutesBefore }, updatedAt: stamp, deletedAt: null };
+    commitDay((prev) => [...prev, rec]);
+    setShowCanvas(true);
+    setEditing({ kind: 'event', id: rec.id, anchor: null });
+  };
+  const updateEvent = (id, patch) => {
+    if (!id || !patch || !dayRef.current.some((r) => r.id === id && r.kind === 'event' && !r.deletedAt)) return;
+    const stamp = stampNow();
+    const allowed = {};
+    for (const k of ['name', 'startMin', 'durationMin', 'remind']) if (k in patch) allowed[k] = patch[k];
+    if (!Object.keys(allowed).length) return;
+    commitDay((prev) => prev.map((r) => (r.id === id ? { ...r, ...allowed, updatedAt: stamp } : r)));
+  };
+  const removeEvent = (id) => {
+    if (!id) return;
+    const stamp = stampNow();
+    commitDay((prev) => prev.map((r) => (r.id === id && r.kind === 'event' ? { ...r, deletedAt: stamp, updatedAt: stamp } : r)));
+  };
   // Palette click → the next free slot at/after now; drop / "+ hh:mm" pill → nearest fit around that minute.
   const addFromPalette = (paletteId, startMin = null) => {
+    if (paletteId === EVENT_PALETTE_ID) { addEvent(startMin); return; }
     const p = paletteById(paletteId);
     if (!p) return;
     const s = startMin == null ? nextFreeSlot(p.defaultMin) : nearestFit(startMin, p.defaultMin, live, slideWindow(p.defaultMin));
@@ -501,6 +541,7 @@ export default function RoutineView({ showToast, prospects = [], prospectSetting
   const openEditor = (item, rect) => {
     if (!item) return;
     if (item.kind === 'makeup') { if (makeups.some((m) => m.id === item.makeupId)) setEditing({ kind: 'makeup', id: item.makeupId, anchor: rect || null }); return; }
+    if (item.kind === 'event') { if (events.some((e) => e.id === item.id)) setEditing({ kind: 'event', id: item.id, anchor: rect || null }); return; }
     if (item.blockId && live.some((b) => b.id === item.blockId)) setEditing({ kind: 'block', id: item.blockId, anchor: rect || null });
   };
   const deleteItem = (item) => (item?.kind === 'makeup' ? removeMakeup(item.makeupId) : deleteBlock(item?.blockId));
@@ -530,7 +571,9 @@ export default function RoutineView({ showToast, prospects = [], prospectSetting
   };
 
   // ---- editor subject (derived from the live documents, so a deleted block closes the sheet) ----
-  const editingRec = editing ? (editing.kind === 'makeup' ? makeups.find((m) => m.id === editing.id) : live.find((b) => b.id === editing.id)) || null : null;
+  const editingRec = editing
+    ? (editing.kind === 'makeup' ? makeups.find((m) => m.id === editing.id) : editing.kind === 'event' ? events.find((e) => e.id === editing.id) : live.find((b) => b.id === editing.id)) || null
+    : null;
   const attachOptions = useMemo(() => {
     if (!today || !editing || editing.kind !== 'block' || editingRec?.category !== 'appt') return [];
     const taken = new Set(day.filter((r) => r.kind === 'attach' && r.day === today && !r.deletedAt && r.prospectId != null && live.some((b) => b.id === r.blockId)).map((r) => r.prospectId));
@@ -560,7 +603,7 @@ export default function RoutineView({ showToast, prospects = [], prospectSetting
   if (!entitled) return <LockedCard reason={reason} />;
   if (!loaded) return <Skeleton />;
 
-  const empty = !showCanvas && live.length === 0 && makeups.length === 0 && items.length === 0;
+  const empty = !showCanvas && live.length === 0 && makeups.length === 0 && items.length === 0 && events.length === 0;
   const currentStarted = state.current?.kind === 'appt' ? startedOf(state.current) : true;
 
   return (
@@ -610,7 +653,8 @@ export default function RoutineView({ showToast, prospects = [], prospectSetting
             onToggle={toggleDone} onOpen={(item) => openEditor(item, null)} onNames={() => setNamesOpen(true)}
             onHeld={held} onOpenProspect={openProspect} onAdd={(id) => addFromPalette(id)}
             onSkipToday={(it) => skipToday(it?.blockId)} onDelete={(it) => deleteBlock(it?.blockId)}
-            onRemoveMakeup={(it) => removeMakeup(it?.makeupId)} onDetach={detach} onRemoveAppt={removeFromToday}
+            onRemoveMakeup={(it) => removeMakeup(it?.makeupId)} onRemoveEvent={(it) => removeEvent(it?.id)}
+            onDetach={detach} onRemoveAppt={removeFromToday}
             startedOf={startedOf}
           />
         </div>
@@ -622,15 +666,17 @@ export default function RoutineView({ showToast, prospects = [], prospectSetting
         open={!!editingRec}
         block={editingRec}
         isMakeup={editing?.kind === 'makeup'}
+        isEvent={editing?.kind === 'event'}
         sheet={!isDesktop}
         anchor={editing?.anchor || null}
         attachOptions={attachOptions}
         defaultMinutesBefore={settings.defaultMinutesBefore}
-        onSave={(patch) => (editing?.kind === 'makeup' ? updateMakeup(editing.id, patch) : updateBlock(editing?.id, patch))}
+        onSave={(patch) => (editing?.kind === 'makeup' ? updateMakeup(editing.id, patch) : editing?.kind === 'event' ? updateEvent(editing.id, patch) : updateBlock(editing?.id, patch))}
         onDelete={() => deleteBlock(editing?.id)}
         onSkipToday={() => skipToday(editing?.id)}
         onAttach={(prospectId) => attach(editing?.id, prospectId)}
         onRemoveMakeup={() => removeMakeup(editing?.id)}
+        onRemoveEvent={() => removeEvent(editing?.id)}
         onClose={() => setEditing(null)}
       />
 

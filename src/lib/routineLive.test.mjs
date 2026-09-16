@@ -381,3 +381,85 @@ test('part A pins: cross-day appt records never suppress; attach only on appt bl
   // sort is correct and untouched. Flagged for the operator to confirm.
   assert.deepEqual(followupQueue([mk7('a', sixDays), mk7('b', eightDays)], ['FOLLOWUP_LATER'], CHI, NOW).map(r => r.age), ['—', 'new']);
 });
+
+// ---------------- rev-11: one-off events (spec 2026-09-07 §4b, §7h.3) ----------------
+// An event is a DAY RECORD (routine_day_v1), never a block: it must never be able to
+// reach routine_blocks_v1 or trigger resolveOverlaps' rearrangement of the template.
+// composeDay proves this at the pure-function boundary — the `live` blocks argument
+// passed in must come back byte-identical, because composeDay never returns (and a
+// caller therefore never persists) a mutated copy of it.
+const evt = (id, startMin, durationMin, o = {}) => ({ id, kind: 'event', day: TODAY, startMin, durationMin, name: 'Call Jane back', remind: { enabled: true, minutesBefore: 5 }, updatedAt: 'x', deletedAt: null, ...o });
+
+test('composeDay: an event displaces a routine block exactly like an appointment (tail cut) and never mutates the live block records it is given', () => {
+  const liveSnapshot = starter();
+  const before = starter(); // a fresh, independently-built reference — deep-equal, not the same object
+  assert.deepEqual(liveSnapshot, before);
+  const tail = composeDay({ live: liveSnapshot, appointments: [], makeups: [], events: [evt('ev_0000001', 600, 30)], dayRecords: [], nowMin: 582, today: TODAY });
+  assert.deepEqual(segsOf(tail, DIAL_AM), [[510, 600]]);
+  assert.deepEqual(tail.displacedByBlock, { [DIAL_AM]: 30 });
+  assert.equal(tail.unrecovered, 30);
+  // the whole point of the feature: routine_blocks_v1's would-be payload is untouched
+  assert.deepEqual(liveSnapshot, before);
+});
+
+test('composeDay: event displacement mirrors appointment displacement exactly — head, mid, and whole-block eaten', () => {
+  const headA = compose({ appointments: [ap('a', 510)] });
+  const headE = compose({ events: [evt('ev_h', 510, 30)] });
+  assert.deepEqual(segsOf(headE, DIAL_AM), segsOf(headA, DIAL_AM));
+  assert.deepEqual(headE.displacedByBlock, headA.displacedByBlock);
+
+  const midA = compose({ appointments: [ap('a', 540)] });
+  const midE = compose({ events: [evt('ev_m', 540, 30)] });
+  assert.deepEqual(segsOf(midE, DIAL_AM), segsOf(midA, DIAL_AM));
+  assert.deepEqual(midE.displacedByBlock, midA.displacedByBlock);
+
+  const wholeA = compose({ appointments: [ap('a', 510, 120)] });
+  const wholeE = compose({ events: [evt('ev_w', 510, 120)] });
+  assert.deepEqual(segsOf(wholeE, DIAL_AM), []);
+  assert.equal(wholeE.displacedByBlock[DIAL_AM], 120);
+  assert.deepEqual(wholeE.displacedByBlock, wholeA.displacedByBlock);
+});
+
+test('composeDay: an event and an overlapping appointment join the SAME displacing-cut union (counted once, like two overlapping appointments)', () => {
+  // appointment 10:00–10:20 + event 10:10–10:40 → union 10:00–10:40 (40 min) cuts the same
+  // way a single 40-min displacing interval would — not 20+30=50.
+  const r = compose({ appointments: [ap('a', 600, 20)], events: [evt('ev_0000002', 610, 30)] });
+  assert.deepEqual(segsOf(r, DIAL_AM), [[510, 600]]);
+  assert.equal(r.displacedByBlock[DIAL_AM], 30);
+});
+
+test('composeDay: events render as their own item kind, scoped to today, tombstones dropped, end clamped to 1440, and raise a loss marker like an appointment', () => {
+  const r = compose({ events: [evt('ev_0000003', 600, 30)] });
+  const evItems = r.items.filter(i => i.kind === 'event');
+  assert.equal(evItems.length, 1);
+  assert.deepEqual([evItems[0].id, evItems[0].startMin, evItems[0].endMin, evItems[0].name], ['ev_0000003', 600, 630, 'Call Jane back']);
+  assert.deepEqual(r.markers.filter(m => m.blockId === DIAL_AM).map(m => [m.minutes, m.segmentIndex]), [[30, 0]]);
+
+  const otherDay = compose({ events: [evt('ev_0000004', 600, 30, { day: '2026-09-07' })] });
+  assert.deepEqual(otherDay.items.filter(i => i.kind === 'event'), []);
+  assert.equal(otherDay.unrecovered, 0);
+
+  const tombstoned = compose({ events: [evt('ev_0000005', 600, 30, { deletedAt: 'x' })] });
+  assert.deepEqual(tombstoned.items.filter(i => i.kind === 'event'), []);
+  assert.equal(tombstoned.unrecovered, 0);
+
+  const late = compose({ events: [evt('ev_0000006', 1425, 30)] });
+  assert.equal(late.items.find(i => i.kind === 'event').endMin, 1440);
+});
+
+test('composeDay: an event cuts a live make-up for rendering, the same way an appointment does (it is a displacing interval)', () => {
+  const r = compose({ appointments: [ap('a', 540)], makeups: [mk('mk_0000001', 750, 30)], events: [evt('ev_0000007', 760, 10)] });
+  assert.deepEqual(mkSegsOf(r, 'mk_0000001'), [[750, 760], [770, 780]]);
+  assert.equal(r.displacedByMakeup['mk_0000001'], 10);
+});
+
+test('findMakeupSlot: an event counts as covered — a make-up is never offered on top of it; a different-day or tombstoned event never blocks a slot', () => {
+  const live = starter();
+  const slot = (o) => findMakeupSlot({ live, appointments: [ap('a', 540)], makeups: [], events: [], dayRecords: [], makeupMin: 30, nowMin: 582, today: TODAY, ...o });
+  assert.deepEqual(slot(), { startMin: 750, endMin: 780 });
+  // the event eats 750–780 out of the 45-min Lunch gap, leaving only three 15-min remnants
+  // (630–645, 780–795, 915–930) — none reach makeupMin 30, so no slot exists anywhere
+  assert.equal(slot({ events: [evt('ev_0000008', 750, 30)] }), null);
+  assert.deepEqual(slot({ events: [evt('ev_0000009', 750, 30, { day: '2026-09-07' })] }), { startMin: 750, endMin: 780 });
+  assert.deepEqual(slot({ events: [evt('ev_0000010', 750, 30, { deletedAt: 'x' })] }), { startMin: 750, endMin: 780 });
+});

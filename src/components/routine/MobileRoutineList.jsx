@@ -20,6 +20,7 @@ import { formatTime, formatRange, formatMinutes } from '@/lib/routineClock.mjs';
 import { usePointerDrag } from '@/lib/usePointerDrag';
 import { LOSS, tint, paletteFor, leadMinutes } from './constants';
 import AppointmentCard from './AppointmentCard';
+import EventCard from './EventCard';
 import BlockPalette from './BlockPalette';
 
 const LONG_PRESS_MS = 500;
@@ -141,6 +142,18 @@ function ApptRow({ item, started, onHeld, onOpenProspect, onMenu }) {
   );
 }
 
+// rev-11 (spec 2026-09-07 §5): a one-off, today-only routine_day_v1 record — never a
+// block. Tap opens the editor; long-press offers only "Remove event" (menuFor below),
+// mirroring the make-up row's single "Remove" action.
+function EventRow({ item, onOpen, onMenu }) {
+  const press = useLongPress(() => onMenu?.(item));
+  return (
+    <div {...press} className="select-none">
+      <EventCard compact item={item} onOpen={onOpen} />
+    </div>
+  );
+}
+
 function NowDivider({ nowMin }) {
   return (
     <div className="flex items-center gap-2 py-0.5" aria-hidden="true">
@@ -157,13 +170,14 @@ function menuFor(item, started) {
     return [];
   }
   if (item.kind === 'makeup') return [{ id: 'removeMakeup', label: 'Remove', danger: true }];
+  if (item.kind === 'event') return [{ id: 'removeEvent', label: 'Remove event', danger: true }];
   return [{ id: 'skip', label: 'Skip today' }, { id: 'delete', label: 'Delete', danger: true }];
 }
 
 export default function MobileRoutineList({
   items = [], markers = [], tiers = {}, visuals = {}, followup = { rows: [], count: 0 }, nowMin = 0, isDark = false,
   onToggle, onOpen, onNames, onHeld, onOpenProspect, onAdd, onLongPress,
-  onSkipToday, onDelete, onRemoveMakeup, onDetach, onRemoveAppt, startedOf,
+  onSkipToday, onDelete, onRemoveMakeup, onRemoveEvent, onDetach, onRemoveAppt, startedOf,
 }) {
   const [menuItem, setMenuItem] = useState(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -176,6 +190,7 @@ export default function MobileRoutineList({
     if (id === 'skip') onSkipToday?.(it);
     else if (id === 'delete') onDelete?.(it);
     else if (id === 'removeMakeup') onRemoveMakeup?.(it);
+    else if (id === 'removeEvent') onRemoveEvent?.(it);
     else if (id === 'detach') onDetach?.(it);
     else if (id === 'removeAppt') onRemoveAppt?.(it);
   };
@@ -186,6 +201,10 @@ export default function MobileRoutineList({
     if (i === dividerBefore) rows.push(<NowDivider key="now" nowMin={nowMin} />);
     if (it.kind === 'appt') {
       rows.push(<ApptRow key={it.id} item={it} started={isStarted(it)} onHeld={onHeld} onOpenProspect={onOpenProspect} onMenu={openMenu} />);
+      return;
+    }
+    if (it.kind === 'event') {
+      rows.push(<EventRow key={it.id} item={it} onOpen={onOpen} onMenu={openMenu} />);
       return;
     }
     const ownerId = it.blockId ?? it.makeupId;

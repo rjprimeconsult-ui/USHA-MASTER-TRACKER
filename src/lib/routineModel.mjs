@@ -15,6 +15,7 @@ function base36(n) {
 }
 export function uid() { return 'blk_' + base36(7); }
 export function dayUid() { return 'mk_' + base36(7); }
+export function eventUid() { return 'ev_' + base36(7); }
 
 const snap5 = (n) => Math.round(n / 5) * 5;
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
@@ -131,7 +132,10 @@ export function liveBlocks(blocks, nowIso = new Date().toISOString()) {
 }
 
 // ---------------- per-day records (spec §4b) ----------------
-const DAY_KINDS = new Set(['done', 'appt', 'attach', 'owed', 'makeup', 'ack']);
+// `event` (rev-11 addition, spec 2026-09-07 §4b): a today-only one-off, never a block — it
+// lives ONLY here, in routine_day_v1, so it can never reach routine_blocks_v1 and can never
+// trigger resolveOverlaps' rearrangement of the agent's routine template.
+const DAY_KINDS = new Set(['done', 'appt', 'attach', 'owed', 'makeup', 'event', 'ack']);
 
 export function sanitizeDay(records, today, nowIso = new Date().toISOString()) {
   if (!DAY_KEY_RE.test(String(today))) throw new TypeError('sanitizeDay: today must be YYYY-MM-DD');
@@ -147,6 +151,17 @@ export function sanitizeDay(records, today, nowIso = new Date().toISOString()) {
       rec.durationMin = clamp(snap5(Number(rec.durationMin) || MIN_DUR), MIN_DUR, MAX_DUR);
       rec.startMin = clamp(snap5(Number(rec.startMin) || 0), 0, 1440 - rec.durationMin);
       if (!/^mk_[0-9a-z]{7}$/.test(rec.id)) continue;
+    }
+    if (rec.kind === 'event') {
+      rec.durationMin = clamp(snap5(Number(rec.durationMin) || MIN_DUR), MIN_DUR, MAX_DUR);
+      rec.startMin = clamp(snap5(Number(rec.startMin) || 0), 0, 1440 - rec.durationMin);
+      rec.name = (typeof rec.name === 'string' ? rec.name.trim() : '').slice(0, 60);
+      // No palette to consult for a default (unlike clampBlock) — an event reminds by default.
+      rec.remind = {
+        enabled: rec.remind ? rec.remind.enabled !== false : true,
+        minutesBefore: [0, 5, 10, 15].includes(Number(rec.remind?.minutesBefore)) ? Number(rec.remind.minutesBefore) : 5,
+      };
+      if (!/^ev_[0-9a-z]{7}$/.test(rec.id) || !rec.name) continue;
     }
     if (rec.kind === 'owed') {
       rec.minutes = Math.max(0, Number(rec.minutes) || 0);

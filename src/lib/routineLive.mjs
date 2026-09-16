@@ -129,9 +129,19 @@ const px = (min) => min * 2; // PX_PER_MIN, inlined to keep this module import-l
 // `today` is REQUIRED: dayRecords carries 7 days and block ids are permanent, so
 // done records must be scoped to today (same day-2 bug as nowState — Task 4 review).
 // Callers already pass only today's live make-ups, but composeDay scopes defensively — same as dayRecords.
-export function composeDay({ live = [], appointments = [], makeups = [], dayRecords = [], nowMin = 0, today }) {
+//
+// `events` (rev-11 addition, spec 2026-09-07 §4b/§7h.3): today-only routine_day_v1 records —
+// never blocks, so they can never reach routine_blocks_v1 or trigger resolveOverlaps. An event
+// interval joins `apptCuts` — the DISPLACING cut set — so it eats routine time, marks, and
+// feeds owed/make-up exactly like an appointment; it is scoped to today and tombstones are
+// dropped here, the same way live make-ups are scoped a few lines below.
+export function composeDay({ live = [], appointments = [], makeups = [], events = [], dayRecords = [], nowMin = 0, today }) {
   if (typeof today !== 'string') throw new TypeError('composeDay: today is required');
-  const apptCuts = unionIntervals(appointments.map(a => [a.startMin, Math.min(1440, a.startMin + a.durationMin)]));
+  const liveEvents = events.filter(e => e && !e.deletedAt && e.day === today);
+  const apptCuts = unionIntervals([
+    ...appointments.map(a => [a.startMin, Math.min(1440, a.startMin + a.durationMin)]),
+    ...liveEvents.map(e => [e.startMin, Math.min(1440, e.startMin + e.durationMin)]),
+  ]);
   const liveMk = makeups.filter(m => m && !m.deletedAt && m.day === today);
   const mkCuts = unionIntervals(liveMk.map(m => [m.startMin, m.startMin + m.durationMin]));
   const doneById = new Map(dayRecords.filter(r => r && r.kind === 'done' && !r.deletedAt && r.day === today).map(r => [r.blockId, r.status]));
@@ -193,7 +203,9 @@ export function composeDay({ live = [], appointments = [], makeups = [], dayReco
   }
 
   for (const a of appointments) items.push({ kind: 'appt', id: `appt|${a.prospectId}|${a.startMin}`, ...a, endMin: Math.min(1440, a.startMin + a.durationMin) }); // a 23:45 appointment never hangs below the lane
-  items.sort((x, y) => x.startMin - y.startMin || ((y.kind === 'appt') - (x.kind === 'appt')));
+  for (const e of liveEvents) items.push({ kind: 'event', ...e, endMin: Math.min(1440, e.startMin + e.durationMin) }); // rendered as its own item kind — styled distinctly from an appt, never a block
+  const onTop = (k) => k === 'appt' || k === 'event'; // both sit visually on top of a same-start segment
+  items.sort((x, y) => x.startMin - y.startMin || (onTop(y.kind) - onTop(x.kind)));
 
   const totalDisplaced = Object.values(displacedByBlock).reduce((n, v) => n + v, 0);
   const unrecovered = Math.max(0, totalDisplaced - recovered);
@@ -201,7 +213,9 @@ export function composeDay({ live = [], appointments = [], makeups = [], dayReco
 }
 
 // ---------- §7h.3 findMakeupSlot ----------
-export function findMakeupSlot({ live = [], appointments = [], makeups = [], dayRecords = [], makeupMin, nowMin, today }) {
+// `events` (rev-11 addition): a live one-off today counts as covered, exactly like an
+// appointment or a live make-up — a make-up is never offered on top of an event.
+export function findMakeupSlot({ live = [], appointments = [], makeups = [], events = [], dayRecords = [], makeupMin, nowMin, today }) {
   if (typeof today !== 'string') throw new TypeError('findMakeupSlot: today is required');
   const blocks = live.filter(b => b && !b.deletedAt).sort((a, b) => a.startMin - b.startMin);
   if (!blocks.length || !(makeupMin > 0)) return null;
@@ -212,6 +226,7 @@ export function findMakeupSlot({ live = [], appointments = [], makeups = [], day
   const covered = unionIntervals([
     ...appointments.map(a => [a.startMin, a.startMin + a.durationMin]),
     ...makeups.filter(m => m && !m.deletedAt && m.day === today).map(m => [m.startMin, m.startMin + m.durationMin]),
+    ...events.filter(e => e && !e.deletedAt && e.day === today).map(e => [e.startMin, e.startMin + e.durationMin]),
     ...blocks.filter(b => b.category !== 'break' && !skipped.has(b.id)).map(b => [b.startMin, b.startMin + b.durationMin]),
   ]);
   const gaps = subtract([spanStart, spanEnd], covered);

@@ -20,6 +20,7 @@ import { PX_PER_MIN, SNAP_MIN, topPx, heightPx, minuteFromPx } from '@/lib/routi
 import { paletteById } from '@/lib/routinePalette.mjs';
 import TimelineBlock from './TimelineBlock';
 import AppointmentCard from './AppointmentCard';
+import EventCard from './EventCard';
 
 const GUTTER_PX = 48;
 const SNAP_PX = SNAP_MIN * PX_PER_MIN;
@@ -176,6 +177,18 @@ export default function Timeline({
                   onOpenProspect={onOpenProspect}
                   onRemove={onRemoveAppt}
                   onDetach={onDetach}
+                />
+              );
+            }
+            if (it.kind === 'event') {
+              // rev-11: a one-off, today-only routine_day_v1 record — never a block, so it
+              // is never draggable/resizable here; editing goes through the sheet (§5).
+              return (
+                <EventCard
+                  key={it.id}
+                  item={it}
+                  style={{ top: topPx(it.startMin, b.start), height: heightPx(it.endMin - it.startMin), zIndex: 5 }}
+                  onOpen={onOpen}
                 />
               );
             }

@@ -776,3 +776,86 @@ test('19. a load that straddles local midnight prunes at the PRE-await day, neve
   await until(() => expect(writes(ROUTINE_DAY_KEY)).toBe(1));
   expect(read(ROUTINE_DAY_KEY).map((r) => r.day).sort()).toEqual([...days, '2026-09-07']);
 });
+
+// ---------------- rev-11: one-off events (spec 2026-09-07 §4b, §5, §7h.3) ----------------
+// The operator's bug report, verbatim: adding a new event inside an existing block must
+// never edit, move, or shrink that block. An event is a routine_day_v1 record ONLY — these
+// cases prove it end to end through the real component, not just the pure functions.
+
+test('20. clicking the Event chip creates a day-record event at "now", opens the sheet, and never writes routine_blocks_v1', async () => {
+  settingsReady();
+  // Kept well clear of "now" (9:42) so the fresh event triggers no owed side effect here —
+  // that pipeline is proven separately in case 23.
+  seedBlocks([mk({ id: 'blk_dial01', name: 'Dial block', paletteId: 'dial', category: 'dial', startMin: 1200, durationMin: 60 })]); // 20:00–21:00
+  mount();
+  await loaded();
+  expect(writes(ROUTINE_BLOCKS_KEY)).toBe(0);
+
+  fireEvent.click(screen.getByRole('button', { name: /event/i }));
+  await until(() => expect(writes(ROUTINE_DAY_KEY)).toBe(1));
+  const ev = read(ROUTINE_DAY_KEY).find((r) => r.kind === 'event');
+  expect(ev).toBeTruthy();
+  expect(ev.day).toBe(TODAY);
+  expect(ev.startMin).toBe(580); // now = 9:42 Chicago = 582 min, snapped to 5 → 580
+  expect(ev.deletedAt).toBe(null);
+  expect(screen.getByRole('heading', { name: 'Event' })).toBeTruthy(); // the editor sheet opened on the new event
+  expect(writes(ROUTINE_BLOCKS_KEY)).toBe(0); // the whole point: routine_blocks_v1 is never touched
+});
+
+test('21. dropping the Event chip INSIDE an existing block creates the event at that exact minute — never slides to a gap, never displaces the block, and the block record stays byte-identical', async () => {
+  settingsReady();
+  seedBlocks([mk({ id: 'blk_dial01', name: 'Dial block', paletteId: 'dial', category: 'dial', startMin: 480, durationMin: 120 })]); // 8:00–10:00
+  const before = read(ROUTINE_BLOCKS_KEY);
+  const a = mount();
+  await loaded();
+
+  // Drop at 9:00 (540 min): bounds.start = 360 (6:00), 2 px/min → clientY = (540 − 360) × 2.
+  // jsdom's DragEvent constructor does not carry clientY through fireEvent.drop's init dict
+  // (the same gap test 15 already works around by never asserting on the resulting position) —
+  // so the event is built by hand and clientY set as an own property before dispatch.
+  const dropTarget = a.container.querySelector('[data-item-id="blk_dial01#0"]');
+  const dropEvt = new Event('drop', { bubbles: true, cancelable: true });
+  Object.defineProperty(dropEvt, 'clientY', { value: 360 });
+  Object.defineProperty(dropEvt, 'dataTransfer', { value: { types: ['text/prim-palette'], getData: () => 'event' } });
+  fireEvent(dropTarget, dropEvt);
+  // The dropped event (9:00–9:30) sits inside the 8:00–10:00 block AND its start has already
+  // passed "now" (9:42), so — correctly — it also realizes an owed record in the same beat
+  // (proven end to end in case 23); wait on content, not a fixed write count.
+  await until(() => expect(read(ROUTINE_DAY_KEY).some((r) => r.kind === 'event')).toBe(true));
+  const ev = read(ROUTINE_DAY_KEY).find((r) => r.kind === 'event');
+  expect(ev).toBeTruthy();
+  expect(ev.startMin).toBe(540); // exactly where it was dropped — no nearestFit, no sliding to a free gap
+  await settle();
+  expect(writes(ROUTINE_BLOCKS_KEY)).toBe(0);
+  expect(read(ROUTINE_BLOCKS_KEY)).toEqual(before); // byte-identical: resolveOverlaps never ran on the block
+});
+
+test('22. an event is editable (rename, duration, reminder) and removable through the editor sheet; removal tombstones it', async () => {
+  settingsReady();
+  seedDay([{ id: 'ev_seed001', kind: 'event', day: TODAY, startMin: 750, durationMin: 30, name: 'Call the landlord', remind: { enabled: true, minutesBefore: 5 }, updatedAt: OLD, deletedAt: null }]);
+  const a = mount();
+  await loaded();
+
+  fireEvent.click(a.container.querySelector('[data-item-id="ev_seed001"]'));
+  await until(() => expect(screen.getByText('Event')).toBeTruthy());
+  fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Call the new landlord' } });
+  await advance(400);
+  await until(() => expect(writes(ROUTINE_DAY_KEY)).toBe(1));
+  expect(read(ROUTINE_DAY_KEY).find((r) => r.id === 'ev_seed001').name).toBe('Call the new landlord');
+
+  fireEvent.click(screen.getByRole('button', { name: 'Remove event' }));
+  await until(() => expect(writes(ROUTINE_DAY_KEY)).toBe(2));
+  const removed = read(ROUTINE_DAY_KEY).find((r) => r.id === 'ev_seed001');
+  expect(removed.deletedAt).toBeTruthy();
+  expect(screen.queryByText('Call the new landlord')).toBeNull();
+});
+
+test('23. a seeded event displaces a routine block exactly like an appointment would, and NowCard surfaces the owed minutes end to end', async () => {
+  settingsReady();
+  seedBlocks([mk({ id: 'blk_dial01', name: 'Dial block', paletteId: 'dial', category: 'dial', startMin: 480, durationMin: 120 })]); // 8:00–10:00
+  seedDay([{ id: 'ev_mid0001', kind: 'event', day: TODAY, startMin: 540, durationMin: 30, name: 'Call the landlord', remind: { enabled: true, minutesBefore: 5 }, updatedAt: OLD, deletedAt: null }]); // 9:00–9:30, already started
+  mount();
+  await loaded();
+  // the block splits into two segments around the event, exactly like an appointment would cut it
+  await until(() => expect(screen.getByText('30m owed')).toBeTruthy());
+});

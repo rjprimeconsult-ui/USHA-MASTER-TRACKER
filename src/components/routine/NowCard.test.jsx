@@ -53,6 +53,14 @@ test('with projected = 0 no amber class and no offer/note line; reminder strip c
   }
 });
 
+test('a one-off event as the current item shows no Done checkbox — events carry no done/skip concept (rev-11 §4b)', () => {
+  const event = { kind: 'event', id: 'ev_0000001', name: 'Call the landlord', startMin: 600, endMin: 630 };
+  render(<NowCard {...base} state={{ phase: 'now', current: event, next: null, behind: null }} />);
+  expect(screen.getByText('Call the landlord')).toBeTruthy();
+  expect(screen.queryByRole('checkbox', { name: /done/i })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Held' })).toBeNull();
+});
+
 test('appointment as the current item: Held action, disabled before start', () => {
   const appt = { kind: 'appt', prospectId: 'p1', name: 'Ana Diaz', startMin: 600, endMin: 630, instant: 1, frozen: true, heldAt: null };
   const { rerender } = render(<NowCard {...base} state={{ phase: 'now', current: appt, next: null, behind: null }} started />);
