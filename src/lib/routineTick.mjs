@@ -31,7 +31,11 @@ export function tickAgent({ canAccess, settings: rawSettings, blocks, dayRecords
   const day = sanitizeDay(dayRecords, today, nowIso);
   const items = todaysAppointments({ prospectRows: apptRows, blocks: live, dayRecords: day, settings, tz, now });
   const makeups = day.filter(r => r.kind === 'makeup' && r.day === today && !r.deletedAt);
-  const projected = composeDay({ live: liveForCompose, appointments: items, makeups, dayRecords: day, nowMin, today });
+  // rev-11 one-off events (spec 2026-09-07 §4b/§7h.3): same projected/realized split as
+  // appointments — a future event is shown and reminded, but its displaced minutes are only
+  // realized into `owed` once its own start instant has actually passed.
+  const events = day.filter(r => r.kind === 'event' && r.day === today && !r.deletedAt);
+  const projected = composeDay({ live: liveForCompose, appointments: items, makeups, events, dayRecords: day, nowMin, today });
   const attachesToday = day.filter(r => r.kind === 'attach' && r.day === today); // live + tombstoned
   const attachedLive = new Set(attachesToday.filter(r => !r.deletedAt).map(r => r.blockId));
   const doneById = new Map(day.filter(r => r.kind === 'done' && r.day === today && !r.deletedAt).map(r => [r.blockId, r.status]));
@@ -60,6 +64,17 @@ export function tickAgent({ canAccess, settings: rawSettings, blocks, dayRecords
       candidates.push({ kind: 'appt', block_id: `appt:${it.prospectId}`, prospectId: it.prospectId, segStartMin: it.startMin, segEndMin: it.endMin, segDur: it.durationMin,
         startAt: it.instant, endAt: it.instant + it.durationMin * MIN, fireMin: Math.max(0, it.startMin - APPT_LEAD_MIN), fireAt: Math.max(it.instant - APPT_LEAD_MIN * MIN, dayStart),
         fire_key: `appt|${it.prospectId}|${today}|${Math.max(0, it.startMin - APPT_LEAD_MIN)}|${tz}`, done: null, heldAt: it.heldAt || null, slotSet, next: nextAfter(it.endMin) });
+    } else if (it.kind === 'event') {
+      // Deliberately NOT folded into the 'appt' branch above: that branch is name-free by
+      // construction (§6b.6, prospect privacy) — an event carries no prospect data, so its
+      // push copy uses its own name via the generic buildPayload fallback (below the appt/
+      // placeholder check), exactly like a routine block or a make-up.
+      if (!it.remind?.enabled) continue;
+      const lead = Number.isFinite(it.remind?.minutesBefore) ? it.remind.minutesBefore : settings.defaultMinutesBefore;
+      const startAt = zonedTimeToUtc(today, it.startMin, tz);
+      candidates.push({ kind: 'event', block_id: it.id, name: it.name, segStartMin: it.startMin, segEndMin: it.endMin, segDur: it.endMin - it.startMin,
+        startAt, endAt: startAt + (it.endMin - it.startMin) * MIN, fireMin: Math.max(0, it.startMin - lead), fireAt: Math.max(startAt - lead * MIN, dayStart),
+        fire_key: `${it.id}|${today}|${Math.max(0, it.startMin - lead)}|${tz}`, done: null, heldAt: null, slotSet: new Set([it.id]), next: nextAfter(it.endMin) });
     }
   }
 
@@ -84,7 +99,8 @@ export function tickAgent({ canAccess, settings: rawSettings, blocks, dayRecords
     freezeRecords.push({ id, kind: 'appt', day: today, prospectId: it.prospectId, startMin: it.startMin, durationMin: it.durationMin, source: it.source, heldAt: null, updatedAt: new Date(it.instant).toISOString(), deletedAt: null });
   }
   const started = items.filter(it => it.instant <= now);
-  const realized = composeDay({ live: liveForCompose, appointments: started, makeups, dayRecords: day, nowMin, today });
+  const startedEvents = events.filter(e => zonedTimeToUtc(today, e.startMin, tz) <= now);
+  const realized = composeDay({ live: liveForCompose, appointments: started, makeups, events: startedEvents, dayRecords: day, nowMin, today });
   const storedOwed = day.find(r => r.kind === 'owed' && r.id === owedId(today) && !r.deletedAt) || null;
   const owed = reconcileOwed(storedOwed, realized, readAt, today);
   if (owed) freezeRecords.push({ ...owed, expect: storedOwed ? storedOwed.updatedAt : null });

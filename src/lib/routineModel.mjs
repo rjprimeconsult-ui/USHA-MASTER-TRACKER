@@ -15,6 +15,7 @@ function base36(n) {
 }
 export function uid() { return 'blk_' + base36(7); }
 export function dayUid() { return 'mk_' + base36(7); }
+export function eventUid() { return 'ev_' + base36(7); }
 
 const snap5 = (n) => Math.round(n / 5) * 5;
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
@@ -110,7 +111,15 @@ export function resolveOverlaps(live) {
 // none of them has to change. The 60-live cap tombstones through a different rule and stays
 // silent — §4a scopes the toast to the resolver.
 export function sanitizeBlocks(blocks, nowIso = new Date().toISOString(), onDropped = null) {
-  const deduped = dedupeNewest(Array.isArray(blocks) ? blocks : []).map(clampBlock);
+  // A day record must never be laundered into a routine block. clampBlock builds its result
+  // from a field whitelist, so an `event` or `makeup` fed in here would come back looking like
+  // a permanent template block with its kind and day silently stripped — which is exactly the
+  // bug one-off events exist to prevent, arriving by the back door. No call site does this
+  // today; the guard makes the isolation structural rather than a matter of call-site
+  // discipline. Keying on `kind` is precise and safe: every day record carries one and no
+  // block ever has, so a legacy block with an unexpected id shape is never at risk.
+  const blockShaped = (Array.isArray(blocks) ? blocks : []).filter((b) => b && !b.kind);
+  const deduped = dedupeNewest(blockShaped).map(clampBlock);
   const tombstones = deduped.filter(b => b.deletedAt && !olderThan(b.deletedAt, nowIso, SEVEN_DAYS));
   let live = deduped.filter(b => !b.deletedAt);
   if (live.length > MAX_LIVE) {
@@ -131,7 +140,10 @@ export function liveBlocks(blocks, nowIso = new Date().toISOString()) {
 }
 
 // ---------------- per-day records (spec §4b) ----------------
-const DAY_KINDS = new Set(['done', 'appt', 'attach', 'owed', 'makeup', 'ack']);
+// `event` (rev-11 addition, spec 2026-09-07 §4b): a today-only one-off, never a block — it
+// lives ONLY here, in routine_day_v1, so it can never reach routine_blocks_v1 and can never
+// trigger resolveOverlaps' rearrangement of the agent's routine template.
+const DAY_KINDS = new Set(['done', 'appt', 'attach', 'owed', 'makeup', 'event', 'ack']);
 
 export function sanitizeDay(records, today, nowIso = new Date().toISOString()) {
   if (!DAY_KEY_RE.test(String(today))) throw new TypeError('sanitizeDay: today must be YYYY-MM-DD');
@@ -147,6 +159,17 @@ export function sanitizeDay(records, today, nowIso = new Date().toISOString()) {
       rec.durationMin = clamp(snap5(Number(rec.durationMin) || MIN_DUR), MIN_DUR, MAX_DUR);
       rec.startMin = clamp(snap5(Number(rec.startMin) || 0), 0, 1440 - rec.durationMin);
       if (!/^mk_[0-9a-z]{7}$/.test(rec.id)) continue;
+    }
+    if (rec.kind === 'event') {
+      rec.durationMin = clamp(snap5(Number(rec.durationMin) || MIN_DUR), MIN_DUR, MAX_DUR);
+      rec.startMin = clamp(snap5(Number(rec.startMin) || 0), 0, 1440 - rec.durationMin);
+      rec.name = (typeof rec.name === 'string' ? rec.name.trim() : '').slice(0, 60);
+      // No palette to consult for a default (unlike clampBlock) — an event reminds by default.
+      rec.remind = {
+        enabled: rec.remind ? rec.remind.enabled !== false : true,
+        minutesBefore: [0, 5, 10, 15].includes(Number(rec.remind?.minutesBefore)) ? Number(rec.remind.minutesBefore) : 5,
+      };
+      if (!/^ev_[0-9a-z]{7}$/.test(rec.id) || !rec.name) continue;
     }
     if (rec.kind === 'owed') {
       rec.minutes = Math.max(0, Number(rec.minutes) || 0);

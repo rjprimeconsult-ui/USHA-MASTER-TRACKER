@@ -88,8 +88,8 @@ function Popover({ anchor, onClose, children }) {
 }
 
 function Editor({
-  block, isMakeup, isFrozenAppt, attachOptions = [], defaultMinutesBefore = 5,
-  onSave, onDelete, onSkipToday, onAttach, onRemoveMakeup, onRemoveFromToday, onClose, sheet, anchor,
+  block, isMakeup, isEvent, isFrozenAppt, attachOptions = [], defaultMinutesBefore = 5,
+  onSave, onDelete, onSkipToday, onAttach, onRemoveMakeup, onRemoveEvent, onRemoveFromToday, onClose, sheet, anchor,
 }) {
   const pending = useRef({});
   const timer = useRef(null);
@@ -139,7 +139,7 @@ function Editor({
     if (!g) { g = { group: o.group || 'Other', options: [] }; groups.push(g); }
     g.options.push(o);
   }
-  const canAttach = pal.category === 'appt' && !isMakeup;
+  const canAttach = pal.category === 'appt' && !isMakeup && !isEvent;
 
   let body;
   if (isFrozenAppt) {
@@ -157,7 +157,7 @@ function Editor({
     body = (
       <div className="p-4 space-y-3">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-bold text-slate-900">{isMakeup ? 'Make-up' : 'Edit block'}</h3>
+          <h3 className="text-sm font-bold text-slate-900">{isMakeup ? 'Make-up' : isEvent ? 'Event' : 'Edit block'}</h3>
           <button type="button" onClick={handleClose} aria-label="Close" className="p-1 text-slate-400 hover:text-slate-700"><X size={18} /></button>
         </div>
 
@@ -173,7 +173,7 @@ function Editor({
           />
         </div>
 
-        {!isMakeup && (
+        {!isMakeup && !isEvent && (
           <div>
             <label htmlFor={`rb-pal-${block.id}`} className={label}>Type</label>
             <select
@@ -233,6 +233,8 @@ function Editor({
         </div>
         )}
 
+        {/* An event's shape (spec §4b) carries no `note` field — it is not a saveable patch. */}
+        {!isEvent && (
         <div>
           <label htmlFor={`rb-note-${block.id}`} className={label}>Note</label>
           <textarea
@@ -245,6 +247,7 @@ function Editor({
           />
           <div className="mt-1 text-[11px] text-slate-500">keep block names generic — they show in your notification tray</div>
         </div>
+        )}
 
         {canAttach && (
           <div>
@@ -268,12 +271,14 @@ function Editor({
         <div className="flex items-center justify-end gap-2 pt-1">
           {isMakeup
             ? <button type="button" onClick={() => { onRemoveMakeup?.(); handleClose(); }} className={btnDanger}>Remove make-up</button>
-            : (
-              <>
-                <button type="button" onClick={() => { onSkipToday?.(); handleClose(); }} className={btnQuiet}>Skip today</button>
-                <button type="button" onClick={() => { onDelete?.(); handleClose(); }} className={btnDanger}>Delete</button>
-              </>
-            )}
+            : isEvent
+              ? <button type="button" onClick={() => { onRemoveEvent?.(); handleClose(); }} className={btnDanger}>Remove event</button>
+              : (
+                <>
+                  <button type="button" onClick={() => { onSkipToday?.(); handleClose(); }} className={btnQuiet}>Skip today</button>
+                  <button type="button" onClick={() => { onDelete?.(); handleClose(); }} className={btnDanger}>Delete</button>
+                </>
+              )}
         </div>
       </div>
     );

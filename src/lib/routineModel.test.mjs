@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  uid, dayUid, sanitizeBlocks, liveBlocks, resolveOverlaps, sanitizeDay, sanitizeSettings,
+  uid, dayUid, eventUid, sanitizeBlocks, liveBlocks, resolveOverlaps, sanitizeDay, sanitizeSettings,
   DEFAULT_SETTINGS, seedFollowupStages, instantiateTemplate, applyTemplate,
 } from './routineModel.mjs';
 import { STARTER_TEMPLATE } from './routineTemplates.mjs';
@@ -13,7 +13,9 @@ const blk = (o) => ({ id: uid(), name: 'X', paletteId: 'dial', category: 'dial',
 test('uid shapes', () => {
   assert.match(uid(), /^blk_[0-9a-z]{7}$/);
   assert.match(dayUid(), /^mk_[0-9a-z]{7}$/);
+  assert.match(eventUid(), /^ev_[0-9a-z]{7}$/);
   assert.notEqual(uid(), uid());
+  assert.notEqual(eventUid(), eventUid());
 });
 
 test('sanitizeBlocks: drops idless, dedupes by newest updatedAt, snaps, clamps, whitelists category', () => {
@@ -95,6 +97,41 @@ test('sanitizeDay: prunes < today−7, drops 8-day-old tombstones, clamps make-u
   const out = sanitizeDay(recs, '2026-09-08', NOW);
   assert.deepEqual(out.map(r => r.id).sort(), ['2026-09-08|blk_a', '2026-09-08|owed', 'mk_0000001']);
   assert.equal(out.find(r => r.id === 'mk_0000001').durationMin, 10);
+});
+
+test('sanitizeDay: event kind — clamps start/duration like a make-up, requires a non-empty name ≤ 60 chars, sanitizes remind like a block, validates the ev_ id form', () => {
+  const day = '2026-09-08';
+  const ev = (o = {}) => ({ id: 'ev_1234567', kind: 'event', day, startMin: 482, durationMin: 7, name: 'Call back Jane', remind: { enabled: true, minutesBefore: 7 }, updatedAt: NOW, deletedAt: null, ...o });
+
+  const out = sanitizeDay([ev()], day, NOW);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].startMin, 480);
+  assert.equal(out[0].durationMin, 10);
+  assert.equal(out[0].name, 'Call back Jane');
+  assert.deepEqual(out[0].remind, { enabled: true, minutesBefore: 5 }); // 7 ∉ {0,5,10,15} → falls back to 5, same as a block
+
+  // bad id shape → dropped (same guard as mk_)
+  assert.deepEqual(sanitizeDay([ev({ id: 'bad_id' })], day, NOW), []);
+
+  // empty / whitespace-only name → dropped
+  assert.deepEqual(sanitizeDay([ev({ id: 'ev_2234567', name: '   ' })], day, NOW), []);
+  assert.deepEqual(sanitizeDay([ev({ id: 'ev_2234568', name: '' })], day, NOW), []);
+
+  // name over 60 chars → capped, not dropped
+  const long = sanitizeDay([ev({ id: 'ev_3234567', name: 'x'.repeat(90) })], day, NOW);
+  assert.equal(long[0].name.length, 60);
+
+  // no remind object at all → enabled true, minutesBefore 5 (an event has no palette default to fall back to)
+  const noRemind = sanitizeDay([ev({ id: 'ev_4234567', remind: undefined })], day, NOW);
+  assert.deepEqual(noRemind[0].remind, { enabled: true, minutesBefore: 5 });
+
+  // explicit enabled:false and a valid minutesBefore survive untouched
+  const off = sanitizeDay([ev({ id: 'ev_5234567', remind: { enabled: false, minutesBefore: 15 } })], day, NOW);
+  assert.deepEqual(off[0].remind, { enabled: false, minutesBefore: 15 });
+
+  // duration/start clamp order matches make-up: duration clamped first, then start clamped against it
+  const late = sanitizeDay([ev({ id: 'ev_6234567', startMin: 1439, durationMin: 30 })], day, NOW);
+  assert.equal(late[0].startMin, 1410); assert.equal(late[0].durationMin, 30);
 });
 
 test('sanitizeSettings + DEFAULT_SETTINGS', () => {
@@ -230,4 +267,17 @@ test('sanitizeBlocks reports the blocks resolveOverlaps could not place, by name
   const capped = [];
   sanitizeBlocks(many, NOW, (names) => capped.push(names));
   assert.deepEqual(capped, []);
+});
+
+test('sanitizeBlocks refuses day records: an event can never be laundered into a routine block', () => {
+  const block = { id: 'blk_aaaaaaa', name: 'Dial block', paletteId: 'dial', category: 'dial', startMin: 540, durationMin: 60, remind: { enabled: true, minutesBefore: 5 }, note: '', deletedAt: null, createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z' };
+  const event = { id: 'ev_1234567', kind: 'event', day: '2026-09-16', startMin: 570, durationMin: 30, name: 'Call the landlord', remind: { enabled: true, minutesBefore: 5 }, updatedAt: '2026-09-16T00:00:00.000Z', deletedAt: null };
+  const makeup = { id: 'mk_7654321', kind: 'makeup', day: '2026-09-16', startMin: 750, durationMin: 30, category: 'dial', name: 'Dial block (make-up)', ofBlockId: 'blk_aaaaaaa', updatedAt: '2026-09-16T00:00:00.000Z', deletedAt: null };
+
+  const out = sanitizeBlocks([block, event, makeup], '2026-09-16T12:00:00.000Z');
+  assert.deepEqual(out.map(b => b.id), ['blk_aaaaaaa']);
+  // and the real block is untouched by their presence
+  assert.equal(out[0].startMin, 540);
+  assert.equal(out[0].durationMin, 60);
+  assert.equal(out[0].name, 'Dial block');
 });

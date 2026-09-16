@@ -55,7 +55,11 @@ export default function NowCard({
   const minutesLeft = current ? Math.max(0, current.endMin - nowMin) : 0;
   const progress = current ? clamp01((nowMin - current.startMin) / (current.endMin - current.startMin)) : 0;
   const currentIsAppt = current?.kind === 'appt';
-  const currentDone = !currentIsAppt && current?.done === 'done';
+  // rev-11: a one-off event has no done/skip concept (§4b's shape carries no status field) —
+  // it must never render the Done checkbox, which would otherwise write a bogus record keyed
+  // `${today}|undefined` (an event item has neither blockId nor makeupId).
+  const currentIsEvent = current?.kind === 'event';
+  const currentDone = !currentIsAppt && !currentIsEvent && current?.done === 'done';
 
   // ---- ONE meta line, first match ----
   const unrecovered = projected?.unrecovered || 0;
@@ -142,7 +146,7 @@ export default function NowCard({
           )}
         </div>
 
-        {phase === 'now' && current && !currentIsAppt && (
+        {phase === 'now' && current && !currentIsAppt && !currentIsEvent && (
           <motion.label
             whileTap={{ scale: 0.88 }}
             transition={{ type: 'spring', stiffness: 500, damping: 30 }}

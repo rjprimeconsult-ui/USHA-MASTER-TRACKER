@@ -273,6 +273,54 @@ test('an attached block never emits a placeholder, even once its appointment is 
   assert.ok(keys(r).includes(`appt|p9|2026-09-08|835|${CHI}`));
 });
 
+// ---------------- rev-11: one-off events (spec 2026-09-07 §4b, §6b, §7h.3) ----------------
+test('event reminder: fires at its OWN remind.minutesBefore even when settings.defaultMinutesBefore differs; disabled remind produces no candidate', () => {
+  const events = [{ id: 'ev_0000001', kind: 'event', day: '2026-09-08', startMin: 750, durationMin: 30, name: 'Pay estimated taxes', remind: { enabled: true, minutesBefore: 0 }, updatedAt: 'x', deletedAt: null }];
+  // fireMin = 750 − 0 = 750 = 12:30 CHI = 17:30 UTC — not settings.defaultMinutesBefore's 15
+  const r = run({ settings: { ...S, defaultMinutesBefore: 15 }, dayRecords: events, now: Z('2026-09-08T17:30:00Z'), readAt: 'x' });
+  assert.deepEqual(keys(r), [`ev_0000001|2026-09-08|750|${CHI}`]);
+  assert.equal(r.due[0].kind, 'event');
+  assert.equal(r.due[0].name, 'Pay estimated taxes');
+
+  const off = [{ id: 'ev_0000002', kind: 'event', day: '2026-09-08', startMin: 750, durationMin: 30, name: 'No reminder wanted', remind: { enabled: false, minutesBefore: 5 }, updatedAt: 'x', deletedAt: null }];
+  assert.deepEqual(keys(run({ dayRecords: off, now: Z('2026-09-08T17:25:00Z'), readAt: 'x' })), []);
+});
+
+test('event push copy carries its own name — it is NOT routed through the name-free appt branch', () => {
+  const events = [{ id: 'ev_0000003', kind: 'event', day: '2026-09-08', startMin: 750, durationMin: 30, name: 'Client callback — Diaz', remind: { enabled: true, minutesBefore: 5 }, updatedAt: 'x', deletedAt: null }];
+  const r = run({ dayRecords: events, now: Z('2026-09-08T17:25:00Z'), readAt: 'x' });
+  const c = r.due.find((d) => d.block_id === 'ev_0000003');
+  assert.ok(c); assert.equal(c.kind, 'event');
+  const p = buildPayload(c, null, Z('2026-09-08T17:25:00Z'), 'https://app.primtracker.com');
+  assert.equal(p.title, 'Client callback — Diaz starts in 5 min');
+  assert.equal(p.tag, 'routine-ev_0000003');
+  assert.ok(JSON.stringify(p).includes('Diaz')); // the opposite assertion of the appt/placeholder tests — events carry no prospect data, so a name is fine
+});
+
+test('an event only realizes its displaced minutes into owed once it has actually started; a future event does not yet count (mirrors an appointment)', () => {
+  const events = [{ id: 'ev_0000004', kind: 'event', day: '2026-09-08', startMin: 600, durationMin: 30, name: 'Landlord call', remind: { enabled: true, minutesBefore: 5 }, updatedAt: 'x', deletedAt: null }];
+  // 9:35 CHI — before the 10:00 event starts: projected shows it, nothing realized/owed yet
+  const before = run({ dayRecords: events, now: Z('2026-09-08T14:35:00Z'), readAt: '2026-09-08T14:35:00.000Z' });
+  assert.ok(before.items.some((i) => i.kind === 'event' && i.id === 'ev_0000004'));
+  assert.equal(before.freezeRecords.find((x) => x.kind === 'owed'), undefined);
+
+  // 10:05 CHI — the event has started: DIAL_AM (8:30–10:30) loses its 10:00–10:30 tail, realized
+  const after = run({ dayRecords: events, now: Z('2026-09-08T15:05:00Z'), readAt: '2026-09-08T15:05:00.000Z' });
+  const owed = after.freezeRecords.find((x) => x.kind === 'owed');
+  assert.ok(owed);
+  assert.equal(owed.minutes, 30);
+  assert.deepEqual(owed.byBlock, { [DIAL_AM]: 30 });
+});
+
+test('an event never displaces routine_blocks_v1 — the blocks tickAgent is given come back untouched, only dayRecords/owed change', () => {
+  const events = [{ id: 'ev_0000005', kind: 'event', day: '2026-09-08', startMin: 600, durationMin: 30, name: 'Landlord call', remind: { enabled: true, minutesBefore: 5 }, updatedAt: 'x', deletedAt: null }];
+  const blocksIn = starter();
+  const blocksSnapshot = starter();
+  assert.deepEqual(blocksIn, blocksSnapshot);
+  run({ blocks: blocksIn, dayRecords: events, now: Z('2026-09-08T15:05:00Z'), readAt: 'x' });
+  assert.deepEqual(blocksIn, blocksSnapshot); // tickAgent never mutates the blocks array it was handed
+});
+
 test('lead cap on "starts in" copy; readAt is required; subs must be an array', () => {
   const dial = run({}).due.find(d => d.block_id === DIAL_AM);
   assert.equal(buildPayload(dial, null, Z('2026-09-08T13:24:20Z'), 'x').title, 'Dial block starts in 5 min');

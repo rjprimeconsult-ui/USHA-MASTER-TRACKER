@@ -82,3 +82,38 @@ test('a typed-but-not-blurred time is folded into the close flush, not lost', ()
   expect(onSave).toHaveBeenCalledTimes(1);
   expect(onSave).toHaveBeenCalledWith({ startMin: 570 });
 });
+
+// ---------------- rev-11: one-off events (spec 2026-09-07 §4b, §5) ----------------
+// Modeled on the isMakeup branch: an event is editable (name, time, duration, reminder)
+// and removable through this same sheet, but it is never a block — no Type (palette)
+// select, no Note, no "Attach prospect" — those fields don't exist on an event record.
+const event = { id: 'ev_0000001', kind: 'event', day: '2026-09-08', name: 'Call the landlord', startMin: 750, durationMin: 30, remind: { enabled: true, minutesBefore: 5 } };
+
+test('isEvent: shows name/start/duration/reminder, hides Type/Note/Attach, and "Remove event" tombstones it', () => {
+  const onSave = vi.fn(), onRemoveEvent = vi.fn(), onClose = vi.fn();
+  render(<BlockEditorSheet open sheet block={event} isEvent onSave={onSave} onRemoveEvent={onRemoveEvent} onClose={onClose} />);
+  expect(screen.getByLabelText('Name')).toBeTruthy();
+  expect(screen.getByLabelText('Start')).toBeTruthy();
+  expect(screen.getByLabelText('Duration')).toBeTruthy();
+  expect(screen.getByLabelText('Reminder')).toBeTruthy();
+  expect(screen.queryByLabelText('Type')).toBeNull();
+  expect(screen.queryByLabelText('Note')).toBeNull();
+  expect(screen.queryByLabelText('Attach prospect (today)')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Skip today' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Remove make-up' })).toBeNull();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Remove event' }));
+  expect(onRemoveEvent).toHaveBeenCalledTimes(1);
+  expect(onClose).toHaveBeenCalledTimes(1);
+});
+
+test('isEvent: duration and reminder commit immediately; the header reads "Event"', () => {
+  const onSave = vi.fn();
+  render(<BlockEditorSheet open sheet block={event} isEvent onSave={onSave} onClose={vi.fn()} />);
+  expect(screen.getByText('Event')).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('Duration'), { target: { value: '45' } });
+  expect(onSave).toHaveBeenCalledWith({ durationMin: 45 });
+  fireEvent.change(screen.getByLabelText('Reminder'), { target: { value: '10' } });
+  expect(onSave).toHaveBeenCalledWith({ remind: { enabled: true, minutesBefore: 10 } });
+});

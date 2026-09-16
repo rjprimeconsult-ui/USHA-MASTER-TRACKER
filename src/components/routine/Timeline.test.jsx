@@ -51,3 +51,20 @@ test('drag commits onMove once with the snapped start; trailing clicks never ope
   expect(onOpen.mock.calls[0][0]).toBe(seg);
   expect(typeof onOpen.mock.calls[0][1]?.top).toBe('number');
 });
+
+// rev-11 (spec 2026-09-07 §5): a one-off event renders as its own item kind, styled
+// distinctly from both a routine block and the appointment card, and opens the editor
+// on click — it is never draggable/resizable (editing goes through the sheet, §5).
+const event = { kind: 'event', id: 'ev_0000001', name: 'Call the landlord', startMin: 600, endMin: 630, durationMin: 30 };
+
+test('an event item renders via EventCard (dashed, non-block, non-appt treatment) and opens the editor on click', () => {
+  const onOpen = vi.fn();
+  const { container } = render(<Timeline items={[event]} bounds={{ start: 360, end: 1260 }} nowMin={500} onOpen={onOpen} />);
+  const root = container.querySelector('[data-item-id="ev_0000001"]');
+  expect(root).toBeTruthy();
+  expect(root.className).toContain('border-dashed');
+  expect(root.className).not.toContain('bg-white');
+  fireEvent.click(root);
+  expect(onOpen).toHaveBeenCalledTimes(1);
+  expect(onOpen.mock.calls[0][0]).toBe(event);
+});
