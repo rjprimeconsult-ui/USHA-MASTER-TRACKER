@@ -339,6 +339,14 @@ export default function LeadTracker() {
   const [businessExpenses, setBusinessExpenses] = useState([]);
   const [businessIncome, setBusinessIncome] = useState([]);
   const [prospects, setProspects] = useState([]);
+  // Live mirror of `prospects`, synced by the effect below on every commit.
+  // Distinct from prevProspectsRef below (which trails one persist cycle
+  // behind, on purpose, for change detection) — this one is read by
+  // bulkCadenceAction to snapshot cadences OUTSIDE the setProspects updater,
+  // the same "no side effects inside a setState updater" discipline as
+  // followupDraftsRef further down, without touching every one of
+  // prospects' many existing setter call sites.
+  const currentProspectsRef = useRef([]);
   const [prospectSettings, setProspectSettings] = useState(null);
   // Newest-wins stamping for the co-edited stores (multi-session safety):
   // prev* = the array as of the last persist (for change detection by ref);
@@ -433,14 +441,20 @@ export default function LeadTracker() {
     };
   }, []);
 
-  // opts: { actionLabel, onAction } — renders an inline action (e.g. Undo)
-  // on the toast. Given an action a few extra seconds on screen so there's
-  // actually time to click it before it self-dismisses.
+  // opts: { actionLabel, onAction, duration } — renders an inline action
+  // (e.g. Undo) on the toast. An action gets longer on screen by default so
+  // there's actually time to click it before it self-dismisses; callers with
+  // sharper stakes (e.g. a permanent bulk action) can pass an explicit
+  // duration instead of the generic default. Plain toasts (no action) are
+  // unaffected — always 3000ms.
   const showToast = useCallback((msg, kind = 'ok', opts = {}) => {
-    const { actionLabel, onAction } = opts;
+    const { actionLabel, onAction, duration } = opts;
     setToast({ msg, kind, actionLabel, onAction });
-    setTimeout(() => setToast(null), actionLabel ? 6000 : 3000);
+    const ms = duration ?? (actionLabel ? 6000 : 3000);
+    setTimeout(() => setToast(null), ms);
   }, []);
+
+  useEffect(() => { currentProspectsRef.current = prospects; }, [prospects]);
 
   // Wire up storage quota error notifications so the user knows when
   // localStorage is full instead of silently losing saves (typically caused
@@ -1778,21 +1792,33 @@ export default function LeadTracker() {
   // Distinct from single-prospect snoozeProspect because this one also
   // captures a pre-mutation snapshot per id so the toast's Undo can restore
   // every affected cadence exactly, in one more setProspects call.
+  //
+  // The snapshot is read from currentProspectsRef and built BEFORE calling
+  // setProspects, not inside its updater — a setState updater must stay a
+  // pure function of its argument (StrictMode double-invokes updaters in
+  // dev specifically to catch side effects like this one; see
+  // followupDraftsRef above for the same discipline elsewhere in this file).
   const bulkCadenceAction = useCallback((ids, action) => {
     if (action !== 'snooze7' && action !== 'clear') return;
     if (!Array.isArray(ids) || ids.length === 0) return;
     const now = new Date().toISOString();
     const idSet = new Set(ids);
     const previousCadences = new Map();
+    for (const p of currentProspectsRef.current) {
+      if (idSet.has(p.id)) previousCadences.set(p.id, p.cadence);
+    }
     setProspects(prev => prev.map(p => {
       if (!idSet.has(p.id)) return p;
-      previousCadences.set(p.id, p.cadence);
       return action === 'clear' ? clearCadence(p, now) : engineSnooze(p, 7, now);
     }));
     const count = idSet.size;
     const verb = action === 'clear' ? 'Cleared' : 'Snoozed';
+    // A permanent 'clear' on up to hundreds of records gets a longer window
+    // than a 'snooze', which reverses itself in a week regardless.
+    const duration = action === 'clear' ? 12000 : 6000;
     showToast(`${verb} ${count} overdue follow-up${count !== 1 ? 's' : ''}`, 'ok', {
       actionLabel: 'Undo',
+      duration,
       onAction: () => {
         setProspects(prev => prev.map(p =>
           previousCadences.has(p.id) ? { ...p, cadence: previousCadences.get(p.id) } : p
