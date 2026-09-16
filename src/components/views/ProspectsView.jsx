@@ -1419,6 +1419,7 @@ export default function ProspectsView({
   onLogTouch,
   onOutreachEmailSent,
   onSnoozeProspect,
+  onBulkCadence,
   onApplyStageSuggestion,
   onResolveReminder,
   onSyncTextDrip,
@@ -1737,6 +1738,8 @@ export default function ProspectsView({
           const p = prospects.find(x => x.id === id);
           if (p) onView(p);
         }}
+        onBulkCadence={onBulkCadence}
+        readOnly={readOnly}
       />
 
       {prospects.length > 0 && (
