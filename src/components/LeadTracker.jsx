@@ -44,7 +44,7 @@ import { statementsInRange, isStatementIncome } from '@/lib/statementManager.mjs
 import {
   FOLLOWUP_PLAYBOOK_KEY, DEFAULT_PLAYBOOK,
   ensureFollowupFields, armIfNeeded, armCadence, logTouch as engineLogTouch, snooze as engineSnooze, suggestStageAfterTouch, applyOutreachEmail,
-  resolveTouchReminder,
+  resolveTouchReminder, clearCadence,
 } from '@/lib/followupEngine.mjs';
 import { pruneDrafts } from '@/lib/followupDraftCache.mjs';
 import LeadForm from './LeadForm';
@@ -433,9 +433,13 @@ export default function LeadTracker() {
     };
   }, []);
 
-  const showToast = useCallback((msg, kind = 'ok') => {
-    setToast({ msg, kind });
-    setTimeout(() => setToast(null), 3000);
+  // opts: { actionLabel, onAction } — renders an inline action (e.g. Undo)
+  // on the toast. Given an action a few extra seconds on screen so there's
+  // actually time to click it before it self-dismisses.
+  const showToast = useCallback((msg, kind = 'ok', opts = {}) => {
+    const { actionLabel, onAction } = opts;
+    setToast({ msg, kind, actionLabel, onAction });
+    setTimeout(() => setToast(null), actionLabel ? 6000 : 3000);
   }, []);
 
   // Wire up storage quota error notifications so the user knows when
@@ -1767,6 +1771,36 @@ export default function LeadTracker() {
     setProspects(prev => prev.map(p => p.id === prospectId ? engineSnooze(p, days, now) : p));
   }, []);
 
+  // Bulk backlog action from the "Needs a touch" widget's Clear-overdue
+  // control. `action` is 'snooze7' (self-reversing: nextDueAt is untouched,
+  // just re-suppressed for a week) or 'clear' (permanent: sets completedAt,
+  // which armIfNeeded will never re-arm — see followupEngine.clearCadence).
+  // Distinct from single-prospect snoozeProspect because this one also
+  // captures a pre-mutation snapshot per id so the toast's Undo can restore
+  // every affected cadence exactly, in one more setProspects call.
+  const bulkCadenceAction = useCallback((ids, action) => {
+    if (action !== 'snooze7' && action !== 'clear') return;
+    if (!Array.isArray(ids) || ids.length === 0) return;
+    const now = new Date().toISOString();
+    const idSet = new Set(ids);
+    const previousCadences = new Map();
+    setProspects(prev => prev.map(p => {
+      if (!idSet.has(p.id)) return p;
+      previousCadences.set(p.id, p.cadence);
+      return action === 'clear' ? clearCadence(p, now) : engineSnooze(p, 7, now);
+    }));
+    const count = idSet.size;
+    const verb = action === 'clear' ? 'Cleared' : 'Snoozed';
+    showToast(`${verb} ${count} overdue follow-up${count !== 1 ? 's' : ''}`, 'ok', {
+      actionLabel: 'Undo',
+      onAction: () => {
+        setProspects(prev => prev.map(p =>
+          previousCadences.has(p.id) ? { ...p, cadence: previousCadences.get(p.id) } : p
+        ));
+      },
+    });
+  }, [showToast]);
+
   const resolveProspectReminder = useCallback((prospectId, touchId) => {
     const now = new Date().toISOString();
     setProspects(prev => prev.map(p => p.id === prospectId ? resolveTouchReminder(p, touchId, now) : p));
@@ -2472,6 +2506,7 @@ export default function LeadTracker() {
             onLogTouch={logProspectTouch}
             onOutreachEmailSent={logProspectOutreachEmail}
             onSnoozeProspect={snoozeProspect}
+            onBulkCadence={bulkCadenceAction}
             onApplyStageSuggestion={applyStageSuggestion}
             onResolveReminder={resolveProspectReminder}
             onSyncTextDrip={syncTextDrip}

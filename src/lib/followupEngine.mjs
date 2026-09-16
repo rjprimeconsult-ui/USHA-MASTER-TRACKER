@@ -236,6 +236,19 @@ export function snooze(prospect, days, now) {
 }
 
 /**
+ * Mark the cadence complete as of `now`, preserving every other cadence
+ * field (nextDueAt, stepIndex, snoozedUntil) and the touch log untouched.
+ * This PERMANENTLY removes the prospect from the due list: dueStatus()
+ * reports 'done' once completedAt is set, and armIfNeeded() refuses to
+ * re-arm a cadence that already has a completedAt — so unlike snooze()
+ * (which just pushes nextDueAt out and self-reverses), only a stage change
+ * (which calls armCadence) brings the prospect back onto the follow-up list.
+ */
+export function clearCadence(prospect, now) {
+  return { ...prospect, cadence: { ...prospect.cadence, completedAt: now } };
+}
+
+/**
  * Compute the ISO datetime for a reminder preset using LOCAL time math.
  * preset: 'eod' | 'tomorrow_am' | 'in_2h'
  * nowIso: ISO string of "now"

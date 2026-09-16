@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   CHANNELS, OUTCOMES, DEFAULT_PLAYBOOK, FOLLOWUP_PLAYBOOK_KEY,
   FOLLOWUP_DEFAULTS, playbookForStage, ensureFollowupFields,
-  armCadence, armIfNeeded, logTouch, dueStatus, snooze,
+  armCadence, armIfNeeded, logTouch, dueStatus, snooze, clearCadence,
   consecutiveNoAnswer, suggestStageAfterTouch,
   reminderPresetAt, touchReminderState, resolveTouchReminder,
 } from './followupEngine.mjs';
@@ -154,6 +154,24 @@ test('dueStatus: done when completedAt set; none when no cadence', () => {
 test('snooze sets snoozedUntil now + days', () => {
   const out = snooze(base(), 3, '2026-06-04T12:00:00.000Z');
   assert.equal(out.cadence.snoozedUntil, '2026-06-07T12:00:00.000Z');
+});
+
+test('snooze(p, 7, now) leaves nextDueAt intact and dueStatus reports snoozed', () => {
+  const p = base();
+  const out = snooze(p, 7, '2026-06-04T12:00:00.000Z');
+  assert.equal(out.cadence.nextDueAt, '2026-06-04T12:00:00.000Z'); // untouched
+  assert.equal(dueStatus(out, '2026-06-05T00:00:00.000Z').state, 'snoozed');
+});
+
+test('clearCadence sets completedAt, leaves nextDueAt/stepIndex/touchLog untouched, and dueStatus reports done', () => {
+  const touchLog = [{ id: 't1', at: '2026-06-01T00:00:00.000Z', channel: 'Call', outcome: 'No answer', note: '' }];
+  const p = base({ cadence: { stepIndex: 2, nextDueAt: '2026-06-04T12:00:00.000Z', snoozedUntil: null, completedAt: null }, touchLog });
+  const out = clearCadence(p, '2026-06-05T09:00:00.000Z');
+  assert.equal(out.cadence.completedAt, '2026-06-05T09:00:00.000Z');
+  assert.equal(out.cadence.nextDueAt, '2026-06-04T12:00:00.000Z'); // preserved
+  assert.equal(out.cadence.stepIndex, 2); // preserved
+  assert.deepEqual(out.touchLog, touchLog); // preserved
+  assert.equal(dueStatus(out, '2026-06-06T00:00:00.000Z').state, 'done');
 });
 
 test('armIfNeeded arms an un-started cadence anchored on stageEnteredAt', () => {
